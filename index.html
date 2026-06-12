@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tap Titans 配卡工具 Pro</title>
+    <title>Tap Titans 2 配卡工具</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         :root {
@@ -50,8 +50,8 @@
             width: 200vw;
             transition: transform 0.3s ease-out;
             margin-top: 55px;
-            margin-bottom: 110px; /* 為單排卡片池留白 */
-            transition: margin-bottom 0.3s ease; /* 當池子展開時動態調整 */
+            margin-bottom: 110px;
+            transition: margin-bottom 0.3s ease;
         }
 
         .page-view {
@@ -83,13 +83,30 @@
         .tier-row { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
         #page-torment .tier-row { border-color: #d1c4e9; }
 
+        /* 標籤列優化：加入文字輸入欄位 */
         .tier-label {
             font-size: 14px; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px;
             border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;
         }
         #page-torment .tier-label { border-bottom-color: #d1c4e9; }
-        .tier-buttons { display: flex; gap: 5px; }
+        
+        .label-title-wrapper {
+            display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 10px;
+        }
+        .label-fixed-text { white-space: nowrap; }
+        
+        /* 自由增加文字的輸入框樣式 */
+        .label-custom-input {
+            border: none; background: transparent; font-size: 13px; font-family: inherit;
+            padding: 2px 4px; width: 100%; color: #5a4a42; border-bottom: 1px solid transparent;
+        }
+        .label-custom-input:focus {
+            outline: none; border-bottom: 1px solid #bfa89e; background-color: #faf7f2;
+        }
+        #page-torment .label-custom-input { color: #4a148c; }
+        #page-torment .label-custom-input:focus { border-bottom-color: #b19cd9; background-color: #f3e5f5; }
 
+        .tier-buttons { display: flex; gap: 5px; white-space: nowrap; }
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 
         .drop-zone {
@@ -110,19 +127,16 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
-        /* 📱 升級版卡片池：支援動態雙排與高度展開 */
+        /* 卡片池：針對大量卡片(42張)優化 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
             display: flex; gap: 10px; align-items: center; z-index: 999;
             box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
-            height: 90px; /* 初始單排高度 */
+            height: 90px;
             transition: height 0.3s ease;
         }
-        /* 當啟用展開類名時，切換為雙排樣式 */
-        #pool-container.expanded {
-            height: 170px; 
-        }
+        #pool-container.expanded { height: 170px; }
         .pool-title { color: #f4ece1; font-size: 12px; writing-mode: vertical-lr; font-weight: bold; }
         
         .pool-scroll { 
@@ -130,7 +144,6 @@
             -webkit-overflow-scrolling: touch;
             align-content: flex-start;
         }
-        /* 展開時改用 Grid 彈性排成兩橫排 */
         #pool-container.expanded .pool-scroll {
             display: grid;
             grid-template-rows: repeat(2, 60px);
@@ -143,7 +156,6 @@
             min-width: 60px; height: 60px; border: 2px dashed #e0d5c1; border-radius: 8px;
             color: #e0d5c1; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer;
         }
-        /* 雙排時確保上傳按鈕置中或維持比例 */
         #pool-container.expanded .btn-upload-pool { grid-row: span 2; height: 130px; }
 
         .draggable-thumb { min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; touch-action: none; }
@@ -175,8 +187,8 @@
     <div class="swiper-container" id="main-swiper">
         
         <div class="page-view" id="page-burst">
-            <h1>Tap Titans配卡-爆裂場</h1>
-            <div class="subtitle">左右滑動切換場地｜可增減3-4格與拖放卡片</div>
+            <h1>Tap Titans 2 配卡-爆裂場</h1>
+            <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
             <div class="export-area" id="export-burst">
                 <div class="pyramid-container" id="container-burst"></div>
             </div>
@@ -186,8 +198,8 @@
         </div>
 
         <div class="page-view" id="page-torment">
-            <h1>Tap Titans配卡-苦痛場</h1>
-            <div class="subtitle">左右滑動切換場地｜可增減3-4格與拖放卡片</div>
+            <h1>Tap Titans 2 配卡-苦痛場</h1>
+            <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
             <div class="export-area" id="export-torment">
                 <div class="pyramid-container" id="container-torment"></div>
             </div>
@@ -215,7 +227,7 @@
     <script>
         const totalTiers = 8;
         
-        // 初始化生成
+        // 初始化生成 1 ~ 8 組，加入可輸入文字框
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
             for (let i = 1; i <= totalTiers; i++) {
@@ -223,7 +235,10 @@
                 tierRow.className = 'tier-row';
                 tierRow.innerHTML = `
                     <div class="tier-label">
-                        <span>第 ${i} 組</span>
+                        <div class="label-title-wrapper">
+                            <span class="label-fixed-text">第 ${i} 組</span>
+                            <input type="text" class="label-custom-input" placeholder="點擊輸入備註..." data-html2canvas-ignore="false">
+                        </div>
                         <div class="tier-buttons">
                             <button class="btn-action" onclick="addGridItem(this)">＋增格</button>
                             <button class="btn-action del" onclick="removeGridItem(this)">－減格</button>
@@ -284,21 +299,17 @@
             }
         }
 
-        // ⚙️ 卡片池展開與收合控制邏輯
+        // 卡片池展開與收合
         const poolContainer = document.getElementById('pool-container');
-        
         function expandPool(event) {
-            event.stopPropagation(); // 防止點擊池子時觸發點擊外圍的收合事件
+            event.stopPropagation();
             poolContainer.classList.add('expanded');
         }
-
-        // 點擊卡片池以外的任何地方，將其收合為單排
         document.addEventListener('click', function() {
             poolContainer.classList.remove('expanded');
         });
-
         function triggerPoolUpload(event) {
-            event.stopPropagation(); // 阻止事件冒泡，不影響展開
+            event.stopPropagation();
             document.getElementById('pool-input').click();
         }
 
@@ -320,7 +331,7 @@
             }
         }
 
-        // ⚙️ 嚴格限制 3-4 格控制邏輯
+        // 嚴格限制 3-4 格
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
             if(grid.children.length >= 4) { 
@@ -354,8 +365,6 @@
                 clone.style.left = e.touches[0].clientX - 30 + 'px';
                 clone.style.top = e.touches[0].clientY - 30 + 'px';
                 document.body.appendChild(clone);
-                
-                // 開始拖拽時，將卡片池收合，騰出視野方便精準對齊格子
                 poolContainer.classList.remove('expanded');
             }, { passive: true });
 
@@ -391,7 +400,7 @@
             btn.parentElement.innerHTML = '拉入圖片';
         }
 
-        // 截圖生成
+        // 截圖生成（優化表單輸入文字的截圖處理）
         function generateImage(type) {
             window.scrollTo(0,0);
             const exportArea = document.getElementById(type === 'burst' ? 'export-burst' : 'export-torment');
@@ -399,10 +408,28 @@
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
             
+            // 修正 html2canvas 無法直接讀取動態 input 值的問題
+            const inputs = exportArea.querySelectorAll('.label-custom-input');
+            inputs.forEach(input => {
+                input.setAttribute('value', input.value);
+            });
+
             imgContainer.innerHTML = "正在組裝配卡圖...";
             modal.style.display = "flex";
 
-            html2canvas(exportArea, { useCORS: true, scale: 2, backgroundColor: bgHex }).then(canvas => {
+            html2canvas(exportArea, { 
+                useCORS: true, 
+                scale: 2, 
+                backgroundColor: bgHex,
+                onclone: (clonedDoc) => {
+                    // 確保複製出來的截圖節點中，輸入框樣式看起來不像一個普通的輸入框
+                    const clonedInputs = clonedDoc.querySelectorAll('.label-custom-input');
+                    clonedInputs.forEach(ci => {
+                        ci.style.background = 'transparent';
+                        ci.style.border = 'none';
+                    });
+                }
+            }).then(canvas => {
                 imgContainer.innerHTML = "";
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');

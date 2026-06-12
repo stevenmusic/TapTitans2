@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Tap Titans 2 配卡工具 Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
@@ -25,6 +25,9 @@
             padding: 0;
             overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
+            
+            /* 🔒 核心優化：禁止系統手勢放大與雙擊放大，固定畫面 */
+            touch-action: manipulation; 
         }
 
         .nav-tabs {
@@ -89,12 +92,17 @@
         }
         #page-torment .tier-label { border-bottom-color: #d1c4e9; }
         
-        .label-title-wrapper { display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 10px; }
+        .label-title-wrapper { display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 10px; overflow: hidden; }
         .label-fixed-text { white-space: nowrap; }
         
+        /* 🔒 核心優化：防止 iOS 點擊輸入框自動放大畫面（16px法規），並透過縮放維持精緻視覺 */
         .label-custom-input {
-            border: none; background: transparent; font-size: 13px; font-family: inherit;
-            padding: 2px 4px; width: 100%; color: #5a4a42; border-bottom: 1px solid transparent;
+            border: none; background: transparent; font-family: inherit;
+            padding: 2px 4px; width: 115%; color: #5a4a42; border-bottom: 1px solid transparent;
+            font-size: 16px;
+            transform: scale(0.8);
+            transform-origin: left center;
+            box-sizing: border-box;
         }
         .label-custom-input:focus { outline: none; border-bottom: 1px solid #bfa89e; background-color: #faf7f2; }
         #page-torment .label-custom-input { color: #4a148c; }
@@ -121,7 +129,7 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
-        /* 🚀 優化後的卡片池容器與滾動條 🚀 */
+        /* 🚀 橫向面板與滾動流暢度最佳化 🚀 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
@@ -135,12 +143,12 @@
         
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
-            -webkit-overflow-scrolling: touch; /* 🚀 啟用 iOS 原生滑動動量（極其重要） */
+            -webkit-overflow-scrolling: touch; /* 🚀 啟用 iOS 硬體加速原生滑動慣性 */
             scroll-behavior: smooth;
             will-change: scroll-position;
         }
         
-        /* 🚀 雙排滑動最佳化：改進 Grid 排版效能 */
+        /* 🚀 雙排滑動最佳化 */
         #pool-container.expanded .pool-scroll {
             display: grid; 
             grid-template-rows: repeat(2, 60px); 
@@ -148,7 +156,7 @@
             grid-auto-columns: 60px; 
             overflow-y: hidden;
             overflow-x: auto;
-            -webkit-overflow-scrolling: touch; /* 🚀 雙排也強制啟用高流暢滑動 */
+            -webkit-overflow-scrolling: touch; /* 🚀 雙排強制硬體滑動流暢化 */
         }
 
         .btn-upload-pool {
@@ -159,7 +167,7 @@
 
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: pan-x; /* 🚀 允許圖片元件上進行原生橫向滑動，防止拖拽判定干擾橫移過度靈敏 */
+            touch-action: pan-x; /* 🚀 允許組件上原生橫向滑動，不被拖拽判定干擾 */
         }
         .drag-clone { position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; pointer-events: none; z-index: 10000; }
 
@@ -255,7 +263,7 @@
         initTiers('container-burst');
         initTiers('container-torment');
 
-        // 自動加載內建圖片到卡片池的邏輯
+        // 自動加載內建圖片到卡片池
         window.addEventListener('DOMContentLoaded', () => {
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
@@ -294,7 +302,7 @@
             }
         }
 
-        // 左右滑動
+        // 左右滑動切換頁面
         let touchStartX = 0; let touchEndX = 0;
         document.querySelectorAll('.page-view').forEach(page => {
             page.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
@@ -325,7 +333,7 @@
             }
         }
 
-        // 3-4格限制
+        // 格數限制 (3-4格)
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
             if(grid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
@@ -340,7 +348,7 @@
             grid.removeChild(grid.lastElementChild);
         }
 
-        // 觸控拖放最佳化
+        // 智慧觸控拖放與滑動防衝突演算法
         let clone = null; let activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
         let isDraggingCard = false;
@@ -359,12 +367,12 @@
                 const dx = touch.clientX - touchStartPos.x;
                 const dy = touch.clientY - touchStartPos.y;
 
-                // 🚀 核心優化：如果玩家手勢偏向「橫向划動」且還沒觸發拖卡，則判定為滑動卡片池，不生成克隆卡片
+                // 🚀 如果玩家手勢偏向「左右划動」且還沒拔出卡片，視為滾動池子，不生成克隆卡片
                 if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-                    return; // 釋放控制權，讓原生橫向滾動生效
+                    return; 
                 }
 
-                // 🚀 如果是垂直往上拉，判定為要拖卡片
+                // 🚀 如果是垂直往上拉，判定為要拖曳卡片
                 if (!isDraggingCard && dy < -15) {
                     isDraggingCard = true;
                     clone = el.cloneNode(true); 
@@ -372,12 +380,11 @@
                     clone.style.left = touch.clientX - 30 + 'px'; 
                     clone.style.top = touch.clientY - 30 + 'px';
                     document.body.appendChild(clone); 
-                    poolContainer.classList.remove('expanded'); // 收合卡片池騰出視野
+                    poolContainer.classList.remove('expanded'); // 自動縮回池子騰出視野
                 }
 
                 if (isDraggingCard && clone) {
-                    // 防止 iOS 拖拽時整頁跟著滾動
-                    if (e.cancelable) e.preventDefault();
+                    if (e.cancelable) e.preventDefault(); // 阻止頁面跟著滾動
                     
                     clone.style.left = touch.clientX - 30 + 'px'; 
                     clone.style.top = touch.clientY - 30 + 'px';
@@ -439,3 +446,6 @@
     </script>
 </body>
 </html>
+
+```
+

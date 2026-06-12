@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>「從夯到拉」多層圖鑑工具 - 觸控拖放版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4ece1; 
+            --card-bg: #ffffff;
+            --border-color: #e0d5c1;
+            --text-color: #5a4a42;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px 10px 120px 10px; /* 底部留空間給暫存池 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        h1 { font-size: 18px; margin-bottom: 2px; font-weight: bold; }
+        .subtitle { font-size: 11px; color: #8c766b; margin-bottom: 15px; }
+
+        /* 圖片暫存池（固定在螢幕最下方，方便隨時拉圖） */
+        #pool-container {
+            position: fixed;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(90, 74, 66, 0.95);
+            padding: 12px;
+            box-sizing: border-box;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            z-index: 999;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.15);
+        }
+        .pool-title {
+            color: #f4ece1;
+            font-size: 12px;
+            writing-mode: vertical-lr;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .pool-scroll {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            flex-grow: 1;
+            padding: 5px 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .btn-upload-pool {
+            min-width: 60px; height: 60px;
+            border: 2px dashed #e0d5c1;
+            border-radius: 8px;
+            color: #e0d5c1;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer;
+        }
+
+        /* 可拖拽的圖片 */
+        .draggable-thumb {
+            min-width: 60px; width: 60px; height: 60px;
+            border-radius: 6px;
+            object-fit: cover;
+            touch-action: none; /* 禁用瀏覽器預設捲動，專心拖曳 */
+            user-select: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        /* 拖號複製品（跟隨手指移動） */
+        .drag-clone {
+            position: fixed;
+            width: 60px; height: 60px;
+            object-fit: cover;
+            border-radius: 6px;
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 10000;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        /* 主要金字塔範圍 */
+        #export-area {
+            background-color: var(--bg-color);
+            padding: 10px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        .pyramid-container { display: flex; flex-direction: column; gap: 12px; }
+        .tier-row {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .tier-label {
+            font-size: 11px; font-weight: bold; margin-bottom: 8px;
+            padding-bottom: 4px; border-bottom: 1px dashed var(--border-color);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .image-grid {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: 1fr;
+            gap: 6px;
+        }
+
+        /* 接收圖片的目標格子 */
+        .drop-zone {
+            aspect-ratio: 1 / 1;
+            border: 2px dashed var(--border-color);
+            border-radius: 6px;
+            display: flex; justify-content: center; align-items: center;
+            background-color: #faf7f2;
+            overflow: hidden;
+            position: relative;
+            font-size: 11px; color: #bfa89e;
+        }
+        .drop-zone.drag-hover {
+            border-color: #5a4a42;
+            background-color: #e0d5c1;
+        }
+        .drop-zone img { width: 100%; height: 100%; object-fit: cover; }
+
+        .btn-add {
+            background-color: #bfa89e; color: white; border: none;
+            padding: 2px 6px; border-radius: 4px; font-size: 10px;
+        }
+        .action-container { margin: 20px 0; text-align: center; width: 100%; }
+        .btn-download {
+            background-color: #5a4a42; color: white; border: none;
+            padding: 12px 24px; border-radius: 25px; font-size: 14px;
+            font-weight: bold; width: 90%; max-width: 500px;
+        }
+
+        /* 彈出成品視窗 */
+        #result-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 10000;
+            justify-content: center; align-items: center; flex-direction: column; padding: 20px; box-sizing: border-box;
+        }
+        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+        #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
+        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>「從夯到拉」觸控拖放產生器</h1>
+    <div class="subtitle">先於下方上傳圖片，再用手指拖動圖片至指定格子</div>
+
+    <div id="export-area">
+        <div class="pyramid-container">
+            </div>
+    </div>
+
+    <div class="action-container">
+        <button class="btn-download" onclick="generateImage()">✨ 生成完整圖片（手機長按儲存） ✨</button>
+    </div>
+
+    <div id="pool-container">
+        <div class="pool-title">圖片池</div>
+        <div class="pool-scroll" id="pool-scroll">
+            <div class="btn-upload-pool" onclick="document.getElementById('pool-input').click()">＋</div>
+        </div>
+    </div>
+    <input type="file" id="pool-input" accept="image/*" multiple style="display:none;" onchange="handlePoolUpload(this)">
+
+    <div id="result-modal">
+        <p>💡 圖片已生成！請【長按下方圖片】即可儲存至手機相簿</p>
+        <div id="image-container"></div>
+        <button class="btn-close" onclick="closeModal()">返回修改</button>
+    </div>
+
+    <script>
+        const container = document.querySelector('.pyramid-container');
+        const totalTiers = 8; // 💡 可以自由改成 10
+
+        // 初始化生成 8 層，每層預設 3 格
+        for (let i = 1; i <= totalTiers; i++) {
+            const tierRow = document.createElement('div');
+            tierRow.className = 'tier-row';
+            tierRow.innerHTML = `
+                <div class="tier-label">
+                    <span>LEVEL ${i}</span>
+                    <button class="btn-add" onclick="addGridItem(this)">＋ 增加圖片格</button>
+                </div>
+                <div class="image-grid">
+                    <div class="drop-zone">拉入圖片</div>
+                    <div class="drop-zone">拉入圖片</div>
+                    <div class="drop-zone">拉入圖片</div>
+                </div>
+            `;
+            container.appendChild(tierRow);
+        }
+
+        // 處理圖片上傳到暫存池
+        function handlePoolUpload(input) {
+            const poolScroll = document.getElementById('pool-scroll');
+            if (input.files) {
+                Array.from(input.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.className = 'draggable-thumb';
+                        setupTouchDrag(img); // 綁定手機觸控拖放事件
+                        poolScroll.appendChild(img);
+                    }
+                    reader.readAsDataURL(file);
+                });
+            }
+        }
+
+        function addGridItem(button) {
+            const grid = button.parentElement.nextElementSibling;
+            if(grid.children.length >= 4) {
+                alert("一排最多建議放 4 張圖唷！");
+                return;
+            }
+            const newZone = document.createElement('div');
+            newZone.className = 'drop-zone';
+            newZone.innerText = '拉入圖片';
+            grid.appendChild(newZone);
+        }
+
+        // 核心：用 Touch 事件強行模擬手機 Drag & Drop
+        let clone = null;
+        let activeSrc = '';
+
+        function setupTouchDrag(el) {
+            el.addEventListener('touchstart', function(e) {
+                activeSrc = el.src;
+                // 建立一個跟隨手指的虛擬複製品
+                clone = el.cloneNode(true);
+                clone.className = 'drag-clone';
+                clone.style.left = e.touches[0].clientX - 30 + 'px';
+                clone.style.top = e.touches[0].clientY - 30 + 'px';
+                document.body.appendChild(clone);
+            }, { passive: true });
+
+            el.addEventListener('touchmove', function(e) {
+                if (!clone) return;
+                const touch = e.touches[0];
+                clone.style.left = touch.clientX - 30 + 'px';
+                clone.style.top = touch.clientY - 30 + 'px';
+
+                // 檢查手指目前在哪個 Drop Zone 上面
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                document.querySelectorAll('.drop-zone').forEach(zone => zone.classList.remove('drag-hover'));
+                
+                if (target && target.classList.contains('drop-zone')) {
+                    target.classList.add('drag-hover');
+                }
+            }, { passive: false }); // 必須為 false 才能在部分老舊設備上順利運作
+
+            el.addEventListener('touchend', function(e) {
+                if (!clone) return;
+                const touch = e.changedTouches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+
+                if (target && target.classList.contains('drop-zone')) {
+                    target.innerHTML = `<img src="${activeSrc}">`;
+                }
+                
+                document.querySelectorAll('.drop-zone').forEach(zone => zone.classList.remove('drag-hover'));
+                clone.remove();
+                clone = null;
+            });
+        }
+
+        // 生成長圖截圖
+        function generateImage() {
+            window.scrollTo(0,0);
+            const exportArea = document.getElementById('export-area');
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+            
+            imgContainer.innerHTML = "正在努力幫你組裝圖鑑中...";
+            modal.style.display = "flex";
+
+            html2canvas(exportArea, {
+                useCORS: true,
+                scale: 2,
+                backgroundColor: "#f4ece1"
+            }).then(canvas => {
+                imgContainer.innerHTML = "";
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+            }).catch(err => {
+                alert("生成失敗");
+                closeModal();
+            });
+        }
+
+        function closeModal() { document.getElementById('result-modal').style.display = "none"; }
+    </script>
+</body>
+</html>

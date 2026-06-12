@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tap Titans 配卡工具</title>
+    <title>Tap Titans 配卡工具 Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         :root {
@@ -17,10 +17,10 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #e0d5c1; /* 基礎背景 */
+            background-color: #e0d5c1;
             margin: 0;
             padding: 0;
-            overflow-x: hidden; /* 防止整頁亂滾動 */
+            overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
         }
 
@@ -44,13 +44,14 @@
             content: ''; position: absolute; bottom: 0; left: 20%; width: 60%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* 滑動視窗核心架構 */
+        /* 滑動視窗架構 */
         .swiper-container {
             display: flex;
-            width: 200vw; /* 兩頁寬度 */
+            width: 200vw;
             transition: transform 0.3s ease-out;
-            margin-top: 55px; /* 留位置給頂部選單 */
-            margin-bottom: 120px; /* 留位置給底部卡片池 */
+            margin-top: 55px;
+            margin-bottom: 110px; /* 為單排卡片池留白 */
+            transition: margin-bottom 0.3s ease; /* 當池子展開時動態調整 */
         }
 
         .page-view {
@@ -60,14 +61,12 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: calc(100vh - 175px);
+            min-height: calc(100vh - 165px);
         }
 
-        /* 爆裂場專屬風格 */
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
         #page-burst h1 { color: var(--text-burst); font-size: 22px; margin: 5px 0; }
         
-        /* 苦痛場專屬風格 */
         #page-torment { background-color: var(--bg-torment); color: #332244; }
         #page-torment h1 { color: var(--text-torment); font-size: 22px; margin: 5px 0; }
         #page-torment .drop-zone { background-color: #f3e5f5; border-color: #d1c4e9; color: #b19cd9; }
@@ -76,18 +75,12 @@
 
         .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
 
-        /* 金字塔排版 */
-        .export-area {
-            padding: 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box;
-        }
+        .export-area { padding: 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
         #page-burst .export-area { background-color: var(--bg-burst); }
         #page-torment .export-area { background-color: var(--bg-torment); }
 
         .pyramid-container { display: flex; flex-direction: column; gap: 12px; }
-        .tier-row {
-            background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        }
+        .tier-row { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
         #page-torment .tier-row { border-color: #d1c4e9; }
 
         .tier-label {
@@ -99,7 +92,6 @@
 
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 
-        /* 格子 */
         .drop-zone {
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
             display: flex; justify-content: center; align-items: center; background-color: #faf7f2;
@@ -115,24 +107,45 @@
             display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 10; font-weight: bold;
         }
 
-        .btn-action {
-            background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;
-        }
+        .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
-        /* 下方固定卡片池 */
+        /* 📱 升級版卡片池：支援動態雙排與高度展開 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(90, 74, 66, 0.95); padding: 12px; box-sizing: border-box;
+            background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
             display: flex; gap: 10px; align-items: center; z-index: 999;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.15);
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+            height: 90px; /* 初始單排高度 */
+            transition: height 0.3s ease;
+        }
+        /* 當啟用展開類名時，切換為雙排樣式 */
+        #pool-container.expanded {
+            height: 170px; 
         }
         .pool-title { color: #f4ece1; font-size: 12px; writing-mode: vertical-lr; font-weight: bold; }
-        .pool-scroll { display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; -webkit-overflow-scrolling: touch; }
+        
+        .pool-scroll { 
+            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
+            -webkit-overflow-scrolling: touch;
+            align-content: flex-start;
+        }
+        /* 展開時改用 Grid 彈性排成兩橫排 */
+        #pool-container.expanded .pool-scroll {
+            display: grid;
+            grid-template-rows: repeat(2, 60px);
+            grid-auto-flow: column;
+            grid-auto-columns: 60px;
+            overflow-y: hidden;
+        }
+
         .btn-upload-pool {
             min-width: 60px; height: 60px; border: 2px dashed #e0d5c1; border-radius: 8px;
             color: #e0d5c1; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer;
         }
+        /* 雙排時確保上傳按鈕置中或維持比例 */
+        #pool-container.expanded .btn-upload-pool { grid-row: span 2; height: 130px; }
+
         .draggable-thumb { min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; touch-action: none; }
         .drag-clone { position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; pointer-events: none; z-index: 10000; }
 
@@ -143,7 +156,6 @@
         }
         #page-torment .btn-download { background-color: #4a148c; }
 
-        /* 彈出成品層 */
         #result-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; padding: 20px; box-sizing: border-box;
@@ -164,7 +176,7 @@
         
         <div class="page-view" id="page-burst">
             <h1>Tap Titans配卡-爆裂場</h1>
-            <div class="subtitle">左右滑動切換場地｜可增減格子與拖放卡片</div>
+            <div class="subtitle">左右滑動切換場地｜可增減3-4格與拖放卡片</div>
             <div class="export-area" id="export-burst">
                 <div class="pyramid-container" id="container-burst"></div>
             </div>
@@ -175,7 +187,7 @@
 
         <div class="page-view" id="page-torment">
             <h1>Tap Titans配卡-苦痛場</h1>
-            <div class="subtitle">左右滑動切換場地｜可增減格子與拖放卡片</div>
+            <div class="subtitle">左右滑動切換場地｜可增減3-4格與拖放卡片</div>
             <div class="export-area" id="export-torment">
                 <div class="pyramid-container" id="container-torment"></div>
             </div>
@@ -186,10 +198,10 @@
 
     </div>
 
-    <div id="pool-container">
+    <div id="pool-container" onclick="expandPool(event)">
         <div class="pool-title">卡片池</div>
         <div class="pool-scroll" id="pool-scroll">
-            <div class="btn-upload-pool" onclick="document.getElementById('pool-input').click()">＋</div>
+            <div class="btn-upload-pool" onclick="triggerPoolUpload(event)">＋</div>
         </div>
     </div>
     <input type="file" id="pool-input" accept="image/*" multiple style="display:none;" onchange="handlePoolUpload(this)">
@@ -203,7 +215,7 @@
     <script>
         const totalTiers = 8;
         
-        // 初始化生成兩頁的 1 ~ 8 層
+        // 初始化生成
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
             for (let i = 1; i <= totalTiers; i++) {
@@ -229,11 +241,11 @@
         initTiers('container-burst');
         initTiers('container-torment');
 
-        // 頁面切換邏輯
+        // 頁面切換
         const swiper = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
-        let currentPage = 0; // 0 為爆裂場, 1 為苦痛場
+        let currentPage = 0;
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
@@ -248,11 +260,10 @@
             }
         }
 
-        // 📱 核心：左右滑動手勢偵測 (Swipe)
+        // 左右滑動
         let touchStartX = 0;
         let touchEndX = 0;
         
-        // 只在 page-view 範圍內偵測滑動，避免干擾卡片池
         document.querySelectorAll('.page-view').forEach(page => {
             page.addEventListener('touchstart', e => {
                 touchStartX = e.changedTouches[0].screenX;
@@ -265,12 +276,30 @@
         });
 
         function handleSwipe() {
-            const threshold = 60; // 滑動超過 60 像素才觸發
+            const threshold = 70;
             if (touchStartX - touchEndX > threshold && currentPage === 0) {
-                switchPage(1); // 左滑 -> 進入苦痛場
+                switchPage(1);
             } else if (touchEndX - touchStartX > threshold && currentPage === 1) {
-                switchPage(0); // 右滑 -> 回到爆裂場
+                switchPage(0);
             }
+        }
+
+        // ⚙️ 卡片池展開與收合控制邏輯
+        const poolContainer = document.getElementById('pool-container');
+        
+        function expandPool(event) {
+            event.stopPropagation(); // 防止點擊池子時觸發點擊外圍的收合事件
+            poolContainer.classList.add('expanded');
+        }
+
+        // 點擊卡片池以外的任何地方，將其收合為單排
+        document.addEventListener('click', function() {
+            poolContainer.classList.remove('expanded');
+        });
+
+        function triggerPoolUpload(event) {
+            event.stopPropagation(); // 阻止事件冒泡，不影響展開
+            document.getElementById('pool-input').click();
         }
 
         // 卡片池上傳
@@ -291,9 +320,13 @@
             }
         }
 
+        // ⚙️ 嚴格限制 3-4 格控制邏輯
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            if(grid.children.length >= 4) { alert("一排最多放 4 張圖唷！"); return; }
+            if(grid.children.length >= 4) { 
+                alert("限制：每一組最多只能有 4 個格子唷！"); 
+                return; 
+            }
             const newZone = document.createElement('div');
             newZone.className = 'drop-zone';
             newZone.innerText = '拉入圖片';
@@ -302,7 +335,10 @@
 
         function removeGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            if(grid.children.length <= 1) { alert("最少要保留 1 格唷！"); return; }
+            if(grid.children.length <= 3) { 
+                alert("限制：每一組最少必須保留 3 個格子唷！"); 
+                return; 
+            }
             grid.removeChild(grid.lastElementChild);
         }
 
@@ -318,6 +354,9 @@
                 clone.style.left = e.touches[0].clientX - 30 + 'px';
                 clone.style.top = e.touches[0].clientY - 30 + 'px';
                 document.body.appendChild(clone);
+                
+                // 開始拖拽時，將卡片池收合，騰出視野方便精準對齊格子
+                poolContainer.classList.remove('expanded');
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {

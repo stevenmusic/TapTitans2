@@ -1,9 +1,18 @@
+沒問題！我已經為你重新規劃了網頁架構。
+這次的改動核心是**將原本的兩頁並排滑動，擴展為三頁並排（300vw）**，並引入了 <iframe> 來內嵌你指定的 TT2 技能配點網頁。
+### 🛠️ 這次修正與擴充的重點：
+ 1. **導覽選單（大標題）**：最上方選單調整為 **Tap Titans 2** 大標題，並提供三個功能分頁按鈕。
+ 2. **名稱全面升級**：原本的「爆裂場」與「苦痛場」已依要求更名為 **突襲配卡-爆裂場** 與 **突襲配卡-苦痛場**。
+ 3. **新增第 3 分頁「技能樹配點」**：成功內嵌 [https://tt2.rawrzcookie.com/spopti.html](https://tt2.rawrzcookie.com/spopti.html)。
+ 4. **RWD 手機版高度最佳化**：內嵌的 <iframe> 已設定滿版寬高，並加上滾動支援，讓玩家在手機上操作技能樹與配卡工具時切換流暢。
+以下是修改完成後的完整 index.html 程式碼：
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tap Titans 2 配卡工具 Pro</title>
+    <title>Tap Titans 2 工具箱</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <script src="cards.js"></script>
@@ -23,42 +32,56 @@
             background-color: #e0d5c1;
             margin: 0;
             padding: 0;
-            overflow-x: hidden; /* 🚀 確保全域絕不產生橫向滾動條 */
+            overflow-x: hidden; 
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation; 
         }
 
-        .nav-tabs {
+        /* 🚀 導覽選單優化：加入主標題，維持置頂 */
+        .nav-header {
             position: fixed;
             top: 0; left: 0; width: 100%;
-            display: flex;
             background: #5a4a42;
             z-index: 1000;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+        .nav-title {
+            color: #ffffff;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 8px 0 2px 0;
+            letter-spacing: 1px;
+        }
+        .nav-tabs {
+            display: flex;
+            width: 100%;
         }
         .tab-btn {
-            flex: 1; padding: 15px 0; text-align: center;
-            color: #bfa89e; font-weight: bold; font-size: 16px;
+            flex: 1; padding: 10px 0 14px 0; text-align: center;
+            color: #bfa89e; font-weight: bold; font-size: 14px;
             border: none; background: none; cursor: pointer;
             transition: all 0.3s; position: relative;
         }
         .tab-btn.active { color: #ffffff; }
         .tab-btn.active::after {
-            content: ''; position: absolute; bottom: 0; left: 20%; width: 60%; height: 3px; background: #ffffff; border-radius: 2px;
+            content: ''; position: absolute; bottom: 0; left: 15%; width: 70%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* 🚀 修正重點：在外殼加上嚴格的寬度限制與裁剪，阻斷一左一右露餡的可能性 */
+        /* 🚀 擴展外殼為三個頁面寬度 (300vw) */
         .swiper-wrapper {
             width: 100vw;
             overflow: hidden;
-            margin-top: 55px;
+            margin-top: 75px; /* 因應雙層選單調整上方留白 */
             margin-bottom: 130px;
             transition: margin-bottom 0.3s ease;
         }
 
         .swiper-container {
             display: flex;
-            width: 200vw;
+            width: 300vw;
             transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
             will-change: transform;
         }
@@ -70,7 +93,23 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: calc(100vh - 185px);
+            min-height: calc(100vh - 205px);
+        }
+
+        /* 技能樹配點專用滿版容器 */
+        .page-view-iframe {
+            width: 100vw;
+            box-sizing: border-box;
+            padding: 0;
+            display: block;
+            height: calc(100vh - 75px); /* 扣除置頂選單後的完整高度 */
+            background-color: #ffffff;
+        }
+        .embed-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
         }
 
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
@@ -140,8 +179,8 @@
             background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
             display: flex; flex-direction: column; gap: 6px; z-index: 999;
             box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px; 
-            transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            will-change: height;
+            transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
+            will-change: height, transform;
         }
         #pool-container.expanded { height: 190px; }
         
@@ -194,17 +233,24 @@
 </head>
 <body>
 
-    <div class="nav-tabs">
-        <button class="tab-btn active" id="tab-burst" onclick="switchPage(0)">爆裂場</button>
-        <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">苦痛場</button>
+    <!-- 🚀 頂部全新選單架構 -->
+    <div class="nav-header">
+        <div class="nav-title">Tap Titans 2</div>
+        <div class="nav-tabs">
+            <button class="tab-btn active" id="tab-burst" onclick="switchPage(0)">突襲配卡-爆裂場</button>
+            <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">突襲配卡-苦痛場</button>
+            <button class="tab-btn" id="tab-skill" onclick="switchPage(2)">技能樹配點</button>
+        </div>
     </div>
 
+    <!-- 🚀 內置三頁並排容器 -->
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
+            <!-- 頁面一：爆裂場 -->
             <div class="page-view" id="page-burst">
                 <div class="export-area" id="export-burst">
-                    <h1>Tap Titans 2 配卡-爆裂場</h1>
-                    <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
+                    <h1>突襲配卡 - 爆裂場</h1>
+                    <div class="subtitle">左右滑動或點選選單切換｜點擊「第 X 組」旁可自由輸入備註</div>
                     <div class="pyramid-container" id="container-burst"></div>
                 </div>
                 <div class="action-container">
@@ -212,19 +258,26 @@
                 </div>
             </div>
 
+            <!-- 頁面二：苦痛場 -->
             <div class="page-view" id="page-torment">
                 <div class="export-area" id="export-torment">
-                    <h1>Tap Titans 2 配卡-苦痛場</h1>
-                    <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
+                    <h1>突襲配卡 - 苦痛場</h1>
+                    <div class="subtitle">左右滑動或點選選單切換｜點擊「第 X 組」旁可自由輸入備註</div>
                     <div class="pyramid-container" id="container-torment"></div>
                 </div>
                 <div class="action-container">
                     <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
                 </div>
             </div>
+
+            <!-- 🚀 頁面三：技能樹配點（直接內嵌目標網頁） -->
+            <div class="page-view-iframe" id="page-skill">
+                <iframe class="embed-iframe" src="https://tt2.rawrzcookie.com/spopti.html" scrolling="yes"></iframe>
+            </div>
         </div>
     </div>
 
+    <!-- 卡片池底座 -->
     <div id="pool-container" onclick="expandPool(event)">
         <div class="pool-title-area">
             <span class="pool-title">卡片池</span>
@@ -233,6 +286,7 @@
         <div class="pool-scroll" id="pool-scroll"></div>
     </div>
 
+    <!-- 彈出圖層 -->
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
@@ -279,7 +333,6 @@
                     }
                 });
             }
-            // 🚀 網頁載入完成後，強制初始化一次分頁位置，防止位置跑偏
             switchPage(0);
         });
 
@@ -294,22 +347,34 @@
         const swiper = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
+        const tabSkill = document.getElementById('tab-skill');
+        const poolContainer = document.getElementById('pool-container');
         let currentPage = 0;
 
+        // 🚀 修改分頁邏輯，支援滑動切換三組視窗，且進入技能樹時隱藏下方的卡片池
         function switchPage(pageIndex) {
             currentPage = pageIndex;
+            
+            // 各按鈕樣式初始化
+            tabBurst.classList.remove('active');
+            tabTorment.classList.remove('active');
+            tabSkill.classList.remove('active');
+
             if (pageIndex === 0) {
                 swiper.style.transform = 'translateX(0vw)';
                 tabBurst.classList.add('active');
-                tabTorment.classList.remove('active');
-            } else {
+                poolContainer.style.transform = 'translateY(0)'; // 顯示卡片池
+            } else if (pageIndex === 1) {
                 swiper.style.transform = 'translateX(-100vw)';
-                tabBurst.classList.remove('active');
                 tabTorment.classList.add('active');
+                poolContainer.style.transform = 'translateY(0)'; // 顯示卡片池
+            } else if (pageIndex === 2) {
+                swiper.style.transform = 'translateX(-200vw)';
+                tabSkill.classList.add('active');
+                poolContainer.style.transform = 'translateY(150px)'; // 🚀 切到技能樹時隱藏卡片池，避免遮擋內嵌網頁底端
             }
         }
 
-        // 監聽視窗重置大小（如手機橫豎屏切換、鍵盤彈出收合），自動修正分頁偏移
         window.addEventListener('resize', () => {
             switchPage(currentPage);
         });
@@ -336,7 +401,6 @@
             }, { passive: true });
         });
 
-        const poolContainer = document.getElementById('pool-container');
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
 
         function expandPool(event) { 
@@ -350,11 +414,17 @@
             poolSubtitle.innerText = '（點一下展開）';
         });
 
+        // 🚀 修改滑動邊界，支援 0, 1, 2 三頁切換
         function handleSwipe() {
             if (isDraggingGlobal) return; 
             const threshold = 70;
-            if (touchStartX - touchEndX > threshold && currentPage === 0) switchPage(1);
-            else if (touchEndX - touchStartX > threshold && currentPage === 1) switchPage(0);
+            if (touchStartX - touchEndX > threshold) {
+                if (currentPage === 0) switchPage(1);
+                else if (currentPage === 1) switchPage(2);
+            } else if (touchEndX - touchStartX > threshold) {
+                if (currentPage === 1) switchPage(0);
+                else if (currentPage === 2) switchPage(1);
+            }
         }
 
         function addGridItem(button) {
@@ -575,3 +645,5 @@
     </script>
 </body>
 </html>
+
+```

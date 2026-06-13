@@ -23,7 +23,7 @@
             background-color: #e0d5c1;
             margin: 0;
             padding: 0;
-            overflow-x: hidden;
+            overflow-x: hidden; /* 🚀 確保全域絕不產生橫向滾動條 */
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation; 
         }
@@ -47,13 +47,20 @@
             content: ''; position: absolute; bottom: 0; left: 20%; width: 60%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
+        /* 🚀 修正重點：在外殼加上嚴格的寬度限制與裁剪，阻斷一左一右露餡的可能性 */
+        .swiper-wrapper {
+            width: 100vw;
+            overflow: hidden;
+            margin-top: 55px;
+            margin-bottom: 130px;
+            transition: margin-bottom 0.3s ease;
+        }
+
         .swiper-container {
             display: flex;
             width: 200vw;
-            transition: transform 0.3s ease-out;
-            margin-top: 55px;
-            margin-bottom: 130px; /* 稍微增加底部留白，因應橫式標題 */
-            transition: margin-bottom 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            will-change: transform;
         }
 
         .page-view {
@@ -128,7 +135,6 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
-        /* 🛠️ 優化後的卡片池外殼：改為縱向排布標題區與捲動區 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
@@ -139,7 +145,6 @@
         }
         #pool-container.expanded { height: 190px; }
         
-        /* 🛠️ 橫式排列的標題區域 */
         .pool-title-area {
             display: flex; align-items: center; gap: 4px; color: #f4ece1; font-weight: bold;
             user-select: none; -webkit-user-select: none;
@@ -194,26 +199,28 @@
         <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">苦痛場</button>
     </div>
 
-    <div class="swiper-container" id="main-swiper">
-        <div class="page-view" id="page-burst">
-            <div class="export-area" id="export-burst">
-                <h1>Tap Titans 2 配卡-爆裂場</h1>
-                <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
-                <div class="pyramid-container" id="container-burst"></div>
+    <div class="swiper-wrapper">
+        <div class="swiper-container" id="main-swiper">
+            <div class="page-view" id="page-burst">
+                <div class="export-area" id="export-burst">
+                    <h1>Tap Titans 2 配卡-爆裂場</h1>
+                    <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
+                    <div class="pyramid-container" id="container-burst"></div>
+                </div>
+                <div class="action-container">
+                    <button class="btn-download" onclick="generateImage('burst')">✨ 生成爆裂場配卡圖（長按儲存） ✨</button>
+                </div>
             </div>
-            <div class="action-container">
-                <button class="btn-download" onclick="generateImage('burst')">✨ 生成爆裂場配卡圖（長按儲存） ✨</button>
-            </div>
-        </div>
 
-        <div class="page-view" id="page-torment">
-            <div class="export-area" id="export-torment">
-                <h1>Tap Titans 2 配卡-苦痛場</h1>
-                <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
-                <div class="pyramid-container" id="container-torment"></div>
-            </div>
-            <div class="action-container">
-                <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
+            <div class="page-view" id="page-torment">
+                <div class="export-area" id="export-torment">
+                    <h1>Tap Titans 2 配卡-苦痛場</h1>
+                    <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
+                    <div class="pyramid-container" id="container-torment"></div>
+                </div>
+                <div class="action-container">
+                    <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
+                </div>
             </div>
         </div>
     </div>
@@ -272,6 +279,8 @@
                     }
                 });
             }
+            // 🚀 網頁載入完成後，強制初始化一次分頁位置，防止位置跑偏
+            switchPage(0);
         });
 
         function createCardElement(src, container) {
@@ -299,6 +308,11 @@
                 tabTorment.classList.add('active');
             }
         }
+
+        // 監聽視窗重置大小（如手機橫豎屏切換、鍵盤彈出收合），自動修正分頁偏移
+        window.addEventListener('resize', () => {
+            switchPage(currentPage);
+        });
 
         let isDraggingGlobal = false; 
 
@@ -328,12 +342,12 @@
         function expandPool(event) { 
             event.stopPropagation(); 
             poolContainer.classList.add('expanded'); 
-            poolSubtitle.innerText = '（點擊空白處收合）'; // 展開時動態更換提示
+            poolSubtitle.innerText = '（點擊空白處收合）';
         }
         
         document.addEventListener('click', function() { 
             poolContainer.classList.remove('expanded'); 
-            poolSubtitle.innerText = '（點一下展開）'; // 收合時復原提示
+            poolSubtitle.innerText = '（點一下展開）';
         });
 
         function handleSwipe() {
@@ -470,7 +484,7 @@
                     clone.style.top = currentTouchY - 30 + 'px';
                     document.body.appendChild(clone); 
                     poolContainer.classList.remove('expanded'); 
-                    poolSubtitle.innerText = '（點一下展開）'; // 拔起卡片時自動將文字歸位
+                    poolSubtitle.innerText = '（點一下展開）';
                     
                     startAutoScroll(); 
                 }

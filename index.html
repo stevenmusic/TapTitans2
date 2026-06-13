@@ -52,7 +52,7 @@
             width: 200vw;
             transition: transform 0.3s ease-out;
             margin-top: 55px;
-            margin-bottom: 110px;
+            margin-bottom: 130px; /* 稍微增加底部留白，因應橫式標題 */
             transition: margin-bottom 0.3s ease;
         }
 
@@ -63,7 +63,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: calc(100vh - 165px);
+            min-height: calc(100vh - 185px);
         }
 
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
@@ -128,19 +128,27 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
+        /* 🛠️ 優化後的卡片池外殼：改為縱向排布標題區與捲動區 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
-            display: flex; gap: 10px; align-items: center; z-index: 999;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 90px; 
+            background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
+            display: flex; flex-direction: column; gap: 6px; z-index: 999;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px; 
             transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             will-change: height;
         }
-        #pool-container.expanded { height: 175px; }
-        .pool-title { color: #f4ece1; font-size: 12px; writing-mode: vertical-lr; font-weight: bold; }
+        #pool-container.expanded { height: 190px; }
+        
+        /* 🛠️ 橫式排列的標題區域 */
+        .pool-title-area {
+            display: flex; align-items: center; gap: 4px; color: #f4ece1; font-weight: bold;
+            user-select: none; -webkit-user-select: none;
+        }
+        .pool-title { font-size: 13px; letter-spacing: 1px; }
+        .pool-subtitle { font-size: 10px; color: #bfa89e; font-weight: normal; }
         
         .pool-scroll { 
-            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
+            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
         }
         
@@ -155,7 +163,7 @@
 
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: none; /* 🚀 核心 CSS 優化：當點擊卡片時，徹底禁止網頁跟著滑動 */
+            touch-action: none; 
         }
         .drag-clone { 
             position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; 
@@ -211,7 +219,10 @@
     </div>
 
     <div id="pool-container" onclick="expandPool(event)">
-        <div class="pool-title">卡片池</div>
+        <div class="pool-title-area">
+            <span class="pool-title">卡片池</span>
+            <span class="pool-subtitle">（點一下展開）</span>
+        </div>
         <div class="pool-scroll" id="pool-scroll"></div>
     </div>
 
@@ -291,7 +302,6 @@
 
         let isDraggingGlobal = false; 
 
-        // 🚨 全域滾動攔截
         document.addEventListener('touchmove', function(e) {
             if (isDraggingGlobal) {
                 if (e.cancelable) e.preventDefault(); 
@@ -313,8 +323,18 @@
         });
 
         const poolContainer = document.getElementById('pool-container');
-        function expandPool(event) { event.stopPropagation(); poolContainer.classList.add('expanded'); }
-        document.addEventListener('click', function() { poolContainer.classList.remove('expanded'); });
+        const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
+
+        function expandPool(event) { 
+            event.stopPropagation(); 
+            poolContainer.classList.add('expanded'); 
+            poolSubtitle.innerText = '（點擊空白處收合）'; // 展開時動態更換提示
+        }
+        
+        document.addEventListener('click', function() { 
+            poolContainer.classList.remove('expanded'); 
+            poolSubtitle.innerText = '（點一下展開）'; // 收合時復原提示
+        });
 
         function handleSwipe() {
             if (isDraggingGlobal) return; 
@@ -421,10 +441,8 @@
                 touchStartPos.y = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
-                
-                // 🚀 關鍵加強：摸到卡片時，一排池也先口頭預告可能需要鎖定，不要讓網頁產生預設滾動
                 isDraggingGlobal = true; 
-            }, { passive: false }); // 🚨 必須為 false 才能允許後續攔截
+            }, { passive: false });
 
             el.addEventListener('touchmove', function(e) {
                 const touch = e.touches[0];
@@ -434,16 +452,14 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                // 🚀 關鍵修改：如果是左右在滑動卡片池（橫向滑動 > 10），放生它，允許卡片池左右滾動
                 if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-                    isDraggingGlobal = false; // 釋放鎖定
+                    isDraggingGlobal = false; 
                     return; 
                 }
 
-                // 當偵測到往上拔起 (-10px) 或者是明顯的縱向意圖
                 if (!isDraggingCard && (dy < -10 || Math.abs(dy) > Math.abs(dx) + 5)) {
                     isDraggingCard = true;
-                    isDraggingGlobal = true; // 🔒 確定鎖死！網頁絕對不准動
+                    isDraggingGlobal = true; 
                     
                     updateZonesCache();
                     lastHoveredZone = null;
@@ -454,12 +470,13 @@
                     clone.style.top = currentTouchY - 30 + 'px';
                     document.body.appendChild(clone); 
                     poolContainer.classList.remove('expanded'); 
+                    poolSubtitle.innerText = '（點一下展開）'; // 拔起卡片時自動將文字歸位
                     
                     startAutoScroll(); 
                 }
 
                 if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); // 🚨 全面制止網頁跟著動！
+                    if (e.cancelable) e.preventDefault(); 
                     
                     requestAnimationFrame(() => {
                         if (clone) {

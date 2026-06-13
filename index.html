@@ -1,238 +1,3 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tap Titans 2 配卡工具 Pro</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
-    <script src="cards.js"></script>
-
-    <style>
-        :root {
-            --bg-burst: #f4ece1; 
-            --text-burst: #8b263e;
-            --bg-torment: #ede7f6;
-            --text-torment: #4a148c;
-            --card-bg: #ffffff;
-            --border-color: #e0d5c1;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #e0d5c1;
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent;
-            
-            /* 🔒 核心優化：禁止系統手勢放大與雙擊放大，固定畫面 */
-            touch-action: manipulation; 
-        }
-
-        .nav-tabs {
-            position: fixed;
-            top: 0; left: 0; width: 100%;
-            display: flex;
-            background: #5a4a42;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        .tab-btn {
-            flex: 1; padding: 15px 0; text-align: center;
-            color: #bfa89e; font-weight: bold; font-size: 16px;
-            border: none; background: none; cursor: pointer;
-            transition: all 0.3s; position: relative;
-        }
-        .tab-btn.active { color: #ffffff; }
-        .tab-btn.active::after {
-            content: ''; position: absolute; bottom: 0; left: 20%; width: 60%; height: 3px; background: #ffffff; border-radius: 2px;
-        }
-
-        .swiper-container {
-            display: flex;
-            width: 200vw;
-            transition: transform 0.3s ease-out;
-            margin-top: 55px;
-            margin-bottom: 110px;
-            transition: margin-bottom 0.3s ease;
-        }
-
-        .page-view {
-            width: 100vw;
-            box-sizing: border-box;
-            padding: 15px 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: calc(100vh - 165px);
-        }
-
-        #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
-        #page-burst h1 { color: var(--text-burst); font-size: 22px; margin: 5px 0; }
-        
-        #page-torment { background-color: var(--bg-torment); color: #332244; }
-        #page-torment h1 { color: var(--text-torment); font-size: 22px; margin: 5px 0; }
-        #page-torment .drop-zone { background-color: #f3e5f5; border-color: #d1c4e9; color: #b19cd9; }
-        #page-torment .btn-action { background-color: #b19cd9; }
-        #page-torment .btn-action.del { background-color: #c97a7a; }
-
-        .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
-        .export-area { padding: 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
-        #page-burst .export-area { background-color: var(--bg-burst); }
-        #page-torment .export-area { background-color: var(--bg-torment); }
-
-        .pyramid-container { display: flex; flex-direction: column; gap: 12px; }
-        .tier-row { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
-        #page-torment .tier-row { border-color: #d1c4e9; }
-
-        .tier-label {
-            font-size: 14px; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px;
-            border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;
-        }
-        #page-torment .tier-label { border-bottom-color: #d1c4e9; }
-        
-        .label-title-wrapper { display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 10px; overflow: hidden; }
-        .label-fixed-text { white-space: nowrap; }
-        
-        /* 🔒 核心優化：防止 iOS 點擊輸入框自動放大畫面（16px法規），並透過縮放維持精緻視覺 */
-        .label-custom-input {
-            border: none; background: transparent; font-family: inherit;
-            padding: 2px 4px; width: 115%; color: #5a4a42; border-bottom: 1px solid transparent;
-            font-size: 16px;
-            transform: scale(0.8);
-            transform-origin: left center;
-            box-sizing: border-box;
-        }
-        .label-custom-input:focus { outline: none; border-bottom: 1px solid #bfa89e; background-color: #faf7f2; }
-        #page-torment .label-custom-input { color: #4a148c; }
-        #page-torment .label-custom-input:focus { border-bottom-color: #b19cd9; background-color: #f3e5f5; }
-
-        .tier-buttons { display: flex; gap: 5px; white-space: nowrap; }
-        .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
-
-        .drop-zone {
-            aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
-            display: flex; justify-content: center; align-items: center; background-color: #faf7f2;
-            overflow: hidden; position: relative; font-size: 11px; color: #bfa89e;
-        }
-        .drop-zone.drag-hover { border-color: #5a4a42; background-color: #e0d5c1; }
-        #page-torment .drop-zone.drag-hover { border-color: #4a148c; background-color: #d1c4e9; }
-        .drop-zone img { width: 100%; height: 100%; object-fit: cover; }
-
-        .delete-btn {
-            position: absolute; top: 2px; right: 2px; background: rgba(255, 0, 0, 0.8); color: white;
-            border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 11px;
-            display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 10; font-weight: bold;
-        }
-
-        .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
-        .btn-action.del { background-color: #c97a7a; }
-
-        /* 🚀 橫向面板與滾動流暢度最佳化 🚀 */
-        #pool-container {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
-            display: flex; gap: 10px; align-items: center; z-index: 999;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 90px; 
-            transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            will-change: height;
-        }
-        #pool-container.expanded { height: 175px; }
-        .pool-title { color: #f4ece1; font-size: 12px; writing-mode: vertical-lr; font-weight: bold; }
-        
-        .pool-scroll { 
-            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
-            -webkit-overflow-scrolling: touch; /* 🚀 啟用 iOS 硬體加速原生滑動慣性 */
-            scroll-behavior: smooth;
-            will-change: scroll-position;
-        }
-        
-        /* 🚀 雙排滑動最佳化 */
-        #pool-container.expanded .pool-scroll {
-            display: grid; 
-            grid-template-rows: repeat(2, 60px); 
-            grid-auto-flow: column; 
-            grid-auto-columns: 60px; 
-            overflow-y: hidden;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch; /* 🚀 雙排強制硬體滑動流暢化 */
-        }
-
-        .btn-upload-pool {
-            min-width: 60px; height: 60px; border: 2px dashed #e0d5c1; border-radius: 8px;
-            color: #e0d5c1; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer;
-        }
-        #pool-container.expanded .btn-upload-pool { grid-row: span 2; height: 130px; }
-
-        .draggable-thumb { 
-            min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: pan-x; /* 🚀 允許組件上原生橫向滑動，不被拖拽判定干擾 */
-        }
-        .drag-clone { position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; pointer-events: none; z-index: 10000; }
-
-        .action-container { margin: 20px 0; text-align: center; width: 100%; }
-        .btn-download {
-            background-color: #5a4a42; color: white; border: none; padding: 12px 24px; border-radius: 25px;
-            font-size: 14px; font-weight: bold; width: 90%; max-width: 500px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        }
-        #page-torment .btn-download { background-color: #4a148c; }
-
-        #result-modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; padding: 20px; box-sizing: border-box;
-        }
-        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
-        #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
-        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; }
-    </style>
-</head>
-<body>
-
-    <div class="nav-tabs">
-        <button class="tab-btn active" id="tab-burst" onclick="switchPage(0)">爆裂場</button>
-        <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">苦痛場</button>
-    </div>
-
-    <div class="swiper-container" id="main-swiper">
-        <div class="page-view" id="page-burst">
-            <h1>Tap Titans 2 配卡-爆裂場</h1>
-            <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
-            <div class="export-area" id="export-burst">
-                <div class="pyramid-container" id="container-burst"></div>
-            </div>
-            <div class="action-container">
-                <button class="btn-download" onclick="generateImage('burst')">✨ 生成爆裂場配卡圖（長按儲存） ✨</button>
-            </div>
-        </div>
-
-        <div class="page-view" id="page-torment">
-            <h1>Tap Titans 2 配卡-苦痛場</h1>
-            <div class="subtitle">左右滑動切換場地｜點擊「第 X 組」旁可自由輸入備註</div>
-            <div class="export-area" id="export-torment">
-                <div class="pyramid-container" id="container-torment"></div>
-            </div>
-            <div class="action-container">
-                <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="pool-container" onclick="expandPool(event)">
-        <div class="pool-title">卡片池</div>
-        <div class="pool-scroll" id="pool-scroll">
-            <div class="btn-upload-pool" onclick="triggerPoolUpload(event)">＋</div>
-        </div>
-    </div>
-    <input type="file" id="pool-input" accept="image/*" multiple style="display:none;" onchange="handlePoolUpload(this)">
-
-    <div id="result-modal">
-        <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
-        <div id="image-container"></div>
-        <button class="btn-close" onclick="closeModal()">返回修改</button>
-    </div>
-
-    <script>
         const totalTiers = 8;
         
         function initTiers(containerId) {
@@ -297,22 +62,37 @@
                 tabTorment.classList.remove('active');
             } else {
                 swiper.style.transform = 'translateX(-100vw)';
-                tabBurst.classList.remove('active');
-                tabTorment.classList.add('active');
+                tabBurst.classList.add('active'); // 保持 active 改為針對正確 tab 修正
+                tabBurst.classList.toggle('active', pageIndex === 0);
+                tabTorment.classList.toggle('active', pageIndex === 1);
             }
         }
+
+        // 🔒 鎖定狀態機制：防止拖拽卡片時誤觸中間介面滑動
+        let isDraggingGlobal = false; 
 
         // 左右滑動切換頁面
         let touchStartX = 0; let touchEndX = 0;
         document.querySelectorAll('.page-view').forEach(page => {
-            page.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
-            page.addEventListener('touchend', e => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); }, { passive: true });
+            page.addEventListener('touchstart', e => { 
+                // 如果正在拖拽卡片，不記錄起始點
+                if (isDraggingGlobal) return;
+                touchStartX = e.changedTouches[0].screenX; 
+            }, { passive: true });
+            
+            page.addEventListener('touchend', e => { 
+                // 如果正在拖拽卡片，直接攔截不切換頁面
+                if (isDraggingGlobal) return;
+                touchEndX = e.changedTouches[0].screenX; 
+                handleSwipe(); 
+            }, { passive: true });
         });
 
         function handleSwipe() {
+            if (isDraggingGlobal) return; // 雙重保險
             const threshold = 70;
             if (touchStartX - touchEndX > threshold && currentPage === 0) switchPage(1);
-            else if (touchEndX - touchStartX > threshold && currentPage === 1) switchPage(0);
+            else if (touchEndX - touchStartX > threshold && currentPage === 0 ? false : currentPage === 1) switchPage(0);
         }
 
         // 卡片池展開與收合
@@ -367,14 +147,16 @@
                 const dx = touch.clientX - touchStartPos.x;
                 const dy = touch.clientY - touchStartPos.y;
 
-                // 🚀 如果玩家手勢偏向「左右划動」且還沒拔出卡片，視為滾動池子，不生成克隆卡片
+                // 如果玩家手勢偏向「左右滑動」且還沒拔出卡片，視為滾動池子，不生成克隆卡片
                 if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
                     return; 
                 }
 
-                // 🚀 如果是垂直往上拉，判定為要拖曳卡片
+                // 如果是垂直往上拉，判定為要拖曳卡片
                 if (!isDraggingCard && dy < -15) {
                     isDraggingCard = true;
+                    isDraggingGlobal = true; // 🔒 開啟全域鎖，禁用主畫面翻頁手勢
+                    
                     clone = el.cloneNode(true); 
                     clone.className = 'drag-clone';
                     clone.style.left = touch.clientX - 30 + 'px'; 
@@ -395,6 +177,9 @@
             }, { passive: false });
 
             el.addEventListener('touchend', function(e) {
+                // 🔓 無論拖拽成功與否，手指離開時一律解除全域鎖
+                setTimeout(() => { isDraggingGlobal = false; }, 50); 
+
                 if (!isDraggingCard || !clone) {
                     isDraggingCard = false;
                     return;
@@ -443,9 +228,3 @@
             }).catch(err => { alert("生成失敗"); closeModal(); });
         }
         function closeModal() { document.getElementById('result-modal').style.display = "none"; }
-    </script>
-</body>
-</html>
-
-```
-

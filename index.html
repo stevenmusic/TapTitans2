@@ -379,6 +379,17 @@
         function startAutoScroll() {
             if (scrollTimer) return;
             scrollTimer = setInterval(() => {
+                // 🚀 優化防線 1：檢查頂部極限，防止 Overscroll 回彈
+                if (scrollSpeed < 0 && window.scrollY <= 0) {
+                    scrollSpeed = 0;
+                }
+                
+                // 🚀 優化防線 2：檢查底部極限，防止 Overscroll 回彈
+                const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollSpeed > 0 && window.scrollY >= maxScrollY) {
+                    scrollSpeed = 0;
+                }
+
                 if (scrollSpeed !== 0) {
                     window.scrollBy(0, scrollSpeed);
                     

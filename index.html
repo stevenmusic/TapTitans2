@@ -113,7 +113,7 @@
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
             display: flex; justify-content: center; align-items: center; background-color: #faf7f2;
             overflow: hidden; position: relative; font-size: 11px; color: #bfa89e;
-            will-change: transform; /* 🚀 啟用硬體加速 */
+            will-change: transform; 
         }
         .drop-zone.drag-hover { border-color: #5a4a42; background-color: #e0d5c1; transform: scale(1.02); }
         #page-torment .drop-zone.drag-hover { border-color: #4a148c; background-color: #d1c4e9; }
@@ -154,12 +154,6 @@
             overflow-x: auto;
         }
 
-        .btn-upload-pool {
-            min-width: 60px; height: 60px; border: 2px dashed #e0d5c1; border-radius: 8px;
-            color: #e0d5c1; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer;
-        }
-        #pool-container.expanded .btn-upload-pool { grid-row: span 2; height: 130px; }
-
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
             touch-action: pan-x; 
@@ -167,7 +161,7 @@
         .drag-clone { 
             position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; 
             pointer-events: none; z-index: 10000; 
-            will-change: left, top; /* 🚀 告訴瀏覽器這傢伙移動很頻繁，用顯卡跑 */
+            will-change: left, top; 
         }
 
         .action-container { margin: 20px 0; text-align: center; width: 100%; }
@@ -219,11 +213,8 @@
 
     <div id="pool-container" onclick="expandPool(event)">
         <div class="pool-title">卡片池</div>
-        <div class="pool-scroll" id="pool-scroll">
-            <div class="btn-upload-pool" onclick="triggerPoolUpload(event)">＋</div>
-        </div>
+        <div class="pool-scroll" id="pool-scroll"></div>
     </div>
-    <input type="file" id="pool-input" accept="image/*" multiple style="display:none;" onchange="handlePoolUpload(this)">
 
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
@@ -321,28 +312,15 @@
             }, { passive: true });
         });
 
-        // 卡片池展開與收合
         const poolContainer = document.getElementById('pool-container');
         function expandPool(event) { event.stopPropagation(); poolContainer.classList.add('expanded'); }
         document.addEventListener('click', function() { poolContainer.classList.remove('expanded'); });
-        function triggerPoolUpload(event) { event.stopPropagation(); document.getElementById('pool-input').click(); }
 
         function handleSwipe() {
             if (isDraggingGlobal) return; 
             const threshold = 70;
             if (touchStartX - touchEndX > threshold && currentPage === 0) switchPage(1);
             else if (touchEndX - touchStartX > threshold && currentPage === 1) switchPage(0);
-        }
-
-        function handlePoolUpload(input) {
-            const poolScroll = document.getElementById('pool-scroll');
-            if (input.files) {
-                Array.from(input.files).forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) { createCardElement(e.target.result, poolScroll); }
-                    reader.readAsDataURL(file);
-                });
-            }
         }
 
         function addGridItem(button) {
@@ -359,7 +337,6 @@
             grid.removeChild(grid.lastElementChild);
         }
 
-        // 🚀 核心優化：高效快取與智慧定位演算法
         let clone = null; 
         let activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
@@ -367,15 +344,13 @@
         let scrollTimer = null;
         let scrollSpeed = 0;
         
-        let cachedZones = []; // 💾 快取全體格子的視窗絕對座標
-        let lastHoveredZone = null; // 💾 記錄目前指著誰，避免重複操作 CSS 類別
+        let cachedZones = []; 
+        let lastHoveredZone = null; 
         let currentTouchX = 0;
         let currentTouchY = 0;
 
-        // 🔄 更新或建立格子座標快取資料
         function updateZonesCache() {
             cachedZones = [];
-            // 只抓取當前畫面上看得到的格子
             const activePageId = currentPage === 0 ? 'page-burst' : 'page-torment';
             const zones = document.querySelectorAll(`#${activePageId} .drop-zone`);
             
@@ -391,9 +366,7 @@
             });
         }
 
-        // 🎯 核心高速比對：取代耗能的 elementFromPoint
         function findHoveredZone(x, y) {
-            // 考慮到滾動，我們要直接比對相對於目前視窗(Viewport)的坐標
             for (let i = 0; i < cachedZones.length; i++) {
                 const zone = cachedZones[i];
                 if (x >= zone.left && x <= zone.right && y >= zone.top && y <= zone.bottom) {
@@ -409,14 +382,11 @@
                 if (scrollSpeed !== 0) {
                     window.scrollBy(0, scrollSpeed);
                     
-                    // 🚨 當畫面產生滾動時，快取的 rect.top 和 bottom 會位移，必須同步修正快取數值！
-                    // 這樣做比重新執行 getBoundingClientRect() 快上百倍
                     for (let i = 0; i < cachedZones.length; i++) {
                         cachedZones[i].top -= scrollSpeed;
                         cachedZones[i].bottom -= scrollSpeed;
                     }
 
-                    // 滾動中同步以純數學公式找出高亮目標
                     const target = findHoveredZone(currentTouchX, currentTouchY);
                     if (target !== lastHoveredZone) {
                         if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
@@ -460,7 +430,6 @@
                     isDraggingCard = true;
                     isDraggingGlobal = true; 
                     
-                    // 💾 瞬間快取所有格子位置（只在拔起卡片時做一次，極速！）
                     updateZonesCache();
                     lastHoveredZone = null;
                     
@@ -477,7 +446,6 @@
                 if (isDraggingCard && clone) {
                     if (e.cancelable) e.preventDefault(); 
                     
-                    // ⚡ 使用 requestAnimationFrame 優化渲染性能，確保不卡頓
                     requestAnimationFrame(() => {
                         if (clone) {
                             clone.style.left = currentTouchX - 30 + 'px'; 
@@ -497,7 +465,6 @@
                         scrollSpeed = 0;
                     }
 
-                    // ⚡ 用快取好的記憶體陣列比對，效能提升 95%
                     const target = findHoveredZone(currentTouchX, currentTouchY);
                     if (target !== lastHoveredZone) {
                         if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
@@ -516,7 +483,6 @@
                     return;
                 }
                 
-                // 放開時直接使用我們算好的最後一個高亮元素，連偵測都不用，100% 準確
                 if (lastHoveredZone) {
                     lastHoveredZone.innerHTML = `<img src="${activeSrc}"><button class="delete-btn" onclick="clearZone(this, event)">×</button>`;
                     lastHoveredZone.classList.remove('drag-hover');

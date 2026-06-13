@@ -26,8 +26,16 @@
             overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
             
-            /* 🔒 核心優化：禁止系統手勢放大與雙擊放大，固定畫面 */
+            /* 🔒 禁止系統雙擊與手勢放大 */
             touch-action: manipulation; 
+        }
+
+        /* 🔒 當正在拖曳卡片時，強制鎖定身體不允許任何滾動 */
+        body.body-locked {
+            overflow: hidden !important;
+            position: fixed;
+            width: 100%;
+            height: 100%;
         }
 
         .nav-tabs {
@@ -79,7 +87,6 @@
 
         .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
         
-        /* 🎨 調整導出區域：增加上下 Padding，讓標題在圖片裡有呼吸空間 */
         .export-area { padding: 20px 12px 12px 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
         #page-burst .export-area { background-color: var(--bg-burst); }
         #page-torment .export-area { background-color: var(--bg-torment); }
@@ -97,7 +104,6 @@
         .label-title-wrapper { display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 10px; overflow: hidden; }
         .label-fixed-text { white-space: nowrap; }
         
-        /* 🔒 核心優化：防止 iOS 點擊輸入框自動放大畫面（16px法規），並透過縮放維持精緻視覺 */
         .label-custom-input {
             border: none; background: transparent; font-family: inherit;
             padding: 2px 4px; width: 115%; color: #5a4a42; border-bottom: 1px solid transparent;
@@ -131,7 +137,6 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
-        /* 🚀 橫向面板與滾動流暢度最佳化 🚀 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 12px; box-sizing: border-box;
@@ -145,12 +150,11 @@
         
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
-            -webkit-overflow-scrolling: touch; /* 🚀 啟用 iOS 硬體加速原生滑動慣性 */
+            -webkit-overflow-scrolling: touch; 
             scroll-behavior: smooth;
             will-change: scroll-position;
         }
         
-        /* 🚀 雙排滑動最佳化 */
         #pool-container.expanded .pool-scroll {
             display: grid; 
             grid-template-rows: repeat(2, 60px); 
@@ -158,7 +162,7 @@
             grid-auto-columns: 60px; 
             overflow-y: hidden;
             overflow-x: auto;
-            -webkit-overflow-scrolling: touch; /* 🚀 雙排強制硬體滑動流暢化 */
+            -webkit-overflow-scrolling: touch; 
         }
 
         .btn-upload-pool {
@@ -169,7 +173,7 @@
 
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: pan-x; /* 🚀 允許組件上原生橫向滑動，不被拖拽判定干擾 */
+            touch-action: pan-x; 
         }
         .drag-clone { position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; pointer-events: none; z-index: 10000; }
 
@@ -265,7 +269,6 @@
         initTiers('container-burst');
         initTiers('container-torment');
 
-        // 自動加載內建圖片到卡片池
         window.addEventListener('DOMContentLoaded', () => {
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
@@ -285,7 +288,6 @@
             container.appendChild(img);
         }
 
-        // 頁面切換
         const swiper = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
@@ -304,20 +306,24 @@
             }
         }
 
-        // 🔒 全域鎖定狀態機制：防止拖拽卡片時誤觸中間介面滑動
+        // 🔒 全域鎖定狀態機制
         let isDraggingGlobal = false; 
 
-        // 左右滑動切換頁面
+        // 🚀 核心優化：當全域鎖定開啟時，徹底攔截整個視窗的預設滾動行為！
+        document.addEventListener('touchmove', function(e) {
+            if (isDraggingGlobal) {
+                if (e.cancelable) e.preventDefault();
+            }
+        }, { passive: false });
+
         let touchStartX = 0; let touchEndX = 0;
         document.querySelectorAll('.page-view').forEach(page => {
             page.addEventListener('touchstart', e => { 
-                // 如果正在拖拽卡片，不記錄起始點
                 if (isDraggingGlobal) return;
                 touchStartX = e.changedTouches[0].screenX; 
             }, { passive: true });
             
             page.addEventListener('touchend', e => { 
-                // 如果正在拖拽卡片，直接攔截不切換頁面
                 if (isDraggingGlobal) return;
                 touchEndX = e.changedTouches[0].screenX; 
                 handleSwipe(); 
@@ -325,19 +331,17 @@
         });
 
         function handleSwipe() {
-            if (isDraggingGlobal) return; // 雙重保險
+            if (isDraggingGlobal) return; 
             const threshold = 70;
             if (touchStartX - touchEndX > threshold && currentPage === 0) switchPage(1);
             else if (touchEndX - touchStartX > threshold && currentPage === 1) switchPage(0);
         }
 
-        // 卡片池展開與收合
         const poolContainer = document.getElementById('pool-container');
         function expandPool(event) { event.stopPropagation(); poolContainer.classList.add('expanded'); }
         document.addEventListener('click', function() { poolContainer.classList.remove('expanded'); });
         function triggerPoolUpload(event) { event.stopPropagation(); document.getElementById('pool-input').click(); }
 
-        // 手動上傳卡片
         function handlePoolUpload(input) {
             const poolScroll = document.getElementById('pool-scroll');
             if (input.files) {
@@ -349,7 +353,6 @@
             }
         }
 
-        // 格數限制 (3-4格)
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
             if(grid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
@@ -364,7 +367,6 @@
             grid.removeChild(grid.lastElementChild);
         }
 
-        // 智慧觸控拖放與滑動防衝突演算法
         let clone = null; let activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
         let isDraggingCard = false;
@@ -383,26 +385,28 @@
                 const dx = touch.clientX - touchStartPos.x;
                 const dy = touch.clientY - touchStartPos.y;
 
-                // 如果玩家手勢偏向「左右滑動」且還沒拔出卡片，視為滾動池子，不生成克隆卡片
+                // 左右滑動卡片池時不觸發拖放
                 if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
                     return; 
                 }
 
-                // 如果是垂直往上拉，判定為要拖曳卡片
+                // 當確認是往上拔出卡片時
                 if (!isDraggingCard && dy < -15) {
                     isDraggingCard = true;
-                    isDraggingGlobal = true; // 🔒 開啟全域鎖，禁用主畫面翻頁手勢
+                    isDraggingGlobal = true; // 🔒 啟用全域手勢鎖定
+                    document.body.classList.add('body-locked'); // 🔒 注入 CSS 固化畫面
                     
                     clone = el.cloneNode(true); 
                     clone.className = 'drag-clone';
                     clone.style.left = touch.clientX - 30 + 'px'; 
                     clone.style.top = touch.clientY - 30 + 'px';
                     document.body.appendChild(clone); 
-                    poolContainer.classList.remove('expanded'); // 自動縮回池子騰出視野
+                    poolContainer.classList.remove('expanded'); 
                 }
 
                 if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); // 阻止頁面跟著滾動
+                    // 🚀 核心鎖定：強制阻止這條 touch 軌跡觸發任何網頁滾動
+                    if (e.cancelable) e.preventDefault(); 
                     
                     clone.style.left = touch.clientX - 30 + 'px'; 
                     clone.style.top = touch.clientY - 30 + 'px';
@@ -410,10 +414,11 @@
                     document.querySelectorAll('.drop-zone').forEach(zone => zone.classList.remove('drag-hover'));
                     if (target && target.classList.contains('drop-zone')) { target.classList.add('drag-hover'); }
                 }
-            }, { passive: false });
+            }, { passive: false }); // 🚀 必須為 false 才能成功執行 preventDefault()
 
             el.addEventListener('touchend', function(e) {
-                // 🔓 無論拖拽成功與否，手指離開時稍微延遲解除全域鎖，防止物理慣性誤觸滑動
+                // 解除鎖定
+                document.body.classList.remove('body-locked');
                 setTimeout(() => { isDraggingGlobal = false; }, 50); 
 
                 if (!isDraggingCard || !clone) {
@@ -435,7 +440,6 @@
 
         function clearZone(btn, event) { event.stopPropagation(); btn.parentElement.innerHTML = '拉入圖片'; }
 
-        // 生成長圖
         function generateImage(type) {
             window.scrollTo(0,0);
             const exportArea = document.getElementById(type === 'burst' ? 'export-burst' : 'export-torment');
@@ -467,3 +471,4 @@
     </script>
 </body>
 </html>
+

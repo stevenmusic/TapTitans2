@@ -142,7 +142,6 @@
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 5px 0; 
             -webkit-overflow-scrolling: touch; 
-            scroll-behavior: smooth;
         }
         
         #pool-container.expanded .pool-scroll {
@@ -156,7 +155,7 @@
 
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: pan-x; 
+            touch-action: none; /* 🚀 核心 CSS 優化：當點擊卡片時，徹底禁止網頁跟著滑動 */
         }
         .drag-clone { 
             position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; 
@@ -290,24 +289,24 @@
             }
         }
 
-        // 全域手勢防衝突鎖定（正在拖曳卡片時會變成 true）
         let isDraggingGlobal = false; 
 
+        // 🚨 全域滾動攔截
         document.addEventListener('touchmove', function(e) {
             if (isDraggingGlobal) {
-                if (e.cancelable) e.preventDefault(); // 🚨 全面封鎖網頁的預設橫向滾動
+                if (e.cancelable) e.preventDefault(); 
             }
         }, { passive: false });
 
         let touchStartX = 0; let touchEndX = 0;
         document.querySelectorAll('.page-view').forEach(page => {
             page.addEventListener('touchstart', e => { 
-                if (isDraggingGlobal) return; // 🚀 拖曳中，拒絕記錄翻頁起點
+                if (isDraggingGlobal) return; 
                 touchStartX = e.changedTouches[0].screenX; 
             }, { passive: true });
             
             page.addEventListener('touchend', e => { 
-                if (isDraggingGlobal) return; // 🚀 拖曳中，拒絕觸發翻頁判斷
+                if (isDraggingGlobal) return; 
                 touchEndX = e.changedTouches[0].screenX; 
                 handleSwipe(); 
             }, { passive: true });
@@ -318,7 +317,7 @@
         document.addEventListener('click', function() { poolContainer.classList.remove('expanded'); });
 
         function handleSwipe() {
-            if (isDraggingGlobal) return; // 🚀 加強防線：卡片飛行中絕對不允許切換分頁
+            if (isDraggingGlobal) return; 
             const threshold = 70;
             if (touchStartX - touchEndX > threshold && currentPage === 0) switchPage(1);
             else if (touchEndX - touchStartX > threshold && currentPage === 1) switchPage(0);
@@ -422,7 +421,10 @@
                 touchStartPos.y = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
-            }, { passive: true });
+                
+                // 🚀 關鍵加強：摸到卡片時，一排池也先口頭預告可能需要鎖定，不要讓網頁產生預設滾動
+                isDraggingGlobal = true; 
+            }, { passive: false }); // 🚨 必須為 false 才能允許後續攔截
 
             el.addEventListener('touchmove', function(e) {
                 const touch = e.touches[0];
@@ -432,15 +434,16 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                // 🚨 如果只是左右稍微晃到，而沒有明顯往上拔，保留卡片池內的左右捲動
+                // 🚀 關鍵修改：如果是左右在滑動卡片池（橫向滑動 > 10），放生它，允許卡片池左右滾動
                 if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+                    isDraggingGlobal = false; // 釋放鎖定
                     return; 
                 }
 
-                // 🚀 當偵測到往上拔起 (-15px)
-                if (!isDraggingCard && dy < -15) {
+                // 當偵測到往上拔起 (-10px) 或者是明顯的縱向意圖
+                if (!isDraggingCard && (dy < -10 || Math.abs(dy) > Math.abs(dx) + 5)) {
                     isDraggingCard = true;
-                    isDraggingGlobal = true; // 🔒 鎖死分頁左右滑動功能！
+                    isDraggingGlobal = true; // 🔒 確定鎖死！網頁絕對不准動
                     
                     updateZonesCache();
                     lastHoveredZone = null;
@@ -456,7 +459,7 @@
                 }
 
                 if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); 
+                    if (e.cancelable) e.preventDefault(); // 🚨 全面制止網頁跟著動！
                     
                     requestAnimationFrame(() => {
                         if (clone) {
@@ -489,7 +492,6 @@
             el.addEventListener('touchend', function(e) {
                 stopAutoScroll(); 
                 
-                // 延時解鎖，確保放開卡片時手指剩餘的微小慣性不會引發分頁閃退切換
                 setTimeout(() => { isDraggingGlobal = false; }, 80); 
 
                 if (!isDraggingCard || !clone) {
@@ -542,4 +544,3 @@
     </script>
 </body>
 </html>
-

@@ -185,7 +185,7 @@
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
-            touch-action: pan-x; /* 🛠️ 強制允許水平滑動 */
+            touch-action: pan-x; /* 強制網頁只處理水平滑動 */
         }
         
         #pool-container.expanded .pool-scroll {
@@ -364,6 +364,7 @@
 
         let isDraggingGlobal = false; 
 
+        // 全局防誤觸：只有當處於卡片拖放模式（isDraggingGlobal為true）時，才阻斷網頁滾動
         document.addEventListener('touchmove', function(e) {
             if (isDraggingGlobal) {
                 if (e.cancelable) e.preventDefault(); 
@@ -384,10 +385,10 @@
             }, { passive: true });
         });
 
-        // 防止整個卡片池底座的滑動干擾背後的 Swiper 翻頁
+        // 🛠️ 徹底解決卡頓核心：當在卡片池內部滑動時，完全不給外層 Swiper 機會攔截
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
             if (!isDraggingCard) {
-                e.stopPropagation();
+                e.stopPropagation(); // 阻止事件向上傳遞給 Swiper 翻頁
             }
         }, { passive: true });
 
@@ -514,7 +515,7 @@
                 touchStartPos.y = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
-                isDraggingGlobal = false; // 初始切勿鎖定全局，確保滾動流暢
+                isDraggingGlobal = false; 
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
@@ -525,20 +526,25 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                // 🛠️ 核心修正：如果卡片池處於展開狀態，大幅放寬左右滑動判定
                 const isPoolExpanded = poolContainer.classList.contains('expanded');
-                const dragThresholdY = isPoolExpanded ? -25 : -10; // 展開時需要往上拉超過 25px 才會觸發拖拽
 
                 if (!isDraggingCard) {
-                    // 如果水平移動明顯大於垂直移動，或者是單純的左右滑動，直接交給原生滾動
-                    if (Math.abs(dx) > Math.abs(dy) || dy > 0) {
-                        return; 
+                    // 🛠️ 兩排展開狀態下的終極優化：只要你在左右滑，或者往下移，100% 交給原生滾動，絕不阻斷
+                    if (isPoolExpanded) {
+                        if (Math.abs(dx) > Math.abs(dy) || dy >= 0) {
+                            return; // 直接放行，維持極度流暢的左右滑動
+                        }
+                    } else {
+                        // 未展開狀態下的預設優化
+                        if (Math.abs(dx) > Math.abs(dy) || dy > 0) {
+                            return; 
+                        }
                     }
                     
-                    // 只有當明確往上拉，且垂直幅度顯著大於水平幅度時，才判定為要「拖卡片」
-                    if (dy < dragThresholdY && Math.abs(dy) > Math.abs(dx) * 1.5) {
+                    // 🛠️ 只有當使用者「極度明確地向上垂直拔起卡片」（往上超過 30 像素，且左右偏移極小）才激活拖放
+                    if (dy < -30 && Math.abs(dy) > Math.abs(dx) * 2) {
                         isDraggingCard = true;
-                        isDraggingGlobal = true; // 此時接管全局，禁止背景滾動
+                        isDraggingGlobal = true; 
                         
                         updateZonesCache();
                         lastHoveredZone = null;
@@ -557,7 +563,7 @@
                 }
 
                 if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); // 拖拽中禁止網頁滾動
+                    if (e.cancelable) e.preventDefault(); 
                     
                     requestAnimationFrame(() => {
                         if (clone) {

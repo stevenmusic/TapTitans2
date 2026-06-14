@@ -516,36 +516,52 @@
         let isDraggingCard = false;
         let scrollTimer = null;
         let scrollSpeed = 0;
-        
         let cachedZones = []; 
         let lastHoveredZone = null; 
         let currentTouchX = 0;
         let currentTouchY = 0;
-        let longPressTimer = null; // 長按計時器
+        let longPressTimer = null;
+
+        // ── 集中清理：任何情況下都能安全呼叫，確保不留殘影 ──
+        function cancelDrag() {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+            stopAutoScroll();
+
+            // 移除所有殘留的 drag-clone（防止極端情況下留下多個）
+            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+            clone = null;
+
+            // 清除 drop-zone 高亮
+            if (lastHoveredZone) {
+                lastHoveredZone.classList.remove('drag-hover');
+                lastHoveredZone = null;
+            }
+
+            isDraggingCard = false;
+            isDraggingGlobal = false;
+        }
+
+        // 切換頁面時也強制取消（避免拖到一半切頁殘影）
+        const _origSwitchPage = switchPage;
+        // switchPage 已在前面定義，這裡在拖曳層補一個清理 hook
+        document.getElementById('main-swiper').addEventListener('transitionend', () => {
+            if (!isDraggingCard) cancelDrag();
+        });
 
         function updateZonesCache() {
             cachedZones = [];
             const activePageId = currentPage === 0 ? 'page-burst' : 'page-torment';
-            const zones = document.querySelectorAll(`#${activePageId} .drop-zone`);
-            
-            zones.forEach(zone => {
+            document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
                 const rect = zone.getBoundingClientRect();
-                cachedZones.push({
-                    element: zone,
-                    left: rect.left,
-                    right: rect.right,
-                    top: rect.top,
-                    bottom: rect.bottom
-                });
+                cachedZones.push({ element: zone, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
             });
         }
 
         function findHoveredZone(x, y) {
             for (let i = 0; i < cachedZones.length; i++) {
-                const zone = cachedZones[i];
-                if (x >= zone.left && x <= zone.right && y >= zone.top && y <= zone.bottom) {
-                    return zone.element;
-                }
+                const z = cachedZones[i];
+                if (x >= z.left && x <= z.right && y >= z.top && y <= z.bottom) return z.element;
             }
             return null;
         }
@@ -553,159 +569,148 @@
         function startAutoScroll() {
             if (scrollTimer) return;
             scrollTimer = setInterval(() => {
-                if (scrollSpeed < 0 && window.scrollY <= 0) {
-                    scrollSpeed = 0;
-                }
+                if (scrollSpeed === 0) return;
+                if (scrollSpeed < 0 && window.scrollY <= 0) { scrollSpeed = 0; return; }
                 const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
-                if (scrollSpeed > 0 && window.scrollY >= maxScrollY) {
-                    scrollSpeed = 0;
+                if (scrollSpeed > 0 && window.scrollY >= maxScrollY) { scrollSpeed = 0; return; }
+                window.scrollBy(0, scrollSpeed);
+                for (let i = 0; i < cachedZones.length; i++) {
+                    cachedZones[i].top -= scrollSpeed;
+                    cachedZones[i].bottom -= scrollSpeed;
                 }
-                if (scrollSpeed !== 0) {
-                    window.scrollBy(0, scrollSpeed);
-                    for (let i = 0; i < cachedZones.length; i++) {
-                        cachedZones[i].top -= scrollSpeed;
-                        cachedZones[i].bottom -= scrollSpeed;
-                    }
-                    const target = findHoveredZone(currentTouchX, currentTouchY);
-                    if (target !== lastHoveredZone) {
-                        if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                        if (target) target.classList.add('drag-hover');
-                        lastHoveredZone = target;
-                    }
+                const target = findHoveredZone(currentTouchX, currentTouchY);
+                if (target !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (target) target.classList.add('drag-hover');
+                    lastHoveredZone = target;
                 }
             }, 16); 
         }
 
         function stopAutoScroll() {
-            if (scrollTimer) {
-                clearInterval(scrollTimer);
-                scrollTimer = null;
-            }
+            if (scrollTimer) { clearInterval(scrollTimer); scrollTimer = null; }
             scrollSpeed = 0;
         }
 
-        // 🚀 人性化核心 2：重構拖拽觸發邏輯
         function triggerCardDrag(el) {
             if (isDraggingCard) return;
             isDraggingCard = true;
-            isDraggingGlobal = true; 
-            
+            isDraggingGlobal = true;
             updateZonesCache();
             lastHoveredZone = null;
-            
-            clone = el.cloneNode(true); 
+            clone = el.cloneNode(true);
             clone.className = 'drag-clone';
-            clone.style.left = currentTouchX - 30 + 'px'; 
-            clone.style.top = currentTouchY - 30 + 'px';
-            document.body.appendChild(clone); 
-            
-            poolContainer.classList.remove('expanded'); 
+            clone.style.left = currentTouchX - 30 + 'px';
+            clone.style.top  = currentTouchY - 30 + 'px';
+            document.body.appendChild(clone);
+            poolContainer.classList.remove('expanded');
             poolSubtitle.innerText = '（點一下展開）';
-            
             startAutoScroll();
         }
 
         function setupTouchDrag(el) {
             el.addEventListener('touchstart', function(e) {
+                // 若前一次拖曳沒清乾淨，先強制重置
+                if (isDraggingCard || clone) cancelDrag();
+
                 const touch = e.touches[0];
                 touchStartPos.x = touch.clientX;
                 touchStartPos.y = touch.clientY;
                 currentTouchX = touch.clientX;
                 currentTouchY = touch.clientY;
-                isDraggingCard = false;
                 activeSrc = el.src;
-                isDraggingGlobal = false; 
 
-                // 機制：按住卡片不動達 400ms 才觸發拖曳，避免只是想橫滑卡片池就誤觸
-                clearTimeout(longPressTimer);
+                // 按住不動 400ms 才進入拖曳，橫滑期間會被 touchmove 取消
                 longPressTimer = setTimeout(() => {
-                    // 再次確認手指沒有明顯位移（排除滑動中途定住的情況）
                     const dx = currentTouchX - touchStartPos.x;
                     const dy = currentTouchY - touchStartPos.y;
                     if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
                         triggerCardDrag(el);
                     }
-                }, 400); 
+                }, 400);
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
                 const touch = e.touches[0];
                 currentTouchX = touch.clientX;
                 currentTouchY = touch.clientY;
-                
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
                 if (!isDraggingCard) {
-                    // 只要有任何明顯橫向位移，立刻取消長按計時器，讓橫滑優先
+                    // 任何橫向位移 → 取消長按，讓卡片池自由橫滑
                     if (Math.abs(dx) > 8) {
                         clearTimeout(longPressTimer);
+                        longPressTimer = null;
                         return;
                     }
-                    // 明確往上拖出卡片池（閾值提高到 -80px，且水平偏移不能太大避免誤判斜滑）
+                    // 明確垂直向上拉出卡片池 → 觸發拖曳
                     if (dy < -80 && Math.abs(dx) < 30) {
                         clearTimeout(longPressTimer);
+                        longPressTimer = null;
                         triggerCardDrag(el);
-                    } else {
-                        // 其他方向的滑動交給原生滾動處理
-                        return;
                     }
+                    return;
                 }
 
-                // 進入拖放模式後的卡片跟隨邏輯
-                if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); 
-                    
-                    requestAnimationFrame(() => {
-                        if (clone) {
-                            clone.style.left = currentTouchX - 30 + 'px'; 
-                            clone.style.top = currentTouchY - 30 + 'px';
-                        }
-                    });
-                    
-                    const viewHeight = window.innerHeight;
-                    const topThreshold = 130;  
-                    const bottomThreshold = viewHeight - 120; 
-
-                    if (currentTouchY < topThreshold) {
-                        scrollSpeed = Math.max(-12, Math.floor((currentTouchY - topThreshold) / 6));
-                    } else if (currentTouchY > bottomThreshold) {
-                        scrollSpeed = Math.min(12, Math.floor((currentTouchY - bottomThreshold) / 6));
-                    } else {
-                        scrollSpeed = 0;
+                // ── 拖曳進行中 ──
+                if (e.cancelable) e.preventDefault();
+                requestAnimationFrame(() => {
+                    if (clone) {
+                        clone.style.left = currentTouchX - 30 + 'px';
+                        clone.style.top  = currentTouchY - 30 + 'px';
                     }
+                });
 
-                    const target = findHoveredZone(currentTouchX, currentTouchY);
-                    if (target !== lastHoveredZone) {
-                        if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                        if (target) target.classList.add('drag-hover');
-                        lastHoveredZone = target;
-                    }
+                const viewHeight = window.innerHeight;
+                const topThreshold    = 130;
+                const bottomThreshold = viewHeight - 120;
+                if      (currentTouchY < topThreshold)    scrollSpeed = Math.max(-12, Math.floor((currentTouchY - topThreshold)    / 6));
+                else if (currentTouchY > bottomThreshold) scrollSpeed = Math.min( 12, Math.floor((currentTouchY - bottomThreshold) / 6));
+                else                                       scrollSpeed = 0;
+
+                const target = findHoveredZone(currentTouchX, currentTouchY);
+                if (target !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (target) target.classList.add('drag-hover');
+                    lastHoveredZone = target;
                 }
             }, { passive: false });
 
+            // touchend：放卡
             el.addEventListener('touchend', function(e) {
                 clearTimeout(longPressTimer);
-                stopAutoScroll(); 
-                
-                setTimeout(() => { isDraggingGlobal = false; }, 80); 
+                longPressTimer = null;
+                stopAutoScroll();
+                setTimeout(() => { isDraggingGlobal = false; }, 80);
 
                 if (!isDraggingCard || !clone) {
                     isDraggingCard = false;
                     return;
                 }
-                
+
                 if (lastHoveredZone) {
                     lastHoveredZone.innerHTML = `<img src="${activeSrc}"><button class="delete-btn" onclick="clearZone(this, event)">×</button>`;
                     lastHoveredZone.classList.remove('drag-hover');
                 }
-                
-                if (clone) clone.remove(); 
-                clone = null;
+
+                if (clone) { clone.remove(); clone = null; }
                 lastHoveredZone = null;
                 isDraggingCard = false;
             });
+
+            // touchcancel：系統強制中斷（來電、通知、多指等），完整清理
+            el.addEventListener('touchcancel', function() {
+                cancelDrag();
+            });
         }
+
+        // 全域安全網：若 clone 莫名留在畫面上，觸摸任何其他地方都能清掉
+        document.addEventListener('touchstart', function() {
+            if (!isDraggingCard && clone) {
+                cancelDrag();
+            }
+        }, { passive: true });
 
         function clearZone(btn, event) { event.stopPropagation(); btn.parentElement.innerHTML = '拉入圖片'; }
 

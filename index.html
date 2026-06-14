@@ -616,11 +616,16 @@
                 activeSrc = el.src;
                 isDraggingGlobal = false; 
 
-                // 機制：如果使用者按住卡片不動達 150 毫秒，代表他想拔起這張卡片
+                // 機制：按住卡片不動達 400ms 才觸發拖曳，避免只是想橫滑卡片池就誤觸
                 clearTimeout(longPressTimer);
                 longPressTimer = setTimeout(() => {
-                    triggerCardDrag(el);
-                }, 150); 
+                    // 再次確認手指沒有明顯位移（排除滑動中途定住的情況）
+                    const dx = currentTouchX - touchStartPos.x;
+                    const dy = currentTouchY - touchStartPos.y;
+                    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                        triggerCardDrag(el);
+                    }
+                }, 400); 
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
@@ -632,14 +637,17 @@
                 const dy = currentTouchY - touchStartPos.y;
 
                 if (!isDraggingCard) {
-                    // 機制：如果使用者移動幅度很大，且方向明顯是往外拉（往上移出了卡片池，dy 超過 -45 像素）
-                    // 則不等長按直接觸發「拔卡」
-                    if (dy < -45) {
+                    // 只要有任何明顯橫向位移，立刻取消長按計時器，讓橫滑優先
+                    if (Math.abs(dx) > 8) {
+                        clearTimeout(longPressTimer);
+                        return;
+                    }
+                    // 明確往上拖出卡片池（閾值提高到 -80px，且水平偏移不能太大避免誤判斜滑）
+                    if (dy < -80 && Math.abs(dx) < 30) {
                         clearTimeout(longPressTimer);
                         triggerCardDrag(el);
                     } else {
-                        // 🚀 關鍵調整：只要沒有往上拉出卡片池，手指任何滑動都拿來滾動卡片池捲軸
-                        // 這裡利用原生滾動，所以什麼都不做，讓它繼續左右流暢滑動
+                        // 其他方向的滑動交給原生滾動處理
                         return;
                     }
                 }

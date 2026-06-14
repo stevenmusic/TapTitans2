@@ -28,7 +28,7 @@
             touch-action: manipulation; 
         }
 
-        /* 🚀 導覽選單優化：加入主標題，維持置頂 */
+        /* 🚀 導覽選單優化 */
         .nav-header {
             position: fixed;
             top: 0; left: 0; width: 100%;
@@ -61,11 +61,11 @@
             content: ''; position: absolute; bottom: 0; left: 15%; width: 70%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* 🚀 擴展外殼為三個頁面寬度 (300vw) */
+        /* 🚀 Swiper 容器架構 */
         .swiper-wrapper {
             width: 100vw;
             overflow: hidden;
-            margin-top: 75px; /* 因應雙層選單調整上方留白 */
+            margin-top: 75px; 
             margin-bottom: 130px;
             transition: margin-bottom 0.3s ease;
         }
@@ -87,13 +87,12 @@
             min-height: calc(100vh - 205px);
         }
 
-        /* 技能樹配點專用滿版容器 */
         .page-view-iframe {
             width: 100vw;
             box-sizing: border-box;
             padding: 0;
             display: block;
-            height: calc(100vh - 75px); /* 扣除置頂選單後的完整高度 */
+            height: calc(100vh - 75px); 
             background-color: #ffffff;
         }
         .embed-iframe {
@@ -165,6 +164,7 @@
         .btn-action { background-color: #bfa89e; color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-action.del { background-color: #c97a7a; }
 
+        /* 🚀 卡片池外殼 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
@@ -172,7 +172,6 @@
             box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px; 
             transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
             will-change: height, transform;
-            /* 🚀 核心優化：鎖定此區塊的水平與垂直邊緣手勢溢出，防止滑到底卡住 */
             overscroll-behavior: contain;
         }
         #pool-container.expanded { height: 190px; }
@@ -188,7 +187,6 @@
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
             touch-action: pan-x; 
-            /* 🚀 核心優化：確保內部滾動條自己消化邊緣彈力，不往外傳遞 */
             overscroll-behavior-x: contain;
         }
         
@@ -204,6 +202,7 @@
         .draggable-thumb { 
             min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
             touch-action: none; 
+            user-select: none; -webkit-user-drag: none;
         }
         .drag-clone { 
             position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; 
@@ -338,6 +337,7 @@
         const tabTorment = document.getElementById('tab-torment');
         const tabSkill = document.getElementById('tab-skill');
         const poolContainer = document.getElementById('pool-container');
+        const poolScrollEl = document.getElementById('pool-scroll');
         let currentPage = 0;
 
         function switchPage(pageIndex) {
@@ -388,23 +388,12 @@
             }, { passive: true });
         });
 
-        // 🛠️ 核心修正：加入非 passive 的監聽器，當滑到最左或最右時，強制中斷預設的外溢卡頓行為
-        const poolScrollEl = document.getElementById('pool-scroll');
+        // 🚀 人性化核心 1：完全接管卡片池的手勢外溢，不論使用者滑得多斜，都不會觸發 Swiper 翻頁
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
             if (!isDraggingCard) {
-                // 強制阻止事件向上冒泡到 Swiper
-                e.stopPropagation();
-                
-                // 檢查是否已經滑到最左或最右邊緣
-                const scrollLeft = poolScrollEl.scrollLeft;
-                const maxScrollLeft = poolScrollEl.scrollWidth - poolScrollEl.clientWidth;
-                
-                // 如果已經到最極限，避免瀏覽器觸發全網頁的橡皮筋彈力
-                if (scrollLeft <= 0 || scrollLeft >= maxScrollLeft - 1) {
-                    // 只阻斷原生邊緣干擾，但不影響正常的滑動體驗
-                }
+                e.stopPropagation(); 
             }
-        }, { passive: false }); // 改為 false 確保阻斷行為100%生效
+        }, { passive: true });
 
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
 
@@ -456,6 +445,7 @@
         let lastHoveredZone = null; 
         let currentTouchX = 0;
         let currentTouchY = 0;
+        let longPressTimer = null; // 長按計時器
 
         function updateZonesCache() {
             cachedZones = [];
@@ -490,20 +480,16 @@
                 if (scrollSpeed < 0 && window.scrollY <= 0) {
                     scrollSpeed = 0;
                 }
-                
                 const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
                 if (scrollSpeed > 0 && window.scrollY >= maxScrollY) {
                     scrollSpeed = 0;
                 }
-
                 if (scrollSpeed !== 0) {
                     window.scrollBy(0, scrollSpeed);
-                    
                     for (let i = 0; i < cachedZones.length; i++) {
                         cachedZones[i].top -= scrollSpeed;
                         cachedZones[i].bottom -= scrollSpeed;
                     }
-
                     const target = findHoveredZone(currentTouchX, currentTouchY);
                     if (target !== lastHoveredZone) {
                         if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
@@ -522,14 +508,43 @@
             scrollSpeed = 0;
         }
 
+        // 🚀 人性化核心 2：重構拖拽觸發邏輯
+        function triggerCardDrag(el) {
+            if (isDraggingCard) return;
+            isDraggingCard = true;
+            isDraggingGlobal = true; 
+            
+            updateZonesCache();
+            lastHoveredZone = null;
+            
+            clone = el.cloneNode(true); 
+            clone.className = 'drag-clone';
+            clone.style.left = currentTouchX - 30 + 'px'; 
+            clone.style.top = currentTouchY - 30 + 'px';
+            document.body.appendChild(clone); 
+            
+            poolContainer.classList.remove('expanded'); 
+            poolSubtitle.innerText = '（點一下展開）';
+            
+            startAutoScroll();
+        }
+
         function setupTouchDrag(el) {
             el.addEventListener('touchstart', function(e) {
                 const touch = e.touches[0];
                 touchStartPos.x = touch.clientX;
                 touchStartPos.y = touch.clientY;
+                currentTouchX = touch.clientX;
+                currentTouchY = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
                 isDraggingGlobal = false; 
+
+                // 機制：如果使用者按住卡片不動達 150 毫秒，代表他想拔起這張卡片
+                clearTimeout(longPressTimer);
+                longPressTimer = setTimeout(() => {
+                    triggerCardDrag(el);
+                }, 150); 
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
@@ -540,39 +555,20 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                const isPoolExpanded = poolContainer.classList.contains('expanded');
-
                 if (!isDraggingCard) {
-                    if (isPoolExpanded) {
-                        if (Math.abs(dx) > Math.abs(dy) || dy >= 0) {
-                            return; 
-                        }
+                    // 機制：如果使用者移動幅度很大，且方向明顯是往外拉（往上移出了卡片池，dy 超過 -45 像素）
+                    // 則不等長按直接觸發「拔卡」
+                    if (dy < -45) {
+                        clearTimeout(longPressTimer);
+                        triggerCardDrag(el);
                     } else {
-                        if (Math.abs(dx) > Math.abs(dy) || dy > 0) {
-                            return; 
-                        }
-                    }
-                    
-                    if (dy < -30 && Math.abs(dy) > Math.abs(dx) * 2) {
-                        isDraggingCard = true;
-                        isDraggingGlobal = true; 
-                        
-                        updateZonesCache();
-                        lastHoveredZone = null;
-                        
-                        clone = el.cloneNode(true); 
-                        clone.className = 'drag-clone';
-                        clone.style.left = currentTouchX - 30 + 'px'; 
-                        clone.style.top = currentTouchY - 30 + 'px';
-                        document.body.appendChild(clone); 
-                        
-                        poolContainer.classList.remove('expanded'); 
-                        poolSubtitle.innerText = '（點一下展開）';
-                        
-                        startAutoScroll(); 
+                        // 🚀 關鍵調整：只要沒有往上拉出卡片池，手指任何滑動都拿來滾動卡片池捲軸
+                        // 這裡利用原生滾動，所以什麼都不做，讓它繼續左右流暢滑動
+                        return;
                     }
                 }
 
+                // 進入拖放模式後的卡片跟隨邏輯
                 if (isDraggingCard && clone) {
                     if (e.cancelable) e.preventDefault(); 
                     
@@ -605,6 +601,7 @@
             }, { passive: false });
 
             el.addEventListener('touchend', function(e) {
+                clearTimeout(longPressTimer);
                 stopAutoScroll(); 
                 
                 setTimeout(() => { isDraggingGlobal = false; }, 80); 

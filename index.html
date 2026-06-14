@@ -442,32 +442,33 @@
             switchPage(currentPage);
         });
 
-        let isDraggingGlobal = false; 
+        let isDraggingGlobal = false;
+        // ★ 提前宣告，確保 pool-container 的 touchmove 能正確讀到此變數
+        let isDraggingCard = false;
 
         document.addEventListener('touchmove', function(e) {
             if (isDraggingGlobal) {
-                if (e.cancelable) e.preventDefault(); 
+                if (e.cancelable) e.preventDefault();
             }
         }, { passive: false });
 
         let touchStartX = 0; let touchEndX = 0;
         document.querySelectorAll('.page-view').forEach(page => {
-            page.addEventListener('touchstart', e => { 
-                if (isDraggingGlobal) return; 
-                touchStartX = e.changedTouches[0].screenX; 
+            page.addEventListener('touchstart', e => {
+                if (isDraggingGlobal) return;
+                touchStartX = e.changedTouches[0].screenX;
             }, { passive: true });
-            
-            page.addEventListener('touchend', e => { 
-                if (isDraggingGlobal) return; 
-                touchEndX = e.changedTouches[0].screenX; 
-                handleSwipe(); 
+            page.addEventListener('touchend', e => {
+                if (isDraggingGlobal) return;
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
             }, { passive: true });
         });
 
-        // 🚀 人性化核心 1：完全接管卡片池的手勢外溢，不論使用者滑得多斜，都不會觸發 Swiper 翻頁
+        // 卡片池 touchmove：拖曳中放行，非拖曳時阻止觸發頁面左右切換
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
             if (!isDraggingCard) {
-                e.stopPropagation(); 
+                e.stopPropagation();
             }
         }, { passive: true });
 
@@ -510,10 +511,10 @@
             grid.removeChild(grid.lastElementChild);
         }
 
-        let clone = null; 
+        let clone = null;
         let activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
-        let isDraggingCard = false;
+        // isDraggingCard already declared above (before pool-container listener)
         let scrollTimer = null;
         let scrollSpeed = 0;
         let cachedZones = []; 
@@ -542,12 +543,12 @@
             isDraggingGlobal = false;
         }
 
-        // 切換頁面時也強制取消（避免拖到一半切頁殘影）
+        // 切換頁面時強制取消殘留拖曳（在 switchPage 定義後直接 patch）
         const _origSwitchPage = switchPage;
-        // switchPage 已在前面定義，這裡在拖曳層補一個清理 hook
-        document.getElementById('main-swiper').addEventListener('transitionend', () => {
-            if (!isDraggingCard) cancelDrag();
-        });
+        switchPage = function(pageIndex) {
+            cancelDrag();
+            _origSwitchPage(pageIndex);
+        };
 
         function updateZonesCache() {
             cachedZones = [];
@@ -689,8 +690,16 @@
                     return;
                 }
 
-                if (lastHoveredZone) {
-                    lastHoveredZone.innerHTML = `<img src="${activeSrc}"><button class="delete-btn" onclick="clearZone(this, event)">×</button>`;
+                // 放卡前重新抓一次最新座標，避免頁面滾動後格子位置偏移導致放不進去
+                updateZonesCache();
+                const dropTarget = findHoveredZone(currentTouchX, currentTouchY);
+
+                if (dropTarget) {
+                    dropTarget.innerHTML = `<img src="${activeSrc}"><button class="delete-btn" onclick="clearZone(this, event)">×</button>`;
+                    dropTarget.classList.remove('drag-hover');
+                }
+                // 清除其他格子殘留高亮
+                if (lastHoveredZone && lastHoveredZone !== dropTarget) {
                     lastHoveredZone.classList.remove('drag-hover');
                 }
 

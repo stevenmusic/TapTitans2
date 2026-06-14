@@ -172,6 +172,8 @@
             box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px; 
             transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
             will-change: height, transform;
+            /* 🚀 核心優化：鎖定此區塊的水平與垂直邊緣手勢溢出，防止滑到底卡住 */
+            overscroll-behavior: contain;
         }
         #pool-container.expanded { height: 190px; }
         
@@ -185,7 +187,9 @@
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
-            touch-action: pan-x; /* 強制網頁只處理水平滑動 */
+            touch-action: pan-x; 
+            /* 🚀 核心優化：確保內部滾動條自己消化邊緣彈力，不往外傳遞 */
+            overscroll-behavior-x: contain;
         }
         
         #pool-container.expanded .pool-scroll {
@@ -364,7 +368,6 @@
 
         let isDraggingGlobal = false; 
 
-        // 全局防誤觸：只有當處於卡片拖放模式（isDraggingGlobal為true）時，才阻斷網頁滾動
         document.addEventListener('touchmove', function(e) {
             if (isDraggingGlobal) {
                 if (e.cancelable) e.preventDefault(); 
@@ -385,12 +388,23 @@
             }, { passive: true });
         });
 
-        // 🛠️ 徹底解決卡頓核心：當在卡片池內部滑動時，完全不給外層 Swiper 機會攔截
+        // 🛠️ 核心修正：加入非 passive 的監聽器，當滑到最左或最右時，強制中斷預設的外溢卡頓行為
+        const poolScrollEl = document.getElementById('pool-scroll');
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
             if (!isDraggingCard) {
-                e.stopPropagation(); // 阻止事件向上傳遞給 Swiper 翻頁
+                // 強制阻止事件向上冒泡到 Swiper
+                e.stopPropagation();
+                
+                // 檢查是否已經滑到最左或最右邊緣
+                const scrollLeft = poolScrollEl.scrollLeft;
+                const maxScrollLeft = poolScrollEl.scrollWidth - poolScrollEl.clientWidth;
+                
+                // 如果已經到最極限，避免瀏覽器觸發全網頁的橡皮筋彈力
+                if (scrollLeft <= 0 || scrollLeft >= maxScrollLeft - 1) {
+                    // 只阻斷原生邊緣干擾，但不影響正常的滑動體驗
+                }
             }
-        }, { passive: true });
+        }, { passive: false }); // 改為 false 確保阻斷行為100%生效
 
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
 
@@ -529,19 +543,16 @@
                 const isPoolExpanded = poolContainer.classList.contains('expanded');
 
                 if (!isDraggingCard) {
-                    // 🛠️ 兩排展開狀態下的終極優化：只要你在左右滑，或者往下移，100% 交給原生滾動，絕不阻斷
                     if (isPoolExpanded) {
                         if (Math.abs(dx) > Math.abs(dy) || dy >= 0) {
-                            return; // 直接放行，維持極度流暢的左右滑動
+                            return; 
                         }
                     } else {
-                        // 未展開狀態下的預設優化
                         if (Math.abs(dx) > Math.abs(dy) || dy > 0) {
                             return; 
                         }
                     }
                     
-                    // 🛠️ 只有當使用者「極度明確地向上垂直拔起卡片」（往上超過 30 像素，且左右偏移極小）才激活拖放
                     if (dy < -30 && Math.abs(dy) > Math.abs(dx) * 2) {
                         isDraggingCard = true;
                         isDraggingGlobal = true; 

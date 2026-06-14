@@ -185,6 +185,7 @@
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
+            touch-action: pan-x; /* 🛠️ 強制允許水平滑動，防止被防誤觸邏輯阻擋 */
         }
         
         #pool-container.expanded .pool-scroll {
@@ -224,7 +225,6 @@
 </head>
 <body>
 
-    <!-- 🚀 頂部全新選單架構 -->
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
@@ -234,10 +234,8 @@
         </div>
     </div>
 
-    <!-- 🚀 內置三頁並排容器 -->
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
-            <!-- 頁面一：爆裂場 -->
             <div class="page-view" id="page-burst">
                 <div class="export-area" id="export-burst">
                     <h1>突襲配卡 - 爆裂場</h1>
@@ -249,7 +247,6 @@
                 </div>
             </div>
 
-            <!-- 頁面二：苦痛場 -->
             <div class="page-view" id="page-torment">
                 <div class="export-area" id="export-torment">
                     <h1>突襲配卡 - 苦痛場</h1>
@@ -261,14 +258,12 @@
                 </div>
             </div>
 
-            <!-- 🚀 頁面三：技能樹配點（直接內嵌目標網頁） -->
             <div class="page-view-iframe" id="page-skill">
                 <iframe class="embed-iframe" src="https://tt2.rawrzcookie.com/spopti.html" scrolling="yes"></iframe>
             </div>
         </div>
     </div>
 
-    <!-- 卡片池底座 -->
     <div id="pool-container" onclick="expandPool(event)">
         <div class="pool-title-area">
             <span class="pool-title">卡片池</span>
@@ -277,7 +272,6 @@
         <div class="pool-scroll" id="pool-scroll"></div>
     </div>
 
-    <!-- 彈出圖層 -->
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
@@ -391,6 +385,11 @@
                 handleSwipe(); 
             }, { passive: true });
         });
+
+        // 🛠️ 防止卡片池自身的滑動事件冒泡到主畫面上，導致誤觸 Swiper 翻頁
+        document.getElementById('pool-container').addEventListener('touchmove', function(e) {
+            e.stopPropagation();
+        }, { passive: true });
 
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
 
@@ -516,8 +515,10 @@
                 touchStartPos.y = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
-                isDraggingGlobal = true; 
-            }, { passive: false });
+                // 🛠️ 剛觸碰時不宣告全局拖拽，避免左右滑動被鎖死
+                isDraggingGlobal = false; 
+                e.stopPropagation(); // 阻止卡片池滑動手勢往外傳
+            }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
                 const touch = e.touches[0];
@@ -527,14 +528,15 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-                    isDraggingGlobal = false; 
+                // 🛠️ 如果是純水平滑動卡片池，直接放行，不啟動拖拽判定
+                if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
                     return; 
                 }
 
-                if (!isDraggingCard && (dy < -10 || Math.abs(dy) > Math.abs(dx) + 5)) {
+                // 🛠️ 只有當使用者明顯「向上拖動（垂直移動度大於水平）」才觸發卡片拖放
+                if (!isDraggingCard && (dy < -10 || Math.abs(dy) > Math.abs(dx) + 8)) {
                     isDraggingCard = true;
-                    isDraggingGlobal = true; 
+                    isDraggingGlobal = true; // 這時候才真正接管全局阻擋事件
                     
                     updateZonesCache();
                     lastHoveredZone = null;
@@ -636,5 +638,3 @@
     </script>
 </body>
 </html>
-
-```

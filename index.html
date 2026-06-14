@@ -185,7 +185,7 @@
         .pool-scroll { 
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
             -webkit-overflow-scrolling: touch; 
-            touch-action: pan-x; /* 🛠️ 強制允許水平滑動，防止被防誤觸邏輯阻擋 */
+            touch-action: pan-x; /* 🛠️ 強制允許水平滑動 */
         }
         
         #pool-container.expanded .pool-scroll {
@@ -336,11 +336,9 @@
         const poolContainer = document.getElementById('pool-container');
         let currentPage = 0;
 
-        // 🚀 修改分頁邏輯，支援滑動切換三組視窗，且進入技能樹時隱藏下方的卡片池
         function switchPage(pageIndex) {
             currentPage = pageIndex;
             
-            // 各按鈕樣式初始化
             tabBurst.classList.remove('active');
             tabTorment.classList.remove('active');
             tabSkill.classList.remove('active');
@@ -348,15 +346,15 @@
             if (pageIndex === 0) {
                 swiper.style.transform = 'translateX(0vw)';
                 tabBurst.classList.add('active');
-                poolContainer.style.transform = 'translateY(0)'; // 顯示卡片池
+                poolContainer.style.transform = 'translateY(0)'; 
             } else if (pageIndex === 1) {
                 swiper.style.transform = 'translateX(-100vw)';
                 tabTorment.classList.add('active');
-                poolContainer.style.transform = 'translateY(0)'; // 顯示卡片池
+                poolContainer.style.transform = 'translateY(0)'; 
             } else if (pageIndex === 2) {
                 swiper.style.transform = 'translateX(-200vw)';
                 tabSkill.classList.add('active');
-                poolContainer.style.transform = 'translateY(150px)'; // 🚀 切到技能樹時隱藏卡片池，避免遮擋內嵌網頁底端
+                poolContainer.style.transform = 'translateY(150px)'; 
             }
         }
 
@@ -386,9 +384,11 @@
             }, { passive: true });
         });
 
-        // 🛠️ 防止卡片池自身的滑動事件冒泡到主畫面上，導致誤觸 Swiper 翻頁
+        // 防止整個卡片池底座的滑動干擾背後的 Swiper 翻頁
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
-            e.stopPropagation();
+            if (!isDraggingCard) {
+                e.stopPropagation();
+            }
         }, { passive: true });
 
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
@@ -404,7 +404,6 @@
             poolSubtitle.innerText = '（點一下展開）';
         });
 
-        // 🚀 修改滑動邊界，支援 0, 1, 2 三頁切換
         function handleSwipe() {
             if (isDraggingGlobal) return; 
             const threshold = 70;
@@ -515,9 +514,7 @@
                 touchStartPos.y = touch.clientY;
                 isDraggingCard = false;
                 activeSrc = el.src;
-                // 🛠️ 剛觸碰時不宣告全局拖拽，避免左右滑動被鎖死
-                isDraggingGlobal = false; 
-                e.stopPropagation(); // 阻止卡片池滑動手勢往外傳
+                isDraggingGlobal = false; // 初始切勿鎖定全局，確保滾動流暢
             }, { passive: true });
 
             el.addEventListener('touchmove', function(e) {
@@ -528,32 +525,39 @@
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
 
-                // 🛠️ 如果是純水平滑動卡片池，直接放行，不啟動拖拽判定
-                if (!isDraggingCard && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
-                    return; 
-                }
+                // 🛠️ 核心修正：如果卡片池處於展開狀態，大幅放寬左右滑動判定
+                const isPoolExpanded = poolContainer.classList.contains('expanded');
+                const dragThresholdY = isPoolExpanded ? -25 : -10; // 展開時需要往上拉超過 25px 才會觸發拖拽
 
-                // 🛠️ 只有當使用者明顯「向上拖動（垂直移動度大於水平）」才觸發卡片拖放
-                if (!isDraggingCard && (dy < -10 || Math.abs(dy) > Math.abs(dx) + 8)) {
-                    isDraggingCard = true;
-                    isDraggingGlobal = true; // 這時候才真正接管全局阻擋事件
+                if (!isDraggingCard) {
+                    // 如果水平移動明顯大於垂直移動，或者是單純的左右滑動，直接交給原生滾動
+                    if (Math.abs(dx) > Math.abs(dy) || dy > 0) {
+                        return; 
+                    }
                     
-                    updateZonesCache();
-                    lastHoveredZone = null;
-                    
-                    clone = el.cloneNode(true); 
-                    clone.className = 'drag-clone';
-                    clone.style.left = currentTouchX - 30 + 'px'; 
-                    clone.style.top = currentTouchY - 30 + 'px';
-                    document.body.appendChild(clone); 
-                    poolContainer.classList.remove('expanded'); 
-                    poolSubtitle.innerText = '（點一下展開）';
-                    
-                    startAutoScroll(); 
+                    // 只有當明確往上拉，且垂直幅度顯著大於水平幅度時，才判定為要「拖卡片」
+                    if (dy < dragThresholdY && Math.abs(dy) > Math.abs(dx) * 1.5) {
+                        isDraggingCard = true;
+                        isDraggingGlobal = true; // 此時接管全局，禁止背景滾動
+                        
+                        updateZonesCache();
+                        lastHoveredZone = null;
+                        
+                        clone = el.cloneNode(true); 
+                        clone.className = 'drag-clone';
+                        clone.style.left = currentTouchX - 30 + 'px'; 
+                        clone.style.top = currentTouchY - 30 + 'px';
+                        document.body.appendChild(clone); 
+                        
+                        poolContainer.classList.remove('expanded'); 
+                        poolSubtitle.innerText = '（點一下展開）';
+                        
+                        startAutoScroll(); 
+                    }
                 }
 
                 if (isDraggingCard && clone) {
-                    if (e.cancelable) e.preventDefault(); 
+                    if (e.cancelable) e.preventDefault(); // 拖拽中禁止網頁滾動
                     
                     requestAnimationFrame(() => {
                         if (clone) {

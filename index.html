@@ -397,34 +397,21 @@
         }
 
         /* ── 建立格區塊（3格 + 部位肉甲）── */
-        function createGridBlock(isFirst = false) {
-            const block = document.createElement('div');
-            block.className = 'grid-block';
-            if (!isFirst) {
-                block.innerHTML = `
-                    <div class="grid-block-header">
-                        <button class="btn-remove-block" onclick="removeGridBlock(this)">✕ 移除此組格子</button>
-                    </div>
-                    ${createCheckArea()}
-                    <div class="image-grid">
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                    </div>`;
-            } else {
-                block.innerHTML = `
-                    ${createCheckArea()}
-                    <div class="image-grid">
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                    </div>`;
-            }
-            block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
-            return block;
-        }
-
-        function initTiers(containerId) {
+        // 將原本複雜的 if (isFirst) 判斷式簡化為：
+function createGridBlock() {
+    const block = document.createElement('div');
+    block.className = 'grid-block';
+    block.innerHTML = `
+        ${createCheckArea()}
+        <div class="image-grid">
+            <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+            <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+            <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+        </div>`;
+    block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
+    return block;
+}
+                function initTiers(containerId) {
             const container = document.getElementById(containerId);
             for (let i = 1; i <= totalTiers; i++) {
                 const tierRow = document.createElement('div');
@@ -441,12 +428,13 @@
                         </div>
                     </div>
                     <div class="grid-section"></div>`;
+                
+                // 直接呼叫不帶參數的 createGridBlock()
                 const gridSection = tierRow.querySelector('.grid-section');
-                gridSection.appendChild(createGridBlock(true));
+                gridSection.appendChild(createGridBlock());
                 container.appendChild(tierRow);
             }
         }
-
         function addGridBlock(button) {
             const tierRow = button.closest('.tier-row');
             const gridSection = tierRow.querySelector('.grid-section');
@@ -454,23 +442,6 @@
             if (blocks.length >= 3) { alert("限制：每一組最多只能有 3 個區塊（9 格）唷！"); return; }
             gridSection.appendChild(createGridBlock(false));
         }
-
-        function removeLastGridBlock(button) {
-            const tierRow = button.closest('.tier-row');
-            const gridSection = tierRow.querySelector('.grid-section');
-            const blocks = gridSection.querySelectorAll('.grid-block');
-            if (blocks.length <= 1) { alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！"); return; }
-            gridSection.removeChild(blocks[blocks.length - 1]);
-        }
-
-        function removeGridBlock(button) {
-            const block = button.closest('.grid-block');
-            const gridSection = block.parentElement;
-            const blocks = gridSection.querySelectorAll('.grid-block');
-            if (blocks.length <= 1) { alert("限制：每一組最少必須保留 1 個區塊唷！"); return; }
-            gridSection.removeChild(block);
-        }
-
         function togglePartTag(button) {
             const checkArea = button.closest('.check-area');
             if (!checkArea) return;

@@ -194,7 +194,17 @@
             font-size: 11px; font-weight: bold;
             padding: 3px 8px; border-radius: 4px; cursor: pointer;
         }
-        .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+                /* 新的 Grid 樣式定義 */
+        .image-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; height: 120px; }
+        .image-grid-5 { 
+            display: grid; 
+            grid-template-columns: 2fr 1fr 1fr; 
+            grid-template-rows: 1fr 1fr; 
+            gap: 6px; 
+            height: 120px; 
+        }
+        .image-grid-5 .drop-zone:nth-child(1) { grid-row: span 2; }
+
         .drop-zone {
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -397,32 +407,31 @@
         }
 
         /* ── 建立格區塊（3格 + 部位肉甲）── */
-        function createGridBlock(isFirst = false) {
-            const block = document.createElement('div');
-            block.className = 'grid-block';
-            if (!isFirst) {
-                block.innerHTML = `
-                    <div class="grid-block-header">
-                        <button class="btn-remove-block" onclick="removeGridBlock(this)">✕ 移除此組格子</button>
-                    </div>
-                    ${createCheckArea()}
-                    <div class="image-grid">
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                    </div>`;
-            } else {
-                block.innerHTML = `
-                    ${createCheckArea()}
-                    <div class="image-grid">
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                    </div>`;
-            }
-            block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
-            return block;
-        }
+        /* ── 核心函數：根據點選的數字生成區塊 ── */
+function createGridBlock(type = 3, isFirst = false) {
+    const block = document.createElement('div');
+    block.className = 'grid-block';
+    const zonesHTML = Array(type).fill(0).map(() => 
+        `<div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>`
+    ).join('');
+
+    block.innerHTML = `
+        ${!isFirst ? `<div class="grid-block-header"><button class="btn-remove-block" onclick="removeGridBlock(this)">✕ 移除</button></div>` : ''}
+        ${createCheckArea()}
+        <div class="image-grid ${type === 5 ? 'image-grid-5' : 'image-grid-3'}">
+            ${zonesHTML}
+        </div>`;
+    
+    block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
+    return block;
+}
+
+/* ── 增加區塊按鈕邏輯 ── */
+function addGridBlock(button, type) {
+    const gridSection = button.closest('.tier-row').querySelector('.grid-section');
+    if (gridSection.children.length >= 3) { alert("限制：每一組最多 3 個區塊！"); return; }
+    gridSection.appendChild(createGridBlock(type, false));
+}
 
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
@@ -435,10 +444,12 @@
                             <span class="label-fixed-text">第 ${i} 組</span>
                             <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
                         </div>
-                        <div class="tier-buttons">
-                            <button class="btn-action" onclick="addGridBlock(this)">＋增格</button>
-                            <button class="btn-action del" onclick="removeLastGridBlock(this)">－減格</button>
-                        </div>
+                        // 修改這一段
+<div class="tier-buttons">
+    <button class="btn-action" onclick="addGridBlock(this, 3)">＋3格</button>
+    <button class="btn-action" onclick="addGridBlock(this, 5)">＋5格</button>
+    <button class="btn-action del" onclick="removeLastGridBlock(this)">－移除</button>
+</div>
                     </div>
                     <div class="grid-section"></div>`;
                 const gridSection = tierRow.querySelector('.grid-section');

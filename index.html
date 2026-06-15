@@ -417,31 +417,40 @@ function createGridBlock() {
                 const tierRow = document.createElement('div');
                 tierRow.className = 'tier-row';
                 tierRow.innerHTML = `
-                    <div class="tier-label">
-                        <div class="label-title-wrapper">
-                            <span class="label-fixed-text">第 ${i} 組</span>
-                            <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
-                        </div>
-                        <div class="tier-buttons">
-                            <button class="btn-action" onclick="addGridBlock(this)">＋增格</button>
-                            <button class="btn-action del" onclick="removeLastGridBlock(this)">－減格</button>
-                        </div>
-                    </div>
-                    <div class="grid-section"></div>`;
-                
+ <div class="tier-label">
+        <div class="label-title-wrapper">
+            <span class="label-fixed-text">第 ${i} 組</span>
+            <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
+        </div>
+        <div class="tier-buttons">
+            <button class="btn-action" onclick="addGridBlock(this)">＋增格</button>
+            <button class="btn-action del" onclick="removeLastGridBlock(this)">－減格</button>
+        </div>
+    </div>
+    <div class="grid-section"></div>`;
+
                 // 直接呼叫不帶參數的 createGridBlock()
                 const gridSection = tierRow.querySelector('.grid-section');
                 gridSection.appendChild(createGridBlock());
                 container.appendChild(tierRow);
             }
         }
-        function addGridBlock(button) {
+                function addGridBlock(button) {
             const tierRow = button.closest('.tier-row');
             const gridSection = tierRow.querySelector('.grid-section');
             const blocks = gridSection.querySelectorAll('.grid-block');
             if (blocks.length >= 3) { alert("限制：每一組最多只能有 3 個區塊（9 格）唷！"); return; }
-            gridSection.appendChild(createGridBlock(false));
+            gridSection.appendChild(createGridBlock()); // 這裡移除參數
         }
+
+        function removeLastGridBlock(button) {
+            const tierRow = button.closest('.tier-row');
+            const gridSection = tierRow.querySelector('.grid-section');
+            const blocks = gridSection.querySelectorAll('.grid-block');
+            if (blocks.length <= 1) { alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！"); return; }
+            gridSection.removeChild(blocks[blocks.length - 1]);
+        }
+
         function togglePartTag(button) {
             const checkArea = button.closest('.check-area');
             if (!checkArea) return;

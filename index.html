@@ -75,7 +75,7 @@
 
         .swiper-container {
             display: flex;
-            width: 200vw; /* 調整為雙頁寬度，移除技能樹頁面 */
+            width: 200vw;
             transition: none; 
             will-change: transform;
             transform: translate3d(0px, 0px, 0px); 
@@ -117,7 +117,6 @@
             margin-bottom: 2px;
         }
 
-        /* 下拉選單樣式 */
         .boss-select-burst, .boss-select-torment {
             appearance: none;
             -webkit-appearance: none;
@@ -173,58 +172,59 @@
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
         .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         
-        /* 🚀 方案 A：膠囊標籤全新精簡排版 (套用日系清爽雙底色) */
+        /* 🚀 方案 A：膠囊標籤全新精簡排版 (套用清新雙色系) */
         .check-row {
             display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 20px; /* 🌟 增加頭肚手腳和肉甲之間的空隙 */
+            margin-bottom: 12px;
             justify-content: flex-start;
             align-items: center;
             flex-wrap: wrap;
         }
         .btn-group {
             display: flex;
-            padding: 3px;
-            border-radius: 8px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+            padding: 4px; /* 增加一點內距讓底框更明顯 */
+            border-radius: 10px; /* 稍微圓潤一點 */
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
         }
-        /* 部位：燕麥米色背景 */
+        /* 部位：清新薄荷綠色系 */
         .group-parts {
-            background-color: #f2e8de; 
+            background-color: #e0f2f1; 
         }
-        /* 肉甲：莫蘭迪冷灰背景 */
+        /* 肉甲：柔和蜜桃橘色系 */
         .group-types {
-            background-color: #e5dfd9; 
+            background-color: #fbe9e7; 
         }
 
         .btn-tag {
             border: none;
             background: transparent;
-            font-size: 11px;
+            font-size: 13px; /* 🌟 膠囊按鈕放大：字體變大 */
             font-weight: bold;
-            padding: 4px 9px;
-            border-radius: 6px;
+            padding: 6px 14px; /* 🌟 膠囊按鈕放大：內距變寬 */
+            border-radius: 8px;
             cursor: pointer;
-            color: #75645a;
+            color: #607d8b; /* 統一未選中文字色為帶灰調的藍，搭配粉綠色系更有質感 */
             transition: all 0.2s ease;
             white-space: nowrap;
         }
-        /* 爆裂場點亮顏色（內斂紅）加上些微陰影增加立體感 */
-        #page-burst .btn-tag.active {
-            background-color: #8b263e;
+
+        /* 🌟 獨立的部位點亮顏色（深薄荷綠） */
+        .group-parts .btn-tag.active {
+            background-color: #00897b;
             color: #ffffff;
-            box-shadow: 0 2px 4px rgba(139,38,62,0.2);
+            box-shadow: 0 2px 5px rgba(0,137,123,0.3);
         }
-        /* 苦痛場點亮顏色（內斂紫） */
-        #page-torment .btn-tag.active {
-            background-color: #4a148c;
+
+        /* 🌟 獨立的肉甲點亮顏色（深珊瑚橘） */
+        .group-types .btn-tag.active {
+            background-color: #e64a19;
             color: #ffffff;
-            box-shadow: 0 2px 4px rgba(74,20,140,0.2);
+            box-shadow: 0 2px 5px rgba(230,74,25,0.3);
         }
 
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 
-        /* 放置格核心機制 */
         .drop-zone {
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
             display: flex; flex-direction: column; justify-content: center; align-items: center; background-color: #faf7f2;
@@ -235,7 +235,6 @@
         #page-torment .drop-zone.drag-hover { border-color: #4a148c; background-color: #d1c4e9; }
         .drop-zone img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 
-        /* 🚀 卡片池外殼 */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
@@ -377,7 +376,6 @@
         const totalTiers = 8;
         const defaultZoneHTML = '拉入卡片<br><small style="font-size:9px; opacity:0.7;">(雙擊可移除)</small>';
         
-        // 自動生成組別格子
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
 
@@ -420,28 +418,22 @@
                     </div>
                 `;
 
-                // 針對手機端綁定雙擊事件偵測
                 tierRow.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
-
                 container.appendChild(tierRow);
             }
         }
 
-        // 🚀 控制部位標籤的多選邏輯
         function togglePartTag(button) {
             const parent = button.parentElement;
             const isAll = button.innerText === "全部位";
             
             if (isAll) {
-                // 點擊「全部位」：取消其他部位，單獨亮起全部位
                 parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
             } else {
-                // 點擊「其他部位」：取消「全部位」，並獨立切換當前按鈕狀態
-                parent.firstElementChild.classList.remove('active'); // 移除「全部位」
+                parent.firstElementChild.classList.remove('active');
                 button.classList.toggle('active');
                 
-                // 防呆：如果所有頭/肚/手/腳都被取消了，自動亮回「全部位」
                 const anyActive = Array.from(parent.querySelectorAll('.btn-tag')).some(btn => btn.classList.contains('active'));
                 if (!anyActive) {
                     parent.firstElementChild.classList.add('active');
@@ -449,22 +441,18 @@
             }
         }
 
-        // 🚀 控制肉甲標籤的單選邏輯
         function toggleTypeTag(button) {
             const parent = button.parentElement;
             parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
         }
 
-
-        // 清空盒子的函式
         function handleZoneClear(zoneEl) {
             if (zoneEl.querySelector('img')) {
                 zoneEl.innerHTML = defaultZoneHTML;
             }
         }
 
-        // 手機端專用：模擬雙擊清除
         function setupZoneTouchClear(zoneEl) {
             let lastTap = 0;
             zoneEl.addEventListener('touchstart', function(e) {
@@ -500,7 +488,6 @@
             container.appendChild(img);
         }
 
-        // 綁定全域元素
         const swiperContainer = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
@@ -517,7 +504,6 @@
         let isDraggingGlobal = false;
         let isDraggingCard = false;
 
-        // 🌟 物理阻尼翻頁控制核心
         function updateSwiperPosition(useTransition = false) {
             if (useTransition) {
                 swiperContainer.style.transition = 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)';
@@ -597,7 +583,6 @@
             updateSwiperPosition(false);
         });
 
-        // 卡片池展開與觸控防禦
         function expandPool(event) { 
             event.stopPropagation(); 
             poolContainer.classList.add('expanded'); 
@@ -615,10 +600,8 @@
             }
         }, { passive: true });
 
-        // 增減格子按鈕功能
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            // 由於跳過膠囊按鈕列，向下尋找 image-grid
             const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
             
             if(targetGrid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
@@ -638,7 +621,6 @@
             targetGrid.removeChild(targetGrid.lastElementChild);
         }
 
-        // 🌟 拖放卡片核心引擎
         let clone = null;
         let activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
@@ -843,15 +825,19 @@
             const inputs = exportArea.querySelectorAll('.label-custom-input');
             inputs.forEach(input => { input.setAttribute('value', input.value); });
 
-            // 🌟 核心修正：html2canvas 生成前，同步按鈕的「選中狀態」到樣式中
-            exportArea.querySelectorAll('.btn-tag').forEach(btn => {
-                if (btn.classList.contains('active')) {
-                    btn.style.backgroundColor = type === 'burst' ? '#8b263e' : '#4a148c';
-                    btn.style.color = '#ffffff';
-                } else {
-                    btn.style.backgroundColor = 'transparent';
-                    btn.style.color = '#75645a';
-                }
+            // 🌟 核心修正：因應雙獨立色系，修改選中狀態顏色的套用邏輯
+            exportArea.querySelectorAll('.btn-group').forEach(group => {
+                const isParts = group.classList.contains('group-parts');
+                group.querySelectorAll('.btn-tag').forEach(btn => {
+                    if (btn.classList.contains('active')) {
+                        // 部位套用深薄荷綠，肉甲套用深珊瑚橘
+                        btn.style.backgroundColor = isParts ? '#00897b' : '#e64a19';
+                        btn.style.color = '#ffffff';
+                    } else {
+                        btn.style.backgroundColor = 'transparent';
+                        btn.style.color = '#607d8b';
+                    }
+                });
             });
 
             imgContainer.innerHTML = "正在組裝配卡圖...";

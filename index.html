@@ -255,31 +255,32 @@
         .pool-subtitle { font-size: 10px; color: #bfa89e; font-weight: normal; }
 
         /* ── 收合狀態：單排橫滑 ── */
-        .pool-scroll {
-            display: flex;
-            flex-direction: row;
-            gap: 8px;
-            overflow-x: auto;
-            overflow-y: hidden;
-            flex-grow: 1;
-            padding: 2px 0 5px 0;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-x;
-            overscroll-behavior-x: contain;
-        }
+        /* 收合：單排橫滑 */
+.pool-scroll {
+    display: grid;
+    grid-template-rows: 60px;
+    grid-template-columns: repeat(14, 60px);
+    grid-auto-columns: 60px;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-grow: 1;
+    padding: 4px 2px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    width: max-content;
+    max-width: 100%;
+}
 
-        /* ── 展開狀態：三橫排 Grid ── */
-        #pool-container.expanded .pool-scroll {
-            display: grid;
-            grid-template-rows: repeat(3, 60px);
-            grid-template-columns: repeat(14, 60px);
-            grid-auto-flow: column;
-            gap: 6px;
-            width: max-content;
-            overflow-x: auto;
-            overflow-y: hidden;
-            padding: 4px 2px;
-        }
+/* 展開：三排 */
+#pool-container.expanded .pool-scroll {
+    grid-template-rows: repeat(3, 60px);
+    width: max-content;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 2px;
+}
 
         .draggable-thumb {
             width: 60px; height: 60px;

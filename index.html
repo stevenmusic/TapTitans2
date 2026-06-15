@@ -5,19 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Tap Titans 2 </title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
     <script src="cards.js"></script>
-<script src="bossPreset.js"></script>
+    <script src="bossPreset.js"></script>
 
     <style>
-        html {
-            font-size: 18px;
-        }  
+        html { font-size: 18px; }
         :root {
-            --bg-burst: #f4ece1; 
+            --bg-burst: #f4ece1;
             --text-burst: #8b263e;
             --bg-torment: #ede7f6;
             --text-torment: #4a148c;
+            --bg-support: #e8f5e9;
+            --text-support: #1b5e20;
             --card-bg: #ffffff;
             --border-color: #e0d5c1;
         }
@@ -25,334 +24,243 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             background-color: #e0d5c1;
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden; 
+            margin: 0; padding: 0;
+            overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation; 
+            touch-action: manipulation;
         }
 
+        /* ── 導覽 ── */
         .nav-header {
-            position: fixed;
-            top: 0; left: 0; width: 100%;
-            background: #5a4a42;
-            z-index: 1000;
+            position: fixed; top: 0; left: 0; width: 100%;
+            background: #5a4a42; z-index: 1000;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
         }
         .nav-title {
-            color: #ffffff;
-            text-align: center;
-            font-size: 16px;
-            font-weight: bold;
-            padding: 8px 0 2px 0;
-            letter-spacing: 1px;
+            color: #ffffff; text-align: center;
+            font-size: 16px; font-weight: bold;
+            padding: 8px 0 2px 0; letter-spacing: 1px;
         }
-        .nav-tabs {
-            display: flex;
-            width: 100%;
-        }
+        .nav-tabs { display: flex; width: 100%; }
         .tab-btn {
             flex: 1; padding: 10px 0 14px 0; text-align: center;
-            color: #bfa89e; font-weight: bold; font-size: 14px;
+            color: #bfa89e; font-weight: bold; font-size: 13px;
             border: none; background: none; cursor: pointer;
             transition: all 0.3s; position: relative;
         }
         .tab-btn.active { color: #ffffff; }
         .tab-btn.active::after {
-            content: ''; position: absolute; bottom: 0; left: 15%; width: 70%; height: 3px; background: #ffffff; border-radius: 2px;
+            content: ''; position: absolute; bottom: 0; left: 10%; width: 80%;
+            height: 3px; background: #ffffff; border-radius: 2px;
         }
 
+        /* ── Swiper ── */
         .swiper-wrapper {
-            width: 100vw;
-            overflow: hidden;
-            margin-top: 75px; 
-            margin-bottom: 130px;
+            width: 100vw; overflow: hidden;
+            margin-top: 75px; margin-bottom: 130px;
             transition: margin-bottom 0.3s ease;
         }
-
         .swiper-container {
-            display: flex;
-            width: 200vw;
-            transition: none; 
-            will-change: transform;
-            transform: translate3d(0px, 0px, 0px); 
+            display: flex; width: 300vw;
+            transition: none; will-change: transform;
+            transform: translate3d(0px, 0px, 0px);
         }
-
         .page-view {
-            width: 100vw;
-            box-sizing: border-box;
+            width: 100vw; box-sizing: border-box;
             padding: 15px 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            display: flex; flex-direction: column; align-items: center;
             min-height: calc(100vh - 205px);
         }
 
+        /* ── 爆裂場 ── */
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
         #page-burst h1 { color: var(--text-burst); font-size: 22px; margin: 5px 0; text-align: center; }
         #page-burst .btn-action { background-color: #8b263e; color: #fff; }
         #page-burst .btn-action.del { background-color: #c97a7a; color: #fff; }
-        
+        #page-burst .export-area { background-color: var(--bg-burst); }
+        #page-burst .btn-download { background-color: #8b263e; }
+        #page-burst .label-custom-input { color: #5a4a42; }
+        #page-burst .label-custom-input:focus { border-bottom-color: #bfa89e; background-color: #faf7f2; }
+
+        /* ── 苦痛場 ── */
         #page-torment { background-color: var(--bg-torment); color: #332244; }
         #page-torment h1 { color: var(--text-torment); font-size: 22px; margin: 5px 0; text-align: center; }
         #page-torment .drop-zone { background-color: #f3e5f5; border-color: #d1c4e9; color: #b19cd9; }
         #page-torment .btn-action { background-color: #4a148c; color: #fff; }
         #page-torment .btn-action.del { background-color: #b68cb6; color: #fff; }
-
-        .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
-        
-        .export-area { padding: 20px 12px 12px 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
-        #page-burst .export-area { background-color: var(--bg-burst); }
         #page-torment .export-area { background-color: var(--bg-torment); }
+        #page-torment .btn-download { background-color: #4a148c; }
+        #page-torment .tier-row { border-color: #d1c4e9; }
+        #page-torment .tier-label { border-bottom-color: #d1c4e9; }
+        #page-torment .grid-block { border-color: #c9bce0; }
+        #page-torment .btn-remove-block { background: #c9b0d6; color: #3a1060; }
+        #page-torment .label-custom-input { color: #4a148c; }
+        #page-torment .label-custom-input:focus { border-bottom-color: #b19cd9; background-color: #f3e5f5; }
+        #page-torment .drop-zone.drag-hover { border-color: #4a148c; background-color: #d1c4e9; }
 
-        .page-header-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 2px;
-        }
+        /* ── 支援場 ── */
+        #page-support { background-color: var(--bg-support); color: #1a3c1a; }
+        #page-support h1 { color: var(--text-support); font-size: 22px; margin: 5px 0; text-align: center; }
+        #page-support .drop-zone { background-color: #f1f8e9; border-color: #c5e1a5; color: #8aad6a; }
+        #page-support .btn-action { background-color: #2e7d32; color: #fff; }
+        #page-support .btn-action.del { background-color: #81c784; color: #fff; }
+        #page-support .export-area { background-color: var(--bg-support); }
+        #page-support .btn-download { background-color: #2e7d32; }
+        #page-support .tier-row { border-color: #c5e1a5; }
+        #page-support .tier-label { border-bottom-color: #c5e1a5; }
+        #page-support .grid-block { border-color: #b2dfb2; }
+        #page-support .btn-remove-block { background: #b2dfb2; color: #1b5e20; }
+        #page-support .label-custom-input { color: #1b5e20; }
+        #page-support .label-custom-input:focus { border-bottom-color: #66bb6a; background-color: #f1f8e9; }
+        #page-support .drop-zone.drag-hover { border-color: #2e7d32; background-color: #c8e6c9; }
 
-        .boss-select-burst, .boss-select-torment {
-            appearance: none;
-            -webkit-appearance: none;
-            border: none;
-            border-radius: 6px;
+        /* ── Boss select ── */
+        .boss-select-burst, .boss-select-torment, .boss-select-support {
+            appearance: none; -webkit-appearance: none;
+            border: none; border-radius: 6px;
             padding: 4px 28px 4px 10px;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
+            font-size: 13px; font-weight: bold; cursor: pointer;
             background-repeat: no-repeat;
             background-position: right 8px center;
             background-size: 10px 7px;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffffff' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
         }
-        .boss-select-burst {
-            background-color: #8b263e;
-            color: #fff;
-            box-shadow: 0 2px 6px rgba(139,38,62,0.3);
-        }
+        .boss-select-burst { background-color: #8b263e; color: #fff; box-shadow: 0 2px 6px rgba(139,38,62,0.3); }
         .boss-select-burst:focus { outline: none; box-shadow: 0 0 0 2px rgba(139,38,62,0.5); }
-
-        .boss-select-torment {
-            background-color: #4a148c;
-            color: #fff;
-            box-shadow: 0 2px 6px rgba(74,20,140,0.3);
-        }
+        .boss-select-torment { background-color: #4a148c; color: #fff; box-shadow: 0 2px 6px rgba(74,20,140,0.3); }
         .boss-select-torment:focus { outline: none; box-shadow: 0 0 0 2px rgba(74,20,140,0.5); }
+        .boss-select-support { background-color: #2e7d32; color: #fff; box-shadow: 0 2px 6px rgba(46,125,50,0.3); }
+        .boss-select-support:focus { outline: none; box-shadow: 0 0 0 2px rgba(46,125,50,0.5); }
 
+        /* ── 共用版面 ── */
+        .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
+        .export-area { padding: 20px 12px 12px 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
+        .page-header-row {
+            display: flex; align-items: center; justify-content: center;
+            gap: 10px; flex-wrap: wrap; margin-bottom: 2px;
+        }
         .pyramid-container { display: flex; flex-direction: column; gap: 12px; }
         .tier-row { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
-        #page-torment .tier-row { border-color: #d1c4e9; }
-
         .tier-label {
             font-size: 14px; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px;
-            border-bottom: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px dashed var(--border-color);
+            display: flex; justify-content: space-between; align-items: center;
         }
-        #page-torment .tier-label { border-bottom-color: #d1c4e9; }
-        
         .label-title-wrapper { display: flex; align-items: center; gap: 5px; flex-grow: 1; margin-right: 5px; overflow: hidden; }
         .label-fixed-text { white-space: nowrap; }
-        
         .label-custom-input {
             border: none; background: transparent; font-family: inherit;
-            padding: 4px 6px; width: 100%; color: #5a4a42; border-bottom: 1px solid transparent;
-            font-size: 14px;
-            box-sizing: border-box;
-            flex-grow: 1;
+            padding: 4px 6px; width: 100%;
+            border-bottom: 1px solid transparent;
+            font-size: 14px; box-sizing: border-box; flex-grow: 1;
         }
-        .label-custom-input:focus { outline: none; border-bottom: 1px solid #bfa89e; background-color: #faf7f2; }
-        #page-torment .label-custom-input { color: #4a148c; }
-        #page-torment .label-custom-input:focus { border-bottom-color: #b19cd9; background-color: #f3e5f5; }
-
+        .label-custom-input:focus { outline: none; }
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
         .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
 
-        /* ── 部位／肉甲 選擇區 ── */
-        .check-area {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 10px;
-        }
-
-        /* 第一排：全部位 + 任一單部位 + 肉甲（靠右） */
-        .check-row-top {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* 第二排：頭肚手腳 */
-        .check-row-bottom {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        /* 膠囊群組 */
+        /* ── 部位／肉甲 ── */
+        .check-area { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+        .check-row-top { display: flex; align-items: center; gap: 8px; }
+        .check-row-bottom { display: flex; align-items: center; gap: 6px; }
         .btn-group {
-            display: flex;
-            padding: 4px 5px;
-            border-radius: 12px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+            display: flex; padding: 4px 5px;
+            border-radius: 12px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
         }
-
-        /* 部位色系（頂排 + 底排共用） */
-        .group-parts {
-            background-color: #e0f2f1;
-            flex-shrink: 0;
-        }
-
-        /* 肉甲推到最右 */
-        .group-types {
-            background-color: #fbe9e7;
-            flex-shrink: 0;
-            margin-left: auto;
-        }
-
+        .group-parts { background-color: #e0f2f1; flex-shrink: 0; }
+        .group-types { background-color: #fbe9e7; flex-shrink: 0; margin-left: auto; }
         .btn-tag {
-            border: none;
-            background: transparent;
-            font-size: 14px;
-            font-weight: bold;
-            padding: 5px 9px;
-            border-radius: 10px;
-            cursor: pointer;
-            color: #607d8b;
-            transition: all 0.2s ease;
-            white-space: nowrap;
+            border: none; background: transparent;
+            font-size: 14px; font-weight: bold;
+            padding: 5px 9px; border-radius: 10px;
+            cursor: pointer; color: #607d8b;
+            transition: all 0.2s ease; white-space: nowrap;
         }
-
-        /* 部位選中 */
         .group-parts .btn-tag.active {
-            background-color: #00897b;
-            color: #ffffff;
+            background-color: #00897b; color: #ffffff;
             box-shadow: 0 2px 5px rgba(0,137,123,0.3);
         }
-
-        /* 肉甲選中 */
         .group-types .btn-tag.active {
-            background-color: #e64a19;
-            color: #ffffff;
+            background-color: #e64a19; color: #ffffff;
             box-shadow: 0 2px 5px rgba(230,74,25,0.3);
         }
 
-        /* ── 卡片格子 ── */
-        /* 
-          每個 tier 可能有多個 image-grid（基礎3格 + 每次+3格）
-          用 .grid-section 包住每個 3格區塊
-        */
-        .grid-section {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-top: 6px;
-        }
-
-        /* 每個 grid-block 放 3 張卡 + 各自的部位肉甲選項 */
-        .grid-block {
-            border: 1px dashed #d0c8bc;
-            border-radius: 8px;
-            padding: 8px;
-        }
-        #page-torment .grid-block { border-color: #c9bce0; }
-
-        /* 附加格的標題列（含刪除按鈕） */
-        .grid-block-header {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 6px;
-        }
+        /* ── 格子區 ── */
+        .grid-section { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+        .grid-block { border: 1px dashed #d0c8bc; border-radius: 8px; padding: 8px; }
+        .grid-block-header { display: flex; justify-content: flex-end; margin-bottom: 6px; }
         .btn-remove-block {
-            border: none;
-            background: #e0b0b0;
-            color: #7a2020;
-            font-size: 11px;
-            font-weight: bold;
-            padding: 3px 8px;
-            border-radius: 4px;
-            cursor: pointer;
+            border: none; background: #e0b0b0; color: #7a2020;
+            font-size: 11px; font-weight: bold;
+            padding: 3px 8px; border-radius: 4px; cursor: pointer;
         }
-        #page-torment .btn-remove-block {
-            background: #c9b0d6;
-            color: #3a1060;
-        }
-
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
-
         .drop-zone {
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
-            display: flex; flex-direction: column; justify-content: center; align-items: center; background-color: #faf7f2;
-            overflow: hidden; position: relative; font-size: 11px; color: #bfa89e; text-align: center; padding: 2px; box-sizing: border-box;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background-color: #faf7f2; overflow: hidden; position: relative;
+            font-size: 11px; color: #bfa89e; text-align: center;
+            padding: 2px; box-sizing: border-box;
             will-change: transform; user-select: none; -webkit-user-select: none;
         }
         .drop-zone.drag-hover { border-color: #5a4a42; background-color: #e0d5c1; transform: scale(1.02); }
-        #page-torment .drop-zone.drag-hover { border-color: #4a148c; background-color: #d1c4e9; }
         .drop-zone img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 
+        /* ── 卡片池 ── */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(90, 74, 66, 0.98); padding: 10px 12px; box-sizing: border-box;
-            display: flex; flex-direction: column; gap: 6px; z-index: 999;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px; 
+            background: rgba(90, 74, 66, 0.98); padding: 10px 12px;
+            box-sizing: border-box; display: flex; flex-direction: column;
+            gap: 6px; z-index: 999;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); height: 105px;
             transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
-            will-change: height, transform;
-            overscroll-behavior: contain;
+            will-change: height, transform; overscroll-behavior: contain;
         }
         #pool-container.expanded { height: 190px; }
-        
         .pool-title-area {
-            display: flex; align-items: center; gap: 4px; color: #f4ece1; font-weight: bold;
+            display: flex; align-items: center; gap: 4px;
+            color: #f4ece1; font-weight: bold;
             user-select: none; -webkit-user-select: none;
         }
         .pool-title { font-size: 13px; letter-spacing: 1px; }
         .pool-subtitle { font-size: 10px; color: #bfa89e; font-weight: normal; }
-        
-        .pool-scroll { 
-            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1; padding: 2px 0 5px 0; 
-            -webkit-overflow-scrolling: touch; 
-            touch-action: pan-x; 
-            overscroll-behavior-x: contain;
+        .pool-scroll {
+            display: flex; gap: 10px; overflow-x: auto; flex-grow: 1;
+            padding: 2px 0 5px 0; -webkit-overflow-scrolling: touch;
+            touch-action: pan-x; overscroll-behavior-x: contain;
         }
-        
         #pool-container.expanded .pool-scroll {
-            display: grid; 
-            grid-template-rows: repeat(2, 60px); 
-            grid-auto-flow: column; 
-            grid-auto-columns: 60px; 
-            overflow-y: hidden;
-            overflow-x: auto;
+            display: grid; grid-template-rows: repeat(2, 60px);
+            grid-auto-flow: column; grid-auto-columns: 60px;
+            overflow-y: hidden; overflow-x: auto;
+        }
+        .draggable-thumb {
+            min-width: 60px; width: 60px; height: 60px;
+            border-radius: 6px; object-fit: cover;
+            touch-action: none; user-select: none; -webkit-user-drag: none;
+        }
+        .drag-clone {
+            position: fixed; width: 60px; height: 60px;
+            object-fit: cover; border-radius: 6px; opacity: 0.8;
+            pointer-events: none; z-index: 10000; will-change: left, top;
         }
 
-        .draggable-thumb { 
-            min-width: 60px; width: 60px; height: 60px; border-radius: 6px; object-fit: cover; 
-            touch-action: none; 
-            user-select: none; -webkit-user-drag: none;
-        }
-        .drag-clone { 
-            position: fixed; width: 60px; height: 60px; object-fit: cover; border-radius: 6px; opacity: 0.8; 
-            pointer-events: none; z-index: 10000; 
-            will-change: left, top; 
-        }
-
+        /* ── 按鈕／Modal ── */
         .action-container { margin: 20px 0; text-align: center; width: 100%; }
         .btn-download {
-            background-color: #5a4a42; color: white; border: none; padding: 12px 24px; border-radius: 25px;
-            font-size: 14px; font-weight: bold; width: 90%; max-width: 500px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            color: white; border: none; padding: 12px 24px; border-radius: 25px;
+            font-size: 14px; font-weight: bold; width: 90%; max-width: 500px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: pointer;
         }
-        #page-torment .btn-download { background-color: #4a148c; }
-
         #result-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; padding: 20px; box-sizing: border-box;
+            background: rgba(0,0,0,0.9); z-index: 10000;
+            justify-content: center; align-items: center; flex-direction: column;
+            padding: 20px; box-sizing: border-box;
         }
         #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
-        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; }
+        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -360,13 +268,16 @@
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2 工具箱</div>
         <div class="nav-tabs">
-            <button class="tab-btn active" id="tab-burst" onclick="switchPage(0)">突襲配卡-爆裂場</button>
-            <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">突襲配卡-苦痛場</button>
+            <button class="tab-btn active" id="tab-burst"   onclick="switchPage(0)">突襲配卡-爆裂場</button>
+            <button class="tab-btn"        id="tab-torment" onclick="switchPage(1)">突襲配卡-苦痛場</button>
+            <button class="tab-btn"        id="tab-support" onclick="switchPage(2)">突襲配卡-支援場</button>
         </div>
     </div>
 
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
+
+            <!-- ── 爆裂場 ── -->
             <div class="page-view" id="page-burst">
                 <div class="export-area" id="export-burst">
                     <div class="page-header-row">
@@ -391,6 +302,7 @@
                 </div>
             </div>
 
+            <!-- ── 苦痛場 ── -->
             <div class="page-view" id="page-torment">
                 <div class="export-area" id="export-torment">
                     <div class="page-header-row">
@@ -414,6 +326,32 @@
                     <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
                 </div>
             </div>
+
+            <!-- ── 支援場 ── -->
+            <div class="page-view" id="page-support">
+                <div class="export-area" id="export-support">
+                    <div class="page-header-row">
+                        <h1>突襲配卡 - 支援場</h1>
+                        <select class="boss-select-support" id="boss-select-support">
+                            <option value="">選擇 Boss</option>
+                            <option value="Jukk">Jukk</option>
+                            <option value="Klonk">Klonk</option>
+                            <option value="Lojak">Lojak</option>
+                            <option value="Mohaca">Mohaca</option>
+                            <option value="Priker">Priker</option>
+                            <option value="Sterl">Sterl</option>
+                            <option value="Takedar">Takedar</option>
+                            <option value="Terro">Terro</option>
+                        </select>
+                    </div>
+                    <div class="subtitle">左右滑動或點選選單切換｜點擊「第 X 組」旁可自由輸入備註</div>
+                    <div class="pyramid-container" id="container-support"></div>
+                </div>
+                <div class="action-container">
+                    <button class="btn-download" onclick="generateImage('support')">✨ 生成支援場配卡圖（長按儲存） ✨</button>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -435,11 +373,10 @@
         const totalTiers = 8;
         const defaultZoneHTML = '拉入卡片<br><small style="font-size:9px; opacity:0.7;">(雙擊可移除)</small>';
 
-        /* ── 建立部位選擇區（兩排版）── */
+        /* ── 部位選擇區 HTML ── */
         function createCheckArea() {
             return `
             <div class="check-area">
-                <!-- 第一排：全部位 + 任一單部位 + 肉甲（靠右） -->
                 <div class="check-row-top">
                     <div class="btn-group group-parts">
                         <button class="btn-tag active" onclick="togglePartTag(this)">全部位</button>
@@ -451,7 +388,6 @@
                         <button class="btn-tag" onclick="toggleTypeTag(this)">甲</button>
                     </div>
                 </div>
-                <!-- 第二排：頭肚手腳 -->
                 <div class="check-row-bottom">
                     <div class="btn-group group-parts">
                         <button class="btn-tag" onclick="togglePartTag(this)">頭</button>
@@ -463,13 +399,11 @@
             </div>`;
         }
 
-        /* ── 建立一個「附加格區塊」（3格 + 部位肉甲 + 刪除鈕）── */
+        /* ── 建立格區塊（3格 + 部位肉甲）── */
         function createGridBlock(isFirst = false) {
             const block = document.createElement('div');
             block.className = 'grid-block';
-
             if (!isFirst) {
-                // 非第一個區塊才顯示刪除鈕
                 block.innerHTML = `
                     <div class="grid-block-header">
                         <button class="btn-remove-block" onclick="removeGridBlock(this)">✕ 移除此組格子</button>
@@ -489,18 +423,15 @@
                         <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
                     </div>`;
             }
-
             block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
             return block;
         }
 
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
-
             for (let i = 1; i <= totalTiers; i++) {
                 const tierRow = document.createElement('div');
                 tierRow.className = 'tier-row';
-
                 tierRow.innerHTML = `
                     <div class="tier-label">
                         <div class="label-title-wrapper">
@@ -513,78 +444,50 @@
                         </div>
                     </div>
                     <div class="grid-section"></div>`;
-
-                // 插入第一個格區塊（有基礎3格）
                 const gridSection = tierRow.querySelector('.grid-section');
                 gridSection.appendChild(createGridBlock(true));
-
                 container.appendChild(tierRow);
             }
         }
 
-        /* ── 增格：在 grid-section 新增一個3格區塊 ── */
         function addGridBlock(button) {
             const tierRow = button.closest('.tier-row');
             const gridSection = tierRow.querySelector('.grid-section');
             const blocks = gridSection.querySelectorAll('.grid-block');
-            if (blocks.length >= 3) {
-                alert("限制：每一組最多只能有 3 個區塊（9 格）唷！");
-                return;
-            }
-            const newBlock = createGridBlock(false);
-            gridSection.appendChild(newBlock);
+            if (blocks.length >= 3) { alert("限制：每一組最多只能有 3 個區塊（9 格）唷！"); return; }
+            gridSection.appendChild(createGridBlock(false));
         }
 
-        /* ── 減格：移除最後一個（非第一個）grid-block ── */
         function removeLastGridBlock(button) {
             const tierRow = button.closest('.tier-row');
             const gridSection = tierRow.querySelector('.grid-section');
             const blocks = gridSection.querySelectorAll('.grid-block');
-            if (blocks.length <= 1) {
-                alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！");
-                return;
-            }
+            if (blocks.length <= 1) { alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！"); return; }
             gridSection.removeChild(blocks[blocks.length - 1]);
         }
 
-        /* ── 移除特定格區塊（由區塊內的刪除鈕呼叫）── */
         function removeGridBlock(button) {
             const block = button.closest('.grid-block');
             const gridSection = block.parentElement;
             const blocks = gridSection.querySelectorAll('.grid-block');
-            if (blocks.length <= 1) {
-                alert("限制：每一組最少必須保留 1 個區塊唷！");
-                return;
-            }
+            if (blocks.length <= 1) { alert("限制：每一組最少必須保留 1 個區塊唷！"); return; }
             gridSection.removeChild(block);
         }
 
-        /* ── 部位切換邏輯（跨兩排共用 group-parts）── */
         function togglePartTag(button) {
-            const tierRow = button.closest('.grid-block') || button.closest('.tier-row');
-            // 找到同一個 check-area 內的所有 group-parts 按鈕
             const checkArea = button.closest('.check-area');
             if (!checkArea) return;
-
             const allPartBtns = checkArea.querySelectorAll('.group-parts .btn-tag');
             const isAll = button.innerText === "全部位";
             const isAnySingle = button.innerText === "任一單部位";
-
             if (isAll || isAnySingle) {
-                // 點「全部位」或「任一單部位」→ 清除所有，只選自己
                 allPartBtns.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
             } else {
-                // 點頭/肚/手/腳 → 取消「全部位」和「任一單部位」的選中
-                checkArea.querySelectorAll('.check-row-top .group-parts .btn-tag').forEach(btn => {
-                    btn.classList.remove('active');
-                });
+                checkArea.querySelectorAll('.check-row-top .group-parts .btn-tag').forEach(btn => btn.classList.remove('active'));
                 button.classList.toggle('active');
-
-                // 若頭肚手腳全都沒選，回到「全部位」
                 const bottomBtns = Array.from(checkArea.querySelectorAll('.check-row-bottom .group-parts .btn-tag'));
-                const anyActive = bottomBtns.some(btn => btn.classList.contains('active'));
-                if (!anyActive) {
+                if (!bottomBtns.some(btn => btn.classList.contains('active'))) {
                     checkArea.querySelector('.check-row-top .group-parts .btn-tag').classList.add('active');
                 }
             }
@@ -597,33 +500,27 @@
         }
 
         function handleZoneClear(zoneEl) {
-            if (zoneEl.querySelector('img')) {
-                zoneEl.innerHTML = defaultZoneHTML;
-            }
+            if (zoneEl.querySelector('img')) { zoneEl.innerHTML = defaultZoneHTML; }
         }
 
         function setupZoneTouchClear(zoneEl) {
             let lastTap = 0;
             zoneEl.addEventListener('touchstart', function(e) {
                 const now = Date.now();
-                if (now - lastTap < 300) { 
-                    handleZoneClear(zoneEl);
-                    e.preventDefault(); 
-                }
+                if (now - lastTap < 300) { handleZoneClear(zoneEl); e.preventDefault(); }
                 lastTap = now;
             }, { passive: false });
         }
 
         initTiers('container-burst');
         initTiers('container-torment');
+        initTiers('container-support');
 
         window.addEventListener('DOMContentLoaded', () => {
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
                 PRESET_CARDS.forEach(base64Data => {
-                    if(base64Data && base64Data.trim() !== "") {
-                        createCardElement(base64Data, poolScroll);
-                    }
+                    if (base64Data && base64Data.trim() !== "") createCardElement(base64Data, poolScroll);
                 });
             }
             switchPage(0);
@@ -637,39 +534,31 @@
             container.appendChild(img);
         }
 
+        /* ── Swiper（支援3頁）── */
         const swiperContainer = document.getElementById('main-swiper');
-        const tabBurst = document.getElementById('tab-burst');
+        const tabBurst   = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
+        const tabSupport = document.getElementById('tab-support');
         const poolContainer = document.getElementById('pool-container');
-        const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
-        
+        const poolSubtitle  = poolContainer.querySelector('.pool-subtitle');
+        const TOTAL_PAGES = 3;
+
         let currentPage = 0;
         let swiperWidth = window.innerWidth;
-        let startX = 0;
-        let translateX = 0;
-        let isSwiping = false;
-        let swipeStartTime = 0;
-
-        let isDraggingGlobal = false;
-        let isDraggingCard = false;
+        let startX = 0, translateX = 0;
+        let isSwiping = false, swipeStartTime = 0;
+        let isDraggingGlobal = false, isDraggingCard = false;
 
         function updateSwiperPosition(useTransition = false) {
-            if (useTransition) {
-                swiperContainer.style.transition = 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)';
-            } else {
-                swiperContainer.style.transition = 'none';
-            }
-            let targetOffset = -currentPage * swiperWidth;
-            if (isSwiping) {
-                targetOffset = translateX;
-            }
+            swiperContainer.style.transition = useTransition
+                ? 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)' : 'none';
+            const targetOffset = isSwiping ? translateX : -currentPage * swiperWidth;
             swiperContainer.style.transform = `translate3d(${targetOffset}px, 0px, 0px)`;
         }
 
         swiperContainer.addEventListener('touchstart', (e) => {
             if (isDraggingCard || isDraggingGlobal) return;
-            const touch = e.touches[0];
-            startX = touch.clientX;
+            startX = e.touches[0].clientX;
             swipeStartTime = Date.now();
             isSwiping = true;
             swiperContainer.style.transition = 'none';
@@ -677,133 +566,90 @@
 
         swiperContainer.addEventListener('touchmove', (e) => {
             if (!isSwiping) return;
-            const touch = e.touches[0];
-            let deltaX = touch.clientX - startX;
-            let baseOffset = -currentPage * swiperWidth;
-            let currentTarget = baseOffset + deltaX;
-
-            if (currentTarget > 0) {
-                currentTarget = deltaX / (1 + (deltaX / (swiperWidth * 0.6)));
-            } else if (currentTarget < -(swiperWidth * 1)) {
-                let overSwipe = currentTarget - (-(swiperWidth * 1));
-                currentTarget = -(swiperWidth * 1) + (overSwipe / (1 + (Math.abs(overSwipe) / (swiperWidth * 0.6))));
-            }
-            translateX = currentTarget;
-
-            requestAnimationFrame(() => {
-                if(isSwiping) swiperContainer.style.transform = `translate3d(${translateX}px, 0px, 0px)`;
-            });
+            let deltaX = e.touches[0].clientX - startX;
+            let base = -currentPage * swiperWidth;
+            let target = base + deltaX;
+            const maxOffset = -(TOTAL_PAGES - 1) * swiperWidth;
+            if (target > 0) target = deltaX / (1 + deltaX / (swiperWidth * 0.6));
+            else if (target < maxOffset) { let ov = target - maxOffset; target = maxOffset + ov / (1 + Math.abs(ov) / (swiperWidth * 0.6)); }
+            translateX = target;
+            requestAnimationFrame(() => { if (isSwiping) swiperContainer.style.transform = `translate3d(${translateX}px, 0px, 0px)`; });
         }, { passive: true });
 
         swiperContainer.addEventListener('touchend', (e) => {
             if (!isSwiping) return;
             isSwiping = false;
-            const touch = e.changedTouches[0];
-            const deltaX = touch.clientX - startX;
-            const duration = Date.now() - swipeStartTime;
-            const velocityX = Math.abs(deltaX) / duration;
-
-            if (velocityX > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
-                if (deltaX < 0 && currentPage < 1) {
-                    currentPage++;
-                } else if (deltaX > 0 && currentPage > 0) {
-                    currentPage--;
-                }
+            const deltaX = e.changedTouches[0].clientX - startX;
+            const velocity = Math.abs(deltaX) / (Date.now() - swipeStartTime);
+            if (velocity > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
+                if (deltaX < 0 && currentPage < TOTAL_PAGES - 1) currentPage++;
+                else if (deltaX > 0 && currentPage > 0) currentPage--;
             }
             switchPage(currentPage);
         });
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
-            
-            tabBurst.classList.remove('active');
-            tabTorment.classList.remove('active');
-
-            if (pageIndex === 0) {
-                tabBurst.classList.add('active');
-            } else if (pageIndex === 1) {
-                tabTorment.classList.add('active');
-            }
+            [tabBurst, tabTorment, tabSupport].forEach(t => t.classList.remove('active'));
+            [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
             updateSwiperPosition(true);
         }
 
-        window.addEventListener('resize', () => {
-            swiperWidth = window.innerWidth;
-            updateSwiperPosition(false);
-        });
+        window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
-        function expandPool(event) { 
-            event.stopPropagation(); 
-            poolContainer.classList.add('expanded'); 
+        function expandPool(event) {
+            event.stopPropagation();
+            poolContainer.classList.add('expanded');
             poolSubtitle.innerText = '（點擊空白處收合）';
         }
-        
-        document.addEventListener('click', function() { 
-            poolContainer.classList.remove('expanded'); 
+        document.addEventListener('click', function() {
+            poolContainer.classList.remove('expanded');
             poolSubtitle.innerText = '（點一下展開）';
         });
-
         document.getElementById('pool-container').addEventListener('touchmove', function(e) {
-            if (!isDraggingCard) {
-                e.stopPropagation();
-            }
+            if (!isDraggingCard) e.stopPropagation();
         }, { passive: true });
 
-        let clone = null;
-        let activeSrc = '';
+        /* ── 拖曳 ── */
+        let clone = null, activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
-        let gestureMode = null; 
-        let scrollTimer = null;
-        let scrollSpeed = 0;
-        let cachedZones = [];
-        let lastHoveredZone = null;
-        let currentTouchX = 0;
-        let currentTouchY = 0;
-        let longPressTimer = null;
+        let gestureMode = null;
+        let scrollTimer = null, scrollSpeed = 0;
+        let cachedZones = [], lastHoveredZone = null;
+        let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
 
         function cancelDrag() {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
+            clearTimeout(longPressTimer); longPressTimer = null;
             stopAutoScroll();
             document.querySelectorAll('.drag-clone').forEach(el => el.remove());
             clone = null;
-            if (lastHoveredZone) {
-                lastHoveredZone.classList.remove('drag-hover');
-                lastHoveredZone = null;
-            }
-            isDraggingCard = false;
-            isDraggingGlobal = false;
-            gestureMode = null;
+            if (lastHoveredZone) { lastHoveredZone.classList.remove('drag-hover'); lastHoveredZone = null; }
+            isDraggingCard = false; isDraggingGlobal = false; gestureMode = null;
         }
 
         function updateZonesCache() {
             cachedZones = [];
-            const activePageId = currentPage === 0 ? 'page-burst' : 'page-torment';
+            const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
             document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
-                const rect = zone.getBoundingClientRect();
-                cachedZones.push({ el: zone, l: rect.left, r: rect.right, t: rect.top, b: rect.bottom });
+                const r = zone.getBoundingClientRect();
+                cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
             });
         }
 
         function findZone(x, y) {
-            for (let z of cachedZones) {
-                if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el;
-            }
+            for (let z of cachedZones) { if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el; }
             return null;
         }
 
         function startAutoScroll() {
             if (scrollTimer) return;
             scrollTimer = setInterval(() => {
-                if (!gestureMode || gestureMode !== "drag") return;
-                if (scrollSpeed === 0) return;
+                if (!gestureMode || gestureMode !== "drag" || scrollSpeed === 0) return;
                 const maxY = document.documentElement.scrollHeight - window.innerHeight;
                 if (scrollSpeed < 0 && window.scrollY <= 0) scrollSpeed = 0;
                 if (scrollSpeed > 0 && window.scrollY >= maxY) scrollSpeed = 0;
-
                 window.scrollBy(0, scrollSpeed);
                 const target = findZone(currentTouchX, currentTouchY);
-
                 if (target !== lastHoveredZone) {
                     if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
                     if (target) target.classList.add('drag-hover');
@@ -812,29 +658,19 @@
             }, 30);
         }
 
-        function stopAutoScroll() {
-            clearInterval(scrollTimer);
-            scrollTimer = null;
-            scrollSpeed = 0;
-        }
+        function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
 
         function triggerDrag(el) {
             if (isDraggingCard) return;
-            isDraggingCard = true;
-            isDraggingGlobal = true;
-            gestureMode = "drag";
-
-            updateZonesCache();
-            lastHoveredZone = null;
-
+            isDraggingCard = true; isDraggingGlobal = true; gestureMode = "drag";
+            updateZonesCache(); lastHoveredZone = null;
             clone = el.cloneNode(true);
             clone.className = 'drag-clone';
             clone.style.left = currentTouchX - 30 + 'px';
-            clone.style.top = currentTouchY - 30 + 'px';
+            clone.style.top  = currentTouchY - 30 + 'px';
             document.body.appendChild(clone);
-
             poolContainer.classList.remove('expanded');
-            poolSubtitle.innerText = '(' + '點一下展開' + ')';
+            poolSubtitle.innerText = '（點一下展開）';
             startAutoScroll();
         }
 
@@ -842,64 +678,27 @@
             el.addEventListener('touchstart', (e) => {
                 if (isDraggingCard) cancelDrag();
                 const t = e.touches[0];
-                touchStartPos.x = t.clientX;
-                touchStartPos.y = t.clientY;
-                currentTouchX = t.clientX;
-                currentTouchY = t.clientY;
-                activeSrc = el.src;
-                gestureMode = null;
-
-                longPressTimer = setTimeout(() => {
-                    isSwiping = false; 
-                    triggerDrag(el);
-                }, 220);
+                touchStartPos.x = currentTouchX = t.clientX;
+                touchStartPos.y = currentTouchY = t.clientY;
+                activeSrc = el.src; gestureMode = null;
+                longPressTimer = setTimeout(() => { isSwiping = false; triggerDrag(el); }, 220);
             }, { passive: true });
 
             el.addEventListener('touchmove', (e) => {
                 const t = e.touches[0];
-                currentTouchX = t.clientX;
-                currentTouchY = t.clientY;
+                currentTouchX = t.clientX; currentTouchY = t.clientY;
                 const dx = currentTouchX - touchStartPos.x;
                 const dy = currentTouchY - touchStartPos.y;
-
                 if (!gestureMode) {
-                    if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) {
-                        gestureMode = "scroll";
-                        clearTimeout(longPressTimer);
-                        return;
-                    }
-                    if (dy < -15 && Math.abs(dx) < 20) {
-                        clearTimeout(longPressTimer);
-                        isSwiping = false;
-                        triggerDrag(el);
-                        return;
-                    }
+                    if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) { gestureMode = "scroll"; clearTimeout(longPressTimer); return; }
+                    if (dy < -15 && Math.abs(dx) < 20) { clearTimeout(longPressTimer); isSwiping = false; triggerDrag(el); return; }
                     return;
                 }
-
                 if (gestureMode === "scroll") return;
-
                 if (e.cancelable) e.preventDefault();
-
-                requestAnimationFrame(() => {
-                    if (clone) {
-                        clone.style.left = currentTouchX - 30 + 'px';
-                        clone.style.top = currentTouchY - 30 + 'px';
-                    }
-                });
-
+                requestAnimationFrame(() => { if (clone) { clone.style.left = currentTouchX - 30 + 'px'; clone.style.top = currentTouchY - 30 + 'px'; } });
                 const h = window.innerHeight;
-                const top = 120;
-                const bottom = h - 120;
-
-                if (currentTouchY < top) {
-                    scrollSpeed = -8;
-                } else if (currentTouchY > bottom) {
-                    scrollSpeed = 8;
-                } else {
-                    scrollSpeed = 0;
-                }
-
+                scrollSpeed = currentTouchY < 120 ? -8 : currentTouchY > h - 120 ? 8 : 0;
                 const zone = findZone(currentTouchX, currentTouchY);
                 if (zone !== lastHoveredZone) {
                     if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
@@ -909,67 +708,44 @@
             }, { passive: false });
 
             el.addEventListener('touchend', () => {
-                clearTimeout(longPressTimer);
-                stopAutoScroll();
-
-                setTimeout(() => {
-                    isDraggingGlobal = false;
-                    isDraggingCard = false;
-                }, 100);
-
+                clearTimeout(longPressTimer); stopAutoScroll();
+                setTimeout(() => { isDraggingGlobal = false; isDraggingCard = false; }, 100);
                 if (!isDraggingCard) return;
-
                 updateZonesCache();
                 const drop = findZone(currentTouchX, currentTouchY);
-
-                if (drop) {
-                    drop.innerHTML = `<img src="${activeSrc}">`;
-                }
-                if (clone) {
-                    clone.remove();
-                    clone = null;
-                }
-                lastHoveredZone = null;
-                gestureMode = null;
+                if (drop) drop.innerHTML = `<img src="${activeSrc}">`;
+                if (clone) { clone.remove(); clone = null; }
+                lastHoveredZone = null; gestureMode = null;
             });
 
             el.addEventListener('touchcancel', cancelDrag);
         }
 
-        document.addEventListener('touchstart', function() {
-            if (!isDraggingCard && clone) {
-                cancelDrag();
-            }
-        }, { passive: true });
+        document.addEventListener('touchstart', function() { if (!isDraggingCard && clone) cancelDrag(); }, { passive: true });
 
-        // 圖片產出功能
+        /* ── 圖片產出 ── */
         function generateImage(type) {
-            window.scrollTo(0,0);
-            const exportArea = document.getElementById(type === 'burst' ? 'export-burst' : 'export-torment');
-            const bgHex = type === 'burst' ? '#f4ece1' : '#ede7f6';
+            window.scrollTo(0, 0);
+            const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
+            const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
+            const exportArea = document.getElementById(idMap[type]);
+            const bgHex = bgMap[type];
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
-            
-            const inputs = exportArea.querySelectorAll('.label-custom-input');
-            inputs.forEach(input => { input.setAttribute('value', input.value); });
 
+            exportArea.querySelectorAll('.label-custom-input').forEach(input => input.setAttribute('value', input.value));
             exportArea.querySelectorAll('.btn-group').forEach(group => {
                 const isParts = group.classList.contains('group-parts');
                 group.querySelectorAll('.btn-tag').forEach(btn => {
-                    if (btn.classList.contains('active')) {
-                        btn.style.backgroundColor = isParts ? '#00897b' : '#e64a19';
-                        btn.style.color = '#ffffff';
-                    } else {
-                        btn.style.backgroundColor = 'transparent';
-                        btn.style.color = '#607d8b';
-                    }
+                    btn.style.backgroundColor = btn.classList.contains('active') ? (isParts ? '#00897b' : '#e64a19') : 'transparent';
+                    btn.style.color = btn.classList.contains('active') ? '#ffffff' : '#607d8b';
                 });
             });
 
             imgContainer.innerHTML = "正在組裝配卡圖...";
             modal.style.display = "flex";
 
-            html2canvas(exportArea, { 
+            html2canvas(exportArea, {
                 useCORS: true, scale: 2, backgroundColor: bgHex,
                 onclone: (clonedDoc) => {
                     clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
@@ -981,55 +757,35 @@
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
-
-                exportArea.querySelectorAll('.btn-tag').forEach(btn => {
-                    btn.style.backgroundColor = '';
-                    btn.style.color = '';
-                });
-
-            }).catch(err => { alert("生成失敗"); closeModal(); });
+                exportArea.querySelectorAll('.btn-tag').forEach(btn => { btn.style.backgroundColor = ''; btn.style.color = ''; });
+            }).catch(() => { alert("生成失敗"); closeModal(); });
         }
 
         function closeModal() { document.getElementById('result-modal').style.display = "none"; }
 
+        /* ── Boss 預設 ── */
         function applyBossPreset(mode, bossName, containerId) {
             const preset = BOSS_PRESETS?.[bossName]?.[mode];
             if (!preset) return;
-
             const container = document.getElementById(containerId);
             const tiers = container.querySelectorAll('.tier-row');
-
             preset.forEach((group, i) => {
                 const tier = tiers[i];
                 if (!tier) return;
-
                 tier.querySelector('.label-custom-input').value = group.label;
-
-                // 取第一個 grid-block 的 check-area
                 const firstBlock = tier.querySelector('.grid-block');
                 if (firstBlock) {
                     const checkArea = firstBlock.querySelector('.check-area');
                     if (checkArea) {
                         const allPartBtns = checkArea.querySelectorAll('.group-parts .btn-tag');
-                        allPartBtns.forEach(btn => {
-                            btn.classList.toggle('active', group.parts.includes(btn.innerText));
-                        });
-                        // 若沒有任何部位選中，預設選全部位
-                        const anyActive = Array.from(allPartBtns).some(b => b.classList.contains('active'));
-                        if (!anyActive) allPartBtns[0].classList.add('active');
-
-                        checkArea.querySelectorAll('.group-types .btn-tag').forEach(btn => {
-                            btn.classList.toggle('active', btn.innerText === group.type);
-                        });
+                        allPartBtns.forEach(btn => btn.classList.toggle('active', group.parts.includes(btn.innerText)));
+                        if (!Array.from(allPartBtns).some(b => b.classList.contains('active'))) allPartBtns[0].classList.add('active');
+                        checkArea.querySelectorAll('.group-types .btn-tag').forEach(btn => btn.classList.toggle('active', btn.innerText === group.type));
                     }
                 }
-
                 const zones = tier.querySelectorAll('.drop-zone');
                 group.cards.forEach((card, idx) => {
-                    if (zones[idx]) {
-                        zones[idx].innerHTML =
-                            `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
-                    }
+                    if (zones[idx]) zones[idx].innerHTML = `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
                 });
             });
         }
@@ -1037,9 +793,11 @@
         document.getElementById('boss-select-burst').addEventListener('change', function () {
             applyBossPreset('burst', this.value, 'container-burst');
         });
-
         document.getElementById('boss-select-torment').addEventListener('change', function () {
             applyBossPreset('torment', this.value, 'container-torment');
+        });
+        document.getElementById('boss-select-support').addEventListener('change', function () {
+            applyBossPreset('support', this.value, 'container-support');
         });
     </script>
 </body>

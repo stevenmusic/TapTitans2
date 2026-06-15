@@ -9,9 +9,9 @@
     <script src="cards.js"></script>
 
     <style>
-html {
-    font-size: 18px;
-}  
+        html {
+            font-size: 18px;
+        }  
         :root {
             --bg-burst: #f4ece1; 
             --text-burst: #8b263e;
@@ -64,7 +64,7 @@ html {
             content: ''; position: absolute; bottom: 0; left: 15%; width: 70%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* 🚀 Swiper 容器架構 */
+        /* 🚀 Swiper 容器架構優化 */
         .swiper-wrapper {
             width: 100vw;
             overflow: hidden;
@@ -76,8 +76,9 @@ html {
         .swiper-container {
             display: flex;
             width: 300vw;
-            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            transition: none; /* 由 JavaScript 實時動態接管動畫 */
             will-change: transform;
+            transform: translate3d(0px, 0px, 0px); /* 開啟硬體加速 */
         }
 
         .page-view {
@@ -97,6 +98,7 @@ html {
             display: block;
             height: calc(100vh - 75px); 
             background-color: #ffffff;
+            pointer-events: auto;
         }
         .embed-iframe {
             width: 100%;
@@ -120,7 +122,6 @@ html {
         #page-burst .export-area { background-color: var(--bg-burst); }
         #page-torment .export-area { background-color: var(--bg-torment); }
 
-        /* 標題列：含下拉選單 */
         .page-header-row {
             display: flex;
             align-items: center;
@@ -130,42 +131,31 @@ html {
             margin-bottom: 2px;
         }
 
-        /* 爆裂場下拉選單 */
-        .boss-select-burst {
+        /* 下拉選單樣式 */
+        .boss-select-burst, .boss-select-torment {
             appearance: none;
             -webkit-appearance: none;
-            background-color: #8b263e;
-            color: #fff;
             border: none;
             border-radius: 6px;
             padding: 4px 28px 4px 10px;
             font-size: 13px;
             font-weight: bold;
             cursor: pointer;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffffff' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 8px center;
             background-size: 10px 7px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffffff' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+        }
+        .boss-select-burst {
+            background-color: #8b263e;
+            color: #fff;
             box-shadow: 0 2px 6px rgba(139,38,62,0.3);
         }
         .boss-select-burst:focus { outline: none; box-shadow: 0 0 0 2px rgba(139,38,62,0.5); }
 
-        /* 苦痛場下拉選單 */
         .boss-select-torment {
-            appearance: none;
-            -webkit-appearance: none;
             background-color: #4a148c;
             color: #fff;
-            border: none;
-            border-radius: 6px;
-            padding: 4px 28px 4px 10px;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffffff' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 8px center;
-            background-size: 10px 7px;
             box-shadow: 0 2px 6px rgba(74,20,140,0.3);
         }
         .boss-select-torment:focus { outline: none; box-shadow: 0 0 0 2px rgba(74,20,140,0.5); }
@@ -198,6 +188,7 @@ html {
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; }
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 
+        /* 放置格核心機制 */
         .drop-zone {
             aspect-ratio: 1 / 1; border: 2px dashed var(--border-color); border-radius: 6px;
             display: flex; justify-content: center; align-items: center; background-color: #faf7f2;
@@ -363,45 +354,46 @@ html {
     <script>
         const totalTiers = 8;
         
+        // 自動生成組別格子
         function initTiers(containerId) {
-    const container = document.getElementById(containerId);
+            const container = document.getElementById(containerId);
 
-    for (let i = 1; i <= totalTiers; i++) {
-        const tierRow = document.createElement('div');
-        tierRow.className = 'tier-row';
+            for (let i = 1; i <= totalTiers; i++) {
+                const tierRow = document.createElement('div');
+                tierRow.className = 'tier-row';
 
-        tierRow.innerHTML = `
-            <div class="tier-label">
-                <div class="label-title-wrapper">
-                    <span class="label-fixed-text">第 ${i} 組</span>
-                    <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
-                </div>
+                tierRow.innerHTML = `
+                    <div class="tier-label">
+                        <div class="label-title-wrapper">
+                            <span class="label-fixed-text">第 ${i} 組</span>
+                            <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
+                        </div>
 
-                <div class="tier-buttons">
-                    <button class="btn-action" onclick="addGridItem(this)">＋增格</button>
-                    <button class="btn-action del" onclick="removeGridItem(this)">－減格</button>
-                </div>
-            </div>
+                        <div class="tier-buttons">
+                            <button class="btn-action" onclick="addGridItem(this)">＋增格</button>
+                            <button class="btn-action del" onclick="removeGridItem(this)">－減格</button>
+                        </div>
+                    </div>
 
-            <div class="check-row">
-                <label><input type="checkbox"> 頭</label>
-                <label><input type="checkbox"> 肚</label>
-                <label><input type="checkbox"> 手</label>
-                <label><input type="checkbox"> 腳</label>
-                <label><input type="checkbox"> 肉</label>
-                <label><input type="checkbox"> 甲</label>
-            </div>
+                    <div class="check-row">
+                        <label><input type="checkbox"> 頭</label>
+                        <label><input type="checkbox"> 肚</label>
+                        <label><input type="checkbox"> 手</label>
+                        <label><input type="checkbox"> 腳</label>
+                        <label><input type="checkbox"> 肉</label>
+                        <label><input type="checkbox"> 甲</label>
+                    </div>
 
-            <div class="image-grid">
-                <div class="drop-zone">拉入圖片</div>
-                <div class="drop-zone">拉入圖片</div>
-                <div class="drop-zone">拉入圖片</div>
-            </div>
-        `;
+                    <div class="image-grid">
+                        <div class="drop-zone">拉入圖片</div>
+                        <div class="drop-zone">拉入圖片</div>
+                        <div class="drop-zone">拉入圖片</div>
+                    </div>
+                `;
 
-        container.appendChild(tierRow);
-    }
-}
+                container.appendChild(tierRow);
+            }
+        }
         initTiers('container-burst');
         initTiers('container-torment');
 
@@ -425,13 +417,85 @@ html {
             container.appendChild(img);
         }
 
-        const swiper = document.getElementById('main-swiper');
+        // 綁定全域元素
+        const swiperContainer = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
         const tabSkill = document.getElementById('tab-skill');
         const poolContainer = document.getElementById('pool-container');
-        const poolScrollEl = document.getElementById('pool-scroll');
+        const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
+        
         let currentPage = 0;
+        let swiperWidth = window.innerWidth;
+        let startX = 0;
+        let translateX = 0;
+        let isSwiping = false;
+        let swipeStartTime = 0;
+
+        let isDraggingGlobal = false;
+        let isDraggingCard = false;
+
+        // 🌟 物理阻尼翻頁控制核心
+        function updateSwiperPosition(useTransition = false) {
+            if (useTransition) {
+                swiperContainer.style.transition = 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)';
+            } else {
+                swiperContainer.style.transition = 'none';
+            }
+            let targetOffset = -currentPage * swiperWidth;
+            if (isSwiping) {
+                targetOffset = translateX;
+            }
+            swiperContainer.style.transform = `translate3d(${targetOffset}px, 0px, 0px)`;
+        }
+
+        swiperContainer.addEventListener('touchstart', (e) => {
+            if (isDraggingCard || isDraggingGlobal) return;
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            swipeStartTime = Date.now();
+            isSwiping = true;
+            swiperContainer.style.transition = 'none';
+        }, { passive: true });
+
+        swiperContainer.addEventListener('touchmove', (e) => {
+            if (!isSwiping) return;
+            const touch = e.touches[0];
+            let deltaX = touch.clientX - startX;
+            let baseOffset = -currentPage * swiperWidth;
+            let currentTarget = baseOffset + deltaX;
+
+            // 邊界橡皮筋拉扯計算
+            if (currentTarget > 0) {
+                currentTarget = deltaX / (1 + (deltaX / (swiperWidth * 0.6)));
+            } else if (currentTarget < -(swiperWidth * 2)) {
+                let overSwipe = currentTarget - (-(swiperWidth * 2));
+                currentTarget = -(swiperWidth * 2) + (overSwipe / (1 + (Math.abs(overSwipe) / (swiperWidth * 0.6))));
+            }
+            translateX = currentTarget;
+
+            requestAnimationFrame(() => {
+                if(isSwiping) swiperContainer.style.transform = `translate3d(${translateX}px, 0px, 0px)`;
+            });
+        }, { passive: true });
+
+        swiperContainer.addEventListener('touchend', (e) => {
+            if (!isSwiping) return;
+            isSwiping = false;
+            const touch = e.changedTouches[0];
+            const deltaX = touch.clientX - startX;
+            const duration = Date.now() - swipeStartTime;
+            const velocityX = Math.abs(deltaX) / duration;
+
+            if (velocityX > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
+                if (deltaX < 0 && currentPage < 2) {
+                    currentPage++;
+                } else if (deltaX > 0 && currentPage > 0) {
+                    currentPage--;
+                }
+            }
+            switchPage(currentPage);
+        });
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
@@ -441,56 +505,24 @@ html {
             tabSkill.classList.remove('active');
 
             if (pageIndex === 0) {
-                swiper.style.transform = 'translateX(0vw)';
                 tabBurst.classList.add('active');
                 poolContainer.style.transform = 'translateY(0)'; 
             } else if (pageIndex === 1) {
-                swiper.style.transform = 'translateX(-100vw)';
                 tabTorment.classList.add('active');
                 poolContainer.style.transform = 'translateY(0)'; 
             } else if (pageIndex === 2) {
-                swiper.style.transform = 'translateX(-200vw)';
                 tabSkill.classList.add('active');
                 poolContainer.style.transform = 'translateY(150px)'; 
             }
+            updateSwiperPosition(true);
         }
 
         window.addEventListener('resize', () => {
-            switchPage(currentPage);
+            swiperWidth = window.innerWidth;
+            updateSwiperPosition(false);
         });
 
-        let isDraggingGlobal = false;
-        // ★ 提前宣告，確保 pool-container 的 touchmove 能正確讀到此變數
-        let isDraggingCard = false;
-
-        document.addEventListener('touchmove', function(e) {
-            if (isDraggingGlobal) {
-                if (e.cancelable) e.preventDefault();
-            }
-        }, { passive: false });
-
-        let touchStartX = 0; let touchEndX = 0;
-        document.querySelectorAll('.page-view').forEach(page => {
-            page.addEventListener('touchstart', e => {
-                if (isDraggingGlobal) return;
-                touchStartX = e.changedTouches[0].screenX;
-            }, { passive: true });
-            page.addEventListener('touchend', e => {
-                if (isDraggingGlobal) return;
-                touchEndX = e.changedTouches[0].screenX;
-                handleSwipe();
-            }, { passive: true });
-        });
-
-        // 卡片池 touchmove：拖曳中放行，非拖曳時阻止觸發頁面左右切換
-        document.getElementById('pool-container').addEventListener('touchmove', function(e) {
-            if (!isDraggingCard) {
-                e.stopPropagation();
-            }
-        }, { passive: true });
-
-        const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
-
+        // 卡片池展開與觸控防禦
         function expandPool(event) { 
             event.stopPropagation(); 
             poolContainer.classList.add('expanded'); 
@@ -502,18 +534,13 @@ html {
             poolSubtitle.innerText = '（點一下展開）';
         });
 
-        function handleSwipe() {
-            if (isDraggingGlobal) return; 
-            const threshold = 70;
-            if (touchStartX - touchEndX > threshold) {
-                if (currentPage === 0) switchPage(1);
-                else if (currentPage === 1) switchPage(2);
-            } else if (touchEndX - touchStartX > threshold) {
-                if (currentPage === 1) switchPage(0);
-                else if (currentPage === 2) switchPage(1);
+        document.getElementById('pool-container').addEventListener('touchmove', function(e) {
+            if (!isDraggingCard) {
+                e.stopPropagation();
             }
-        }
+        }, { passive: true });
 
+        // 增減格子按鈕功能
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
             if(grid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
@@ -528,268 +555,211 @@ html {
             grid.removeChild(grid.lastElementChild);
         }
 
+        // 🌟 拖放卡片核心引擎
         let clone = null;
-let activeSrc = '';
-let touchStartPos = { x: 0, y: 0 };
+        let activeSrc = '';
+        let touchStartPos = { x: 0, y: 0 };
+        let gestureMode = null; 
+        let scrollTimer = null;
+        let scrollSpeed = 0;
+        let cachedZones = [];
+        let lastHoveredZone = null;
+        let currentTouchX = 0;
+        let currentTouchY = 0;
+        let longPressTimer = null;
 
-let gestureMode = null; // "scroll" | "drag"
-
-let scrollTimer = null;
-let scrollSpeed = 0;
-
-let cachedZones = [];
-let lastHoveredZone = null;
-
-let currentTouchX = 0;
-let currentTouchY = 0;
-
-let longPressTimer = null;
-
-// =========================
-// cancel / reset
-// =========================
-function cancelDrag() {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-
-    stopAutoScroll();
-
-    document.querySelectorAll('.drag-clone').forEach(el => el.remove());
-    clone = null;
-
-    if (lastHoveredZone) {
-        lastHoveredZone.classList.remove('drag-hover');
-        lastHoveredZone = null;
-    }
-
-    isDraggingCard = false;
-    isDraggingGlobal = false;
-    gestureMode = null;
-}
-
-// =========================
-// zone cache
-// =========================
-function updateZonesCache() {
-    cachedZones = [];
-
-    const activePageId = currentPage === 0 ? 'page-burst' : 'page-torment';
-
-    document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
-        const rect = zone.getBoundingClientRect();
-        cachedZones.push({
-            el: zone,
-            l: rect.left,
-            r: rect.right,
-            t: rect.top,
-            b: rect.bottom
-        });
-    });
-}
-
-function findZone(x, y) {
-    for (let z of cachedZones) {
-        if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el;
-    }
-    return null;
-}
-
-// =========================
-// auto scroll
-// =========================
-function startAutoScroll() {
-    if (scrollTimer) return;
-
-    scrollTimer = setInterval(() => {
-
-        if (!gestureMode || gestureMode !== "drag") return;
-        if (scrollSpeed === 0) return;
-
-        const maxY = document.documentElement.scrollHeight - window.innerHeight;
-
-        if (scrollSpeed < 0 && window.scrollY <= 0) scrollSpeed = 0;
-        if (scrollSpeed > 0 && window.scrollY >= maxY) scrollSpeed = 0;
-
-        window.scrollBy(0, scrollSpeed);
-
-        const target = findZone(currentTouchX, currentTouchY);
-
-        if (target !== lastHoveredZone) {
-            if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-            if (target) target.classList.add('drag-hover');
-            lastHoveredZone = target;
+        function cancelDrag() {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+            stopAutoScroll();
+            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+            clone = null;
+            if (lastHoveredZone) {
+                lastHoveredZone.classList.remove('drag-hover');
+                lastHoveredZone = null;
+            }
+            isDraggingCard = false;
+            isDraggingGlobal = false;
+            gestureMode = null;
         }
 
-    }, 30); // 🔥 從16ms → 30ms（順很多）
-}
-
-function stopAutoScroll() {
-    clearInterval(scrollTimer);
-    scrollTimer = null;
-    scrollSpeed = 0;
-}
-
-// =========================
-// drag start
-// =========================
-function triggerDrag(el) {
-
-    if (isDraggingCard) return;
-
-    isDraggingCard = true;
-    isDraggingGlobal = true;
-    gestureMode = "drag";
-
-    updateZonesCache();
-    lastHoveredZone = null;
-
-    clone = el.cloneNode(true);
-    clone.className = 'drag-clone';
-
-    clone.style.left = currentTouchX - 30 + 'px';
-    clone.style.top = currentTouchY - 30 + 'px';
-
-    document.body.appendChild(clone);
-
-    poolContainer.classList.remove('expanded');
-    poolSubtitle.innerText = '（點一下展開）';
-
-    startAutoScroll();
-}
-
-// =========================
-// touch binding
-// =========================
-function setupTouchDrag(el) {
-
-    el.addEventListener('touchstart', (e) => {
-
-        if (isDraggingCard) cancelDrag();
-
-        const t = e.touches[0];
-
-        touchStartPos.x = t.clientX;
-        touchStartPos.y = t.clientY;
-
-        currentTouchX = t.clientX;
-        currentTouchY = t.clientY;
-
-        activeSrc = el.src;
-
-        gestureMode = null;
-
-        longPressTimer = setTimeout(() => {
-            triggerDrag(el);
-        }, 280); // 🔥 更快（Safari/Chrome一致）
-
-    }, { passive: true });
-
-    el.addEventListener('touchmove', (e) => {
-
-        const t = e.touches[0];
-
-        currentTouchX = t.clientX;
-        currentTouchY = t.clientY;
-
-        const dx = currentTouchX - touchStartPos.x;
-        const dy = currentTouchY - touchStartPos.y;
-
-        if (!gestureMode) {
-
-            // 👉 1. 先判定 scroll
-            if (Math.abs(dx) > 10) {
-                gestureMode = "scroll";
-                clearTimeout(longPressTimer);
-                return;
-            }
-
-            // 👉 2. 上滑直接 drag
-            if (dy < -50 && Math.abs(dx) < 30) {
-                clearTimeout(longPressTimer);
-                triggerDrag(el);
-                return;
-            }
-
-            return;
+        function updateZonesCache() {
+            cachedZones = [];
+            const activePageId = currentPage === 0 ? 'page-burst' : 'page-torment';
+            document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
+                const rect = zone.getBoundingClientRect();
+                cachedZones.push({ el: zone, l: rect.left, r: rect.right, t: rect.top, b: rect.bottom });
+            });
         }
 
-        if (gestureMode === "scroll") return;
-
-        // ================= drag =================
-        if (e.cancelable) e.preventDefault();
-
-        requestAnimationFrame(() => {
-            if (clone) {
-                clone.style.left = currentTouchX - 30 + 'px';
-                clone.style.top = currentTouchY - 30 + 'px';
+        function findZone(x, y) {
+            for (let z of cachedZones) {
+                if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el;
             }
-        });
+            return null;
+        }
 
-        const h = window.innerHeight;
+        function startAutoScroll() {
+            if (scrollTimer) return;
+            scrollTimer = setInterval(() => {
+                if (!gestureMode || gestureMode !== "drag") return;
+                if (scrollSpeed === 0) return;
+                const maxY = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollSpeed < 0 && window.scrollY <= 0) scrollSpeed = 0;
+                if (scrollSpeed > 0 && window.scrollY >= maxY) scrollSpeed = 0;
 
-        const top = 120;
-        const bottom = h - 120;
+                window.scrollBy(0, scrollSpeed);
+                const target = findZone(currentTouchX, currentTouchY);
 
-        if (currentTouchY < top) {
-            scrollSpeed = -8;
-        } else if (currentTouchY > bottom) {
-            scrollSpeed = 8;
-        } else {
+                if (target !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (target) target.classList.add('drag-hover');
+                    lastHoveredZone = target;
+                }
+            }, 30);
+        }
+
+        function stopAutoScroll() {
+            clearInterval(scrollTimer);
+            scrollTimer = null;
             scrollSpeed = 0;
         }
 
-        const zone = findZone(currentTouchX, currentTouchY);
+        function triggerDrag(el) {
+            if (isDraggingCard) return;
+            isDraggingCard = true;
+            isDraggingGlobal = true;
+            gestureMode = "drag";
 
-        if (zone !== lastHoveredZone) {
-            if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-            if (zone) zone.classList.add('drag-hover');
-            lastHoveredZone = zone;
+            updateZonesCache();
+            lastHoveredZone = null;
+
+            clone = el.cloneNode(true);
+            clone.className = 'drag-clone';
+            clone.style.left = currentTouchX - 30 + 'px';
+            clone.style.top = currentTouchY - 30 + 'px';
+            document.body.appendChild(clone);
+
+            poolContainer.classList.remove('expanded');
+            poolSubtitle.innerText = '（點一下展開）';
+            startAutoScroll();
         }
 
-    }, { passive: false });
+        function setupTouchDrag(el) {
+            el.addEventListener('touchstart', (e) => {
+                if (isDraggingCard) cancelDrag();
+                const t = e.touches[0];
+                touchStartPos.x = t.clientX;
+                touchStartPos.y = t.clientY;
+                currentTouchX = t.clientX;
+                currentTouchY = t.clientY;
+                activeSrc = el.src;
+                gestureMode = null;
 
-    el.addEventListener('touchend', () => {
+                longPressTimer = setTimeout(() => {
+                    isSwiping = false; // 拖卡片優先權拉高
+                    triggerDrag(el);
+                }, 220);
+            }, { passive: true });
 
-        clearTimeout(longPressTimer);
-        stopAutoScroll();
+            el.addEventListener('touchmove', (e) => {
+                const t = e.touches[0];
+                currentTouchX = t.clientX;
+                currentTouchY = t.clientY;
+                const dx = currentTouchX - touchStartPos.x;
+                const dy = currentTouchY - touchStartPos.y;
 
-        setTimeout(() => isDraggingGlobal = false, 80);
+                if (!gestureMode) {
+                    // 水平移動：判定是在卡片池裡滑動看其他卡片，取消拖拉
+                    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+                        gestureMode = "scroll";
+                        clearTimeout(longPressTimer);
+                        return;
+                    }
+                    // 直覺往上滑：立刻觸發拖牌
+                    if (dy < -15 && Math.abs(dx) < 20) {
+                        clearTimeout(longPressTimer);
+                        isSwiping = false;
+                        triggerDrag(el);
+                        return;
+                    }
+                    return;
+                }
 
-        if (!isDraggingCard) return;
+                if (gestureMode === "scroll") return;
 
-        updateZonesCache();
+                if (e.cancelable) e.preventDefault();
 
-        const drop = findZone(currentTouchX, currentTouchY);
+                requestAnimationFrame(() => {
+                    if (clone) {
+                        clone.style.left = currentTouchX - 30 + 'px';
+                        clone.style.top = currentTouchY - 30 + 'px';
+                    }
+                });
 
-        if (drop) {
-            drop.innerHTML = `
-                <img src="${activeSrc}">
-                <button class="delete-btn" onclick="clearZone(this,event)">×</button>
-            `;
+                const h = window.innerHeight;
+                const top = 120;
+                const bottom = h - 120;
+
+                if (currentTouchY < top) {
+                    scrollSpeed = -8;
+                } else if (currentTouchY > bottom) {
+                    scrollSpeed = 8;
+                } else {
+                    scrollSpeed = 0;
+                }
+
+                const zone = findZone(currentTouchX, currentTouchY);
+                if (zone !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (zone) zone.classList.add('drag-hover');
+                    lastHoveredZone = zone;
+                }
+            }, { passive: false });
+
+            el.addEventListener('touchend', () => {
+                clearTimeout(longPressTimer);
+                stopAutoScroll();
+
+                setTimeout(() => {
+                    isDraggingGlobal = false;
+                    isDraggingCard = false;
+                }, 100);
+
+                if (!isDraggingCard) return;
+
+                updateZonesCache();
+                const drop = findZone(currentTouchX, currentTouchY);
+
+                if (drop) {
+                    drop.innerHTML = `
+                        <img src="${activeSrc}">
+                        <button class="delete-btn" onclick="clearZone(this,event)">×</button>
+                    `;
+                }
+                if (clone) {
+                    clone.remove();
+                    clone = null;
+                }
+                lastHoveredZone = null;
+                gestureMode = null;
+            });
+
+            el.addEventListener('touchcancel', cancelDrag);
         }
 
-        if (clone) {
-            clone.remove();
-            clone = null;
-        }
-
-        lastHoveredZone = null;
-        isDraggingCard = false;
-        gestureMode = null;
-
-    });
-
-    el.addEventListener('touchcancel', cancelDrag);
-}
-        // 全域安全網：若 clone 莫名留在畫面上，觸摸任何其他地方都能清掉
         document.addEventListener('touchstart', function() {
             if (!isDraggingCard && clone) {
                 cancelDrag();
             }
         }, { passive: true });
 
-        function clearZone(btn, event) { event.stopPropagation(); btn.parentElement.innerHTML = '拉入圖片'; }
+        function clearZone(btn, event) { 
+            event.stopPropagation(); 
+            btn.parentElement.innerHTML = '拉入圖片'; 
+        }
 
+        // 圖片產出功能
         function generateImage(type) {
             window.scrollTo(0,0);
             const exportArea = document.getElementById(type === 'burst' ? 'export-burst' : 'export-torment');

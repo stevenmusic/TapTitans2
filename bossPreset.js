@@ -2,7 +2,7 @@ const BOSS_PRESETS = {
 
   Jukk: {
   burst: [
-    { label: "", parts: ["頭"], type: "肉甲", cards: [104,78,106] },
+    { label: "", parts: ["頭"], type: "肉甲", cards: [104, 78, 106] },
     { label: "", parts: ["肚"], type: "肉甲", cards: [63, 64, 65] },
     { label: "", parts: [], type: "", cards: [] },
     { label: "", parts: [], type: "", cards: [] },

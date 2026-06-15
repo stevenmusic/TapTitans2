@@ -173,10 +173,10 @@
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
         .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         
-        /* 🚀 方案 A：膠囊標籤全新精簡排版 */
+        /* 🚀 方案 A：膠囊標籤全新精簡排版 (套用日系清爽雙底色) */
         .check-row {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             margin-bottom: 10px;
             justify-content: flex-start;
             align-items: center;
@@ -184,31 +184,42 @@
         }
         .btn-group {
             display: flex;
-            background: rgba(0, 0, 0, 0.06);
-            padding: 2px;
-            border-radius: 6px;
+            padding: 3px;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
         }
+        /* 部位：燕麥米色背景 */
+        .group-parts {
+            background-color: #f2e8de; 
+        }
+        /* 肉甲：莫蘭迪冷灰背景 */
+        .group-types {
+            background-color: #e5dfd9; 
+        }
+
         .btn-tag {
             border: none;
             background: transparent;
             font-size: 11px;
             font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 4px 9px;
+            border-radius: 6px;
             cursor: pointer;
             color: #75645a;
             transition: all 0.2s ease;
             white-space: nowrap;
         }
-        /* 爆裂場點亮顏色（內斂紅） */
+        /* 爆裂場點亮顏色（內斂紅）加上些微陰影增加立體感 */
         #page-burst .btn-tag.active {
             background-color: #8b263e;
             color: #ffffff;
+            box-shadow: 0 2px 4px rgba(139,38,62,0.2);
         }
         /* 苦痛場點亮顏色（內斂紫） */
         #page-torment .btn-tag.active {
             background-color: #4a148c;
             color: #ffffff;
+            box-shadow: 0 2px 4px rgba(74,20,140,0.2);
         }
 
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
@@ -388,17 +399,17 @@
                     </div>
 
                     <div class="check-row">
-                        <div class="btn-group">
-                            <button class="btn-tag active" onclick="toggleTag(this)">全部位</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">頭</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">肚</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">手</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">腳</button>
+                        <div class="btn-group group-parts">
+                            <button class="btn-tag active" onclick="togglePartTag(this)">全部位</button>
+                            <button class="btn-tag" onclick="togglePartTag(this)">頭</button>
+                            <button class="btn-tag" onclick="togglePartTag(this)">肚</button>
+                            <button class="btn-tag" onclick="togglePartTag(this)">手</button>
+                            <button class="btn-tag" onclick="togglePartTag(this)">腳</button>
                         </div>
-                        <div class="btn-group">
-                            <button class="btn-tag active" onclick="toggleTag(this)">肉甲</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">肉</button>
-                            <button class="btn-tag" onclick="toggleTag(this)">甲</button>
+                        <div class="btn-group group-types">
+                            <button class="btn-tag active" onclick="toggleTypeTag(this)">肉甲</button>
+                            <button class="btn-tag" onclick="toggleTypeTag(this)">肉</button>
+                            <button class="btn-tag" onclick="toggleTypeTag(this)">甲</button>
                         </div>
                     </div>
 
@@ -416,14 +427,35 @@
             }
         }
 
-        // 🚀 控制膠囊標籤切換的單選邏輯
-        function toggleTag(button) {
+        // 🚀 控制部位標籤的多選邏輯
+        function togglePartTag(button) {
             const parent = button.parentElement;
-            // 清除同組內其他按鈕的高亮
+            const isAll = button.innerText === "全部位";
+            
+            if (isAll) {
+                // 點擊「全部位」：取消其他部位，單獨亮起全部位
+                parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+            } else {
+                // 點擊「其他部位」：取消「全部位」，並獨立切換當前按鈕狀態
+                parent.firstElementChild.classList.remove('active'); // 移除「全部位」
+                button.classList.toggle('active');
+                
+                // 防呆：如果所有頭/肚/手/腳都被取消了，自動亮回「全部位」
+                const anyActive = Array.from(parent.querySelectorAll('.btn-tag')).some(btn => btn.classList.contains('active'));
+                if (!anyActive) {
+                    parent.firstElementChild.classList.add('active');
+                }
+            }
+        }
+
+        // 🚀 控制肉甲標籤的單選邏輯
+        function toggleTypeTag(button) {
+            const parent = button.parentElement;
             parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
-            // 點亮當前按鈕
             button.classList.add('active');
         }
+
 
         // 清空盒子的函式
         function handleZoneClear(zoneEl) {

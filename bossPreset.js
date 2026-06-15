@@ -1,16 +1,17 @@
 const BOSS_PRESETS = {
 
   Jukk: {
-    burst: [
-      { label: "", parts: ["頭"], type: "肉甲", cards: [104, 78, 106]},
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] },
-      { label: "", parts: [], type: "", cards: [] }
-    ],
+  burst: [
+    { label: "", parts: ["頭"], type: "肉甲", cards: [104,78,106] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] },
+    { label: "", parts: [], type: "", cards: [] }
+  ]
+},
 
     torment: [
       { label: "", parts: [], type: "", cards: [] },

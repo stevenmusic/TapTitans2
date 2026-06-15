@@ -1,4 +1,3 @@
-console.log("bossPreset loaded");
 const BOSS_PRESETS = {
 
   Jukk: {

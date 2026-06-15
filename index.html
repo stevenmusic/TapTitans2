@@ -7,6 +7,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <script src="cards.js"></script>
+<script src="bossPreset.js"></script>
 
     <style>
         html {
@@ -875,6 +876,47 @@
             }).catch(err => { alert("生成失敗"); closeModal(); });
         }
         function closeModal() { document.getElementById('result-modal').style.display = "none"; }
+        function applyBossPreset(mode, bossName, containerId) {
+    const preset = BOSS_PRESETS?.[bossName]?.[mode];
+    if (!preset) return;
+
+    const container = document.getElementById(containerId);
+    const tiers = container.querySelectorAll('.tier-row');
+
+    preset.forEach((group, i) => {
+        const tier = tiers[i];
+        if (!tier) return;
+
+        // 標題
+        tier.querySelector('.label-custom-input').value = group.label;
+
+        // 部位
+        tier.querySelectorAll('.group-parts .btn-tag').forEach(btn => {
+            btn.classList.toggle('active', group.parts.includes(btn.innerText));
+        });
+
+        // 肉甲
+        tier.querySelectorAll('.group-types .btn-tag').forEach(btn => {
+            btn.classList.toggle('active', btn.innerText === group.type);
+        });
+
+        // 卡片
+        const zones = tier.querySelectorAll('.drop-zone');
+        group.cards.forEach((card, idx) => {
+            if (zones[idx]) {
+                zones[idx].innerHTML =
+                    `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
+            }
+        });
+    });
+}
+  document.getElementById('boss-select-burst').addEventListener('change', function () {
+    applyBossPreset('burst', this.value, 'container-burst');
+});
+
+document.getElementById('boss-select-torment').addEventListener('change', function () {
+    applyBossPreset('torment', this.value, 'container-torment');
+});      
     </script>
 </body>
 </html>

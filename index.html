@@ -460,13 +460,79 @@ html {
         });
 
         let isDraggingGlobal = false;
-let isDraggingCard = false;
+        // ★ 提前宣告，確保 pool-container 的 touchmove 能正確讀到此變數
+        let isDraggingCard = false;
 
-let clone = null;
+        document.addEventListener('touchmove', function(e) {
+            if (isDraggingGlobal) {
+                if (e.cancelable) e.preventDefault();
+            }
+        }, { passive: false });
+
+        let touchStartX = 0; let touchEndX = 0;
+        document.querySelectorAll('.page-view').forEach(page => {
+            page.addEventListener('touchstart', e => {
+                if (isDraggingGlobal) return;
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+            page.addEventListener('touchend', e => {
+                if (isDraggingGlobal) return;
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }, { passive: true });
+        });
+
+        // 卡片池 touchmove：拖曳中放行，非拖曳時阻止觸發頁面左右切換
+        document.getElementById('pool-container').addEventListener('touchmove', function(e) {
+            if (!isDraggingCard) {
+                e.stopPropagation();
+            }
+        }, { passive: true });
+
+        const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
+
+        function expandPool(event) { 
+            event.stopPropagation(); 
+            poolContainer.classList.add('expanded'); 
+            poolSubtitle.innerText = '（點擊空白處收合）';
+        }
+        
+        document.addEventListener('click', function() { 
+            poolContainer.classList.remove('expanded'); 
+            poolSubtitle.innerText = '（點一下展開）';
+        });
+
+        function handleSwipe() {
+            if (isDraggingGlobal) return; 
+            const threshold = 70;
+            if (touchStartX - touchEndX > threshold) {
+                if (currentPage === 0) switchPage(1);
+                else if (currentPage === 1) switchPage(2);
+            } else if (touchEndX - touchStartX > threshold) {
+                if (currentPage === 1) switchPage(0);
+                else if (currentPage === 2) switchPage(1);
+            }
+        }
+
+        function addGridItem(button) {
+            const grid = button.parentElement.parentElement.nextElementSibling;
+            if(grid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
+            const newZone = document.createElement('div');
+            newZone.className = 'drop-zone'; newZone.innerText = '拉入圖片';
+            grid.appendChild(newZone);
+        }
+
+        function removeGridItem(button) {
+            const grid = button.parentElement.parentElement.nextElementSibling;
+            if(grid.children.length <= 3) { alert("限制：每一組最少必須保留 3 個格子唷！"); return; }
+            grid.removeChild(grid.lastElementChild);
+        }
+
+        let clone = null;
 let activeSrc = '';
 let touchStartPos = { x: 0, y: 0 };
 
-let gestureMode = null;
+let gestureMode = null; // "scroll" | "drag"
 
 let scrollTimer = null;
 let scrollSpeed = 0;
@@ -480,10 +546,12 @@ let currentTouchY = 0;
 let longPressTimer = null;
 
 // =========================
-// cancel
+// cancel / reset
 // =========================
 function cancelDrag() {
     clearTimeout(longPressTimer);
+    longPressTimer = null;
+
     stopAutoScroll();
 
     document.querySelectorAll('.drag-clone').forEach(el => el.remove());
@@ -500,7 +568,7 @@ function cancelDrag() {
 }
 
 // =========================
-// zones
+// zone cache
 // =========================
 function updateZonesCache() {
     cachedZones = [];
@@ -533,7 +601,14 @@ function startAutoScroll() {
     if (scrollTimer) return;
 
     scrollTimer = setInterval(() => {
+
         if (!gestureMode || gestureMode !== "drag") return;
+        if (scrollSpeed === 0) return;
+
+        const maxY = document.documentElement.scrollHeight - window.innerHeight;
+
+        if (scrollSpeed < 0 && window.scrollY <= 0) scrollSpeed = 0;
+        if (scrollSpeed > 0 && window.scrollY >= maxY) scrollSpeed = 0;
 
         window.scrollBy(0, scrollSpeed);
 
@@ -545,7 +620,7 @@ function startAutoScroll() {
             lastHoveredZone = target;
         }
 
-    }, 30);
+    }, 30); // 🔥 從16ms → 30ms（順很多）
 }
 
 function stopAutoScroll() {
@@ -558,6 +633,7 @@ function stopAutoScroll() {
 // drag start
 // =========================
 function triggerDrag(el) {
+
     if (isDraggingCard) return;
 
     isDraggingCard = true;
@@ -565,6 +641,7 @@ function triggerDrag(el) {
     gestureMode = "drag";
 
     updateZonesCache();
+    lastHoveredZone = null;
 
     clone = el.cloneNode(true);
     clone.className = 'drag-clone';
@@ -574,15 +651,20 @@ function triggerDrag(el) {
 
     document.body.appendChild(clone);
 
+    poolContainer.classList.remove('expanded');
+    poolSubtitle.innerText = '（點一下展開）';
+
     startAutoScroll();
 }
 
 // =========================
-// touch binding（🔥核心修正）
+// touch binding
 // =========================
 function setupTouchDrag(el) {
 
     el.addEventListener('touchstart', (e) => {
+
+        if (isDraggingCard) cancelDrag();
 
         const t = e.touches[0];
 
@@ -598,7 +680,7 @@ function setupTouchDrag(el) {
 
         longPressTimer = setTimeout(() => {
             triggerDrag(el);
-        }, 300);
+        }, 280); // 🔥 更快（Safari/Chrome一致）
 
     }, { passive: true });
 
@@ -612,23 +694,29 @@ function setupTouchDrag(el) {
         const dx = currentTouchX - touchStartPos.x;
         const dy = currentTouchY - touchStartPos.y;
 
-        // 👉 先判斷：滑動 → 取消長按（避免誤拖）
-        if (!gestureMode && Math.abs(dx) > 10) {
-            gestureMode = "scroll";
-            clearTimeout(longPressTimer);
+        if (!gestureMode) {
+
+            // 👉 1. 先判定 scroll
+            if (Math.abs(dx) > 10) {
+                gestureMode = "scroll";
+                clearTimeout(longPressTimer);
+                return;
+            }
+
+            // 👉 2. 上滑直接 drag
+            if (dy < -50 && Math.abs(dx) < 30) {
+                clearTimeout(longPressTimer);
+                triggerDrag(el);
+                return;
+            }
+
             return;
         }
 
-        // 👉 上滑直接進拖曳
-        if (!gestureMode && dy < -50) {
-            clearTimeout(longPressTimer);
-            triggerDrag(el);
-            return;
-        }
+        if (gestureMode === "scroll") return;
 
-        if (gestureMode !== "drag") return;
-
-        e.preventDefault();
+        // ================= drag =================
+        if (e.cancelable) e.preventDefault();
 
         requestAnimationFrame(() => {
             if (clone) {
@@ -639,9 +727,16 @@ function setupTouchDrag(el) {
 
         const h = window.innerHeight;
 
-        scrollSpeed =
-            currentTouchY < 120 ? -8 :
-            currentTouchY > h - 120 ? 8 : 0;
+        const top = 120;
+        const bottom = h - 120;
+
+        if (currentTouchY < top) {
+            scrollSpeed = -8;
+        } else if (currentTouchY > bottom) {
+            scrollSpeed = 8;
+        } else {
+            scrollSpeed = 0;
+        }
 
         const zone = findZone(currentTouchX, currentTouchY);
 
@@ -678,13 +773,14 @@ function setupTouchDrag(el) {
             clone = null;
         }
 
+        lastHoveredZone = null;
         isDraggingCard = false;
         gestureMode = null;
 
     });
 
     el.addEventListener('touchcancel', cancelDrag);
-}  
+}
         // 全域安全網：若 clone 莫名留在畫面上，觸摸任何其他地方都能清掉
         document.addEventListener('touchstart', function() {
             if (!isDraggingCard && clone) {

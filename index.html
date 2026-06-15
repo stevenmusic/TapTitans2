@@ -76,9 +76,6 @@
         /* ── 爆裂場 ── */
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
         #page-burst h1 { color: var(--text-burst); font-size: 22px; margin: 5px 0; text-align: center; }
-       <!-- 在每個 page 的 h1 下方加入這行 -->
-<button class="btn-clear-all" onclick="clearAllZones()">一鍵清除所有牌組</button>
- 
         #page-burst .btn-action { background-color: #8b263e; color: #fff; }
         #page-burst .btn-action.del { background-color: #c97a7a; color: #fff; }
         #page-burst .export-area { background-color: var(--bg-burst); }
@@ -89,9 +86,6 @@
         /* ── 苦痛場 ── */
         #page-torment { background-color: var(--bg-torment); color: #332244; }
         #page-torment h1 { color: var(--text-torment); font-size: 22px; margin: 5px 0; text-align: center; }
-       <!-- 在每個 page 的 h1 下方加入這行 -->
-<button class="btn-clear-all" onclick="clearAllZones()">一鍵清除所有牌組</button>
- 
         #page-torment .drop-zone { background-color: #f3e5f5; border-color: #d1c4e9; color: #b19cd9; }
         #page-torment .btn-action { background-color: #4a148c; color: #fff; }
         #page-torment .btn-action.del { background-color: #b68cb6; color: #fff; }
@@ -108,9 +102,6 @@
         /* ── 支援場 ── */
         #page-support { background-color: var(--bg-support); color: #1a3c1a; }
         #page-support h1 { color: var(--text-support); font-size: 22px; margin: 5px 0; text-align: center; }
-        <!-- 在每個 page 的 h1 下方加入這行 -->
-<button class="btn-clear-all" onclick="clearAllZones()">一鍵清除所有牌組</button>
-
         #page-support .drop-zone { background-color: #f1f8e9; border-color: #c5e1a5; color: #8aad6a; }
         #page-support .btn-action { background-color: #2e7d32; color: #fff; }
         #page-support .btn-action.del { background-color: #81c784; color: #fff; }
@@ -205,7 +196,7 @@
 /* ── 格子區 ── */
 .grid-section { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .grid-block { 
-    border: none;
+    border: none；
     padding: 0; 
 }
 .image-grid { 
@@ -295,21 +286,6 @@
         #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
         .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
-        .btn-clear-all {
-    display: block;
-    margin: 10px auto;
-    padding: 6px 16px;
-    background-color: #d32f2f;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: bold;
-    cursor: pointer;
-    width: 90%;
-    max-width: 200px;
-}
-.btn-clear-all:active { background-color: #b71c1c; }
     </style>
 </head>
 <body>
@@ -824,22 +800,6 @@ function createGridBlock() {
         document.getElementById('boss-select-support').addEventListener('change', function () {
             applyBossPreset('support', this.value, 'container-support');
         });
-
-     function clearAllZones() {
-    if (confirm("確定要清空當前頁面所有牌組嗎？")) {
-        // 取得當前顯示頁面的容器
-        const activePage = document.querySelector('.page-view[style*="transform"]');
-        // 如果無法判斷，就抓取所有 drop-zone，或者你可以指定 container-burst 等 ID
-        const zones = document.querySelectorAll('.drop-zone');
-        
-        zones.forEach(zone => {
-            zone.innerHTML = defaultZoneHTML;
-            // 重新綁定觸摸清除事件，確保清空後仍可長按/點擊處理
-            setupZoneTouchClear(zone);
-        });
-        alert("已清空！");
-    }
-}   
     </script>
 </body>
 </html>

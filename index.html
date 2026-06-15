@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tap Titans 2 </title>
+    <title>Tap Titans 2 工具箱</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <script src="cards.js"></script>
@@ -173,38 +173,42 @@
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
         .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         
-        /* 🚀 頭肚手腳肉甲區塊全新配色優化 */
+        /* 🚀 方案 A：膠囊標籤全新精簡排版 */
         .check-row {
             display: flex;
-            flex-wrap: wrap;
             gap: 6px;
-            margin-bottom: 12px;
-            padding: 2px 0;
-        }
-        .check-row label {
-            font-size: 13px;
-            font-weight: bold;
-            display: inline-flex;
+            margin-bottom: 10px;
+            justify-content: flex-start;
             align-items: center;
-            cursor: pointer;
-            user-select: none;
-            -webkit-user-select: none;
+            flex-wrap: wrap;
+        }
+        .btn-group {
+            display: flex;
+            background: rgba(0, 0, 0, 0.06);
+            padding: 2px;
+            border-radius: 6px;
+        }
+        .btn-tag {
+            border: none;
+            background: transparent;
+            font-size: 11px;
+            font-weight: bold;
             padding: 4px 8px;
             border-radius: 4px;
-        }
-        /* 爆裂場部位顏色 */
-        #page-burst .lbl-core { background-color: #fce4ec; color: #8b263e; }  /* 頭肚手腳：粉紅 */
-        #page-burst .lbl-armor { background-color: #e0f2f1; color: #004d40; } /* 肉甲：淡綠 */
-        
-        /* 苦痛場部位顏色 */
-        #page-torment .lbl-core { background-color: #f3e5f5; color: #4a148c; }   /* 頭肚手腳：粉紫 */
-        #page-torment .lbl-armor { background-color: #e1f5fe; color: #01579b; }  /* 肉甲：淡藍 */
-
-        .check-row input[type="checkbox"] {
-            transform: scale(1.1);
-            margin-right: 4px;
             cursor: pointer;
-            vertical-align: middle;
+            color: #75645a;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        /* 爆裂場點亮顏色（內斂紅） */
+        #page-burst .btn-tag.active {
+            background-color: #8b263e;
+            color: #ffffff;
+        }
+        /* 苦痛場點亮顏色（內斂紫） */
+        #page-torment .btn-tag.active {
+            background-color: #4a148c;
+            color: #ffffff;
         }
 
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
@@ -384,12 +388,18 @@
                     </div>
 
                     <div class="check-row">
-                        <label class="lbl-core"><input type="checkbox"> 頭</label>
-                        <label class="lbl-core"><input type="checkbox"> 肚</label>
-                        <label class="lbl-core"><input type="checkbox"> 手</label>
-                        <label class="lbl-core"><input type="checkbox"> 腳</label>
-                        <label class="lbl-armor"><input type="checkbox"> 肉</label>
-                        <label class="lbl-armor"><input type="checkbox"> 甲</label>
+                        <div class="btn-group">
+                            <button class="btn-tag active" onclick="toggleTag(this)">全部位</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">頭</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">肚</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">手</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">腳</button>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-tag active" onclick="toggleTag(this)">肉甲</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">肉</button>
+                            <button class="btn-tag" onclick="toggleTag(this)">甲</button>
+                        </div>
                     </div>
 
                     <div class="image-grid">
@@ -404,6 +414,15 @@
 
                 container.appendChild(tierRow);
             }
+        }
+
+        // 🚀 控制膠囊標籤切換的單選邏輯
+        function toggleTag(button) {
+            const parent = button.parentElement;
+            // 清除同組內其他按鈕的高亮
+            parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
+            // 點亮當前按鈕
+            button.classList.add('active');
         }
 
         // 清空盒子的函式
@@ -567,7 +586,7 @@
         // 增減格子按鈕功能
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            // 由於跳過勾選列，向下尋找 image-grid
+            // 由於跳過膠囊按鈕列，向下尋找 image-grid
             const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
             
             if(targetGrid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
@@ -673,7 +692,7 @@
             document.body.appendChild(clone);
 
             poolContainer.classList.remove('expanded');
-            poolSubtitle.innerText = '（點一下展開）';
+            poolSubtitle.innerText = '(' + '點一下展開' + ')';
             startAutoScroll();
         }
 
@@ -792,6 +811,17 @@
             const inputs = exportArea.querySelectorAll('.label-custom-input');
             inputs.forEach(input => { input.setAttribute('value', input.value); });
 
+            // 🌟 核心修正：html2canvas 生成前，同步按鈕的「選中狀態」到樣式中
+            exportArea.querySelectorAll('.btn-tag').forEach(btn => {
+                if (btn.classList.contains('active')) {
+                    btn.style.backgroundColor = type === 'burst' ? '#8b263e' : '#4a148c';
+                    btn.style.color = '#ffffff';
+                } else {
+                    btn.style.backgroundColor = 'transparent';
+                    btn.style.color = '#75645a';
+                }
+            });
+
             imgContainer.innerHTML = "正在組裝配卡圖...";
             modal.style.display = "flex";
 
@@ -807,6 +837,13 @@
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
+
+                // 生成完後清除行內樣式，還原原本的 CSS 運作
+                exportArea.querySelectorAll('.btn-tag').forEach(btn => {
+                    btn.style.backgroundColor = '';
+                    btn.style.color = '';
+                });
+
             }).catch(err => { alert("生成失敗"); closeModal(); });
         }
         function closeModal() { document.getElementById('result-modal').style.display = "none"; }

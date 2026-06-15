@@ -260,20 +260,22 @@
  
 #pool-container.expanded .pool-scroll {
     display: grid;
-    /* 強制分配給 3 個橫排 */
-    grid-template-rows: repeat(3, 60px); 
-    /* 強制卡片依序從左到右，填滿一列後自動換到下一列 */
-    grid-auto-flow: column; 
-    /* 強制每一欄卡片的寬度 */
-    grid-auto-columns: 60px;
+    /* 強制定義 3 個橫列，每一列高度 60px */
+    grid-template-rows: 60px 60px 60px;
+    /* 這裡才是控制「一行放幾個」的關鍵：設定自動填充欄位 */
+    grid-template-columns: repeat(14, 60px);
+    /* 確保項目是按照我們寫入陣列的順序，由左至右、再換下一行 */
+    grid-auto-flow: column;
+    /* 設定間距 */
     gap: 8px 6px;
-    /* 讓它強制水平滾動，不隨便換行 */
+    /* 允許水平捲動 */
     overflow-x: auto;
     overflow-y: hidden;
-    /* 這裡非常重要：強制內容寬度 */
+    /* 確保寬度撐開 */
     width: max-content;
-    padding-bottom: 10px;
+    padding: 10px;
 }
+
             
         .draggable-thumb {
             min-width: 60px; width: 60px; height: 60px;

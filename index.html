@@ -32,7 +32,6 @@
             touch-action: manipulation; 
         }
 
-        /* 🚀 導覽選單優化 */
         .nav-header {
             position: fixed;
             top: 0; left: 0; width: 100%;
@@ -65,7 +64,6 @@
             content: ''; position: absolute; bottom: 0; left: 15%; width: 70%; height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* 🚀 Swiper 容器架構優化 */
         .swiper-wrapper {
             width: 100vw;
             overflow: hidden;
@@ -172,67 +170,117 @@
 
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
         .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
-        
-        /* 🚀 方案 A：膠囊標籤全新精簡排版 (套用清新雙色系) */
-      .check-row {
-    display: flex;
-    gap: 12px;              /* 左右更舒服的距離 */
-    margin-bottom: 12px;
-    align-items: center;
-    flex-wrap: nowrap;
-}
 
-/* 膠囊群組 */
-.btn-group {
-    display: flex;
-    padding: 5px;
-    border-radius: 12px;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
-}
+        /* ── 部位／肉甲 選擇區 ── */
+        .check-area {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
 
-/* 左側：部位 */
-.group-parts {
-    background-color: #e0f2f1;
-    flex-shrink: 0;
-}
+        /* 第一排：全部位 + 任一單部位 + 肉甲（靠右） */
+        .check-row-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-/* 右側：肉甲（推到最右） */
-.group-types {
-    background-color: #fbe9e7;
-    flex-shrink: 0;
-    margin-left: auto;   /* 🔥 關鍵：右對齊 */
-}
+        /* 第二排：頭肚手腳 */
+        .check-row-bottom {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
 
-/* 按鈕 */
-.btn-tag {
-    border: none;
-    background: transparent;
+        /* 膠囊群組 */
+        .btn-group {
+            display: flex;
+            padding: 4px 5px;
+            border-radius: 12px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+        }
 
-    font-size: 14px;     /* 🔥 放大字體 */
-    font-weight: bold;
+        /* 部位色系（頂排 + 底排共用） */
+        .group-parts {
+            background-color: #e0f2f1;
+            flex-shrink: 0;
+        }
 
-    padding: 6px 10px;   /* 🔥 放大觸控區 */
-    border-radius: 10px;
+        /* 肉甲推到最右 */
+        .group-types {
+            background-color: #fbe9e7;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
 
-    cursor: pointer;
-    color: #607d8b;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-}
+        .btn-tag {
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 5px 9px;
+            border-radius: 10px;
+            cursor: pointer;
+            color: #607d8b;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
 
-/* 部位選中 */
-.group-parts .btn-tag.active {
-    background-color: #00897b;
-    color: #ffffff;
-    box-shadow: 0 2px 5px rgba(0,137,123,0.3);
-}
+        /* 部位選中 */
+        .group-parts .btn-tag.active {
+            background-color: #00897b;
+            color: #ffffff;
+            box-shadow: 0 2px 5px rgba(0,137,123,0.3);
+        }
 
-/* 肉甲選中 */
-.group-types .btn-tag.active {
-    background-color: #e64a19;
-    color: #ffffff;
-    box-shadow: 0 2px 5px rgba(230,74,25,0.3);
-}
+        /* 肉甲選中 */
+        .group-types .btn-tag.active {
+            background-color: #e64a19;
+            color: #ffffff;
+            box-shadow: 0 2px 5px rgba(230,74,25,0.3);
+        }
+
+        /* ── 卡片格子 ── */
+        /* 
+          每個 tier 可能有多個 image-grid（基礎3格 + 每次+3格）
+          用 .grid-section 包住每個 3格區塊
+        */
+        .grid-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        /* 每個 grid-block 放 3 張卡 + 各自的部位肉甲選項 */
+        .grid-block {
+            border: 1px dashed #d0c8bc;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        #page-torment .grid-block { border-color: #c9bce0; }
+
+        /* 附加格的標題列（含刪除按鈕） */
+        .grid-block-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 6px;
+        }
+        .btn-remove-block {
+            border: none;
+            background: #e0b0b0;
+            color: #7a2020;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #page-torment .btn-remove-block {
+            background: #c9b0d6;
+            color: #3a1060;
+        }
 
         .image-grid { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 
@@ -386,7 +434,66 @@
     <script>
         const totalTiers = 8;
         const defaultZoneHTML = '拉入卡片<br><small style="font-size:9px; opacity:0.7;">(雙擊可移除)</small>';
-        
+
+        /* ── 建立部位選擇區（兩排版）── */
+        function createCheckArea() {
+            return `
+            <div class="check-area">
+                <!-- 第一排：全部位 + 任一單部位 + 肉甲（靠右） -->
+                <div class="check-row-top">
+                    <div class="btn-group group-parts">
+                        <button class="btn-tag active" onclick="togglePartTag(this)">全部位</button>
+                        <button class="btn-tag" onclick="togglePartTag(this)">任一單部位</button>
+                    </div>
+                    <div class="btn-group group-types">
+                        <button class="btn-tag active" onclick="toggleTypeTag(this)">肉甲</button>
+                        <button class="btn-tag" onclick="toggleTypeTag(this)">肉</button>
+                        <button class="btn-tag" onclick="toggleTypeTag(this)">甲</button>
+                    </div>
+                </div>
+                <!-- 第二排：頭肚手腳 -->
+                <div class="check-row-bottom">
+                    <div class="btn-group group-parts">
+                        <button class="btn-tag" onclick="togglePartTag(this)">頭</button>
+                        <button class="btn-tag" onclick="togglePartTag(this)">肚</button>
+                        <button class="btn-tag" onclick="togglePartTag(this)">手</button>
+                        <button class="btn-tag" onclick="togglePartTag(this)">腳</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        /* ── 建立一個「附加格區塊」（3格 + 部位肉甲 + 刪除鈕）── */
+        function createGridBlock(isFirst = false) {
+            const block = document.createElement('div');
+            block.className = 'grid-block';
+
+            if (!isFirst) {
+                // 非第一個區塊才顯示刪除鈕
+                block.innerHTML = `
+                    <div class="grid-block-header">
+                        <button class="btn-remove-block" onclick="removeGridBlock(this)">✕ 移除此組格子</button>
+                    </div>
+                    ${createCheckArea()}
+                    <div class="image-grid">
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                    </div>`;
+            } else {
+                block.innerHTML = `
+                    ${createCheckArea()}
+                    <div class="image-grid">
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
+                    </div>`;
+            }
+
+            block.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
+            return block;
+        }
+
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
 
@@ -400,54 +507,85 @@
                             <span class="label-fixed-text">第 ${i} 組</span>
                             <input type="text" class="label-custom-input" placeholder="點擊輸入備註...">
                         </div>
-
                         <div class="tier-buttons">
-                            <button class="btn-action" onclick="addGridItem(this)">＋增格</button>
-                            <button class="btn-action del" onclick="removeGridItem(this)">－減格</button>
+                            <button class="btn-action" onclick="addGridBlock(this)">＋增格</button>
+                            <button class="btn-action del" onclick="removeLastGridBlock(this)">－減格</button>
                         </div>
                     </div>
+                    <div class="grid-section"></div>`;
 
-                    <div class="check-row">
-                        <div class="btn-group group-parts">
-                            <button class="btn-tag active" onclick="togglePartTag(this)">全部位</button>
-                            <button class="btn-tag" onclick="togglePartTag(this)">頭</button>
-                            <button class="btn-tag" onclick="togglePartTag(this)">肚</button>
-                            <button class="btn-tag" onclick="togglePartTag(this)">手</button>
-                            <button class="btn-tag" onclick="togglePartTag(this)">腳</button>
-                        </div>
-                        <div class="btn-group group-types">
-                            <button class="btn-tag active" onclick="toggleTypeTag(this)">肉甲</button>
-                            <button class="btn-tag" onclick="toggleTypeTag(this)">肉</button>
-                            <button class="btn-tag" onclick="toggleTypeTag(this)">甲</button>
-                        </div>
-                    </div>
+                // 插入第一個格區塊（有基礎3格）
+                const gridSection = tierRow.querySelector('.grid-section');
+                gridSection.appendChild(createGridBlock(true));
 
-                    <div class="image-grid">
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                        <div class="drop-zone" ondblclick="handleZoneClear(this)">${defaultZoneHTML}</div>
-                    </div>
-                `;
-
-                tierRow.querySelectorAll('.drop-zone').forEach(zone => setupZoneTouchClear(zone));
                 container.appendChild(tierRow);
             }
         }
 
+        /* ── 增格：在 grid-section 新增一個3格區塊 ── */
+        function addGridBlock(button) {
+            const tierRow = button.closest('.tier-row');
+            const gridSection = tierRow.querySelector('.grid-section');
+            const blocks = gridSection.querySelectorAll('.grid-block');
+            if (blocks.length >= 3) {
+                alert("限制：每一組最多只能有 3 個區塊（9 格）唷！");
+                return;
+            }
+            const newBlock = createGridBlock(false);
+            gridSection.appendChild(newBlock);
+        }
+
+        /* ── 減格：移除最後一個（非第一個）grid-block ── */
+        function removeLastGridBlock(button) {
+            const tierRow = button.closest('.tier-row');
+            const gridSection = tierRow.querySelector('.grid-section');
+            const blocks = gridSection.querySelectorAll('.grid-block');
+            if (blocks.length <= 1) {
+                alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！");
+                return;
+            }
+            gridSection.removeChild(blocks[blocks.length - 1]);
+        }
+
+        /* ── 移除特定格區塊（由區塊內的刪除鈕呼叫）── */
+        function removeGridBlock(button) {
+            const block = button.closest('.grid-block');
+            const gridSection = block.parentElement;
+            const blocks = gridSection.querySelectorAll('.grid-block');
+            if (blocks.length <= 1) {
+                alert("限制：每一組最少必須保留 1 個區塊唷！");
+                return;
+            }
+            gridSection.removeChild(block);
+        }
+
+        /* ── 部位切換邏輯（跨兩排共用 group-parts）── */
         function togglePartTag(button) {
-            const parent = button.parentElement;
+            const tierRow = button.closest('.grid-block') || button.closest('.tier-row');
+            // 找到同一個 check-area 內的所有 group-parts 按鈕
+            const checkArea = button.closest('.check-area');
+            if (!checkArea) return;
+
+            const allPartBtns = checkArea.querySelectorAll('.group-parts .btn-tag');
             const isAll = button.innerText === "全部位";
-            
-            if (isAll) {
-                parent.querySelectorAll('.btn-tag').forEach(btn => btn.classList.remove('active'));
+            const isAnySingle = button.innerText === "任一單部位";
+
+            if (isAll || isAnySingle) {
+                // 點「全部位」或「任一單部位」→ 清除所有，只選自己
+                allPartBtns.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
             } else {
-                parent.firstElementChild.classList.remove('active');
+                // 點頭/肚/手/腳 → 取消「全部位」和「任一單部位」的選中
+                checkArea.querySelectorAll('.check-row-top .group-parts .btn-tag').forEach(btn => {
+                    btn.classList.remove('active');
+                });
                 button.classList.toggle('active');
-                
-                const anyActive = Array.from(parent.querySelectorAll('.btn-tag')).some(btn => btn.classList.contains('active'));
+
+                // 若頭肚手腳全都沒選，回到「全部位」
+                const bottomBtns = Array.from(checkArea.querySelectorAll('.check-row-bottom .group-parts .btn-tag'));
+                const anyActive = bottomBtns.some(btn => btn.classList.contains('active'));
                 if (!anyActive) {
-                    parent.firstElementChild.classList.add('active');
+                    checkArea.querySelector('.check-row-top .group-parts .btn-tag').classList.add('active');
                 }
             }
         }
@@ -610,27 +748,6 @@
                 e.stopPropagation();
             }
         }, { passive: true });
-
-        function addGridItem(button) {
-            const grid = button.parentElement.parentElement.nextElementSibling;
-            const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
-            
-            if(targetGrid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
-            const newZone = document.createElement('div');
-            newZone.className = 'drop-zone'; 
-            newZone.innerHTML = defaultZoneHTML;
-            newZone.ondblclick = function() { handleZoneClear(this); };
-            setupZoneTouchClear(newZone);
-            targetGrid.appendChild(newZone);
-        }
-
-        function removeGridItem(button) {
-            const grid = button.parentElement.parentElement.nextElementSibling;
-            const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
-            
-            if(targetGrid.children.length <= 3) { alert("限制：每一組最少必須保留 3 個格子唷！"); return; }
-            targetGrid.removeChild(targetGrid.lastElementChild);
-        }
 
         let clone = null;
         let activeSrc = '';
@@ -836,12 +953,10 @@
             const inputs = exportArea.querySelectorAll('.label-custom-input');
             inputs.forEach(input => { input.setAttribute('value', input.value); });
 
-            // 🌟 核心修正：因應雙獨立色系，修改選中狀態顏色的套用邏輯
             exportArea.querySelectorAll('.btn-group').forEach(group => {
                 const isParts = group.classList.contains('group-parts');
                 group.querySelectorAll('.btn-tag').forEach(btn => {
                     if (btn.classList.contains('active')) {
-                        // 部位套用深薄荷綠，肉甲套用深珊瑚橘
                         btn.style.backgroundColor = isParts ? '#00897b' : '#e64a19';
                         btn.style.color = '#ffffff';
                     } else {
@@ -867,7 +982,6 @@
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
 
-                // 生成完後清除行內樣式，還原原本的 CSS 運作
                 exportArea.querySelectorAll('.btn-tag').forEach(btn => {
                     btn.style.backgroundColor = '';
                     btn.style.color = '';
@@ -875,48 +989,58 @@
 
             }).catch(err => { alert("生成失敗"); closeModal(); });
         }
+
         function closeModal() { document.getElementById('result-modal').style.display = "none"; }
+
         function applyBossPreset(mode, bossName, containerId) {
-    const preset = BOSS_PRESETS?.[bossName]?.[mode];
-    if (!preset) return;
+            const preset = BOSS_PRESETS?.[bossName]?.[mode];
+            if (!preset) return;
 
-    const container = document.getElementById(containerId);
-    const tiers = container.querySelectorAll('.tier-row');
+            const container = document.getElementById(containerId);
+            const tiers = container.querySelectorAll('.tier-row');
 
-    preset.forEach((group, i) => {
-        const tier = tiers[i];
-        if (!tier) return;
+            preset.forEach((group, i) => {
+                const tier = tiers[i];
+                if (!tier) return;
 
-        // 標題
-        tier.querySelector('.label-custom-input').value = group.label;
+                tier.querySelector('.label-custom-input').value = group.label;
 
-        // 部位
-        tier.querySelectorAll('.group-parts .btn-tag').forEach(btn => {
-            btn.classList.toggle('active', group.parts.includes(btn.innerText));
+                // 取第一個 grid-block 的 check-area
+                const firstBlock = tier.querySelector('.grid-block');
+                if (firstBlock) {
+                    const checkArea = firstBlock.querySelector('.check-area');
+                    if (checkArea) {
+                        const allPartBtns = checkArea.querySelectorAll('.group-parts .btn-tag');
+                        allPartBtns.forEach(btn => {
+                            btn.classList.toggle('active', group.parts.includes(btn.innerText));
+                        });
+                        // 若沒有任何部位選中，預設選全部位
+                        const anyActive = Array.from(allPartBtns).some(b => b.classList.contains('active'));
+                        if (!anyActive) allPartBtns[0].classList.add('active');
+
+                        checkArea.querySelectorAll('.group-types .btn-tag').forEach(btn => {
+                            btn.classList.toggle('active', btn.innerText === group.type);
+                        });
+                    }
+                }
+
+                const zones = tier.querySelectorAll('.drop-zone');
+                group.cards.forEach((card, idx) => {
+                    if (zones[idx]) {
+                        zones[idx].innerHTML =
+                            `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
+                    }
+                });
+            });
+        }
+
+        document.getElementById('boss-select-burst').addEventListener('change', function () {
+            applyBossPreset('burst', this.value, 'container-burst');
         });
 
-        // 肉甲
-        tier.querySelectorAll('.group-types .btn-tag').forEach(btn => {
-            btn.classList.toggle('active', btn.innerText === group.type);
+        document.getElementById('boss-select-torment').addEventListener('change', function () {
+            applyBossPreset('torment', this.value, 'container-torment');
         });
-
-        // 卡片
-        const zones = tier.querySelectorAll('.drop-zone');
-        group.cards.forEach((card, idx) => {
-            if (zones[idx]) {
-                zones[idx].innerHTML =
-                    `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
-            }
-        });
-    });
-}
-  document.getElementById('boss-select-burst').addEventListener('change', function () {
-    applyBossPreset('burst', this.value, 'container-burst');
-});
-
-document.getElementById('boss-select-torment').addEventListener('change', function () {
-    applyBossPreset('torment', this.value, 'container-torment');
-});      
     </script>
 </body>
 </html>

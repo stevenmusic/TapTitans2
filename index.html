@@ -196,7 +196,7 @@
 /* ── 格子區 ── */
 .grid-section { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .grid-block { 
-    border: none；
+    border: none;
     padding: 0; 
 }
 .image-grid { 
@@ -835,6 +835,20 @@ function createGridBlock() {
         document.getElementById('boss-select-support').addEventListener('change', function () {
             applyBossPreset('support', this.value, 'container-support');
         });
+
+                function clearAllZones() {
+            if (confirm("確定要清空當前頁面所有牌組嗎？")) {
+                // 找出目前顯示的頁面容器
+                const activePageId = ['container-burst', 'container-torment', 'container-support'][currentPage];
+                const zones = document.querySelectorAll(`#${activePageId} .drop-zone`);
+                
+                zones.forEach(zone => {
+                    zone.innerHTML = defaultZoneHTML;
+                    setupZoneTouchClear(zone); // 重新綁定觸摸清除功能
+                });
+                alert("已清空！");
+            }
+        }
     </script>
 </body>
 </html>

@@ -231,7 +231,7 @@
     object-fit: contain; /* 強制圖片縮放以適應格子 */
 }
 
-        /* ── 卡片池 ── */
+        /* ── 卡片池容器 ── */
         #pool-container {
             position: fixed; bottom: 0; left: 0; width: 100%;
             background: rgba(90, 74, 66, 0.98); padding: 10px 12px;
@@ -241,7 +241,10 @@
             transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
             will-change: height, transform; overscroll-behavior: contain;
         }
-        #pool-container.expanded { height: 190px; }
+
+        /* 展開後的高度調整為 250px 以適應三排 */
+        #pool-container.expanded { height: 250px; }
+
         .pool-title-area {
             display: flex; align-items: center; gap: 4px;
             color: #f4ece1; font-weight: bold;
@@ -249,15 +252,23 @@
         }
         .pool-title { font-size: 13px; letter-spacing: 1px; }
         .pool-subtitle { font-size: 10px; color: #bfa89e; font-weight: normal; }
+
         .pool-scroll {
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1;
             padding: 2px 0 5px 0; -webkit-overflow-scrolling: touch;
             touch-action: pan-x; overscroll-behavior-x: contain;
         }
+
+        /* 展開後設定為三橫排 */
         #pool-container.expanded .pool-scroll {
-            display: grid; grid-template-rows: repeat(2, 60px);
-            grid-auto-flow: column; grid-auto-columns: 60px;
-            overflow-y: hidden; overflow-x: auto;
+            display: grid; 
+            grid-template-rows: repeat(3, 60px); /* 強制三橫排 */
+            grid-auto-flow: column;              /* 依序填入每一排 */
+            grid-auto-columns: 60px;             /* 設定卡片寬度 */
+            gap: 8px 6px;                        /* 設定卡片間距 (上下 8px, 左右 6px) */
+            overflow-y: hidden; 
+            overflow-x: auto;
+            padding-bottom: 10px;
         }
         .draggable-thumb {
             min-width: 60px; width: 60px; height: 60px;

@@ -75,7 +75,7 @@
 
         .swiper-container {
             display: flex;
-            width: 300vw;
+            width: 200vw; /* 調整為雙頁寬度，移除技能樹頁面 */
             transition: none; 
             will-change: transform;
             transform: translate3d(0px, 0px, 0px); 
@@ -91,30 +91,16 @@
             min-height: calc(100vh - 205px);
         }
 
-        .page-view-iframe {
-            width: 100vw;
-            box-sizing: border-box;
-            padding: 0;
-            display: block;
-            height: calc(100vh - 75px); 
-            background-color: #ffffff;
-            pointer-events: auto;
-        }
-        .embed-iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: block;
-        }
-
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
         #page-burst h1 { color: var(--text-burst); font-size: 22px; margin: 5px 0; text-align: center; }
+        #page-burst .btn-action { background-color: #8b263e; color: #fff; }
+        #page-burst .btn-action.del { background-color: #c97a7a; color: #fff; }
         
         #page-torment { background-color: var(--bg-torment); color: #332244; }
         #page-torment h1 { color: var(--text-torment); font-size: 22px; margin: 5px 0; text-align: center; }
         #page-torment .drop-zone { background-color: #f3e5f5; border-color: #d1c4e9; color: #b19cd9; }
-        #page-torment .btn-action { background-color: #b19cd9; }
-        #page-torment .btn-action.del { background-color: #c97a7a; }
+        #page-torment .btn-action { background-color: #4a148c; color: #fff; }
+        #page-torment .btn-action.del { background-color: #b68cb6; color: #fff; }
 
         .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
         
@@ -185,26 +171,38 @@
         #page-torment .label-custom-input:focus { border-bottom-color: #b19cd9; background-color: #f3e5f5; }
 
         .tier-buttons { display: flex; gap: 5px; white-space: nowrap; flex-shrink: 0; }
+        .btn-action { border: none; padding: 4px 8px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; }
         
+        /* 🚀 頭肚手腳肉甲區塊全新配色優化 */
         .check-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 6px;
             margin-bottom: 12px;
             padding: 2px 0;
         }
         .check-row label {
-            font-size: 15px;
-            font-weight: 500;
+            font-size: 13px;
+            font-weight: bold;
             display: inline-flex;
             align-items: center;
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
+            padding: 4px 8px;
+            border-radius: 4px;
         }
+        /* 爆裂場部位顏色 */
+        #page-burst .lbl-core { background-color: #fce4ec; color: #8b263e; }  /* 頭肚手腳：粉紅 */
+        #page-burst .lbl-armor { background-color: #e0f2f1; color: #004d40; } /* 肉甲：淡綠 */
+        
+        /* 苦痛場部位顏色 */
+        #page-torment .lbl-core { background-color: #f3e5f5; color: #4a148c; }   /* 頭肚手腳：粉紫 */
+        #page-torment .lbl-armor { background-color: #e1f5fe; color: #01579b; }  /* 肉甲：淡藍 */
+
         .check-row input[type="checkbox"] {
-            transform: scale(1.25);
-            margin-right: 6px;
+            transform: scale(1.1);
+            margin-right: 4px;
             cursor: pointer;
             vertical-align: middle;
         }
@@ -287,11 +285,10 @@
 <body>
 
     <div class="nav-header">
-        <div class="nav-title">Tap Titans 2</div>
+        <div class="nav-title">Tap Titans 2 工具箱</div>
         <div class="nav-tabs">
             <button class="tab-btn active" id="tab-burst" onclick="switchPage(0)">突襲配卡-爆裂場</button>
             <button class="tab-btn" id="tab-torment" onclick="switchPage(1)">突襲配卡-苦痛場</button>
-            <button class="tab-btn" id="tab-skill" onclick="switchPage(2)">技能樹配點</button>
         </div>
     </div>
 
@@ -344,10 +341,6 @@
                     <button class="btn-download" onclick="generateImage('torment')">✨ 生成苦痛場配卡圖（長按儲存） ✨</button>
                 </div>
             </div>
-
-            <div class="page-view-iframe" id="page-skill">
-                <iframe class="embed-iframe" src="https://tt2.rawrzcookie.com/spopti.html" scrolling="yes"></iframe>
-            </div>
         </div>
     </div>
 
@@ -391,12 +384,12 @@
                     </div>
 
                     <div class="check-row">
-                        <label><input type="checkbox"> 頭</label>
-                        <label><input type="checkbox"> 肚</label>
-                        <label><input type="checkbox"> 手</label>
-                        <label><input type="checkbox"> 腳</label>
-                        <label><input type="checkbox"> 肉</label>
-                        <label><input type="checkbox"> 甲</label>
+                        <label class="lbl-core"><input type="checkbox"> 頭</label>
+                        <label class="lbl-core"><input type="checkbox"> 肚</label>
+                        <label class="lbl-core"><input type="checkbox"> 手</label>
+                        <label class="lbl-core"><input type="checkbox"> 腳</label>
+                        <label class="lbl-armor"><input type="checkbox"> 肉</label>
+                        <label class="lbl-armor"><input type="checkbox"> 甲</label>
                     </div>
 
                     <div class="image-grid">
@@ -460,7 +453,6 @@
         const swiperContainer = document.getElementById('main-swiper');
         const tabBurst = document.getElementById('tab-burst');
         const tabTorment = document.getElementById('tab-torment');
-        const tabSkill = document.getElementById('tab-skill');
         const poolContainer = document.getElementById('pool-container');
         const poolSubtitle = poolContainer.querySelector('.pool-subtitle');
         
@@ -506,9 +498,9 @@
 
             if (currentTarget > 0) {
                 currentTarget = deltaX / (1 + (deltaX / (swiperWidth * 0.6)));
-            } else if (currentTarget < -(swiperWidth * 2)) {
-                let overSwipe = currentTarget - (-(swiperWidth * 2));
-                currentTarget = -(swiperWidth * 2) + (overSwipe / (1 + (Math.abs(overSwipe) / (swiperWidth * 0.6))));
+            } else if (currentTarget < -(swiperWidth * 1)) {
+                let overSwipe = currentTarget - (-(swiperWidth * 1));
+                currentTarget = -(swiperWidth * 1) + (overSwipe / (1 + (Math.abs(overSwipe) / (swiperWidth * 0.6))));
             }
             translateX = currentTarget;
 
@@ -526,7 +518,7 @@
             const velocityX = Math.abs(deltaX) / duration;
 
             if (velocityX > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
-                if (deltaX < 0 && currentPage < 2) {
+                if (deltaX < 0 && currentPage < 1) {
                     currentPage++;
                 } else if (deltaX > 0 && currentPage > 0) {
                     currentPage--;
@@ -540,17 +532,11 @@
             
             tabBurst.classList.remove('active');
             tabTorment.classList.remove('active');
-            tabSkill.classList.remove('active');
 
             if (pageIndex === 0) {
                 tabBurst.classList.add('active');
-                poolContainer.style.transform = 'translateY(0)'; 
             } else if (pageIndex === 1) {
                 tabTorment.classList.add('active');
-                poolContainer.style.transform = 'translateY(0)'; 
-            } else if (pageIndex === 2) {
-                tabSkill.classList.add('active');
-                poolContainer.style.transform = 'translateY(150px)'; 
             }
             updateSwiperPosition(true);
         }
@@ -581,19 +567,24 @@
         // 增減格子按鈕功能
         function addGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            if(grid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
+            // 由於跳過勾選列，向下尋找 image-grid
+            const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
+            
+            if(targetGrid.children.length >= 4) { alert("限制：每一組最多只能有 4 個格子唷！"); return; }
             const newZone = document.createElement('div');
             newZone.className = 'drop-zone'; 
             newZone.innerHTML = defaultZoneHTML;
             newZone.ondblclick = function() { handleZoneClear(this); };
             setupZoneTouchClear(newZone);
-            grid.appendChild(newZone);
+            targetGrid.appendChild(newZone);
         }
 
         function removeGridItem(button) {
             const grid = button.parentElement.parentElement.nextElementSibling;
-            if(grid.children.length <= 3) { alert("限制：每一組最少必須保留 3 個格子唷！"); return; }
-            grid.removeChild(grid.lastElementChild);
+            const targetGrid = grid.classList.contains('image-grid') ? grid : grid.nextElementSibling;
+            
+            if(targetGrid.children.length <= 3) { alert("限制：每一組最少必須保留 3 個格子唷！"); return; }
+            targetGrid.removeChild(targetGrid.lastElementChild);
         }
 
         // 🌟 拖放卡片核心引擎
@@ -711,13 +702,11 @@
                 const dy = currentTouchY - touchStartPos.y;
 
                 if (!gestureMode) {
-                    // 🌟 核心防誤觸邏輯優化：只要左右移動大於上下移動，強行判定為左右滑動看卡片
                     if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) {
                         gestureMode = "scroll";
-                        clearTimeout(longPressTimer); // 只要一判定是滑動，立刻取消拔起卡片的定時器
+                        clearTimeout(longPressTimer);
                         return;
                     }
-                    // 直覺往上拉出卡片池：立刻觸發拖牌
                     if (dy < -15 && Math.abs(dx) < 20) {
                         clearTimeout(longPressTimer);
                         isSwiping = false;

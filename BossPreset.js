@@ -1,51 +1,195 @@
 const BOSS_PRESETS = {
+
   Jukk: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Klonk: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Lojak: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Mohaca: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Priker: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Sterl: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Takedar: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   },
+
   Terro: {
-    burst: defaultTemplate(),
-    torment: defaultTemplate()
+    burst: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ],
+
+    torment: [
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] },
+      { label: "", parts: [], type: "", cards: [] }
+    ]
   }
+
 };
-
-function defaultTemplate() {
-  return [
-    makeGroup("第1組", ["全部位"], "肉甲", [63,64,65]),
-    makeGroup("第2組", ["頭"], "肉甲", [66,67,68]),
-    makeGroup("第3組", ["肚"], "肉甲", [69,70,71]),
-    makeGroup("第4組", ["手"], "肉甲", [72,73,74]),
-    makeGroup("第5組", ["腳"], "肉甲", [75,76,77]),
-    makeGroup("第6組", ["頭","肚"], "肉甲", [78,79,80]),
-    makeGroup("第7組", ["手","腳"], "肉甲", [81,82,83]),
-    makeGroup("第8組", ["全部位"], "肉甲", [84,85,86])
-  ];
-}
-
-function makeGroup(label, parts, type, cards) {
-  return { label, parts, type, cards };
-}

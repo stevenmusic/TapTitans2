@@ -276,6 +276,7 @@
 /* 展開：三排 */
 #pool-container.expanded .pool-scroll {
     grid-template-rows: repeat(3, 60px);
+    grid-template-columns: repeat(14, 60px);
     width: max-content;
     overflow-x: auto;
     overflow-y: hidden;
@@ -586,20 +587,27 @@
 
         /* ── 卡片池初始化 ── */
         window.addEventListener('DOMContentLoaded', () => {
-            const poolScroll = document.getElementById('pool-scroll');
-            if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
-                PRESET_CARDS.forEach(src => {
-                    if (src && src.trim() !== '') {
-                        const img = document.createElement('img');
-                        img.src = src;
-                        img.className = 'draggable-thumb';
-                        setupTouchDrag(img);
-                        poolScroll.appendChild(img);
-                    }
-                });
-            }
-            switchPage(0);
+    const poolScroll = document.getElementById('pool-scroll');
+    if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
+        const ROW_SIZE = 14;
+        const rows = [
+            PRESET_CARDS.slice(0, ROW_SIZE),
+            PRESET_CARDS.slice(ROW_SIZE, ROW_SIZE * 2),
+            PRESET_CARDS.slice(ROW_SIZE * 2, ROW_SIZE * 3)
+        ];
+        rows.forEach(row => {
+            row.forEach(src => {
+                if (!src || src.trim() === '') return;
+                const img = document.createElement('img');
+                img.src = src;
+                img.className = 'draggable-thumb';
+                setupTouchDrag(img);
+                poolScroll.appendChild(img);
+            });
         });
+    }
+    switchPage(0);
+});
 
         /* ── Swiper（3頁）── */
         const swiperContainer = document.getElementById('main-swiper');

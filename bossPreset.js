@@ -13,24 +13,29 @@ const DEFAULT_PRESETS = [
 // 填入卡片的核心函數
 function applyUniversalPreset(containerId) {
     const container = document.getElementById(containerId);
-    if (!container) return;
+    if (!container) {
+        alert("找不到容器：" + containerId); // 手機上會跳出彈窗
+        return;
+    }
     
     const tiers = container.querySelectorAll('.tier-row');
-    
     tiers.forEach((tier, tierIndex) => {
         const zones = tier.querySelectorAll('.drop-zone');
-        // 先清除該組原有的卡片
-        zones.forEach(zone => zone.innerHTML = defaultZoneHTML);
         
-        // 填入預設卡片
+        // 【測試用】我們先把這格變成紅色，確認程式有執行到這裡
+        if (zones[0]) {
+            zones[0].style.backgroundColor = "red"; 
+        }
+
         if (DEFAULT_PRESETS[tierIndex]) {
             const cardNumbers = DEFAULT_PRESETS[tierIndex];
             cardNumbers.forEach((num, idx) => {
                 if (zones[idx]) {
-                    // 自動補齊 00XX 格式，例如 63 -> 0063
                     const fileName = String(num).padStart(4, '0');
-                    const imgPath = `images/IMG_${fileName}.jpeg`; 
+                    // 這裡改用絕對路徑測試，避免路徑錯誤
+                    const imgPath = `images/IMG_${fileName}.jpeg`;
                     zones[idx].innerHTML = `<img src="${imgPath}">`;
+                    console.log("嘗試載入圖片:", imgPath);
                 }
             });
         }

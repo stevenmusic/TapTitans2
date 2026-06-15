@@ -1,6 +1,6 @@
 // 這裡填入你的預設組，數字範圍 1 ~ 106
 const DEFAULT_PRESETS = [
-    [63, 64, 65], // 第 1 組
+    [104, 78, 106], // 第 1 組
     [66, 67, 68], // 第 2 組
     [69, 70, 71], // 第 3 組
     [72, 73, 74], // 第 4 組
@@ -10,11 +10,11 @@ const DEFAULT_PRESETS = [
     [84, 85, 86]  // 第 8 組
 ];
 
-// 填入卡片的核心函數
+/// 填入卡片的核心函數
 function applyUniversalPreset(containerId) {
     const container = document.getElementById(containerId);
     if (!container) {
-        alert("找不到容器：" + containerId); // 手機上會跳出彈窗
+        alert("找不到容器：" + containerId);
         return;
     }
     
@@ -22,17 +22,13 @@ function applyUniversalPreset(containerId) {
     tiers.forEach((tier, tierIndex) => {
         const zones = tier.querySelectorAll('.drop-zone');
         
-        // 【測試用】我們先把這格變成紅色，確認程式有執行到這裡
-        if (zones[0]) {
-            zones[0].style.backgroundColor = "red"; 
-        }
+        // 已移除測試用的紅色格子程式碼
 
         if (DEFAULT_PRESETS[tierIndex]) {
             const cardNumbers = DEFAULT_PRESETS[tierIndex];
             cardNumbers.forEach((num, idx) => {
                 if (zones[idx]) {
                     const fileName = String(num).padStart(4, '0');
-                    // 這裡改用絕對路徑測試，避免路徑錯誤
                     const imgPath = `images/IMG_${fileName}.jpeg`;
                     zones[idx].innerHTML = `<img src="${imgPath}">`;
                     console.log("嘗試載入圖片:", imgPath);

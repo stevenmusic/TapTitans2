@@ -257,19 +257,24 @@
             display: flex; gap: 10px; overflow-x: auto; flex-grow: 1;
             padding: 2px 0 5px 0; -webkit-overflow-scrolling: touch;
             touch-action: pan-x; overscroll-behavior-x: contain;
-        }
-
-        /* 展開後設定為三橫排 */
-        #pool-container.expanded .pool-scroll {
-            display: grid; 
-            grid-template-rows: repeat(3, 60px); /* 強制三橫排 */
-            grid-auto-flow: column;              /* 依序填入每一排 */
-            grid-auto-columns: 60px;             /* 設定卡片寬度 */
-            gap: 8px 6px;                        /* 設定卡片間距 (上下 8px, 左右 6px) */
-            overflow-y: hidden; 
-            overflow-x: auto;
-            padding-bottom: 10px;
-        }
+ 
+#pool-container.expanded .pool-scroll {
+    display: grid;
+    /* 強制分配給 3 個橫排 */
+    grid-template-rows: repeat(3, 60px); 
+    /* 強制卡片依序從左到右，填滿一列後自動換到下一列 */
+    grid-auto-flow: column; 
+    /* 強制每一欄卡片的寬度 */
+    grid-auto-columns: 60px;
+    gap: 8px 6px;
+    /* 讓它強制水平滾動，不隨便換行 */
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* 這裡非常重要：強制內容寬度 */
+    width: max-content;
+    padding-bottom: 10px;
+}
+            
         .draggable-thumb {
             min-width: 60px; width: 60px; height: 60px;
             border-radius: 6px; object-fit: cover;

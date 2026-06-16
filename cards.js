@@ -5,7 +5,7 @@ const PRESET_CARDS = [
     "images/IMG_0071.jpeg", "images/IMG_0073.jpeg", "images/IMG_0072.jpeg", "images/IMG_0074.jpeg", 
     "images/IMG_0075.jpeg", "images/IMG_0076.jpeg",
     // 第二排 (14張)
-    "images/IMG_0105.jpeg", "images/IMG_0077.jpeg", "images/IMG_0078.jpeg", "images/IMG_0079.jpeg", 
+    "images/IMG_0105.jpeg", "images/IMG_0077.jpeg", "images/IMG_0078.jpeg", "images/IMG_0106.jpg", 
     "images/IMG_0081.jpeg", "images/IMG_0083.jpeg", "images/IMG_0084.jpeg", "images/IMG_0085.jpeg", 
     "images/IMG_0086.jpeg", "images/IMG_0087.jpeg", "images/IMG_0088.jpeg", "images/IMG_0089.jpeg", 
     "images/IMG_0090.jpeg", "images/IMG_0091.jpeg",

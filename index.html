@@ -229,72 +229,108 @@
 
         /* ── 卡片池容器 ── */
         #pool-container {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: rgba(90, 74, 66, 0.98); padding: 8px 12px;
-            box-sizing: border-box; display: flex; flex-direction: column;
-            gap: 4px; z-index: 999;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
-            height: 105px;
-            transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            will-change: height;
-            overscroll-behavior: contain;
-        }
-
-        #pool-container.expanded {
-            height: 260px;
-        }
-
-        .pool-title-area {
-            display: flex; align-items: center; gap: 4px;
-            color: #f4ece1; font-weight: bold;
-            user-select: none; -webkit-user-select: none;
-            flex-shrink: 0;
-            cursor: pointer;
-        }
-        .pool-title { font-size: 13px; letter-spacing: 1px; }
-        .pool-subtitle { font-size: 10px; color: #bfa89e; font-weight: normal; }
-
-        /* ── 收合狀態：單排橫滑 ── */
-        /* 收合：單排橫滑 */
-.pool-scroll {
-    display: grid;
-    grid-template-rows: 60px;
-    grid-template-columns: repeat(14, 60px);
-    grid-auto-columns: 60px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(90, 74, 66, 0.98);
+    padding: 10px 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     gap: 6px;
+    z-index: 999;
+    box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+
+    height: 105px;
+    transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+
+#pool-container.expanded {
+    height: 190px;
+}
+
+.pool-title-area {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #f4ece1;
+    font-weight: bold;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pool-title {
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.pool-subtitle {
+    font-size: 10px;
+    color: #bfa89e;
+    font-weight: normal;
+}
+
+/* ===== 重要修正 ===== */
+.pool-scroll {
+    flex: 1;
     overflow-x: auto;
     overflow-y: hidden;
-    flex-grow: 1;
-    padding: 4px 2px;
+
+    display: flex;
+    gap: 10px;
+
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
-    overscroll-behavior-x: contain;
-    width: max-content;
-    max-width: 100%;
+
+    scrollbar-width: none;
 }
 
-/* 展開：三排 */
+.pool-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+/* 展開後改成兩排 */
 #pool-container.expanded .pool-scroll {
-    grid-template-rows: repeat(3, 60px);
-    grid-template-columns: repeat(14, 60px);
-    width: max-content;
+    display: grid;
+
+    grid-template-rows: repeat(2, 60px);
+    grid-auto-flow: column;
+    grid-auto-columns: 60px;
+
+    gap: 10px;
+
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 4px 2px;
+
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
 }
 
-        .draggable-thumb {
-            width: 60px; height: 60px;
-            flex-shrink: 0;
-            border-radius: 6px; object-fit: cover;
-            touch-action: none; user-select: none; -webkit-user-drag: none;
-            display: block;
-        }
-        .drag-clone {
-            position: fixed; width: 60px; height: 60px;
-            object-fit: cover; border-radius: 6px; opacity: 0.8;
-            pointer-events: none; z-index: 10000; will-change: left, top;
-        }
+.draggable-thumb {
+    width: 60px;
+    height: 60px;
+    min-width: 60px;
+
+    border-radius: 6px;
+    object-fit: cover;
+
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.drag-clone {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    object-fit: cover;
+
+    opacity: 0.85;
+    pointer-events: none;
+
+    z-index: 10000;
+}
 
         /* ── 一鍵清除按鈕 ── */
         .btn-clear-all {
@@ -756,52 +792,138 @@
         }
 
         function setupTouchDrag(el) {
-            el.addEventListener('touchstart', (e) => {
-                if (isDraggingCard) cancelDrag();
-                const t = e.touches[0];
-                touchStartPos.x = currentTouchX = t.clientX;
-                touchStartPos.y = currentTouchY = t.clientY;
-                activeSrc = el.src; gestureMode = null;
-                longPressTimer = setTimeout(() => { isSwiping = false; triggerDrag(el); }, 220);
-            }, { passive: true });
+    el.addEventListener('touchstart', (e) => {
+        if (isDraggingCard) cancelDrag();
 
-            el.addEventListener('touchmove', (e) => {
-                const t = e.touches[0];
-                currentTouchX = t.clientX; currentTouchY = t.clientY;
-                const dx = currentTouchX - touchStartPos.x;
-                const dy = currentTouchY - touchStartPos.y;
-                if (!gestureMode) {
-                    if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) { gestureMode = "scroll"; clearTimeout(longPressTimer); return; }
-                    if (dy < -15 && Math.abs(dx) < 20) { clearTimeout(longPressTimer); isSwiping = false; triggerDrag(el); return; }
-                    return;
-                }
-                if (gestureMode === "scroll") return;
-                if (e.cancelable) e.preventDefault();
-                requestAnimationFrame(() => { if (clone) { clone.style.left = currentTouchX - 30 + 'px'; clone.style.top = currentTouchY - 30 + 'px'; } });
-                const h = window.innerHeight;
-                scrollSpeed = currentTouchY < 120 ? -8 : currentTouchY > h - 120 ? 8 : 0;
-                const zone = findZone(currentTouchX, currentTouchY);
-                if (zone !== lastHoveredZone) {
-                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                    if (zone) zone.classList.add('drag-hover');
-                    lastHoveredZone = zone;
-                }
-            }, { passive: false });
+        const t = e.touches[0];
 
-            el.addEventListener('touchend', () => {
-                clearTimeout(longPressTimer); stopAutoScroll();
-                if (isDraggingCard) {
-                    updateZonesCache();
-                    const drop = findZone(currentTouchX, currentTouchY);
-                    if (drop) drop.innerHTML = `<img src="${activeSrc}">`;
-                    if (clone) { clone.remove(); clone = null; }
-                    lastHoveredZone = null; gestureMode = null;
-                }
-                setTimeout(() => { isDraggingGlobal = false; isDraggingCard = false; }, 100);
-            });
+        touchStartPos.x = t.clientX;
+        touchStartPos.y = t.clientY;
 
-            el.addEventListener('touchcancel', cancelDrag);
+        currentTouchX = t.clientX;
+        currentTouchY = t.clientY;
+
+        activeSrc = el.src;
+
+        gestureMode = null;
+
+        longPressTimer = setTimeout(() => {
+
+            // 長按進入拖曳
+            if (!gestureMode) {
+                isSwiping = false;
+                triggerDrag(el);
+            }
+
+        }, 350);
+
+    }, { passive: true });
+
+
+    el.addEventListener('touchmove', (e) => {
+        const t = e.touches[0];
+
+        currentTouchX = t.clientX;
+        currentTouchY = t.clientY;
+
+        const dx = currentTouchX - touchStartPos.x;
+        const dy = currentTouchY - touchStartPos.y;
+
+        // =========================
+        // 🚨 第一階段：判斷手勢方向
+        // =========================
+        if (!gestureMode) {
+
+            // 👉 水平滑動 = 卡片池 scroll
+            if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+                gestureMode = "scroll";
+                clearTimeout(longPressTimer);
+                return;
+            }
+
+            // 👉 向上滑 = 快速拖曳
+            if (dy < -15 && Math.abs(dx) < 20) {
+                clearTimeout(longPressTimer);
+                isSwiping = false;
+                triggerDrag(el);
+                return;
+            }
+
+            return;
         }
+
+        // =========================
+        // 🚫 scroll 模式：不處理拖曳
+        // =========================
+        if (gestureMode === "scroll") return;
+
+        // =========================
+        // 🚀 drag 模式
+        // =========================
+        if (e.cancelable) e.preventDefault();
+
+        requestAnimationFrame(() => {
+            if (clone) {
+                clone.style.left = currentTouchX - 30 + 'px';
+                clone.style.top = currentTouchY - 30 + 'px';
+            }
+        });
+
+        const h = window.innerHeight;
+        const top = 120;
+        const bottom = h - 120;
+
+        if (currentTouchY < top) {
+            scrollSpeed = -8;
+        } else if (currentTouchY > bottom) {
+            scrollSpeed = 8;
+        } else {
+            scrollSpeed = 0;
+        }
+
+        const zone = findZone(currentTouchX, currentTouchY);
+
+        if (zone !== lastHoveredZone) {
+            if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+            if (zone) zone.classList.add('drag-hover');
+            lastHoveredZone = zone;
+        }
+
+    }, { passive: false });
+
+
+    el.addEventListener('touchend', () => {
+        clearTimeout(longPressTimer);
+        stopAutoScroll();
+
+        setTimeout(() => {
+            isDraggingGlobal = false;
+            isDraggingCard = false;
+        }, 100);
+
+        if (!isDraggingCard) return;
+
+        updateZonesCache();
+
+        const drop = findZone(currentTouchX, currentTouchY);
+
+        if (drop) {
+            drop.innerHTML = `<img src="${activeSrc}">`;
+        }
+
+        if (clone) {
+            clone.remove();
+            clone = null;
+        }
+
+        lastHoveredZone = null;
+        gestureMode = null;
+
+    });
+
+
+    el.addEventListener('touchcancel', cancelDrag);
+}
 
         document.addEventListener('touchstart', function() { if (!isDraggingCard && clone) cancelDrag(); }, { passive: true });
 

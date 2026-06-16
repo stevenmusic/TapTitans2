@@ -735,13 +735,27 @@
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
 
         function cancelDrag() {
-            clearTimeout(longPressTimer); longPressTimer = null;
-            stopAutoScroll();
-            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
-            clone = null;
-            if (lastHoveredZone) { lastHoveredZone.classList.remove('drag-hover'); lastHoveredZone = null; }
-            isDraggingCard = false; isDraggingGlobal = false; gestureMode = null;
-        }
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    stopAutoScroll();
+
+    // === 新增：恢復畫面 ===
+    document.body.style.overflow = '';
+    document.body.style.overscrollBehavior = '';
+    if (window._dragScrollY !== undefined) {
+        window.scrollTo(0, window._dragScrollY);
+    }
+
+    document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+    clone = null;
+    if (lastHoveredZone) {
+        lastHoveredZone.classList.remove('drag-hover');
+        lastHoveredZone = null;
+    }
+    isDraggingCard = false;
+    isDraggingGlobal = false;
+    gestureMode = null;
+}
 
         function updateZonesCache() {
             cachedZones = [];
@@ -779,18 +793,32 @@
         function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
 
         function triggerDrag(el) {
-            if (isDraggingCard) return;
-            isDraggingCard = true; isDraggingGlobal = true; gestureMode = "drag";
-            updateZonesCache(); lastHoveredZone = null;
-            clone = el.cloneNode(true);
-            clone.className = 'drag-clone';
-            clone.style.left = currentTouchX - 30 + 'px';
-            clone.style.top  = currentTouchY - 30 + 'px';
-            document.body.appendChild(clone);
-            poolContainer.classList.remove('expanded');
-            poolSubtitle.innerText = '（點一下展開）';
-            startAutoScroll();
-        }
+    if (isDraggingCard) return;
+    
+    isDraggingCard = true;
+    isDraggingGlobal = true;
+    gestureMode = "drag";
+
+    // === 新增：鎖定畫面防止抖動 ===
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    // 保存當前 scroll 位置（避免跳動）
+    window._dragScrollY = window.scrollY;
+
+    updateZonesCache();
+    lastHoveredZone = null;
+
+    clone = el.cloneNode(true);
+    clone.className = 'drag-clone';
+    clone.style.left = currentTouchX - 30 + 'px';
+    clone.style.top  = currentTouchY - 30 + 'px';
+    document.body.appendChild(clone);
+
+    poolContainer.classList.remove('expanded');
+    poolSubtitle.innerText = '（點一下展開）';
+    
+    // startAutoScroll();   // 先註解掉，下面會優化
+}
 
         function setupTouchDrag(el) {
     el.addEventListener('touchstart', (e) => {

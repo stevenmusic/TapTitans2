@@ -465,7 +465,7 @@
     </div>
 
     <div id="pool-container">
-        <div class="pool-title-area" onclick="togglePool(event)">
+        <div class="pool-title-area">
             <span class="pool-title">卡片池</span>
             <span class="pool-subtitle" id="pool-subtitle">（點一下展開）</span>
         </div>
@@ -708,11 +708,13 @@
         window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
         /* ── 卡片池展開收合 ── */
-        function togglePool(event) {
-            event.stopPropagation();
+        poolContainer.addEventListener('click', function(e) {
+            // 檢查是否在長按拖曳期間，如果是則不展開
+            if (isDraggingCard || isDraggingGlobal) return;
+            
             const isExpanded = poolContainer.classList.toggle('expanded');
             poolSubtitle.innerText = isExpanded ? '（點一下收合）' : '（點一下展開）';
-        }
+        });
 
         document.addEventListener('click', function(e) {
             if (!poolContainer.contains(e.target)) {

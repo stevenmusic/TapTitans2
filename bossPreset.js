@@ -76,30 +76,3 @@ function applyUniversalPreset(containerId, mode) {
     });
 }
 
-// ===============================
-// 頁面載入後自動套用
-// ===============================
-
-document.addEventListener('DOMContentLoaded', () => {
-
-    ['burst', 'torment', 'support'].forEach(mode => {
-
-        const containerId = `container-${mode}`;
-
-        // 初始載入
-        applyUniversalPreset(containerId, mode);
-
-        // Boss 選單切換時
-        const select = document.getElementById(`boss-select-${mode}`);
-
-        if (select) {
-
-            select.addEventListener('change', () => {
-                applyUniversalPreset(containerId, mode);
-            });
-
-        }
-
-    });
-
-});

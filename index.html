@@ -64,25 +64,30 @@
             margin-bottom: 130px;
             transition: margin-bottom 0.3s ease;
         }
-        .swiper-container {
-            display: flex; width: 300vw;
-            transition: none; will-change: transform;
-            transform: translate3d(0px, 0px, 0px);
-        }
+       .swiper-container {
+    display: flex; 
+    width: 300vw;
+    transition: none; 
+    will-change: transform;
+    transform: translate3d(0px, 0px, 0px);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
 
         /* 關鍵修正：允許垂直捲動 */
-        .page-view {
-            width: 100vw; 
-            box-sizing: border-box;
-            padding: 15px 10px;
-            display: flex; 
-            flex-direction: column; 
-            align-items: center;
-            min-height: calc(100vh - 205px);
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            max-height: calc(100vh - 75px - 130px);
-        }
+       .page-view {
+    width: 100vw; 
+    box-sizing: border-box;
+    padding: 15px 10px;
+    display: flex; 
+    flex-direction: column; 
+    align-items: center;
+    min-height: calc(100vh - 205px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 75px - 130px);
+    scroll-behavior: smooth;
+}
 
         /* ── 爆裂場 ── */
         #page-burst { background-color: var(--bg-burst); color: #5a4a42; }
@@ -661,66 +666,90 @@
         });
 
         /* ── Swiper（3頁）── */
-        const swiperContainer = document.getElementById('main-swiper');
-        const tabBurst   = document.getElementById('tab-burst');
-        const tabTorment = document.getElementById('tab-torment');
-        const tabSupport = document.getElementById('tab-support');
-        const poolContainer = document.getElementById('pool-container');
-        const poolSubtitle  = document.getElementById('pool-subtitle');
-        const TOTAL_PAGES = 3;
+        /* ── 優化後的 Swiper 滑動系統（適配高更新率）── */
+const swiperContainer = document.getElementById('main-swiper');
+const tabBurst   = document.getElementById('tab-burst');
+const tabTorment = document.getElementById('tab-torment');
+const tabSupport = document.getElementById('tab-support');
+const poolContainer = document.getElementById('pool-container');
+const poolSubtitle  = document.getElementById('pool-subtitle');
+const TOTAL_PAGES = 3;
 
-        let currentPage = 0;
-        let swiperWidth = window.innerWidth;
-        let startX = 0, translateX = 0;
-        let isSwiping = false, swipeStartTime = 0;
-        let isDraggingGlobal = false, isDraggingCard = false;
+let currentPage = 0;
+let swiperWidth = window.innerWidth;
+let startX = 0, startTranslate = 0;
+let isSwiping = false;
+let velocity = 0;
+let lastTouchX = 0;
+let lastTime = 0;
 
-        function updateSwiperPosition(useTransition = false) {
-            swiperContainer.style.transition = useTransition
-                ? 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)' : 'none';
-            swiperContainer.style.transform = `translate3d(${-currentPage * swiperWidth}px, 0px, 0px)`;
-        }
+function updateSwiperPosition(useTransition = false) {
+    swiperContainer.style.transition = useTransition 
+        ? 'transform 0.42s cubic-bezier(0.25, 0.1, 0.25, 1)' 
+        : 'none';
+    swiperContainer.style.transform = `translate3d(${-currentPage * swiperWidth}px, 0px, 0px)`;
+}
 
-        swiperContainer.addEventListener('touchstart', (e) => {
-            if (isDraggingCard || isDraggingGlobal) return;
-            startX = e.touches[0].clientX;
-            swipeStartTime = Date.now();
-            isSwiping = true;
-            swiperContainer.style.transition = 'none';
-        }, { passive: true });
+swiperContainer.addEventListener('touchstart', (e) => {
+    if (isDraggingCard || isDraggingGlobal) return;
+    startX = e.touches[0].clientX;
+    lastTouchX = startX;
+    startTranslate = -currentPage * swiperWidth;
+    isSwiping = true;
+    velocity = 0;
+    lastTime = Date.now();
+    swiperContainer.style.transition = 'none';
+}, { passive: true });
 
-        swiperContainer.addEventListener('touchmove', (e) => {
-            if (!isSwiping) return;
-            const deltaX = e.touches[0].clientX - startX;
-            let base = -currentPage * swiperWidth;
-            let target = base + deltaX;
-            const maxOffset = -(TOTAL_PAGES - 1) * swiperWidth;
-            if (target > 0) target = deltaX / (1 + deltaX / (swiperWidth * 0.6));
-            else if (target < maxOffset) { const ov = target - maxOffset; target = maxOffset + ov / (1 + Math.abs(ov) / (swiperWidth * 0.6)); }
-            translateX = target;
-            requestAnimationFrame(() => { if (isSwiping) swiperContainer.style.transform = `translate3d(${translateX}px, 0px, 0px)`; });
-        }, { passive: true });
+swiperContainer.addEventListener('touchmove', (e) => {
+    if (!isSwiping) return;
+    const touchX = e.touches[0].clientX;
+    const deltaX = touchX - startX;
+    const now = Date.now();
+    const dt = Math.max(now - lastTime, 8);  // 避免 dt 太小
 
-        swiperContainer.addEventListener('touchend', (e) => {
-            if (!isSwiping) return;
-            isSwiping = false;
-            const deltaX = e.changedTouches[0].clientX - startX;
-            const velocity = Math.abs(deltaX) / (Date.now() - swipeStartTime);
-            if (velocity > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
-                if (deltaX < 0 && currentPage < TOTAL_PAGES - 1) currentPage++;
-                else if (deltaX > 0 && currentPage > 0) currentPage--;
-            }
-            switchPage(currentPage);
-        });
+    velocity = (touchX - lastTouchX) / dt * 16;   // 速度估算
+    lastTouchX = touchX;
+    lastTime = now;
 
-        function switchPage(pageIndex) {
-            currentPage = pageIndex;
-            [tabBurst, tabTorment, tabSupport].forEach(t => t.classList.remove('active'));
-            [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
-            updateSwiperPosition(true);
-        }
+    let target = startTranslate + deltaX;
+    const maxOffset = -(TOTAL_PAGES - 1) * swiperWidth;
 
-        window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
+    // 邊界彈性阻力
+    if (target > 0) target *= 0.55;
+    else if (target < maxOffset) target = maxOffset + (target - maxOffset) * 0.55;
+
+    swiperContainer.style.transform = `translate3d(${target}px, 0px, 0px)`;
+}, { passive: false });
+
+swiperContainer.addEventListener('touchend', (e) => {
+    if (!isSwiping) return;
+    isSwiping = false;
+
+    const deltaX = e.changedTouches[0].clientX - startX;
+
+    // 高更新率裝置更靈敏的切換門檻
+    const shouldSwitch = Math.abs(deltaX) > swiperWidth * 0.32 || Math.abs(velocity) > 1.1;
+
+    if (shouldSwitch) {
+        if (deltaX < 0 && currentPage < TOTAL_PAGES - 1) currentPage++;
+        else if (deltaX > 0 && currentPage > 0) currentPage--;
+    }
+
+    updateSwiperPosition(true);
+});
+
+function switchPage(pageIndex) {
+    currentPage = pageIndex;
+    [tabBurst, tabTorment, tabSupport].forEach(t => t.classList.remove('active'));
+    [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
+    updateSwiperPosition(true);
+}
+
+window.addEventListener('resize', () => {
+    swiperWidth = window.innerWidth;
+    updateSwiperPosition(false);
+});
 
         /* ── 卡片池展開收合 ── */
         poolContainer.addEventListener('click', function(e) {

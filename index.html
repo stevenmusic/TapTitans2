@@ -26,6 +26,7 @@
             background-color: #e0d5c1;
             margin: 0; padding: 0;
             overflow-x: hidden;
+            overflow-y: visible;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
@@ -57,8 +58,10 @@
 
         /* ── Swiper ── */
         .swiper-wrapper {
-            width: 100vw; overflow: hidden;
-            margin-top: 75px; margin-bottom: 130px;
+            width: 100vw; 
+            overflow: hidden;
+            margin-top: 75px; 
+            margin-bottom: 130px;
             transition: margin-bottom 0.3s ease;
         }
         .swiper-container {
@@ -66,11 +69,19 @@
             transition: none; will-change: transform;
             transform: translate3d(0px, 0px, 0px);
         }
+
+        /* 關鍵修正：允許垂直捲動 */
         .page-view {
-            width: 100vw; box-sizing: border-box;
+            width: 100vw; 
+            box-sizing: border-box;
             padding: 15px 10px;
-            display: flex; flex-direction: column; align-items: center;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center;
             min-height: calc(100vh - 205px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            max-height: calc(100vh - 75px - 130px);
         }
 
         /* ── 爆裂場 ── */
@@ -135,12 +146,27 @@
 
         /* ── 共用版面 ── */
         .subtitle { font-size: 11px; opacity: 0.8; margin-bottom: 15px; text-align: center; }
-        .export-area { padding: 20px 12px 12px 12px; border-radius: 12px; width: 100%; max-width: 500px; box-sizing: border-box; }
+        .export-area { 
+            padding: 20px 12px 12px 12px; 
+            border-radius: 12px; 
+            width: 100%; 
+            max-width: 500px; 
+            box-sizing: border-box;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
         .page-header-row {
             display: flex; align-items: center; justify-content: center;
             gap: 10px; flex-wrap: wrap; margin-bottom: 2px;
         }
-        .pyramid-container { display: flex; flex-direction: column; gap: 12px; }
+        .pyramid-container { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px;
+            width: 100%;
+            flex-shrink: 0;
+        }
         .tier-row { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
         .tier-label {
             font-size: 14px; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px;
@@ -229,109 +255,86 @@
 
         /* ── 卡片池容器 ── */
         #pool-container {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background: rgba(90, 74, 66, 0.98);
-    padding: 10px 12px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    z-index: 999;
-    box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(90, 74, 66, 0.98);
+            padding: 10px 12px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 999;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+            height: 105px;
+            transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+        #pool-container.expanded {
+            height: 245px;
+        }
+        .pool-title-area {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: #f4ece1;
+            font-weight: bold;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .pool-title {
+            font-size: 13px;
+            letter-spacing: 1px;
+        }
+        .pool-subtitle {
+            font-size: 10px;
+            color: #bfa89e;
+            font-weight: normal;
+        }
+        .pool-scroll {
+            flex: 1;
+            overflow-x: auto;
+            overflow-y: hidden;
+            display: flex;
+            gap: 10px;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;
+            scrollbar-width: none;
+        }
+        .pool-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        #pool-container.expanded .pool-scroll {
+            display: grid;
+            grid-template-columns: repeat(14, 60px);
+            grid-auto-rows: 60px;
+            gap: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;
+        }
+        .draggable-thumb {
+            width: 60px;
+            height: 60px;
+            min-width: 60px;
+            border-radius: 6px;
+            object-fit: cover;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        .drag-clone {
+            position: fixed;
+            width: 60px;
+            height: 60px;
+            border-radius: 6px;
+            object-fit: cover;
+            opacity: 0.85;
+            pointer-events: none;
+            z-index: 10000;
+        }
 
-    height: 105px;
-    transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
-}
-
-#pool-container.expanded {
-    height: 245px;
-}
-
-.pool-title-area {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: #f4ece1;
-    font-weight: bold;
-    user-select: none;
-    -webkit-user-select: none;
-}
-
-.pool-title {
-    font-size: 13px;
-    letter-spacing: 1px;
-}
-
-.pool-subtitle {
-    font-size: 10px;
-    color: #bfa89e;
-    font-weight: normal;
-}
-
-/* ===== 重要修正 ===== */
-.pool-scroll {
-    flex: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-
-    display: flex;
-    gap: 10px;
-
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
-
-    scrollbar-width: none;
-}
-
-.pool-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-/* 展開後改成三排 */
-#pool-container.expanded .pool-scroll {
-    display: grid;
-
-    grid-template-columns: repeat(14, 60px);
-    grid-auto-rows: 60px;
-
-    gap: 10px;
-
-    overflow-x: auto;
-    overflow-y: hidden;
-
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
-}
-
-.draggable-thumb {
-    width: 60px;
-    height: 60px;
-    min-width: 60px;
-
-    border-radius: 6px;
-    object-fit: cover;
-
-    user-select: none;
-    -webkit-user-drag: none;
-}
-
-.drag-clone {
-    position: fixed;
-    width: 60px;
-    height: 60px;
-    border-radius: 6px;
-    object-fit: cover;
-
-    opacity: 0.85;
-    pointer-events: none;
-
-    z-index: 10000;
-}
-
-        /* ── 一鍵清除按鈕 ── */
+        /* 一鍵清除按鈕 */
         .btn-clear-all {
             display: block;
             margin: 6px auto 10px auto;
@@ -353,21 +356,6 @@
             filter: brightness(0.9);
         }
 
-/* 拖曳時防抖動 */
-body.drag-active {
-    overflow: hidden !important;
-    overscroll-behavior: none;
-    touch-action: none;
-}
-
-.nav-header,
-#pool-container {
-    will-change: transform;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-}
-        
-        /* ── 按鈕／Modal ── */
         .action-container { margin: 20px 0; text-align: center; width: 100%; }
         .btn-download {
             color: white; border: none; padding: 12px 24px; border-radius: 25px;
@@ -383,6 +371,20 @@ body.drag-active {
         #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
         .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+
+        /* 拖曳時防抖動 */
+        body.drag-active {
+            overflow: hidden !important;
+            overscroll-behavior: none;
+            touch-action: none;
+        }
+
+        .nav-header,
+        #pool-container {
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
     </style>
 </head>
 <body>
@@ -636,27 +638,27 @@ body.drag-active {
 
         /* ── 卡片池初始化 ── */
         window.addEventListener('DOMContentLoaded', () => {
-    const poolScroll = document.getElementById('pool-scroll');
-    if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
-        const ROW_SIZE = 14;
-        const rows = [
-            PRESET_CARDS.slice(0, ROW_SIZE),
-            PRESET_CARDS.slice(ROW_SIZE, ROW_SIZE * 2),
-            PRESET_CARDS.slice(ROW_SIZE * 2, ROW_SIZE * 3)
-        ];
-        rows.forEach(row => {
-            row.forEach(src => {
-                if (!src || src.trim() === '') return;
-                const img = document.createElement('img');
-                img.src = src;
-                img.className = 'draggable-thumb';
-                setupTouchDrag(img);
-                poolScroll.appendChild(img);
-            });
+            const poolScroll = document.getElementById('pool-scroll');
+            if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
+                const ROW_SIZE = 14;
+                const rows = [
+                    PRESET_CARDS.slice(0, ROW_SIZE),
+                    PRESET_CARDS.slice(ROW_SIZE, ROW_SIZE * 2),
+                    PRESET_CARDS.slice(ROW_SIZE * 2, ROW_SIZE * 3)
+                ];
+                rows.forEach(row => {
+                    row.forEach(src => {
+                        if (!src || src.trim() === '') return;
+                        const img = document.createElement('img');
+                        img.src = src;
+                        img.className = 'draggable-thumb';
+                        setupTouchDrag(img);
+                        poolScroll.appendChild(img);
+                    });
+                });
+            }
+            switchPage(0);
         });
-    }
-    switchPage(0);
-});
 
         /* ── Swiper（3頁）── */
         const swiperContainer = document.getElementById('main-swiper');
@@ -722,9 +724,7 @@ body.drag-active {
 
         /* ── 卡片池展開收合 ── */
         poolContainer.addEventListener('click', function(e) {
-            // 檢查是否在長按拖曳期間，如果是則不展開
             if (isDraggingCard || isDraggingGlobal) return;
-            
             const isExpanded = poolContainer.classList.toggle('expanded');
             poolSubtitle.innerText = isExpanded ? '（點一下收合）' : '（點一下展開）';
         });
@@ -749,27 +749,24 @@ body.drag-active {
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
 
         function cancelDrag() {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-    stopAutoScroll();
-
-    // === 新增：恢復畫面 ===
-    document.body.style.overflow = '';
-    document.body.style.overscrollBehavior = '';
-    if (window._dragScrollY !== undefined) {
-        window.scrollTo(0, window._dragScrollY);
-    }
-
-    document.querySelectorAll('.drag-clone').forEach(el => el.remove());
-    clone = null;
-    if (lastHoveredZone) {
-        lastHoveredZone.classList.remove('drag-hover');
-        lastHoveredZone = null;
-    }
-    isDraggingCard = false;
-    isDraggingGlobal = false;
-    gestureMode = null;
-}
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+            stopAutoScroll();
+            document.body.style.overflow = '';
+            document.body.style.overscrollBehavior = '';
+            if (window._dragScrollY !== undefined) {
+                window.scrollTo(0, window._dragScrollY);
+            }
+            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+            clone = null;
+            if (lastHoveredZone) {
+                lastHoveredZone.classList.remove('drag-hover');
+                lastHoveredZone = null;
+            }
+            isDraggingCard = false;
+            isDraggingGlobal = false;
+            gestureMode = null;
+        }
 
         function updateZonesCache() {
             cachedZones = [];
@@ -804,171 +801,129 @@ body.drag-active {
             }, 30);
         }
 
-        function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
+        function stopAutoScroll() { 
+            clearInterval(scrollTimer); 
+            scrollTimer = null; 
+            scrollSpeed = 0; 
+        }
 
         function triggerDrag(el) {
-    if (isDraggingCard) return;
-    
-    isDraggingCard = true;
-    isDraggingGlobal = true;
-    gestureMode = "drag";
+            if (isDraggingCard) return;
+            isDraggingCard = true;
+            isDraggingGlobal = true;
+            gestureMode = "drag";
 
-    // === 新增：鎖定畫面防止抖動 ===
-    document.body.style.overflow = 'hidden';
-    document.body.style.overscrollBehavior = 'none';
-    // 保存當前 scroll 位置（避免跳動）
-    window._dragScrollY = window.scrollY;
+            document.body.style.overflow = 'hidden';
+            document.body.style.overscrollBehavior = 'none';
+            window._dragScrollY = window.scrollY;
 
-    updateZonesCache();
-    lastHoveredZone = null;
+            updateZonesCache();
+            lastHoveredZone = null;
 
-    clone = el.cloneNode(true);
-    clone.className = 'drag-clone';
-    clone.style.left = currentTouchX - 30 + 'px';
-    clone.style.top  = currentTouchY - 30 + 'px';
-    document.body.appendChild(clone);
+            clone = el.cloneNode(true);
+            clone.className = 'drag-clone';
+            clone.style.left = currentTouchX - 30 + 'px';
+            clone.style.top  = currentTouchY - 30 + 'px';
+            document.body.appendChild(clone);
 
-    poolContainer.classList.remove('expanded');
-    poolSubtitle.innerText = '（點一下展開）';
-    
-    // startAutoScroll();   // 先註解掉，下面會優化
-}
+            poolContainer.classList.remove('expanded');
+            poolSubtitle.innerText = '（點一下展開）';
+        }
 
         function setupTouchDrag(el) {
-    el.addEventListener('touchstart', (e) => {
-        if (isDraggingCard) cancelDrag();
+            el.addEventListener('touchstart', (e) => {
+                if (isDraggingCard) cancelDrag();
+                const t = e.touches[0];
+                touchStartPos.x = t.clientX;
+                touchStartPos.y = t.clientY;
+                currentTouchX = t.clientX;
+                currentTouchY = t.clientY;
+                activeSrc = el.src;
+                gestureMode = null;
+                longPressTimer = setTimeout(() => {
+                    if (!gestureMode) {
+                        isSwiping = false;
+                        triggerDrag(el);
+                    }
+                }, 350);
+            }, { passive: true });
 
-        const t = e.touches[0];
+            el.addEventListener('touchmove', (e) => {
+                const t = e.touches[0];
+                currentTouchX = t.clientX;
+                currentTouchY = t.clientY;
+                const dx = currentTouchX - touchStartPos.x;
+                const dy = currentTouchY - touchStartPos.y;
 
-        touchStartPos.x = t.clientX;
-        touchStartPos.y = t.clientY;
+                if (!gestureMode) {
+                    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+                        gestureMode = "scroll";
+                        clearTimeout(longPressTimer);
+                        return;
+                    }
+                    if (dy < -15 && Math.abs(dx) < 20) {
+                        clearTimeout(longPressTimer);
+                        isSwiping = false;
+                        triggerDrag(el);
+                        return;
+                    }
+                    return;
+                }
 
-        currentTouchX = t.clientX;
-        currentTouchY = t.clientY;
+                if (gestureMode === "scroll") return;
 
-        activeSrc = el.src;
+                if (e.cancelable) e.preventDefault();
 
-        gestureMode = null;
+                requestAnimationFrame(() => {
+                    if (clone) {
+                        clone.style.left = currentTouchX - 30 + 'px';
+                        clone.style.top = currentTouchY - 30 + 'px';
+                    }
+                });
 
-        longPressTimer = setTimeout(() => {
+                const h = window.innerHeight;
+                const top = 120;
+                const bottom = h - 120;
+                if (currentTouchY < top) scrollSpeed = -8;
+                else if (currentTouchY > bottom) scrollSpeed = 8;
+                else scrollSpeed = 0;
 
-            // 長按進入拖曳
-            if (!gestureMode) {
-                isSwiping = false;
-                triggerDrag(el);
-            }
+                const zone = findZone(currentTouchX, currentTouchY);
+                if (zone !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (zone) zone.classList.add('drag-hover');
+                    lastHoveredZone = zone;
+                }
+            }, { passive: false });
 
-        }, 350);
-
-    }, { passive: true });
-
-
-    el.addEventListener('touchmove', (e) => {
-        const t = e.touches[0];
-
-        currentTouchX = t.clientX;
-        currentTouchY = t.clientY;
-
-        const dx = currentTouchX - touchStartPos.x;
-        const dy = currentTouchY - touchStartPos.y;
-
-        // =========================
-        // 🚨 第一階段：判斷手勢方向
-        // =========================
-        if (!gestureMode) {
-
-            // 👉 水平滑動 = 卡片池 scroll
-            if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
-                gestureMode = "scroll";
+            el.addEventListener('touchend', () => {
                 clearTimeout(longPressTimer);
-                return;
-            }
+                stopAutoScroll();
+                setTimeout(() => {
+                    isDraggingGlobal = false;
+                    isDraggingCard = false;
+                }, 100);
 
-            // 👉 向上滑 = 快速拖曳
-            if (dy < -15 && Math.abs(dx) < 20) {
-                clearTimeout(longPressTimer);
-                isSwiping = false;
-                triggerDrag(el);
-                return;
-            }
+                if (!isDraggingCard) return;
+                updateZonesCache();
+                const drop = findZone(currentTouchX, currentTouchY);
+                if (drop) {
+                    drop.innerHTML = `<img src="${activeSrc}">`;
+                }
+                if (clone) {
+                    clone.remove();
+                    clone = null;
+                }
+                lastHoveredZone = null;
+                gestureMode = null;
+            });
 
-            return;
+            el.addEventListener('touchcancel', cancelDrag);
         }
 
-        // =========================
-        // 🚫 scroll 模式：不處理拖曳
-        // =========================
-        if (gestureMode === "scroll") return;
-
-        // =========================
-        // 🚀 drag 模式
-        // =========================
-        if (e.cancelable) e.preventDefault();
-
-        requestAnimationFrame(() => {
-            if (clone) {
-                clone.style.left = currentTouchX - 30 + 'px';
-                clone.style.top = currentTouchY - 30 + 'px';
-            }
-        });
-
-        const h = window.innerHeight;
-        const top = 120;
-        const bottom = h - 120;
-
-        if (currentTouchY < top) {
-            scrollSpeed = -8;
-        } else if (currentTouchY > bottom) {
-            scrollSpeed = 8;
-        } else {
-            scrollSpeed = 0;
-        }
-
-        const zone = findZone(currentTouchX, currentTouchY);
-
-        if (zone !== lastHoveredZone) {
-            if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-            if (zone) zone.classList.add('drag-hover');
-            lastHoveredZone = zone;
-        }
-
-    }, { passive: false });
-
-
-    el.addEventListener('touchend', () => {
-        clearTimeout(longPressTimer);
-        stopAutoScroll();
-
-        setTimeout(() => {
-            isDraggingGlobal = false;
-            isDraggingCard = false;
-        }, 100);
-
-        if (!isDraggingCard) return;
-
-        updateZonesCache();
-
-        const drop = findZone(currentTouchX, currentTouchY);
-
-        if (drop) {
-            drop.innerHTML = `<img src="${activeSrc}">`;
-        }
-
-        if (clone) {
-            clone.remove();
-            clone = null;
-        }
-
-        lastHoveredZone = null;
-        gestureMode = null;
-
-    });
-
-
-    el.addEventListener('touchcancel', cancelDrag);
-}
-
-        document.addEventListener('touchstart', function() { if (!isDraggingCard && clone) cancelDrag(); }, { passive: true });
+        document.addEventListener('touchstart', function() { 
+            if (!isDraggingCard && clone) cancelDrag(); 
+        }, { passive: true });
 
         /* ── 圖片產出 ── */
         function generateImage(type) {
@@ -992,10 +947,13 @@ body.drag-active {
             modal.style.display = "flex";
 
             html2canvas(exportArea, {
-                useCORS: true, scale: 2, backgroundColor: bgMap[type],
+                useCORS: true, 
+                scale: 2, 
+                backgroundColor: bgMap[type],
                 onclone: (clonedDoc) => {
                     clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
-                        ci.style.background = 'transparent'; ci.style.border = 'none';
+                        ci.style.background = 'transparent'; 
+                        ci.style.border = 'none';
                     });
                 }
             }).then(canvas => {
@@ -1003,11 +961,19 @@ body.drag-active {
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
-                exportArea.querySelectorAll('.btn-tag').forEach(btn => { btn.style.backgroundColor = ''; btn.style.color = ''; });
-            }).catch(() => { alert("生成失敗"); closeModal(); });
+                exportArea.querySelectorAll('.btn-tag').forEach(btn => { 
+                    btn.style.backgroundColor = ''; 
+                    btn.style.color = ''; 
+                });
+            }).catch(() => { 
+                alert("生成失敗"); 
+                closeModal(); 
+            });
         }
 
-        function closeModal() { document.getElementById('result-modal').style.display = "none"; }
+        function closeModal() { 
+            document.getElementById('result-modal').style.display = "none"; 
+        }
 
         /* ── Boss 預設 ── */
         function applyBossPreset(mode, bossName, containerId) {

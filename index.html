@@ -9,7 +9,11 @@
     <script src="bossPreset.js"></script>
 
     <style>
-        html { font-size: 18px; scroll-behavior: smooth; }
+        html { 
+            font-size: 18px; 
+            scroll-behavior: smooth; 
+            height: 100%;
+        }
         :root {
             --bg-burst: #f4ece1;
             --text-burst: #8b263e;
@@ -29,6 +33,9 @@
             overflow-y: visible;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
+            scroll-behavior: smooth;
+            min-height: 100%;
+            height: auto;
         }
 
         /* ── 導覽 ── */
@@ -163,7 +170,7 @@
             background: var(--card-bg); 
             border: 1px solid var(--border-color); 
             border-radius: 5px; 
-            padding: 6px 4px; /* 緊貼外邊框 */
+            padding: 6px 4px; 
             display: flex;
             align-items: flex-start; 
             gap: 4px;
@@ -186,7 +193,7 @@
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            width: 70px;       /* 稍微縮小給卡片格更多空間 */
+            width: 70px;       
             margin: 0 4px;    
             margin-top: 13px; 
         }
@@ -214,7 +221,7 @@
             outline: none;
         }
 
-        /* 可展開折疊多選菜單 (部位按鈕 - 改為亮藍色) */
+        /* 可展開折疊多選菜單 */
         .custom-dropdown {
             position: relative;
             width: 100%;
@@ -222,12 +229,12 @@
         .dropdown-trigger {
             width: 100%;
             color: #fff;
-            background-color: #87CEEB; /* 亮藍色 */
+            background-color: #87CEEB;
             border: none;
             border-radius: 4px;
-            font-size: 12px !important; /* 鎖定 12px */
+            font-size: 12px !important;
             font-weight: bold;
-            height: 26px; /* 與肉甲選單高度等高 */
+            height: 26px;
             box-sizing: border-box;
             display: flex;
             align-items: center;
@@ -241,8 +248,8 @@
             position: absolute;
             top: 100%; left: 0;
             width: 100%; 
-            background-color: #87CEEB; /* 亮藍色 */
-            border: 1px solid #87CEEB; /* 深藍色邊框 */
+            background-color: #87CEEB;
+            border: 1px solid #87CEEB;
             border-radius: 4px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             z-index: 100;
@@ -259,7 +266,7 @@
             text-align: center;
             border: 1px solid rgba(255, 255, 255, 0.4);
             border-radius: 3px;
-            font-size: 12px !important; /* 鎖定選項大小與按鈕一致 */
+            font-size: 12px !important;
             font-weight: 700;
             padding: 5px 0; 
             cursor: pointer;
@@ -272,11 +279,11 @@
         }
         .dropdown-content .part-tag.active {
             opacity: 1; 
-            background-color: #005FCC; /* 點擊後深藍色 */
+            background-color: #005FCC;
             border-color: #005FCC;
         }
 
-        /* 已選部位橫排排列樣式 (將這裡的字體修復為與肉甲相同的 12px) */
+        /* 已選部位橫排排列樣式 */
         .selected-parts-inline-row {
             display: flex;
             flex-direction: row;
@@ -291,8 +298,8 @@
             background-color: transparent; 
             padding: 1px 2px;
             border-radius: 2px;
-            font-size: 12px; /* ★ 修正回 12px ★ */
-            font-weight: 700; /* 加上粗體對齊隔壁 */
+            font-size: 12px;
+            font-weight: 700;
             line-height: 1;
             white-space: nowrap;
         }
@@ -345,17 +352,17 @@
             width: 72px; 
         }
 
-        /* 通用下拉樣式 (肉甲選單 - 全分頁統一改為閃耀亮橘色) */
+        /* 通用下拉樣式 */
         .check-select {
             appearance: none;
             -webkit-appearance: none;
             border: none;
             border-radius: 4px;
-            background-color: #FF6600 !important; /* 亮橘色 */
+            background-color: #FF6600 !important;
             color: #fff !important;
-            font-size: 12px !important; /* 鎖定 12px */
-            font-weight: 700; /* 粗體 */
-            height: 26px; /* 與部位按鈕完全同高 */
+            font-size: 12px !important;
+            font-weight: 700;
+            height: 26px;
             text-align: center;    
             text-align-last: center; 
             cursor: pointer;
@@ -368,7 +375,7 @@
         }
         .check-select:focus { outline: none; }
 
-        /* 右側：三個卡片格（全面向外擴展撐大） */
+        /* 右側：三個卡片格 */
         .cards-col {
             display: flex;
             flex: 1;
@@ -957,7 +964,8 @@
             clearTimeout(longPressTimer);
             longPressTimer = null;
             stopAutoScroll();
-            document.body.style.overflow = '';
+            document.body.style.overflow = 'visible';
+            document.body.style.overflowY = 'visible';
             document.body.style.overscrollBehavior = '';
             if (window._dragScrollY !== undefined) {
                 window.scrollTo(0, window._dragScrollY);
@@ -971,6 +979,7 @@
             isDraggingCard = false;
             isDraggingGlobal = false;
             gestureMode = null;
+            void document.body.offsetHeight;
         }
 
         function updateZonesCache() {
@@ -1019,6 +1028,7 @@
             gestureMode = "drag";
 
             document.body.style.overflow = 'hidden';
+            document.body.style.overflowY = 'hidden';
             document.body.style.overscrollBehavior = 'none';
             window._dragScrollY = window.scrollY;
 
@@ -1168,11 +1178,12 @@
         function closeModal() { 
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
-            // 強制重繪與恢復捲動
             setTimeout(() => {
-                document.body.style.overflow = '';
+                document.body.style.overflow = 'visible';
+                document.body.style.overflowY = 'visible';
+                void document.body.offsetHeight;
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 50);
+            }, 100);
         }
 
         /* ── Boss 預設與連端 ── */

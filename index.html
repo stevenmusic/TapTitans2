@@ -1169,40 +1169,59 @@
         }, { passive: true });
 
         /* ── 圖片產出 ── */
-        function generateImage(type) {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
-            const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
-            const exportArea = document.getElementById(idMap[type]);
-            const modal = document.getElementById('result-modal');
-            const imgContainer = document.getElementById('image-container');
+function generateImage(type) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
+    const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
+    const exportArea = document.getElementById(idMap[type]);
+    const modal = document.getElementById('result-modal');
+    const imgContainer = document.getElementById('image-container');
 
-            exportArea.querySelectorAll('.label-custom-input').forEach(input => input.setAttribute('value', input.value));
+    // 儲存原始樣式
+    const originalMargin = [];
+    const lastTiers = exportArea.querySelectorAll('.pyramid-container > .tier-row:last-child');
+    lastTiers.forEach(tier => {
+        originalMargin.push(tier.style.marginBottom);
+        tier.style.marginBottom = '20px';   // 只留一點點間距就好
+    });
 
-            imgContainer.innerHTML = "正在組裝配卡圖...";
-            modal.style.display = "flex";
+    exportArea.querySelectorAll('.label-custom-input').forEach(input => 
+        input.setAttribute('value', input.value)
+    );
 
-            html2canvas(exportArea, {
-                useCORS: true, 
-                scale: 2, 
-                backgroundColor: bgMap[type],
-                onclone: (clonedDoc) => {
-                    clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
-                        ci.style.background = 'transparent'; 
-                        ci.style.border = 'none';
-                    });
-                    clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
-                }
-            }).then(canvas => {
-                imgContainer.innerHTML = '';
-                const img = document.createElement('img');
-                img.src = canvas.toDataURL('image/png');
-                imgContainer.appendChild(img);
-            }).catch(() => { 
-                alert("生成失敗"); 
-                closeModal(); 
+    imgContainer.innerHTML = "正在組裝配卡圖...";
+    modal.style.display = "flex";
+
+    html2canvas(exportArea, {
+        useCORS: true, 
+        scale: 2, 
+        backgroundColor: bgMap[type],
+        onclone: (clonedDoc) => {
+            clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
+                ci.style.background = 'transparent'; 
+                ci.style.border = 'none';
+            });
+            clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+            // 在 clone 裡也把最後一排的 margin 壓小
+            clonedDoc.querySelectorAll('.pyramid-container > .tier-row:last-child').forEach(tier => {
+                tier.style.marginBottom = '20px';
             });
         }
+    }).then(canvas => {
+        // 還原原始樣式
+        lastTiers.forEach((tier, i) => {
+            tier.style.marginBottom = originalMargin[i] || '';
+        });
+
+        imgContainer.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL('image/png');
+        imgContainer.appendChild(img);
+    }).catch(() => { 
+        alert("生成失敗"); 
+        closeModal(); 
+    });
+}
 
         function closeModal() { 
             const modal = document.getElementById('result-modal');

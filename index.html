@@ -9,7 +9,7 @@
     <script src="bossPreset.js"></script>
 
     <style>
-        html { font-size: 18px; }
+        html { font-size: 18px; scroll-behavior: smooth; }
         :root {
             --bg-burst: #f4ece1;
             --text-burst: #8b263e;
@@ -81,6 +81,7 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             max-height: calc(100vh - 75px - 92px);
+            scroll-behavior: smooth;
         }
 
         /* ── 爆裂場 ── */
@@ -729,7 +730,7 @@
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => b.classList.remove('active'));
                     tag.classList.add('active');
                 } else {
-                    tag.remove('active');
+                    tag.classList.remove('active');
                 }
             } else {
                 if (!tag.classList.contains('active')) {
@@ -1130,7 +1131,7 @@
 
         /* ── 圖片產出 ── */
         function generateImage(type) {
-            window.scrollTo(0, 0);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
             const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
             const exportArea = document.getElementById(idMap[type]);
@@ -1165,7 +1166,13 @@
         }
 
         function closeModal() { 
-            document.getElementById('result-modal').style.display = "none"; 
+            const modal = document.getElementById('result-modal');
+            modal.style.display = "none";
+            // 強制重繪與恢復捲動
+            setTimeout(() => {
+                document.body.style.overflow = '';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 50);
         }
 
         /* ── Boss 預設與連端 ── */

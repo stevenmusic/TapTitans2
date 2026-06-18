@@ -229,7 +229,7 @@
             color: #fff;
             border: none;
             border-radius: 4px;
-            font-size: 10px;       /* 部位選單改為 10px 齊平肉甲 */
+            font-size: 10px;
             font-weight: bold;
             padding: 3px 0;
             cursor: pointer;
@@ -262,7 +262,7 @@
             text-align: center;
             border: 1px solid currentColor;
             border-radius: 3px;
-            font-size: 10px;       /* 下拉選單內部固定為 10px */
+            font-size: 10px;
             font-weight: 700;
             padding: 2px 0;
             cursor: pointer;
@@ -291,7 +291,7 @@
             background-color: rgba(255, 255, 255, 0.25);
             padding: 1px 2px;
             border-radius: 2px;
-            font-size: 10px;      /* 關鍵修正：讓選好後的字體大小完全與肉甲相同 */
+            font-size: 10px;
             line-height: 1;
             white-space: nowrap;
         }
@@ -324,10 +324,10 @@
             justify-content: center;
             gap: 5px;         
             flex-shrink: 0;
-            width: 62px;      /* 稍微加寬以完美容納 10px 大小的文字與標籤 */
+            width: 62px;
         }
 
-        /* 通用下拉樣式 */
+        /* 通用下拉樣式 (肉甲選單) */
         .check-select {
             appearance: none;
             -webkit-appearance: none;
@@ -335,15 +335,17 @@
             border-radius: 4px;
             background-color: #888;
             color: #fff;
-            font-size: 10px;      /* 肉甲選單改為 10px 齊平部位 */
+            font-size: 10px;
             font-weight: 700;
-            padding: 3px 12px 3px 3px;
+            padding: 3px 0;       /* 改為左右不加多餘 Padding，利於完美置中 */
+            text-align: center;    /* 文字橫向置中 */
+            text-align-last: center; /* 確保手機瀏覽器也強制置中 */
             cursor: pointer;
             width: 100%;
             box-sizing: border-box;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23ffffff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 3px center;
+            background-position: right 4px center; /* 微調箭頭貼齊右側不干擾文字 */
             background-size: 5px 3px;
         }
         .check-select:focus { outline: none; }
@@ -717,7 +719,7 @@
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => b.classList.remove('active'));
                     tag.classList.add('active');
                 } else {
-                    tag.classList.remove('active');
+                    tag.remove('active');
                 }
             } else {
                 if (!tag.classList.contains('active')) {
@@ -1161,7 +1163,7 @@
             document.getElementById('result-modal').style.display = "none"; 
         }
 
-        /* ── Boss 預設與連動 ── */
+        /* ── Boss 預設與連端 ── */
         function applyBossPreset(mode, bossName, containerId) {
             const preset = (typeof BOSS_PRESETS !== 'undefined') && BOSS_PRESETS?.[bossName]?.[mode];
             if (!preset) return;

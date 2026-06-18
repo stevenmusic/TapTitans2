@@ -160,14 +160,14 @@
             flex-shrink: 0;
         }
         
-        /* 一體化橫向一欄 */
+        /* 一體化橫向一欄 (改為頂部對齊，確保加減格時，兩側元件不跳動) */
         .tier-row { 
             background: var(--card-bg); 
             border: 1px solid var(--border-color); 
             border-radius: 5px; 
-            padding: 4px 6px;
+            padding: 6px 6px;
             display: flex;
-            align-items: center;
+            align-items: flex-start; 
             gap: 5px;
         }
         .tier-num-col {
@@ -176,6 +176,7 @@
             justify-content: center;
             flex-shrink: 0;
             padding-left: 2px;
+            margin-top: 16px; /* 固定在第一格中心高度位置 */
         }
         .tier-num {
             font-size: 13px; font-weight: 900; color: inherit;
@@ -189,9 +190,10 @@
             flex-shrink: 0;
             width: 78px;       
             margin: 0 10px;    
+            margin-top: 13px; /* 固定在第一格中心高度位置 */
         }
         
-        /* 側邊控制欄 */
+        /* 側邊控制欄固定在頂部 */
         .tier-control-col {
             display: flex;
             flex-direction: column;
@@ -199,6 +201,7 @@
             justify-content: center;
             flex-shrink: 0;
             width: 44px;
+            margin-top: 4px; /* 固定在最上方，點擊時按鈕絕對不位移 */
         }
         .label-custom-input {
             border: 1px solid #e2d7c5; 
@@ -224,9 +227,9 @@
             background-color: #5b8e87; 
             border: none;
             border-radius: 4px;
-            font-size: 10px;
+            font-size: 12px; /* 放大字體 */
             font-weight: bold;
-            padding: 3px 0;
+            padding: 6px 0; /* 增加上下寬度更好按 */
             cursor: pointer;
             text-align: center;
             box-sizing: border-box;
@@ -238,16 +241,16 @@
             display: none;
             position: absolute;
             top: 100%; left: 0;
-            width: 65px; 
-            background-color: #5b8e87; /* 下拉選單換成跟按鈕相同的顏色 */
-            border: 1px solid #3d615c; /* 同色系深色邊框 */
+            width: 100%; /* 寬度與按鈕一致 */
+            background-color: #5b8e87; 
+            border: 1px solid #3d615c; 
             border-radius: 4px;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             z-index: 100;
-            padding: 2px;
+            padding: 4px;
             box-sizing: border-box;
             flex-direction: column;
-            gap: 2px;
+            gap: 5px; /* 選項之間的留白增加 */
         }
         .custom-dropdown.open .dropdown-content {
             display: flex;
@@ -257,19 +260,19 @@
             text-align: center;
             border: 1px solid rgba(255, 255, 255, 0.4);
             border-radius: 3px;
-            font-size: 10px;
+            font-size: 12px; /* 選單字體與按鈕一樣大 */
             font-weight: 700;
-            padding: 2px 0;
+            padding: 5px 0; /* 選項留白與高度增加，變好選 */
             cursor: pointer;
-            opacity: 0.5; /* 未選中時調淡 */
+            opacity: 0.6; 
             background: transparent;
             color: #fff;
-            line-height: 1.1;
+            line-height: 1.2;
             white-space: nowrap;
         }
         .dropdown-content .part-tag.active {
-            opacity: 1; /* 選中時全顯 */
-            background-color: #3d615c; /* 選中項目加深背景 */
+            opacity: 1; 
+            background-color: #3d615c; 
             border-color: #3d615c;
         }
 
@@ -293,7 +296,7 @@
             white-space: nowrap;
         }
 
-        /* 增格減格按鈕放大（改為上下垂直排列，完美利用空間且不推移其他功能位置） */
+        /* 增格減格按鈕 */
         .tier-buttons { 
             display: flex; 
             flex-direction: column; 
@@ -303,8 +306,8 @@
         }
         .btn-action { 
             border: none; 
-            padding: 4px 0; /* 增加上下寬度 */
-            font-size: 12px; /* 放大字體 */
+            padding: 4px 0; 
+            font-size: 12px; 
             font-weight: bold; 
             border-radius: 3px; 
             cursor: pointer; 
@@ -331,14 +334,14 @@
             width: 100%;
         }
 
-        /* 左側選單欄 */
+        /* 左側選單欄（加寬給大按鈕更多空間） */
         .selects-col {
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 5px;         
+            gap: 6px;         
             flex-shrink: 0;
-            width: 62px;
+            width: 72px; /* 從 62px 放大到 72px */
         }
 
         /* 通用下拉樣式 (肉甲選單) */
@@ -349,9 +352,9 @@
             border-radius: 4px;
             background-color: #888;
             color: #fff;
-            font-size: 10px;
+            font-size: 12px; /* 放大字體 */
             font-weight: 700;
-            padding: 3px 0;       
+            padding: 6px 0; /* 增加上下寬度更好按 */      
             text-align: center;    
             text-align-last: center; 
             cursor: pointer;
@@ -359,13 +362,13 @@
             box-sizing: border-box;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23ffffff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 4px center; 
+            background-position: right 6px center; 
             background-size: 5px 3px;
         }
         .check-select:focus { outline: none; }
         
         .check-select.select-type { 
-            background-color: #FF5722; /* 換成更亮更鮮豔的橘色 */
+            background-color: #FF5722; 
             border-color: #FF5722; 
         }
 
@@ -1226,6 +1229,3 @@
     </script>
 </body>
 </html>
-}
-
-    

@@ -187,14 +187,24 @@
             font-size: 13px; font-weight: 900; color: inherit;
         }
         
+        /* 中間單獨獨立的備註欄（防止誤觸） */
+        .tier-memo-col {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 65px;
+            margin: 0 12px; /* 拉開安全空白，不靠近卡片也不靠近按鈕 */
+        }
+        
         /* 側邊控制欄 */
         .tier-control-col {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 3px;
+            justify-content: center;
             flex-shrink: 0;
-            width: 52px;
+            width: 44px;
         }
         .label-custom-input {
             border: none; background: transparent; font-family: inherit;
@@ -222,12 +232,15 @@
             cursor: pointer;
             text-align: center;
             box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .dropdown-content {
             display: none;
             position: absolute;
             top: 100%; left: 0;
-            width: 44px;
+            width: 65px; /* 加寬以容納新文字 */
             background-color: rgba(55, 45, 40, 0.96);
             border: 1px solid #bfa89e;
             border-radius: 4px;
@@ -259,6 +272,26 @@
             opacity: 1;
         }
 
+        /* 已選部位橫排排列樣式 */
+        .selected-parts-inline-row {
+            display: flex;
+            flex-direction: row;
+            gap: 1px;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .selected-part-badge {
+            background-color: rgba(255, 255, 255, 0.25);
+            padding: 1px 2px;
+            border-radius: 2px;
+            font-size: 7.5px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
         .tier-buttons { display: flex; gap: 2px; justify-content: center; width: 100%; }
         .btn-action { border: none; padding: 2px 5px; font-size: 9px; font-weight: bold; border-radius: 3px; cursor: pointer; flex: 1; text-align: center; }
 
@@ -280,13 +313,13 @@
             width: 100%;
         }
 
-        /* 左側選單欄（寬度微調以容納折疊按鈕） */
+        /* 左側選單欄 */
         .selects-col {
             display: flex;
             flex-direction: column;
             justify-content: center;
             flex-shrink: 0;
-            width: 44px;
+            width: 52px; /* 微幅微調容納橫排 */
         }
 
         /* 通用下拉樣式 */
@@ -607,7 +640,6 @@
             trigger.textContent = '部位 ▾';
             trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // 切換當前，並關閉其他打開的選單
                 document.querySelectorAll('.custom-dropdown').forEach(d => {
                     if(d !== customDropdown) d.classList.remove('open');
                 });
@@ -617,7 +649,8 @@
             const dropdownContent = document.createElement('div');
             dropdownContent.className = 'dropdown-content';
             
-            ['全', '單', '頭', '肚', '手', '腳'].forEach((text, idx) => {
+            // 名稱修改：全 -> 全部位，單 -> 任一單部位
+            ['全部位', '任一單部位', '頭', '肚', '手', '腳'].forEach((text, idx) => {
                 const btn = document.createElement('button');
                 btn.className = 'part-tag' + (idx === 0 ? ' active' : '');
                 btn.type = 'button';
@@ -663,15 +696,68 @@
             row.appendChild(cardsCol);
 
             block.appendChild(row);
+            
+            // 初始化更新一次部位排版顯示
+            updateSelectedPartsDisplay(customDropdown);
+            
             return block;
         }
 
-        /* 部位 tag 多選切換 */
+        /* 部位 tag 多選切換與自動清除邏輯 */
         function togglePartTag(tag) {
-            tag.classList.toggle('active');
+            const dropdownContent = tag.parentNode;
+            const customDropdown = dropdownContent.parentNode;
+            const text = tag.textContent;
+
+            if (text === '全部位' || text === '任一單部位') {
+                // 如果勾選全部位或任一單部位，自動清除其他所有選項
+                if (!tag.classList.contains('active')) {
+                    dropdownContent.querySelectorAll('.part-tag').forEach(b => b.classList.remove('active'));
+                    tag.classList.add('active');
+                } else {
+                    tag.classList.remove('active');
+                }
+            } else {
+                // 如果勾選特定部位，自動取消全部位與任一單部位
+                if (!tag.classList.contains('active')) {
+                    dropdownContent.querySelectorAll('.part-tag').forEach(b => {
+                        if (b.textContent === '全部位' || b.textContent === '任一單部位') {
+                            b.classList.remove('active');
+                        }
+                    });
+                    tag.classList.add('active');
+                } else {
+                    tag.classList.remove('active');
+                }
+            }
+            // 每次變更皆同步更新按鈕橫排顯示
+            updateSelectedPartsDisplay(customDropdown);
+        }
+
+        /* 將選擇的所有項目排成一個橫排顯示 */
+        function updateSelectedPartsDisplay(dropdownEl) {
+            const trigger = dropdownEl.querySelector('.dropdown-trigger');
+            const activeTags = Array.from(dropdownEl.querySelectorAll('.part-tag.active')).map(btn => btn.textContent);
+            
+            trigger.innerHTML = '';
+            if (activeTags.length === 0) {
+                trigger.textContent = '部位 ▾';
+            } else {
+                const row = document.createElement('div');
+                row.className = 'selected-parts-inline-row';
+                activeTags.forEach(text => {
+                    const badge = document.createElement('span');
+                    badge.className = 'selected-part-badge';
+                    // 橫排文字若是太長，於有限空間中略縮顯示確保排版精美
+                    badge.textContent = text === '全部位' ? '全部位' : (text === '任一單部位' ? '單部位' : text);
+                    row.appendChild(badge);
+                });
+                trigger.appendChild(row);
+            }
         }
 
         /* ── 初始化所有 tier ── */
+        // 將備註區搬移至卡片與增減格按鈕之間，並加上安全邊界
         function initTiers(containerId) {
             const container = document.getElementById(containerId);
             for (let i = 1; i <= totalTiers; i++) {
@@ -682,8 +768,10 @@
                         <span class="tier-num">${i}</span>
                     </div>
                     <div class="grid-section"></div>
-                    <div class="tier-control-col">
+                    <div class="tier-memo-col">
                         <input type="text" class="label-custom-input" placeholder="備註...">
+                    </div>
+                    <div class="tier-control-col">
                         <div class="tier-buttons">
                             <button class="btn-action" onclick="addGridBlock(this)">＋</button>
                             <button class="btn-action del" onclick="removeLastGridBlock(this)">－</button>
@@ -1059,7 +1147,6 @@
                         ci.style.background = 'transparent'; 
                         ci.style.border = 'none';
                     });
-                    // 導出截圖前隱藏打開的選單
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
                 }
             }).then(canvas => {
@@ -1077,7 +1164,7 @@
             document.getElementById('result-modal').style.display = "none"; 
         }
 
-        /* ── Boss 預設 ── */
+        /* ── Boss 預設與連動 ── */
         function applyBossPreset(mode, bossName, containerId) {
             const preset = (typeof BOSS_PRESETS !== 'undefined') && BOSS_PRESETS?.[bossName]?.[mode];
             if (!preset) return;
@@ -1087,12 +1174,18 @@
                 if (!tier) return;
                 tier.querySelector('.label-custom-input').value = group.label;
 
-                // 部位 tags 多選連動
-                const partTagMap = {'全部位':'全','任一單部位':'單','頭':'頭','肚':'肚','手':'手','腳':'腳'};
+                // 部位 tags 多選對應相容
+                const partTagMap = {'全部位':'全部位','全':'全部位','任一單部位':'任一單部位','單':'任一單部位','頭':'頭','肚':'肚','手':'手','腳':'腳'};
                 tier.querySelectorAll('.part-tag').forEach(tag => {
                     const matched = group.parts && group.parts.some(p => partTagMap[p] === tag.textContent || p === tag.textContent);
                     tag.classList.toggle('active', !!matched);
                 });
+
+                // 套用預設後，同步更新橫排狀態顯示
+                tier.querySelectorAll('.custom-dropdown').forEach(dropdown => {
+                    updateSelectedPartsDisplay(dropdown);
+                });
+
                 // 類型選單
                 const typeSel = tier.querySelector('.select-type');
                 if (typeSel && group.type) {

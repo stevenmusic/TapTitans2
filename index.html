@@ -135,26 +135,27 @@
     -webkit-appearance: none;
     border: none; 
     border-radius: 6px;
-    padding: 6px 32px 6px 12px;
+    padding: 4px 28px 4px 10px;
     font-size: 13px; 
     font-weight: bold; 
     cursor: pointer;
     background-repeat: no-repeat;
-    background-position: right 10px center;
+    background-position: right 8px center;
     background-size: 10px 7px;
     
-    width: 168px;
-    min-width: 150px;
+    width: 160px;           /* 你之前調整的寬度 */
+    min-width: 140px;
+    
+    /* ===== 文字置中設定 ===== */
     text-align: center;
     text-align-last: center;
 }
-
-.boss-select-burst   { background-color: #8b263e; color: #fff; box-shadow: 0 2px 6px rgba(139,38,62,0.3); }
-.boss-select-burst:focus   { outline: none; box-shadow: 0 0 0 2px rgba(139,38,62,0.5); }
-.boss-select-torment { background-color: #4a148c; color: #fff; box-shadow: 0 2px 6px rgba(74,20,140,0.3); }
-.boss-select-torment:focus { outline: none; box-shadow: 0 0 0 2px rgba(74,20,140,0.5); }
-.boss-select-support { background-color: #2e7d32; color: #fff; box-shadow: 0 2px 6px rgba(46,125,50,0.3); }
-.boss-select-support:focus { outline: none; box-shadow: 0 0 0 2px rgba(46,125,50,0.5); }
+        .boss-select-burst   { background-color: #8b263e; color: #fff; box-shadow: 0 2px 6px rgba(139,38,62,0.3); }
+        .boss-select-burst:focus   { outline: none; box-shadow: 0 0 0 2px rgba(139,38,62,0.5); }
+        .boss-select-torment { background-color: #4a148c; color: #fff; box-shadow: 0 2px 6px rgba(74,20,140,0.3); }
+        .boss-select-torment:focus { outline: none; box-shadow: 0 0 0 2px rgba(74,20,140,0.5); }
+        .boss-select-support { background-color: #2e7d32; color: #fff; box-shadow: 0 2px 6px rgba(46,125,50,0.3); }
+        .boss-select-support:focus { outline: none; box-shadow: 0 0 0 2px rgba(46,125,50,0.5); }
 
         /* ── 共用版面 ── */
         .subtitle { display: none; }
@@ -168,15 +169,10 @@
             display: flex;
             flex-direction: column;
         }
-        /* 標題與 Boss 按鈕間距 */
-.page-header-row {
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
-    gap: 15px;           /* 增加間距 */
-    flex-wrap: wrap; 
-    margin-bottom: 10px;
-}
+        .page-header-row {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; flex-wrap: wrap; margin-bottom: 5px;
+        }
         .pyramid-container { 
             display: flex; 
             flex-direction: column; 
@@ -232,24 +228,18 @@
             width: 44px;
             margin-top: 4px; 
         }
-        /* 備註欄優化 */
-.label-custom-input {
-    border: 1px solid #e2d7c5; 
-    background: #faf8f5; 
-    border-radius: 5px;
-    font-family: inherit;
-    padding: 5px 6px;  
-    font-size: 11px;   
-    box-sizing: border-box;
-    width: 100%; 
-    text-align: center;
-    outline: none;
-    min-height: 34px;
-}
-    /* 沒填字時截圖不顯示 placeholder */
-.label-custom-input:placeholder-shown {
-    color: transparent !important;
-}
+        .label-custom-input {
+            border: 1px solid #e2d7c5; 
+            background: #faf8f5; 
+            border-radius: 5px;
+            font-family: inherit;
+            padding: 4px 2px;  
+            font-size: 11px;   
+            box-sizing: border-box;
+            width: 100%; 
+            text-align: center;
+            outline: none;
+        }
 
         /* 可展開折疊多選菜單 */
         .custom-dropdown {
@@ -1192,7 +1182,6 @@
         }, { passive: true });
 
         /* ── 圖片產出 ── */
-/* ── 圖片產出 ── */
 function generateImage(type) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
@@ -1206,47 +1195,35 @@ function generateImage(type) {
     const lastTiers = exportArea.querySelectorAll('.pyramid-container > .tier-row:last-child');
     lastTiers.forEach(tier => {
         originalMargin.push(tier.style.marginBottom);
-        tier.style.marginBottom = '20px';
+        tier.style.marginBottom = '10px';   // 只留一點點間距就好
     });
 
-    // 處理備註：沒字就保持空白
-    exportArea.querySelectorAll('.label-custom-input').forEach(input => {
-        input.setAttribute('value', input.value.trim());
-        if (!input.value.trim()) {
-            input.style.color = 'transparent';
-        }
-    });
+    exportArea.querySelectorAll('.label-custom-input').forEach(input => 
+        input.setAttribute('value', input.value)
+    );
 
     imgContainer.innerHTML = "正在組裝配卡圖...";
     modal.style.display = "flex";
 
     html2canvas(exportArea, {
         useCORS: true, 
-        scale: 2.6,                    // 提高解析度減少被切
+        scale: 2, 
         backgroundColor: bgMap[type],
-        width: exportArea.scrollWidth,
-        height: exportArea.scrollHeight,
         onclone: (clonedDoc) => {
             clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
                 ci.style.background = 'transparent'; 
-                ci.style.border = '1px solid #e2d7c5';
-                if (!ci.value.trim()) {
-                    ci.style.color = 'transparent';
-                    ci.placeholder = '';
-                }
+                ci.style.border = 'none';
             });
             clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+            // 在 clone 裡也把最後一排的 margin 壓小
             clonedDoc.querySelectorAll('.pyramid-container > .tier-row:last-child').forEach(tier => {
-                tier.style.marginBottom = 10px';
+                tier.style.marginBottom = '20px';
             });
         }
     }).then(canvas => {
-        // 還原
+        // 還原原始樣式
         lastTiers.forEach((tier, i) => {
             tier.style.marginBottom = originalMargin[i] || '';
-        });
-        exportArea.querySelectorAll('.label-custom-input').forEach(input => {
-            input.style.color = '';
         });
 
         imgContainer.innerHTML = '';

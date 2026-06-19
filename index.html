@@ -127,7 +127,6 @@
         #page-support .drop-zone.drag-hover { border-color: #2e7d32; background-color: #c8e6c9; }
 
         /* ── Boss select ── */
-/* ── Boss select ── */
 .boss-select-burst, 
 .boss-select-torment, 
 .boss-select-support {
@@ -1006,8 +1005,9 @@
             clearTimeout(longPressTimer);
             longPressTimer = null;
             stopAutoScroll();
-            document.body.style.overflow = 'visible';
-            document.body.style.overflowY = 'visible';
+            // 恢復 overflow
+            document.body.style.overflow = '';
+            document.body.style.overflowY = '';
             document.body.style.overscrollBehavior = '';
             if (window._dragScrollY !== undefined) {
                 window.scrollTo(0, window._dragScrollY);
@@ -1154,24 +1154,18 @@
 
             el.addEventListener('touchend', () => {
                 clearTimeout(longPressTimer);
-                stopAutoScroll();
-                setTimeout(() => {
-                    isDraggingGlobal = false;
-                    isDraggingCard = false;
-                }, 100);
-
-                if (!isDraggingCard) return;
-                updateZonesCache();
-                const drop = findZone(currentTouchX, currentTouchY);
-                if (drop) {
-                    drop.innerHTML = `<img src="${activeSrc}">`;
+                
+                // 【修復 1】：立即執行 cancelDrag 以恢復 overflow
+                if (isDraggingCard) {
+                    updateZonesCache();
+                    const drop = findZone(currentTouchX, currentTouchY);
+                    if (drop) {
+                        drop.innerHTML = `<img src="${activeSrc}">`;
+                    }
                 }
-                if (clone) {
-                    clone.remove();
-                    clone = null;
-                }
-                lastHoveredZone = null;
-                gestureMode = null;
+                
+                // 【修復 2】：立即清理，不使用 setTimeout
+                cancelDrag();
             });
 
             el.addEventListener('touchcancel', cancelDrag);

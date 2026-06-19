@@ -976,10 +976,31 @@
 
         window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
+        /* ── 卡片池點擊事件（包含自動收合） ── */
         poolContainer.addEventListener('click', function(e) {
             if (isDraggingCard || isDraggingGlobal) return;
-            const isExpanded = poolContainer.classList.toggle('expanded');
-            poolSubtitle.innerText = isExpanded ? '（點一下收合）' : '（點一下展開）';
+            
+            const isExpanding = !poolContainer.classList.contains('expanded');
+            
+            if (isExpanding) {
+                // 展開卡片池，啟動 10 秒自動收合計時器
+                poolContainer.classList.add('expanded');
+                poolSubtitle.innerText = '（點一下收合）';
+                
+                // 清除舊計時器，啟動新計時器
+                clearTimeout(poolAutoCollapseTimer);
+                poolAutoCollapseTimer = setTimeout(() => {
+                    poolContainer.classList.remove('expanded');
+                    poolSubtitle.innerText = '（點一下展開）';
+                    poolAutoCollapseTimer = null;
+                }, 10000);  // 10 秒後自動收合
+            } else {
+                // 手動收合
+                clearTimeout(poolAutoCollapseTimer);
+                poolAutoCollapseTimer = null;
+                poolContainer.classList.remove('expanded');
+                poolSubtitle.innerText = '（點一下展開）';
+            }
         });
 
         document.addEventListener('click', function(e) {
@@ -1000,6 +1021,9 @@
         let scrollTimer = null, scrollSpeed = 0;
         let cachedZones = [], lastHoveredZone = null;
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
+        
+        /* ── 卡片池自動收合計時器 ── */
+        let poolAutoCollapseTimer = null;
 
         function cancelDrag() {
             clearTimeout(longPressTimer);
@@ -1161,6 +1185,9 @@
                     const drop = findZone(currentTouchX, currentTouchY);
                     if (drop) {
                         drop.innerHTML = `<img src="${activeSrc}">`;
+                        // 【新增】卡片成功放入，清除自動收合計時器，保持卡片池展開
+                        clearTimeout(poolAutoCollapseTimer);
+                        poolAutoCollapseTimer = null;
                     }
                 }
                 

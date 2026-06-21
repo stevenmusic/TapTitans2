@@ -565,6 +565,26 @@
     text-align: center; 
     width: 100%; 
 }
+
+        /* 自動儲存提示 */
+        .save-indicator {
+            position: fixed;
+            top: 85px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        .save-indicator.show {
+            opacity: 1;
+        }
+
         #result-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 10000;
@@ -598,6 +618,8 @@
             <button class="tab-btn"        id="tab-support" onclick="switchPage(2)">突襲配卡-支援場</button>
         </div>
     </div>
+
+    <div class="save-indicator" id="save-indicator">✓ 已儲存</div>
 
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
@@ -694,6 +716,130 @@
         const totalTiers = 8;
         const defaultZoneHTML = '<span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拉入卡片<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span>';
 
+        /* ── 自動儲存系統 ── */
+        const STORAGE_KEY = 'tt2_card_config';
+        let autoSaveTimer = null;
+
+        function serializeState() {
+            const data = {};
+            ['container-burst', 'container-torment', 'container-support'].forEach(containerId => {
+                const container = document.getElementById(containerId);
+                const tiers = [];
+                container.querySelectorAll('.tier-row').forEach(tierRow => {
+                    const tierData = {
+                        label: tierRow.querySelector('.label-custom-input').value,
+                        blocks: []
+                    };
+
+                    tierRow.querySelectorAll('.grid-block').forEach(block => {
+                        const blockData = {
+                            parts: [],
+                            type: block.querySelector('.check-select').value,
+                            cards: []
+                        };
+
+                        block.querySelectorAll('.part-tag.active').forEach(tag => {
+                            blockData.parts.push(tag.textContent);
+                        });
+
+                        block.querySelectorAll('.drop-zone').forEach(zone => {
+                            const img = zone.querySelector('img');
+                            blockData.cards.push(img ? img.src : null);
+                        });
+
+                        tierData.blocks.push(blockData);
+                    });
+
+                    tiers.push(tierData);
+                });
+                data[containerId] = tiers;
+            });
+            return data;
+        }
+
+        function restoreState() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (!saved) return;
+
+            try {
+                const data = JSON.parse(saved);
+                ['container-burst', 'container-torment', 'container-support'].forEach(containerId => {
+                    const container = document.getElementById(containerId);
+                    const savedTiers = data[containerId];
+                    if (!savedTiers) return;
+
+                    const tierRows = container.querySelectorAll('.tier-row');
+                    savedTiers.forEach((tierData, tierIdx) => {
+                        const tierRow = tierRows[tierIdx];
+                        if (!tierRow) return;
+
+                        // 恢復備註
+                        tierRow.querySelector('.label-custom-input').value = tierData.label || '';
+
+                        // 調整區塊數量
+                        const gridSection = tierRow.querySelector('.grid-section');
+                        while (gridSection.querySelectorAll('.grid-block').length < tierData.blocks.length) {
+                            gridSection.appendChild(createGridBlock());
+                        }
+                        while (gridSection.querySelectorAll('.grid-block').length > tierData.blocks.length) {
+                            gridSection.removeChild(gridSection.lastChild);
+                        }
+
+                        // 恢復每個區塊的資料
+                        const blocks = gridSection.querySelectorAll('.grid-block');
+                        tierData.blocks.forEach((blockData, blockIdx) => {
+                            const block = blocks[blockIdx];
+                            if (!block) return;
+
+                            // 恢復部位選擇
+                            const customDropdown = block.querySelector('.custom-dropdown');
+                            block.querySelectorAll('.part-tag').forEach(tag => {
+                                const isActive = blockData.parts && blockData.parts.includes(tag.textContent);
+                                tag.classList.toggle('active', isActive);
+                            });
+                            updateSelectedPartsDisplay(customDropdown);
+
+                            // 恢復類型選擇
+                            block.querySelector('.check-select').value = blockData.type || '肉甲';
+
+                            // 恢復卡片圖片
+                            const zones = block.querySelectorAll('.drop-zone');
+                            blockData.cards.forEach((cardSrc, zoneIdx) => {
+                                if (zones[zoneIdx]) {
+                                    if (cardSrc) {
+                                        zones[zoneIdx].innerHTML = `<img src="${cardSrc}">`;
+                                    } else {
+                                        zones[zoneIdx].innerHTML = defaultZoneHTML;
+                                    }
+                                }
+                            });
+                        });
+                    });
+                });
+            } catch (e) {
+                console.error('恢復資料失敗:', e);
+            }
+        }
+
+        function autoSave() {
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(() => {
+                try {
+                    const state = serializeState();
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                    
+                    // 顯示儲存提示
+                    const indicator = document.getElementById('save-indicator');
+                    indicator.classList.add('show');
+                    setTimeout(() => {
+                        indicator.classList.remove('show');
+                    }, 1500);
+                } catch (e) {
+                    console.error('儲存失敗:', e);
+                }
+            }, 800);
+        }
+
         /* ── 建立區塊 ── */
         function createGridBlock() {
             const block = document.createElement('div');
@@ -728,6 +874,7 @@
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     togglePartTag(btn);
+                    autoSave();
                 });
                 dropdownContent.appendChild(btn);
             });
@@ -743,6 +890,7 @@
                 o.value = opt; o.textContent = opt;
                 typeSel.appendChild(o);
             });
+            typeSel.addEventListener('change', autoSave);
             selectsCol.appendChild(typeSel);
 
             const cardsCol = document.createElement('div');
@@ -834,6 +982,12 @@
                             <button class="btn-action del" onclick="removeLastGridBlock(this)">－</button>
                         </div>
                     </div>`;
+                
+                // 添加備註輸入事件監聽
+                const memoInput = tierRow.querySelector('.label-custom-input');
+                memoInput.addEventListener('change', autoSave);
+                memoInput.addEventListener('input', autoSave);
+                
                 tierRow.querySelector('.grid-section').appendChild(createGridBlock());
                 container.appendChild(tierRow);
             }
@@ -845,6 +999,7 @@
                 alert("限制：每一組最多只能有 3 個區塊（9 格）唷！"); return;
             }
             gridSection.appendChild(createGridBlock());
+            autoSave();
         }
 
         function removeLastGridBlock(button) {
@@ -854,11 +1009,13 @@
                 alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！"); return;
             }
             gridSection.removeChild(blocks[blocks.length - 1]);
+            autoSave();
         }
 
         function handleZoneClear(zoneEl) {
             if (zoneEl.querySelector('img')) {
                 zoneEl.innerHTML = defaultZoneHTML;
+                autoSave();
             }
         }
 
@@ -880,6 +1037,7 @@
             document.querySelectorAll(`#${activeContainerId} .drop-zone`).forEach(zone => {
                 zone.innerHTML = defaultZoneHTML;
             });
+            autoSave();
         }
 
         document.addEventListener('click', () => {
@@ -892,6 +1050,9 @@
 
         /* ── 卡片池初始化 ── */
         window.addEventListener('DOMContentLoaded', () => {
+            // 先恢復儲存的資料
+            restoreState();
+            
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
                 const ROW_SIZE = 14;
@@ -1182,6 +1343,7 @@
                     const drop = findZone(currentTouchX, currentTouchY);
                     if (drop) {
                         drop.innerHTML = `<img src="${activeSrc}">`;
+                        autoSave();
                         // 【新增】卡片成功放入，清除自動收合計時器，保持卡片池展開
                         clearTimeout(poolAutoCollapseTimer);
                         poolAutoCollapseTimer = null;
@@ -1200,59 +1362,59 @@
         }, { passive: true });
 
         /* ── 圖片產出 ── */
-function generateImage(type) {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
-    const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
-    const exportArea = document.getElementById(idMap[type]);
-    const modal = document.getElementById('result-modal');
-    const imgContainer = document.getElementById('image-container');
+        function generateImage(type) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
+            const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
+            const exportArea = document.getElementById(idMap[type]);
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
 
-    // 儲存原始樣式
-    const originalMargin = [];
-    const lastTiers = exportArea.querySelectorAll('.pyramid-container > .tier-row:last-child');
-    lastTiers.forEach(tier => {
-        originalMargin.push(tier.style.marginBottom);
-        tier.style.marginBottom = '10px';   // 只留一點點間距就好
-    });
-
-    exportArea.querySelectorAll('.label-custom-input').forEach(input => 
-        input.setAttribute('value', input.value)
-    );
-
-    imgContainer.innerHTML = "正在組裝配卡圖...";
-    modal.style.display = "flex";
-
-    html2canvas(exportArea, {
-        useCORS: true, 
-        scale: 2, 
-        backgroundColor: bgMap[type],
-        onclone: (clonedDoc) => {
-            clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
-                ci.style.background = 'transparent'; 
-                ci.style.border = 'none';
+            // 儲存原始樣式
+            const originalMargin = [];
+            const lastTiers = exportArea.querySelectorAll('.pyramid-container > .tier-row:last-child');
+            lastTiers.forEach(tier => {
+                originalMargin.push(tier.style.marginBottom);
+                tier.style.marginBottom = '10px';   // 只留一點點間距就好
             });
-            clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
-            // 在 clone 裡也把最後一排的 margin 壓小
-            clonedDoc.querySelectorAll('.pyramid-container > .tier-row:last-child').forEach(tier => {
-                tier.style.marginBottom = '20px';
+
+            exportArea.querySelectorAll('.label-custom-input').forEach(input => 
+                input.setAttribute('value', input.value)
+            );
+
+            imgContainer.innerHTML = "正在組裝配卡圖...";
+            modal.style.display = "flex";
+
+            html2canvas(exportArea, {
+                useCORS: true, 
+                scale: 2, 
+                backgroundColor: bgMap[type],
+                onclone: (clonedDoc) => {
+                    clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
+                        ci.style.background = 'transparent'; 
+                        ci.style.border = 'none';
+                    });
+                    clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+                    // 在 clone 裡也把最後一排的 margin 壓小
+                    clonedDoc.querySelectorAll('.pyramid-container > .tier-row:last-child').forEach(tier => {
+                        tier.style.marginBottom = '20px';
+                    });
+                }
+            }).then(canvas => {
+                // 還原原始樣式
+                lastTiers.forEach((tier, i) => {
+                    tier.style.marginBottom = originalMargin[i] || '';
+                });
+
+                imgContainer.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+            }).catch(() => { 
+                alert("生成失敗"); 
+                closeModal(); 
             });
         }
-    }).then(canvas => {
-        // 還原原始樣式
-        lastTiers.forEach((tier, i) => {
-            tier.style.marginBottom = originalMargin[i] || '';
-        });
-
-        imgContainer.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = canvas.toDataURL('image/png');
-        imgContainer.appendChild(img);
-    }).catch(() => { 
-        alert("生成失敗"); 
-        closeModal(); 
-    });
-}
 
         function closeModal() { 
             const modal = document.getElementById('result-modal');
@@ -1295,6 +1457,7 @@ function generateImage(type) {
                     if (zones[idx]) zones[idx].innerHTML = `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
                 });
             });
+            autoSave();
         }
 
         document.getElementById('boss-select-burst').addEventListener('change', function () {

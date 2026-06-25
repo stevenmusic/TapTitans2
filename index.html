@@ -958,26 +958,22 @@
                     </div>
 
                     <div id="analysis-result-wrap" style="display:none; width:100%;">
-                        <div class="analysis-summary" id="analysis-summary"></div>
-                        <div class="analysis-table-wrap">
-                            <table class="analysis-table" id="analysis-table">
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortAnalysisBy('player')">玩家</th>
-                                        <th onclick="sortAnalysisBy('count')">攻擊次數</th>
-                                        <th onclick="sortAnalysisBy('total')">總傷</th>
-                                        <th onclick="sortAnalysisBy('avg')">均傷</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="analysis-tbody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
+    <div class="analysis-summary" id="analysis-summary"></div>
+    <div class="analysis-table-wrap">
+        <table class="analysis-table" id="analysis-table">
+            <thead>
+                <tr>
+                    <th onclick="sortAnalysisBy('player')">玩家</th>
+                    <th onclick="sortAnalysisBy('count')">攻擊次數</th>
+                    <th onclick="sortAnalysisBy('accident')">誤傷數值</th>
+                    <th onclick="sortAnalysisBy('total')">總傷</th>
+                    <th onclick="sortAnalysisBy('avg')">均傷</th>
+                </tr>
+            </thead>
+            <tbody id="analysis-tbody"></tbody>
+        </table>
     </div>
+</div>
 
     <div id="pool-container">
         <div class="pool-title-area">
@@ -1932,43 +1928,72 @@ function processPastedCSV() {
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         
         function renderAnalysisTable() {
-            const tbody = document.getElementById('analysis-tbody');
-            const summary = document.getElementById('analysis-summary');
-            const wrap = document.getElementById('analysis-result-wrap');
-            const empty = document.getElementById('analysis-empty-state');
+    const tbody = document.getElementById('analysis-tbody');
+    const summary = document.getElementById('analysis-summary');
+    const wrap = document.getElementById('analysis-result-wrap');
+    const empty = document.getElementById('analysis-empty-state');
 
-            if (!analysisData.length) { wrap.style.display = 'none'; return; }
+    if (!analysisData || analysisData.length === 0) {
+        wrap.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
 
-            empty.style.display = 'none';
-            wrap.style.display = 'block';
+    empty.style.display = 'none';
+    wrap.style.display = 'block';
 
-            const sorted = [...analysisData].sort((a, b) => {
-                if (analysisSortKey === 'player') { return a.player.localeCompare(b.player) * -analysisSortDir; }
-                return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
-            });
-
-            const totalPlayers = analysisData.length;
-            const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
-            const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
-            const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
-            const avgAvgDamage = totalCount > 0 ? totalDamage / totalCount : 0;
-
-            summary.innerHTML = `<div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div><div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div><div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div><div class="summary-card"><div class="num">${formatNum(avgAvgDamage)}</div><div class="label">平均均傷</div></div>`;
-
-            tbody.innerHTML = '';
-            // 這裡新增了 index 參數，並在 HTML 中加入 ${index + 1}.
-            sorted.forEach((p, index) => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td><td>${p.count}</td><td>${formatNum(p.total)}</td><td>${formatNum(p.avg)}</td>`;
-                tbody.appendChild(tr);
-            });
-
-            // 表格底部統計行
-            const summaryTr = document.createElement('tr');
-            summaryTr.className = 'summary-row';
-            summaryTr.innerHTML = `<td class="player-name">平均統計</td><td>${Math.round(avgCount)}</td><td>${formatNum(totalDamage)}</td><td>${formatNum(avgAvgDamage)}</td>`;
-            tbody.appendChild(summaryTr);
+    // 1. 排序處理
+    const sorted = [...analysisData].sort((a, b) => {
+        if (analysisSortKey === 'player') { 
+            return a.player.localeCompare(b.player) * -analysisSortDir; 
         }
+        return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
+    });
+
+    // 2. 計算統計數據
+    const totalPlayers = analysisData.length;
+    const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+    const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+    const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
+    
+    const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
+    const avgDamagePerHit = totalCount > 0 ? totalDamage / totalCount : 0;
+
+    // 3. 更新上方統計卡片
+    summary.innerHTML = `
+        <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
+        <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
+        <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
+        <div class="summary-card"><div class="num">${formatNum(totalAccident)}</div><div class="label">總誤傷</div></div>
+    `;
+
+    // 4. 渲染表格內容 (這裡確保是 5 個欄位)
+    tbody.innerHTML = '';
+    sorted.forEach((p, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
+            <td>${p.count}</td>
+            <td style="color: #d32f2f; font-weight: bold;">${formatNum(p.accident)}</td>
+            <td>${formatNum(p.total)}</td>
+            <td>${formatNum(p.avg)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // 5. 表格底部統計行
+    const summaryTr = document.createElement('tr');
+    summaryTr.className = 'summary-row';
+    summaryTr.innerHTML = `
+        <td class="player-name">總計 / 平均</td>
+        <td>${Math.round(avgCount)}</td>
+        <td style="color: #d32f2f; font-weight: bold;">${formatNum(totalAccident)}</td>
+        <td>${formatNum(totalDamage)}</td>
+        <td>${formatNum(avgDamagePerHit)}</td>
+    `;
+    tbody.appendChild(summaryTr);
+}
+
 
 
         function clearAnalysisData() { 

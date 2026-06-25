@@ -1702,54 +1702,59 @@
         // 主要處理函式：修正加總邏輯
                 // 主要處理函式：修正加總邏輯
         function processPastedCSV() {
-            const rawText = document.getElementById('csv-text-input').value.trim();
-            if (!rawText) { alert('請先在上方框框貼上 CSV 資料！'); return; }
-            const rows = parseCSV(rawText);
-            if (rows.length < 2) { alert('解析失敗，請確認貼上的內容是否為正確的 CSV 格式（含標題列與資料）'); return; }
-
-            csvHeaders = rows[0].map(h => h.trim());
-            csvRows = rows.slice(1);
-            
-            const playerIdx  = guessColumnIndex(csvHeaders, ['玩家名稱', '玩家', 'player', 'name']);
-            const countIdx   = guessColumnIndex(csvHeaders, ['總突擊傷害', '總突襲傷害', '攻擊次數', '次數', 'attacks']);
-            const damageIdx  = guessColumnIndex(csvHeaders, ['泰坦傷害', '傷害', 'damage', 'dmg']);
-
-            if (playerIdx === -1 || countIdx === -1 || damageIdx === -1) {
-                alert('無法自動識別必要欄位！\n\n請確認 CSV 包含：玩家名稱、總突擊傷害（次數）、泰坦傷害（單次傷害）');
-                return;
-            }
-
-            const grouped = {};
-            csvRows.forEach(row => {
-                const playerName = (row[playerIdx] || '').trim();
-                if (!playerName) return;
-                
-                const rawCount = parseNumber(row[countIdx]); 
-                const rawDmg   = parseNumber(row[damageIdx]); // 這是單次傷害
-
-                if (!grouped[playerName]) {
-                    grouped[playerName] = { player: playerName, count: 0, total: 0 };
-                }
-                
-                // 1. 累加傷害：將每一行的單次傷害加總
-                grouped[playerName].total += rawDmg;
-                
-                // 2. 更新次數：只在讀到大於 0 的有效值時才更新，防止被後續無效行覆蓋
-                if (rawCount > 0) {
-                    grouped[playerName].count = rawCount; 
-                }
-            });
-
-            analysisData = Object.values(grouped).map(p => ({
-                ...p,
-                avg: p.count > 0 ? p.total / p.count : 0
-            }));
-
-            if (!analysisData.length) { alert('找不到有效資料，請確認欄位對應是否正確'); return; }
-
-            saveAnalysisState();
-            renderAnalysisTable();
+    const rawText = document.getElementById('csv-text-input').value.trim();
+    if (!rawText) { alert('請先貼上 CSV 資料！'); return; }
+    const rows = parseCSV(rawText);
+    csvHeaders = rows[0].map(h => h.trim());
+    csvRows = rows.slice(1);
+    
+    // 改進：優先找精確名稱，找不到才找包含名稱的
+    function findExact(headers, targets) {
+        for (let target of targets) {
+            let idx = headers.findIndex(h => h === target);
+            if (idx !== -1) return idx;
         }
+        // 若找不到精確名稱，再用原本的模糊搜尋
+        return guessColumnIndex(headers, targets);
+    }
+
+    const playerIdx = findExact(csvHeaders, ['玩家名稱', '玩家', 'player']);
+    const countIdx  = findExact(csvHeaders, ['總突擊傷害', '總突襲傷害', '攻擊次數']);
+    const damageIdx = findExact(csvHeaders, ['泰坦傷害', '泰坦傷害']); // 這裡改成精確匹配，避免抓到「總突擊傷害」
+
+    // 彈出視窗顯示抓到的位置（平板也能看）
+    alert(`偵測到的欄位索引:\n玩家: ${playerIdx}\n次數: ${countIdx}\n傷害: ${damageIdx}`);
+
+    const grouped = {};
+    csvRows.forEach(row => {
+        const playerName = (row[playerIdx] || '').trim();
+        if (!playerName) return;
+        
+        const rawCount = parseNumber(row[countIdx]); 
+        const rawDmg   = parseNumber(row[damageIdx]);
+
+        if (!grouped[playerName]) {
+            grouped[playerName] = { player: playerName, count: 0, total: 0 };
+        }
+        
+        grouped[playerName].total += rawDmg;
+        if (rawCount > 0) grouped[playerName].count = rawCount; 
+    });
+
+    // 檢查 mfchen 的結果
+    if (grouped['《亞瑟斯》mfchen']) {
+        alert(`mfchen 統計結果:\n次數: ${grouped['《亞瑟斯》mfchen'].count}\n總傷: ${grouped['《亞瑟斯》mfchen'].total}`);
+    }
+
+    analysisData = Object.values(grouped).map(p => ({
+        ...p,
+        avg: p.count > 0 ? p.total / p.count : 0
+    }));
+
+    saveAnalysisState();
+    renderAnalysisTable();
+}
+
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         

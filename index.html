@@ -21,6 +21,8 @@
             --text-torment: #4a148c;
             --bg-support: #e8f5e9;
             --text-support: #1b5e20;
+            --bg-analysis: #e3f2fd;
+            --text-analysis: #0d47a1;
             --card-bg: #ffffff;
             --border-color: #e0d5c1;
         }
@@ -74,7 +76,7 @@
             padding-bottom: 10px;
         }
         .swiper-container {
-            display: flex; width: 300vw;
+            display: flex; width: 400vw;
             transition: none; will-change: transform;
             transform: translate3d(0px, 0px, 0px);
         }
@@ -125,6 +127,168 @@
         #page-support .btn-download { background-color: #2e7d32; }
         #page-support .part-tag.active { background-color: #2e7d32; border-color: #2e7d32; }
         #page-support .drop-zone.drag-hover { border-color: #2e7d32; background-color: #c8e6c9; }
+
+        /* ── 突襲分析 ── */
+        #page-analysis { background-color: var(--bg-analysis); color: #16314f; }
+        #page-analysis h1 { color: var(--text-analysis); font-size: 15px; margin: 2px 0; text-align: center; }
+        #page-analysis .export-area { background-color: var(--bg-analysis); }
+
+        .analysis-toolbar {
+            display: flex;
+            gap: 8px;
+            margin: 5px 0 12px 0;
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 500px;
+        }
+        .btn-analysis {
+            flex: 1;
+            min-width: 88px;
+            padding: 8px 8px;
+            border: none;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            min-height: 44px;
+            box-sizing: border-box;
+            white-space: nowrap;
+            text-align: center;
+            box-shadow: 0 2px 3px rgba(0,0,0,0.15);
+            transition: transform 0.15s ease, filter 0.15s ease;
+        }
+        .btn-analysis:active { transform: translateY(1px); filter: brightness(0.92); }
+        .btn-analysis.import { background-color: #0d47a1; color: #fff; }
+        .btn-analysis.clear  { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: #fff; }
+        .btn-analysis.export { background-color: #1565c0; color: #fff; }
+
+        .analysis-hint {
+            font-size: 10.5px;
+            color: #5e7a9c;
+            text-align: center;
+            margin: -4px 0 10px 0;
+            width: 100%;
+            max-width: 500px;
+            line-height: 1.5;
+        }
+
+        .mapping-panel {
+            width: 100%;
+            max-width: 500px;
+            background: #ffffff;
+            border: 1px solid #c9ddf2;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            box-sizing: border-box;
+        }
+        .mapping-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .mapping-row:last-of-type { margin-bottom: 10px; }
+        .mapping-row label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #16314f;
+            flex-shrink: 0;
+            width: 102px;
+            text-align: left;
+        }
+        .mapping-row select {
+            flex: 1;
+            padding: 5px 6px;
+            border-radius: 6px;
+            border: 1px solid #c9ddf2;
+            font-size: 12px;
+            background: #f4f9ff;
+            color: #16314f;
+            box-sizing: border-box;
+            min-width: 0;
+        }
+        .btn-mapping-confirm {
+            width: 100%;
+            padding: 9px 0;
+            background-color: #0d47a1;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .btn-mapping-confirm:active { filter: brightness(0.92); }
+
+        .analysis-empty {
+            text-align: center;
+            color: #7a93b3;
+            font-size: 13px;
+            padding: 60px 20px;
+            line-height: 1.8;
+            width: 100%;
+        }
+
+        .analysis-summary {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 10px;
+            width: 100%;
+            max-width: 500px;
+        }
+        .summary-card {
+            background: #ffffff;
+            border: 1px solid #c9ddf2;
+            border-radius: 8px;
+            padding: 7px 10px;
+            text-align: center;
+            flex: 1;
+            min-width: 72px;
+            box-sizing: border-box;
+        }
+        .summary-card .num { font-size: 15px; font-weight: 900; color: #0d47a1; }
+        .summary-card .label { font-size: 9.5px; color: #7a93b3; margin-top: 2px; }
+
+        .analysis-table-wrap {
+            width: 100%;
+            max-width: 500px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            margin-bottom: 220px;
+        }
+        .analysis-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+            font-size: 12px;
+            min-width: 380px;
+        }
+        .analysis-table th, .analysis-table td {
+            padding: 8px 6px;
+            text-align: center;
+            border-bottom: 1px solid #eef4fb;
+            white-space: nowrap;
+        }
+        .analysis-table th {
+            background: #0d47a1;
+            color: #fff;
+            font-size: 11px;
+            cursor: pointer;
+            user-select: none;
+            position: sticky;
+            top: 0;
+        }
+        .analysis-table tbody tr:nth-child(even) { background: #f5f9ff; }
+        .analysis-table tbody tr:active { background: #e3edfb; }
+        .analysis-table .miss-value { color: #d32f2f; font-weight: 700; }
+        .analysis-table .player-name { text-align: left; font-weight: 700; }
 
         /* ── Boss select ── */
 .boss-select-burst, 
@@ -613,9 +777,10 @@
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
-            <button class="tab-btn active" id="tab-burst"   onclick="switchPage(0)">突襲配卡-爆裂場</button>
-            <button class="tab-btn"        id="tab-torment" onclick="switchPage(1)">突襲配卡-苦痛場</button>
-            <button class="tab-btn"        id="tab-support" onclick="switchPage(2)">突襲配卡-支援場</button>
+            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)">突襲配卡-爆裂場</button>
+            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)">突襲配卡-苦痛場</button>
+            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)">突襲配卡-支援場</button>
+            <button class="tab-btn"        id="tab-analysis" onclick="switchPage(3)">突襲分析</button>
         </div>
     </div>
 
@@ -695,6 +860,64 @@
                     <div class="pyramid-container" id="container-support"></div>
                 </div>
             </div>
+
+            <div class="page-view" id="page-analysis">
+                <div class="export-area" id="export-analysis">
+                    <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                        <h1>突襲分析</h1>
+                    </div>
+
+                    <div class="analysis-toolbar">
+                        <button class="btn-analysis import" onclick="document.getElementById('csv-file-input').click()">📂 匯入 CSV</button>
+                        <button class="btn-analysis clear" onclick="clearAnalysisData()">🗑 清除資料</button>
+                        <button class="btn-analysis export" onclick="exportAnalysisImage()">✨ 儲存圖片</button>
+                    </div>
+                    <div class="analysis-hint">提示：請使用 UTF-8 編碼的 CSV 檔案（Excel 另存新檔時選擇「CSV UTF-8」）</div>
+                    <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none;">
+
+                    <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
+                        <div class="mapping-row">
+                            <label>玩家欄位</label>
+                            <select id="map-player"></select>
+                        </div>
+                        <div class="mapping-row">
+                            <label>傷害欄位</label>
+                            <select id="map-damage"></select>
+                        </div>
+                        <div class="mapping-row">
+                            <label>誤傷欄位（可選）</label>
+                            <select id="map-miss">
+                                <option value="">— 無 —</option>
+                            </select>
+                        </div>
+                        <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
+                    </div>
+
+                    <div class="analysis-empty" id="analysis-empty-state">
+                        尚未匯入 CSV 資料<br>
+                        <span style="font-size:11px; opacity:0.75;">請點擊上方「匯入 CSV」按鈕開始分析</span>
+                    </div>
+
+                    <div id="analysis-result-wrap" style="display:none; width:100%;">
+                        <div class="analysis-summary" id="analysis-summary"></div>
+                        <div class="analysis-table-wrap">
+                            <table class="analysis-table" id="analysis-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortAnalysisBy('player')">玩家</th>
+                                        <th onclick="sortAnalysisBy('count')">攻擊次數</th>
+                                        <th onclick="sortAnalysisBy('total')">總傷</th>
+                                        <th onclick="sortAnalysisBy('avg')">均傷</th>
+                                        <th onclick="sortAnalysisBy('miss')">誤傷</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analysis-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -1032,8 +1255,9 @@
         }
 
         function clearAllZones() {
-            if (!confirm("確定要清空當前頁面所有牌組嗎？")) return;
             const activeContainerId = ['container-burst', 'container-torment', 'container-support'][currentPage];
+            if (!activeContainerId) return;
+            if (!confirm("確定要清空當前頁面所有牌組嗎？")) return;
             document.querySelectorAll(`#${activeContainerId} .drop-zone`).forEach(zone => {
                 zone.innerHTML = defaultZoneHTML;
             });
@@ -1052,6 +1276,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             // 先恢復儲存的資料
             restoreState();
+            restoreAnalysisState();
             
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
@@ -1077,12 +1302,13 @@
 
         /* ── Swiper ── */
         const swiperContainer = document.getElementById('main-swiper');
-        const tabBurst   = document.getElementById('tab-burst');
-        const tabTorment = document.getElementById('tab-torment');
-        const tabSupport = document.getElementById('tab-support');
+        const tabBurst    = document.getElementById('tab-burst');
+        const tabTorment  = document.getElementById('tab-torment');
+        const tabSupport  = document.getElementById('tab-support');
+        const tabAnalysis = document.getElementById('tab-analysis');
         const poolContainer = document.getElementById('pool-container');
         const poolSubtitle  = document.getElementById('pool-subtitle');
-        const TOTAL_PAGES = 3;
+        const TOTAL_PAGES = 4;
 
         let currentPage = 0;
         let swiperWidth = window.innerWidth;
@@ -1130,8 +1356,8 @@
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
-            [tabBurst, tabTorment, tabSupport].forEach(t => t.classList.remove('active'));
-            [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
+            [tabBurst, tabTorment, tabSupport, tabAnalysis].forEach(t => t.classList.remove('active'));
+            [tabBurst, tabTorment, tabSupport, tabAnalysis][pageIndex].classList.add('active');
             updateSwiperPosition(true);
         }
 
@@ -1211,7 +1437,7 @@
 
         function updateZonesCache() {
             cachedZones = [];
-            const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
+            const activePageId = ['page-burst', 'page-torment', 'page-support', 'page-analysis'][currentPage];
             document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
                 const r = zone.getBoundingClientRect();
                 cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
@@ -1469,6 +1695,357 @@
         document.getElementById('boss-select-support').addEventListener('change', function () {
             applyBossPreset('support', this.value, 'container-support');
         });
+
+        /* ════════════════════════════════════════
+           突襲分析 - CSV 匯入與數據計算
+           ════════════════════════════════════════ */
+        const ANALYSIS_STORAGE_KEY = 'tt2_analysis_data';
+
+        let csvHeaders = [];
+        let csvRows = [];
+        let analysisData = [];
+        let analysisSortKey = 'total';
+        let analysisSortDir = -1;
+
+        /* CSV 解析（支援含逗號 / 換行的引號欄位） */
+        function parseCSV(text) {
+            text = text.replace(/^\uFEFF/, '');
+            const rows = [];
+            let row = [];
+            let field = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const next = text[i + 1];
+
+                if (inQuotes) {
+                    if (char === '"') {
+                        if (next === '"') { field += '"'; i++; }
+                        else { inQuotes = false; }
+                    } else {
+                        field += char;
+                    }
+                } else {
+                    if (char === '"') {
+                        inQuotes = true;
+                    } else if (char === ',') {
+                        row.push(field); field = '';
+                    } else if (char === '\r') {
+                        // 忽略，由 \n 統一處理換行
+                    } else if (char === '\n') {
+                        row.push(field); field = '';
+                        rows.push(row); row = [];
+                    } else {
+                        field += char;
+                    }
+                }
+            }
+            if (field.length > 0 || row.length > 0) {
+                row.push(field);
+                rows.push(row);
+            }
+            return rows.filter(r => r.some(c => c.trim() !== ''));
+        }
+
+        function guessColumn(headers, keywords) {
+            for (let i = 0; i < headers.length; i++) {
+                const h = (headers[i] || '').toLowerCase();
+                for (const kw of keywords) {
+                    if (h.includes(kw)) return i;
+                }
+            }
+            return -1;
+        }
+
+        function parseNumber(val) {
+            if (val === undefined || val === null) return 0;
+            const cleaned = String(val).replace(/[, ]/g, '').replace(/[^\d.\-]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? 0 : n;
+        }
+
+        /* 誤傷欄位較常見兩種型態：數值（直接加總）或標記文字（如「是 / 否」，以次數計算） */
+        function parseMissValue(raw) {
+            const str = (raw === undefined || raw === null) ? '' : String(raw).trim();
+            if (str === '') return 0;
+            const numericStr = str.replace(/,/g, '');
+            if (/^-?\d+(\.\d+)?$/.test(numericStr)) {
+                return parseFloat(numericStr);
+            }
+            const truthySet = ['是', 'true', 'yes', 'y', 'v', '✓', '1', '對', '正確'];
+            return truthySet.includes(str) || truthySet.includes(str.toLowerCase()) ? 1 : 0;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function formatNum(n) {
+            return Math.round(n).toLocaleString('en-US');
+        }
+
+        /* 檔案匯入 */
+        document.getElementById('csv-file-input').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) handleCSVFile(file);
+            e.target.value = '';
+        });
+
+        function handleCSVFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const text = e.target.result;
+                const rows = parseCSV(text);
+                if (rows.length < 2) {
+                    alert('CSV 內容不足，請確認檔案至少包含標題列與一列資料');
+                    return;
+                }
+                csvHeaders = rows[0].map(h => h.trim());
+                csvRows = rows.slice(1);
+                analysisData = [];
+                document.getElementById('analysis-result-wrap').style.display = 'none';
+                populateMappingPanel();
+                autoGuessMapping();
+                saveAnalysisState();
+            };
+            reader.onerror = function () {
+                alert('讀取檔案失敗，請重新嘗試');
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function populateMappingPanel() {
+            const playerSel = document.getElementById('map-player');
+            const damageSel = document.getElementById('map-damage');
+            const missSel = document.getElementById('map-miss');
+
+            playerSel.innerHTML = '';
+            damageSel.innerHTML = '';
+            missSel.innerHTML = '<option value="">— 無 —</option>';
+
+            csvHeaders.forEach((h, idx) => {
+                const label = h || `欄位${idx + 1}`;
+                const o1 = document.createElement('option'); o1.value = idx; o1.textContent = label;
+                const o2 = document.createElement('option'); o2.value = idx; o2.textContent = label;
+                const o3 = document.createElement('option'); o3.value = idx; o3.textContent = label;
+                playerSel.appendChild(o1);
+                damageSel.appendChild(o2);
+                missSel.appendChild(o3);
+            });
+
+            document.getElementById('csv-mapping-panel').style.display = 'block';
+            document.getElementById('analysis-empty-state').style.display = 'none';
+        }
+
+        function autoGuessMapping() {
+            const playerGuess = guessColumn(csvHeaders, ['玩家', 'player', 'name', '名稱', '姓名']);
+            const damageGuess = guessColumn(csvHeaders, ['總傷', '傷害', 'damage', 'dmg']);
+            const missGuess   = guessColumn(csvHeaders, ['誤傷', 'miss', 'wasted', 'overkill', '浪費']);
+
+            if (playerGuess >= 0) document.getElementById('map-player').value = playerGuess;
+            if (damageGuess >= 0) document.getElementById('map-damage').value = damageGuess;
+            if (missGuess >= 0) document.getElementById('map-miss').value = missGuess;
+        }
+
+        function computeAnalysis() {
+            if (!csvRows.length) {
+                alert('請先匯入 CSV 檔案');
+                return;
+            }
+            const playerIdx = parseInt(document.getElementById('map-player').value, 10);
+            const damageIdx = parseInt(document.getElementById('map-damage').value, 10);
+            const missRaw = document.getElementById('map-miss').value;
+            const missIdx = missRaw === '' ? -1 : parseInt(missRaw, 10);
+
+            if (isNaN(playerIdx) || isNaN(damageIdx)) {
+                alert('請選擇玩家欄位與傷害欄位');
+                return;
+            }
+
+            const grouped = {};
+            csvRows.forEach(row => {
+                const playerName = (row[playerIdx] || '').trim();
+                if (!playerName) return;
+                const dmg = parseNumber(row[damageIdx]);
+                const miss = missIdx >= 0 ? parseMissValue(row[missIdx]) : 0;
+
+                if (!grouped[playerName]) {
+                    grouped[playerName] = { player: playerName, count: 0, total: 0, miss: 0 };
+                }
+                grouped[playerName].count += 1;
+                grouped[playerName].total += dmg;
+                grouped[playerName].miss += miss;
+            });
+
+            analysisData = Object.values(grouped).map(p => ({
+                ...p,
+                avg: p.count > 0 ? p.total / p.count : 0
+            }));
+
+            if (!analysisData.length) {
+                alert('找不到有效資料，請確認欄位對應是否正確');
+                return;
+            }
+
+            saveAnalysisState();
+            renderAnalysisTable();
+        }
+
+        function sortAnalysisBy(key) {
+            if (analysisSortKey === key) {
+                analysisSortDir *= -1;
+            } else {
+                analysisSortKey = key;
+                analysisSortDir = -1;
+            }
+            renderAnalysisTable();
+        }
+
+        function renderAnalysisTable() {
+            const tbody = document.getElementById('analysis-tbody');
+            const summary = document.getElementById('analysis-summary');
+            const wrap = document.getElementById('analysis-result-wrap');
+            const empty = document.getElementById('analysis-empty-state');
+
+            if (!analysisData.length) {
+                wrap.style.display = 'none';
+                return;
+            }
+
+            empty.style.display = 'none';
+            wrap.style.display = 'block';
+
+            const sorted = [...analysisData].sort((a, b) => {
+                if (analysisSortKey === 'player') {
+                    return a.player.localeCompare(b.player) * -analysisSortDir;
+                }
+                return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
+            });
+
+            const totalPlayers = analysisData.length;
+            const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+            const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+            const totalMiss = analysisData.reduce((s, p) => s + p.miss, 0);
+
+            summary.innerHTML = `
+                <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
+                <div class="summary-card"><div class="num">${totalCount}</div><div class="label">總攻擊次數</div></div>
+                <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
+                <div class="summary-card"><div class="num">${formatNum(totalMiss)}</div><div class="label">總誤傷</div></div>
+            `;
+
+            tbody.innerHTML = '';
+            sorted.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="player-name">${escapeHtml(p.player)}</td>
+                    <td>${p.count}</td>
+                    <td>${formatNum(p.total)}</td>
+                    <td>${formatNum(p.avg)}</td>
+                    <td class="miss-value">${formatNum(p.miss)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearAnalysisData() {
+            if (!confirm('確定要清除目前的分析資料嗎？')) return;
+            csvHeaders = [];
+            csvRows = [];
+            analysisData = [];
+            document.getElementById('csv-mapping-panel').style.display = 'none';
+            document.getElementById('analysis-result-wrap').style.display = 'none';
+            document.getElementById('analysis-empty-state').style.display = 'block';
+            localStorage.removeItem(ANALYSIS_STORAGE_KEY);
+        }
+
+        function exportAnalysisImage() {
+            if (!analysisData.length) {
+                alert('尚無資料可匯出，請先匯入 CSV 並計算數據');
+                return;
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const exportArea = document.getElementById('export-analysis');
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+
+            imgContainer.innerHTML = "正在組裝分析圖...";
+            modal.style.display = "flex";
+
+            html2canvas(exportArea, {
+                useCORS: true,
+                scale: 2,
+                backgroundColor: '#e3f2fd',
+                onclone: (clonedDoc) => {
+                    const toolbar = clonedDoc.querySelector('#export-analysis .analysis-toolbar');
+                    const hint = clonedDoc.querySelector('#export-analysis .analysis-hint');
+                    const panel = clonedDoc.getElementById('csv-mapping-panel');
+                    if (toolbar) toolbar.style.display = 'none';
+                    if (hint) hint.style.display = 'none';
+                    if (panel) panel.style.display = 'none';
+                }
+            }).then(canvas => {
+                imgContainer.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+            }).catch(() => {
+                alert("生成失敗");
+                closeModal();
+            });
+        }
+
+        function saveAnalysisState() {
+            try {
+                const state = {
+                    headers: csvHeaders,
+                    rows: csvRows,
+                    mapping: {
+                        player: document.getElementById('map-player').value,
+                        damage: document.getElementById('map-damage').value,
+                        miss: document.getElementById('map-miss').value
+                    },
+                    data: analysisData
+                };
+                localStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {
+                console.error('儲存分析資料失敗:', e);
+            }
+        }
+
+        function restoreAnalysisState() {
+            const saved = localStorage.getItem(ANALYSIS_STORAGE_KEY);
+            if (!saved) return;
+            try {
+                const state = JSON.parse(saved);
+                csvHeaders = state.headers || [];
+                csvRows = state.rows || [];
+                analysisData = state.data || [];
+
+                if (csvHeaders.length) {
+                    populateMappingPanel();
+                    if (state.mapping) {
+                        if (state.mapping.player !== undefined && state.mapping.player !== '') {
+                            document.getElementById('map-player').value = state.mapping.player;
+                        }
+                        if (state.mapping.damage !== undefined && state.mapping.damage !== '') {
+                            document.getElementById('map-damage').value = state.mapping.damage;
+                        }
+                        if (state.mapping.miss !== undefined) {
+                            document.getElementById('map-miss').value = state.mapping.miss;
+                        }
+                    }
+                }
+                if (analysisData.length) {
+                    renderAnalysisTable();
+                }
+            } catch (e) {
+                console.error('恢復分析資料失敗:', e);
+            }
+        }
     </script>
 </body>
 </html>

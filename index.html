@@ -700,6 +700,67 @@
             backface-visibility: hidden;
             -webkit-backface-visibility: hidden;
         }
+        
+/* Boss 設定區區塊 */
+.boss-config-container {
+    background-color: #f9fbfd;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.boss-config-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #2d3748;
+    margin-bottom: 12px;
+}
+.boss-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+.boss-row:last-child { border-bottom: none; }
+.boss-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.boss-input-wrap input {
+    padding: 6px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 150px;
+}
+/* 膠囊按鈕樣式 */
+.pill-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.pill-btn {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid #cbd5e1;
+    background-color: #ffffff;
+    color: #64748b;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+/* 勾選後的狀態（變成紅色，代表禁打） */
+.pill-btn.active {
+    background-color: #ef4444;
+    color: #ffffff;
+    border-color: #ef4444;
+    font-weight: bold;
+}
+        
     </style>
 </head>
 <body>
@@ -797,6 +858,36 @@
                     </div>
 
                     <div class="analysis-toolbar" style="flex-direction: column;">
+
+<div class="boss-config-container">
+    <div class="boss-config-title">🛡️ Boss 禁打部位設定（最多 3 種）</div>
+    
+    <div class="boss-row" id="boss-set-1">
+        <div class="boss-input-wrap">
+            <input type="text" class="boss-name" placeholder="Boss 1 名稱">
+        </div>
+        <div class="pill-container">
+            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+        </div>
+    </div>
+    
+    <div class="boss-row" id="boss-set-2">
+        <div class="boss-input-wrap"><input type="text" class="boss-name" placeholder="Boss 2 名稱"></div>
+        <div class="pill-container"></div>
+    </div>
+    <div class="boss-row" id="boss-set-3">
+        <div class="boss-input-wrap"><input type="text" class="boss-name" placeholder="Boss 3 名稱"></div>
+        <div class="pill-container"></div>
+    </div>
+</div>
+                        
                         <textarea id="csv-text-input" 
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
                                   placeholder="請將 CSV 內容直接貼上此處..."></textarea>
@@ -1699,56 +1790,73 @@
 
         // 主要處理函式：修正加總邏輯
                 // 主要處理函式：修正加總邏輯
-        function processPastedCSV() {
+        // 頁面載入時綁定膠囊按鈕
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', function() { this.classList.toggle('active'); });
+    });
+});
+
+function processPastedCSV() {
     const rawText = document.getElementById('csv-text-input').value.trim();
-    if (!rawText) { alert('請先在上方框框貼上 CSV 資料！'); return; }
+    if (!rawText) return;
     const rows = parseCSV(rawText);
-    if (rows.length < 2) { alert('解析失敗，請確認內容格式'); return; }
+    if (rows.length < 2) return;
 
-    csvHeaders = rows[0].map(h => h.trim());
-    csvRows = rows.slice(1);
+    const csvHeaders = rows[0].map(h => h.trim());
+    const csvRows = rows.slice(1);
     
-    // 為了精準抓取欄位，改用嚴格比對
-    function findExact(headers, targets) {
-        for (let target of targets) {
-            let idx = headers.findIndex(h => h === target);
-            if (idx !== -1) return idx;
+    // 取得 Boss 禁打規則
+    const bossConfigs = {};
+    [1, 2, 3].forEach(i => {
+        const root = document.getElementById(`boss-set-${i}`);
+        const name = root.querySelector('.boss-name').value.trim();
+        if (name) {
+            bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
+                                     .map(btn => btn.getAttribute('data-part'));
         }
-        return guessColumnIndex(headers, targets);
-    }
+    });
 
-    // 這裡我們精準指定名稱，就不會抓錯欄位了
-    const playerIdx = findExact(csvHeaders, ['玩家名稱', '玩家', 'player']);
-    const countIdx  = findExact(csvHeaders, ['總突擊傷害', '總突襲傷害', '攻擊次數']);
-    const damageIdx = findExact(csvHeaders, ['泰坦傷害']); // 精準對應「泰坦傷害」
-
-    if (playerIdx === -1 || countIdx === -1 || damageIdx === -1) {
-        alert('無法自動識別必要欄位，請檢查 CSV 標題是否正確');
-        return;
-    }
-
+    // 處理資料
     const grouped = {};
-    csvRows.forEach(row => {
-        const playerName = (row[playerIdx] || '').trim();
-        if (!playerName) return;
-        
-        const rawCount = parseNumber(row[countIdx]); 
-        const rawDmg   = parseNumber(row[damageIdx]);
+    const pIdx = csvHeaders.findIndex(h => ['玩家名稱', '玩家', 'player'].includes(h));
+    const cIdx = csvHeaders.findIndex(h => ['總突擊傷害', '總突襲傷害', '攻擊次數'].includes(h));
+    const dIdx = csvHeaders.findIndex(h => ['泰坦傷害'].includes(h));
+    const bIdx = csvHeaders.findIndex(h => ['泰坦名稱'].includes(h));
 
-        if (!grouped[playerName]) {
-            grouped[playerName] = { player: playerName, count: 0, total: 0 };
-        }
+    csvRows.forEach(row => {
+        const pName = (row[pIdx] || '').trim();
+        if (!pName) return;
+        if (!grouped[pName]) grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         
-        grouped[playerName].total += rawDmg;
-        if (rawCount > 0) grouped[playerName].count = rawCount; 
+        grouped[pName].total += parseNumber(row[dIdx]);
+        grouped[pName].count += parseNumber(row[cIdx]);
+
+        // 誤傷判定邏輯
+        const bossName = (row[bIdx] || '').trim();
+        const bannedParts = bossConfigs[bossName] || [];
+
+        csvHeaders.forEach((header, idx) => {
+            const val = parseNumber(row[idx]);
+            if (val <= 0) return;
+
+            if (header.includes('(骨架)')) {
+                grouped[pName].accident += val; // 骨架 = 誤傷
+            } else if (header.includes('(裝甲)')) {
+                if (bannedParts.includes(header)) {
+                    grouped[pName].accident += val; // 禁打裝甲 = 誤傷
+                }
+            }
+            // (肉體) 忽略
+        });
     });
 
     analysisData = Object.values(grouped).map(p => ({
         ...p,
-        avg: p.count > 0 ? p.total / p.count : 0
+        avg: p.count > 0 ? p.total / p.count : 0,
+        accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
     }));
 
-    saveAnalysisState();
     renderAnalysisTable();
 }
 

@@ -700,29 +700,6 @@
             backface-visibility: hidden;
             -webkit-backface-visibility: hidden;
         }
-
-/* 新增：雙欄表格佈局 */
-.analysis-split-wrapper {
-    display: flex;
-    flex-direction: row;
-    gap: 10px;
-    justify-content: center;
-    width: 100%;
-}
-.analysis-table-side {
-    flex: 1;
-    min-width: 0; /* 防止表格撐開容器 */
-}
-/* 新增：日期標籤 */
-.date-stamp {
-    font-size: 13px;
-    color: #5e7a9c;
-    text-align: left;
-    margin: 5px 0 10px 5px;
-    font-weight: bold;
-}
-
-        
     </style>
 </head>
 <body>
@@ -1779,75 +1756,44 @@
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         
-                        function renderAnalysisTable() {
-            const wrap = document.getElementById('analysis-result-wrap');
+                function renderAnalysisTable() {
+            const tbody = document.getElementById('analysis-tbody');
             const summary = document.getElementById('analysis-summary');
+            const wrap = document.getElementById('analysis-result-wrap');
             const empty = document.getElementById('analysis-empty-state');
 
             if (!analysisData.length) { wrap.style.display = 'none'; return; }
+
             empty.style.display = 'none';
             wrap.style.display = 'block';
 
-            // 排序
             const sorted = [...analysisData].sort((a, b) => {
                 if (analysisSortKey === 'player') { return a.player.localeCompare(b.player) * -analysisSortDir; }
                 return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
             });
 
-            // 建立日期顯示
-            const today = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
-            
-            // 清空並重組內容
-            wrap.innerHTML = '';
-            
-            // 插入日期
-            const dateEl = document.createElement('div');
-            dateEl.className = 'date-stamp';
-            dateEl.textContent = '日期: ' + today;
-            wrap.appendChild(dateEl);
+            const totalPlayers = analysisData.length;
+            const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+            const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+            const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
+            const avgAvgDamage = totalCount > 0 ? totalDamage / totalCount : 0;
 
-            // 插入統計摘要
-            const summaryEl = document.createElement('div');
-            summaryEl.className = 'analysis-summary';
-            summaryEl.id = 'analysis-summary';
-            // (此處省略 summary 內部 HTML，請保持與原本相同)
-            // ... (請見下方補充代碼)
-            wrap.appendChild(summaryEl);
+            summary.innerHTML = `<div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div><div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div><div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div><div class="summary-card"><div class="num">${formatNum(avgAvgDamage)}</div><div class="label">平均均傷</div></div>`;
 
-            // 建立雙欄容器
-            const splitWrapper = document.createElement('div');
-            splitWrapper.className = 'analysis-split-wrapper';
-            wrap.appendChild(splitWrapper);
+            tbody.innerHTML = '';
+            // 這裡新增了 index 參數，並在 HTML 中加入 ${index + 1}.
+            sorted.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td><td>${p.count}</td><td>${formatNum(p.total)}</td><td>${formatNum(p.avg)}</td>`;
+                tbody.appendChild(tr);
+            });
 
-            // 切割資料 1-25, 26-50
-            const leftData = sorted.slice(0, 25);
-            const rightData = sorted.slice(25, 50);
-
-            // 渲染表格的通用函式
-            const renderTable = (data, startIdx) => {
-                if (data.length === 0) return;
-                const tableWrap = document.createElement('div');
-                tableWrap.className = 'analysis-table-wrap analysis-table-side';
-                tableWrap.innerHTML = `
-                    <table class="analysis-table">
-                        <thead>
-                            <tr><th>玩家</th><th>次數</th><th>總傷</th><th>均傷</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>`;
-                const tbody = tableWrap.querySelector('tbody');
-                data.forEach((p, i) => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td class="player-name">${startIdx + i + 1}. ${escapeHtml(p.player)}</td><td>${p.count}</td><td>${formatNum(p.total)}</td><td>${formatNum(p.avg)}</td>`;
-                    tbody.appendChild(tr);
-                });
-                splitWrapper.appendChild(tableWrap);
-            };
-
-            renderTable(leftData, 0);
-            renderTable(rightData, 25);
+            // 表格底部統計行
+            const summaryTr = document.createElement('tr');
+            summaryTr.className = 'summary-row';
+            summaryTr.innerHTML = `<td class="player-name">平均統計</td><td>${Math.round(avgCount)}</td><td>${formatNum(totalDamage)}</td><td>${formatNum(avgAvgDamage)}</td>`;
+            tbody.appendChild(summaryTr);
         }
-
 
 
         function clearAnalysisData() { 

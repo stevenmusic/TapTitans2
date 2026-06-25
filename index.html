@@ -1856,39 +1856,46 @@ function processPastedCSV() {
 
     const csvHeaders = rows[0].map(h => h.trim());
     const csvRows = rows.slice(1);
-    
-   // 取得 Boss 禁打規則 (更新版)
-// 請找到 processPastedCSV 函式中原先處理 bossConfigs 的區塊，改為這樣：
-const bossConfigs = {};
-[1, 2, 3].forEach(i => {
-    const root = document.getElementById(`boss-set-${i}`);
-    // 改為抓取 select 元素的值
-    const select = root.querySelector('.boss-select');
-    const name = select ? select.value : ""; 
-    
-    if (name) {
-        bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
-                                 .map(btn => btn.getAttribute('data-part'));
-    }
-});
 
+    // 1. 動態識別欄位索引 (請確保您的 CSV 標題包含這些關鍵字)
+    const pIdx = csvHeaders.findIndex(h => h.includes('玩家'));
+    const bIdx = csvHeaders.findIndex(h => h.includes('Boss'));
+    const cIdx = csvHeaders.findIndex(h => h.includes('攻擊次數'));
+    const dIdx = csvHeaders.findIndex(h => h.includes('單次傷害')); // 請確認您的標題名稱
 
-    // 處理資料
+    // 2. 讀取 UI 上的 Boss 禁打部位設定
+    const bossConfigs = {};
+    [1, 2, 3].forEach(i => {
+        const root = document.getElementById(`boss-set-${i}`);
+        if (!root) return;
+        const select = root.querySelector('.boss-select');
+        const name = select ? select.value : ""; 
+        if (name) {
+            bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
+                                     .map(btn => btn.getAttribute('data-part'));
+        }
+    });
+
+    // 3. 處理數據計算
     const grouped = {};
-    const pIdx = csvHeaders.findIndex(h => ['玩家名稱', '玩家', 'player'].includes(h));
-    const cIdx = csvHeaders.findIndex(h => ['總突擊傷害', '總突襲傷害', '攻擊次數'].includes(h));
-    const dIdx = csvHeaders.findIndex(h => ['泰坦傷害'].includes(h));
-    const bIdx = csvHeaders.findIndex(h => ['泰坦名稱'].includes(h));
+    const parseNumber = (val) => parseFloat(val?.toString().replace(/,/g, '')) || 0;
 
     csvRows.forEach(row => {
         const pName = (row[pIdx] || '').trim();
         if (!pName) return;
-        if (!grouped[pName]) grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         
-        grouped[pName].total += parseNumber(row[dIdx]);
-        grouped[pName].count += parseNumber(row[cIdx]);
+        if (!grouped[pName]) {
+            grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
+        }
 
-        // 誤傷判定邏輯
+        const count = parseNumber(row[cIdx]);
+        const damageVal = parseNumber(row[dIdx]);
+
+        // 核心邏輯：攻擊次數直接賦值，傷害數值進行累加
+        grouped[pName].count = count; 
+        grouped[pName].total += damageVal; 
+
+        // 誤傷判定
         const bossName = (row[bIdx] || '').trim();
         const bannedParts = bossConfigs[bossName] || [];
 
@@ -1897,13 +1904,12 @@ const bossConfigs = {};
             if (val <= 0) return;
 
             if (header.includes('(骨架)')) {
-                grouped[pName].accident += val; // 骨架 = 誤傷
+                grouped[pName].accident += val; 
             } else if (header.includes('(裝甲)')) {
                 if (bannedParts.includes(header)) {
-                    grouped[pName].accident += val; // 禁打裝甲 = 誤傷
+                    grouped[pName].accident += val; 
                 }
             }
-            // (肉體) 忽略
         });
     });
 

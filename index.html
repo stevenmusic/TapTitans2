@@ -863,20 +863,19 @@
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
 <div class="boss-config-container">
-    <div class="boss-config-container">
-    <div class="boss-config-title">Boss 禁打部位</div>
+    <div class="boss-config-title">Boss 禁打部位 (最多 3 組)</div>
     
     <div class="boss-row" id="boss-set-1">
         <select class="boss-select">
-            <option value="">無</option>
+            <option value="">選擇 Boss</option>
             <option value="Jukk">Jukk</option>
+            <option value="Klonk">Klonk</option>
             <option value="Lojak">Lojak</option>
+            <option value="Mohaca">Mohaca</option>
+            <option value="Priker">Priker</option>
+            <option value="Sterl">Sterl</option>
             <option value="Takedar">Takedar</option>
             <option value="Terro">Terro</option>
-            <option value="Sterl">Sterl</option>
-            <option value="Mohaca">Mohaca</option>
-            <option value="Klonk">Klonk</option>
-            <option value="Priker">Priker</option>
         </select>
         <div class="pill-container">
             <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
@@ -889,18 +888,56 @@
             <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
         </div>
     </div>
-    </div>
-
     
     <div class="boss-row" id="boss-set-2">
-        <div class="boss-input-wrap"><input type="text" class="boss-name" placeholder="Boss 2 名稱"></div>
-        <div class="pill-container"></div>
+        <select class="boss-select">
+            <option value="">選擇 Boss</option>
+            <option value="Jukk">Jukk</option>
+            <option value="Klonk">Klonk</option>
+            <option value="Lojak">Lojak</option>
+            <option value="Mohaca">Mohaca</option>
+            <option value="Priker">Priker</option>
+            <option value="Sterl">Sterl</option>
+            <option value="Takedar">Takedar</option>
+            <option value="Terro">Terro</option>
+        </select>
+        <div class="pill-container">
+            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+        </div>
     </div>
+
     <div class="boss-row" id="boss-set-3">
-        <div class="boss-input-wrap"><input type="text" class="boss-name" placeholder="Boss 3 名稱"></div>
-        <div class="pill-container"></div>
+        <select class="boss-select">
+            <option value="">選擇 Boss</option>
+            <option value="Jukk">Jukk</option>
+            <option value="Klonk">Klonk</option>
+            <option value="Lojak">Lojak</option>
+            <option value="Mohaca">Mohaca</option>
+            <option value="Priker">Priker</option>
+            <option value="Sterl">Sterl</option>
+            <option value="Takedar">Takedar</option>
+            <option value="Terro">Terro</option>
+        </select>
+        <div class="pill-container">
+            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+        </div>
     </div>
 </div>
+
                         
                         <textarea id="csv-text-input" 
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
@@ -1821,10 +1858,11 @@ function processPastedCSV() {
     const csvRows = rows.slice(1);
     
    // 取得 Boss 禁打規則 (更新版)
+// 請找到 processPastedCSV 函式中原先處理 bossConfigs 的區塊，改為這樣：
 const bossConfigs = {};
 [1, 2, 3].forEach(i => {
     const root = document.getElementById(`boss-set-${i}`);
-    // 改為尋找 select 元素
+    // 改為抓取 select 元素的值
     const select = root.querySelector('.boss-select');
     const name = select ? select.value : ""; 
     

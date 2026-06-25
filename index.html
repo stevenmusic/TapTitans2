@@ -1690,14 +1690,12 @@
 
                 /* 修正後的數值格式化 (支援百萬單位 M) */
         function formatNum(n) {
-            if (n >= 1000000) {
-                // 除以 100 萬，保留最多 2 位小數，並去掉結尾無效的 0
-                return (n / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
-            }
-            // 若小於 100 萬，則維持原樣（顯示完整數字）
-            return Math.round(n).toLocaleString('en-US');
-        }
-
+    if (n >= 1000000) {
+        // toFixed(1) 強制保留一位小數，.replace 移除 .0 的情況
+        return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    }
+    return Math.round(n).toLocaleString('en-US');
+}
 
         // 主要處理函式：修正加總邏輯
                 // 主要處理函式：修正加總邏輯
@@ -1756,7 +1754,7 @@
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         
-                function renderAnalysisTable() {
+        function renderAnalysisTable() {
             const tbody = document.getElementById('analysis-tbody');
             const summary = document.getElementById('analysis-summary');
             const wrap = document.getElementById('analysis-result-wrap');

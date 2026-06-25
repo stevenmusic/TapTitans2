@@ -715,32 +715,36 @@
     color: #2d3748;
     margin-bottom: 12px;
 }
+/* 修改後的 Boss 橫向排列樣式 */
 .boss-row {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 0;
+    flex-wrap: wrap; /* 螢幕寬度不足時，膠囊會自動往下排 */
+    align-items: center; /* 讓下拉選單和膠囊垂直置中對齊 */
+    gap: 10px;
+    padding: 12px 0;
     border-bottom: 1px dashed #e2e8f0;
 }
 .boss-row:last-child { border-bottom: none; }
-.boss-input-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.boss-input-wrap input {
-    padding: 6px 12px;
+
+/* 下拉選單樣式 */
+.boss-select {
+    padding: 6px 10px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     font-size: 14px;
-    width: 150px;
+    min-width: 120px;
+    flex-shrink: 0; /* 確保選單不會被壓縮 */
 }
-/* 膠囊按鈕樣式 */
+
+/* 膠囊容器：佔據剩下的空間 */
 .pill-container {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    flex: 1; /* 讓容器自動填滿剩餘寬度 */
 }
+
+/* 膠囊按鈕保持不變 */
 .pill-btn {
     display: inline-block;
     padding: 6px 12px;
@@ -753,7 +757,6 @@
     user-select: none;
     transition: all 0.2s ease;
 }
-/* 勾選後的狀態（變成紅色，代表禁打） */
 .pill-btn.active {
     background-color: #ef4444;
     color: #ffffff;
@@ -860,12 +863,21 @@
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
 <div class="boss-config-container">
-    <div class="boss-config-title">🛡️ Boss 禁打部位設定（最多 3 種）</div>
+    <div class="boss-config-container">
+    <div class="boss-config-title">Boss 禁打部位</div>
     
     <div class="boss-row" id="boss-set-1">
-        <div class="boss-input-wrap">
-            <input type="text" class="boss-name" placeholder="Boss 1 名稱">
-        </div>
+        <select class="boss-select">
+            <option value="">無</option>
+            <option value="Jukk">Jukk</option>
+            <option value="Lojak">Lojak</option>
+            <option value="Takedar">Takedar</option>
+            <option value="Terro">Terro</option>
+            <option value="Sterl">Sterl</option>
+            <option value="Mohaca">Mohaca</option>
+            <option value="Klonk">Klonk</option>
+            <option value="Priker">Priker</option>
+        </select>
         <div class="pill-container">
             <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
             <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
@@ -877,6 +889,8 @@
             <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
         </div>
     </div>
+    </div>
+
     
     <div class="boss-row" id="boss-set-2">
         <div class="boss-input-wrap"><input type="text" class="boss-name" placeholder="Boss 2 名稱"></div>
@@ -1806,16 +1820,20 @@ function processPastedCSV() {
     const csvHeaders = rows[0].map(h => h.trim());
     const csvRows = rows.slice(1);
     
-    // 取得 Boss 禁打規則
-    const bossConfigs = {};
-    [1, 2, 3].forEach(i => {
-        const root = document.getElementById(`boss-set-${i}`);
-        const name = root.querySelector('.boss-name').value.trim();
-        if (name) {
-            bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
-                                     .map(btn => btn.getAttribute('data-part'));
-        }
-    });
+   // 取得 Boss 禁打規則 (更新版)
+const bossConfigs = {};
+[1, 2, 3].forEach(i => {
+    const root = document.getElementById(`boss-set-${i}`);
+    // 改為尋找 select 元素
+    const select = root.querySelector('.boss-select');
+    const name = select ? select.value : ""; 
+    
+    if (name) {
+        bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
+                                 .map(btn => btn.getAttribute('data-part'));
+    }
+});
+
 
     // 處理資料
     const grouped = {};

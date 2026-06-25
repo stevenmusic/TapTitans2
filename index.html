@@ -1860,22 +1860,16 @@ function processPastedCSV() {
     const csvHeaders = rows[0].map(h => h.trim());
     const csvRows = rows.slice(1);
 
-    // 修改後的 findIndex 邏輯
-const findIndex = (keyword) => {
-    // 這裡進行「寬容模式」比對
-    const idx = csvHeaders.findIndex(h => {
-        // 移除隱形字元、空格，並進行比對
-        const cleanHeader = h.trim().replace(/^\uFEFF/, ''); 
-        return cleanHeader === keyword;
-    });
-    
-    // 如果還是找不到，在 Console 印出來讓你除錯
-    if (idx === -1) {
-        console.warn(`[Debug] 系統讀到的標題是: "${csvHeaders.join('|')}"，找不到: "${keyword}"`);
-    }
-    return idx;
-};
+    const findIndex = (keyword) => csvHeaders.findIndex(h => h === keyword);
+    const pIdx = findIndex('玩家名稱');
+    const bIdx = findIndex('泰坦名稱');
+    const cIdx = findIndex('總突襲傷害'); // 此欄位現在視為「攻擊次數」
+    const dIdx = findIndex('泰坦傷害'); 
 
+    if (pIdx === -1 || bIdx === -1 || cIdx === -1 || dIdx === -1) {
+        alert("找不到必要的欄位，請確認 CSV 標題包含：玩家名稱, 泰坦名稱, 總突襲傷害, 泰坦傷害");
+        return;
+    }
 
     // 讀取 Boss 禁打部位設定
     const bossConfigs = {};

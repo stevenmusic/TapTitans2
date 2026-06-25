@@ -1853,16 +1853,14 @@ function processPastedCSV() {
     const csvHeaders = rows[0].map(h => h.trim());
     const csvRows = rows.slice(1);
 
-    // 1. 動態識別欄位索引 (加入靈活匹配，支援多種常見標題)
-    const findIndex = (keywords) => csvHeaders.findIndex(h => keywords.some(k => h.includes(k)));
-    
-    const pIdx = findIndex(['玩家', 'Player']);
-    const bIdx = findIndex(['Boss']);
-    // 支援您提到的兩種可能標題
-    const cIdx = findIndex(['攻擊次數', '總突襲傷害']); 
-    const dIdx = findIndex(['單次傷害', '泰坦傷害']); 
+    // 識別欄位索引
+    const findIndex = (keyword) => csvHeaders.findIndex(h => h === keyword);
+    const pIdx = findIndex('玩家名稱');
+    const bIdx = findIndex('泰坦名稱');
+    const cIdx = findIndex('總突襲傷害'); 
+    const dIdx = findIndex('泰坦傷害'); 
 
-    // 2. 讀取 UI 上的 Boss 禁打部位設定
+    // 讀取 UI 上的 Boss 禁打部位設定 (回傳的是選取的部位名稱陣列)
     const bossConfigs = {};
     [1, 2, 3].forEach(i => {
         const root = document.getElementById(`boss-set-${i}`);
@@ -1870,12 +1868,12 @@ function processPastedCSV() {
         const select = root.querySelector('.boss-select');
         const name = select ? select.value : ""; 
         if (name) {
+            // 注意：這裡假設 data-part 的值與 CSV 的標題完全一致
             bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
                                      .map(btn => btn.getAttribute('data-part'));
         }
     });
 
-    // 3. 處理數據計算
     const grouped = {};
     const parseNumber = (val) => parseFloat(val?.toString().replace(/,/g, '')) || 0;
 
@@ -1890,26 +1888,26 @@ function processPastedCSV() {
         const count = parseNumber(row[cIdx]);
         const damageVal = parseNumber(row[dIdx]);
 
-        // 核心邏輯：
-        // 攻擊次數：直接賦值 (每一行覆蓋，確保最後留存的是該玩家的數值)
+        // 1. 攻擊次數：直接賦值，不累加 (符合你的要求)
         grouped[pName].count = count; 
-        // 總傷害：所有單次傷害累加
+
+        // 2. 總傷害：累加
         grouped[pName].total += damageVal; 
 
-        // 誤傷判定 (遍歷所有標題檢查是否為部位)
+        // 3. 誤傷判定：只檢查勾選的部位
         const bossName = (row[bIdx] || '').trim();
         const bannedParts = bossConfigs[bossName] || [];
 
         csvHeaders.forEach((header, idx) => {
+            // 跳過非傷害欄位
+            if (idx === pIdx || idx === bIdx || idx === cIdx || idx === dIdx) return;
+            
             const val = parseNumber(row[idx]);
             if (val <= 0) return;
 
-            if (header.includes('(骨架)')) {
+            // 嚴格判定：只有該 header 在該 Boss 的 bannedParts 清單中，才算誤傷
+            if (bannedParts.includes(header)) {
                 grouped[pName].accident += val; 
-            } else if (header.includes('(裝甲)')) {
-                if (bannedParts.includes(header)) {
-                    grouped[pName].accident += val; 
-                }
             }
         });
     });
@@ -1917,11 +1915,11 @@ function processPastedCSV() {
     // 計算平均與誤傷率
     analysisData = Object.values(grouped).map(p => ({
         ...p,
-        avg: p.count > 0 ? p.total / p.count : 0,
+        // 平均傷害 = 總傷害 / 攻擊次數
+        avg: p.count > 0 ? (p.total / p.count) : 0,
         accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
     }));
 
-    // 呼叫您負責繪製表格的函數
     renderAnalysisTable();
 }
 

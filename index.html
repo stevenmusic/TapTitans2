@@ -702,72 +702,66 @@
         }
         
 /* Boss 設定區區塊 */
-/* 容器風格：採用輕量化邊框與陰影 */
 .boss-config-container {
-    background: #ffffff;
+    background-color: #f9fbfd;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 24px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    padding: 15px;
+    margin-bottom: 20px;
 }
-
 .boss-config-title {
     font-size: 16px;
-    font-weight: 600;
-    color: #334155;
-    margin-bottom: 16px;
-    border-bottom: 2px solid #f1f5f9;
-    padding-bottom: 10px;
+    font-weight: bold;
+    color: #2d3748;
+    margin-bottom: 12px;
 }
-
-/* 每一行的佈局 */
+/* 修改後的 Boss 橫向排列樣式 */
 .boss-row {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 15px;
+    flex-wrap: wrap; /* 螢幕寬度不足時，膠囊會自動往下排 */
+    align-items: center; /* 讓下拉選單和膠囊垂直置中對齊 */
+    gap: 10px;
     padding: 12px 0;
+    border-bottom: 1px dashed #e2e8f0;
 }
+.boss-row:last-child { border-bottom: none; }
 
-/* 下拉選單質感優化 */
+/* 下拉選單樣式 */
 .boss-select {
-    padding: 8px 12px;
-    border-radius: 8px;
+    padding: 6px 10px;
     border: 1px solid #cbd5e1;
-    background: #f8fafc;
-    color: #475569;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
+    border-radius: 6px;
+    font-size: 14px;
+    min-width: 120px;
+    flex-shrink: 0; /* 確保選單不會被壓縮 */
 }
-.boss-select:hover { border-color: #94a3b8; }
 
-/* 膠囊按鈕：優化懸停效果與點擊區 */
+/* 膠囊容器：佔據剩下的空間 */
 .pill-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    flex: 1;
+    gap: 6px;
+    flex: 1; /* 讓容器自動填滿剩餘寬度 */
 }
 
+/* 膠囊按鈕保持不變 */
 .pill-btn {
-    padding: 6px 14px;
+    display: inline-block;
+    padding: 6px 12px;
     border-radius: 20px;
-    border: 1px solid #e2e8f0;
-    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    background-color: #ffffff;
     color: #64748b;
-    font-size: 12px;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
     user-select: none;
+    transition: all 0.2s ease;
 }
-.pill-btn:hover { border-color: #cbd5e1; background: #f1f5f9; }
 .pill-btn.active {
-    background-color: #ef4444; /* 紅色代表危險/禁打 */
+    background-color: #ef4444;
     color: #ffffff;
     border-color: #ef4444;
-    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+    font-weight: bold;
 }
         
     </style>
@@ -869,44 +863,31 @@
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
 <div class="boss-config-container">
-    <div class="boss-config-title">🛡️ Boss 禁打部位設定</div>
+    <div class="boss-config-container">
+    <div class="boss-config-title">Boss 禁打部位</div>
     
-    <div id="boss-rows-wrapper">
+    <div class="boss-row" id="boss-set-1">
+        <select class="boss-select">
+            <option value="">無</option>
+            <option value="Jukk">Jukk</option>
+            <option value="Lojak">Lojak</option>
+            <option value="Takedar">Takedar</option>
+            <option value="Terro">Terro</option>
+            <option value="Sterl">Sterl</option>
+            <option value="Mohaca">Mohaca</option>
+            <option value="Klonk">Klonk</option>
+            <option value="Priker">Priker</option>
+        </select>
+        <div class="pill-container">
+            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
         </div>
-</div>
-
-<script>
-// 自動產生三組 Boss 下拉選單的 HTML (方便管理)
-const bossList = ["Jukk", "Lojak", "Takedar", "Terro", "Sterl", "Mohaca", "Klonk", "Priker"];
-const wrapper = document.getElementById('boss-rows-wrapper');
-
-for (let i = 1; i <= 3; i++) {
-    let options = bossList.map(b => `<option value="${b}">${b}</option>`).join('');
-    wrapper.innerHTML += `
-        <div class="boss-row" id="boss-set-${i}">
-            <select class="boss-select">
-                <option value="">選擇 Boss ${i}</option>
-                ${options}
-            </select>
-            <div class="pill-container">
-                <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-                <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-                <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-                <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-                <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-                <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-                <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-                <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
-            </div>
-        </div>`;
-}
-
-// 膠囊點擊互動
-document.querySelectorAll('.pill-btn').forEach(btn => {
-    btn.addEventListener('click', function() { this.classList.toggle('active'); });
-});
-</script>
-
     </div>
     </div>
 

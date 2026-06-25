@@ -1756,7 +1756,7 @@
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         
-        function renderAnalysisTable() {
+                function renderAnalysisTable() {
             const tbody = document.getElementById('analysis-tbody');
             const summary = document.getElementById('analysis-summary');
             const wrap = document.getElementById('analysis-result-wrap');
@@ -1781,18 +1781,20 @@
             summary.innerHTML = `<div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div><div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div><div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div><div class="summary-card"><div class="num">${formatNum(avgAvgDamage)}</div><div class="label">平均均傷</div></div>`;
 
             tbody.innerHTML = '';
-            sorted.forEach(p => {
+            // 這裡新增了 index 參數，並在 HTML 中加入 ${index + 1}.
+            sorted.forEach((p, index) => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td class="player-name">${escapeHtml(p.player)}</td><td>${p.count}</td><td>${formatNum(p.total)}</td><td>${formatNum(p.avg)}</td>`;
+                tr.innerHTML = `<td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td><td>${p.count}</td><td>${formatNum(p.total)}</td><td>${formatNum(p.avg)}</td>`;
                 tbody.appendChild(tr);
             });
 
-            // 新增：表格底部統計行
+            // 表格底部統計行
             const summaryTr = document.createElement('tr');
             summaryTr.className = 'summary-row';
             summaryTr.innerHTML = `<td class="player-name">平均統計</td><td>${Math.round(avgCount)}</td><td>${formatNum(totalDamage)}</td><td>${formatNum(avgAvgDamage)}</td>`;
             tbody.appendChild(summaryTr);
         }
+
 
         function clearAnalysisData() { 
             if (!confirm('確定要清除目前的分析資料嗎？')) return; 

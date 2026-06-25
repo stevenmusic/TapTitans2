@@ -1676,7 +1676,8 @@
 
         function parseNumber(val) {
             if (val === undefined || val === null) return 0;
-            const cleaned = String(val).replace(/[, ]/g, '').replace(/[^\d.\-]/g, '');
+            // 移除逗號與空白，但保留數字、小數點、負號與科學記號符號(e/E)
+            const cleaned = String(val).replace(/[, ]/g, '');
             const n = parseFloat(cleaned);
             return isNaN(n) ? 0 : n;
         }
@@ -1687,9 +1688,16 @@
             return div.innerHTML;
         }
 
+                /* 修正後的數值格式化 (支援百萬單位 M) */
         function formatNum(n) {
+            if (n >= 1000000) {
+                // 除以 100 萬，保留最多 2 位小數，並去掉結尾無效的 0
+                return (n / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+            }
+            // 若小於 100 萬，則維持原樣（顯示完整數字）
             return Math.round(n).toLocaleString('en-US');
         }
+
 
         // 主要處理函式：修正加總邏輯
                 // 主要處理函式：修正加總邏輯
@@ -1702,19 +1710,15 @@
             csvHeaders = rows[0].map(h => h.trim());
             csvRows = rows.slice(1);
             
-            // 1. 自動尋找欄位索引
             const playerIdx  = guessColumnIndex(csvHeaders, ['玩家名稱', '玩家', 'player', 'name']);
-            // 修正：CSV 標題 "總突擊傷害" 其實是 "次數"
             const countIdx   = guessColumnIndex(csvHeaders, ['總突擊傷害', '總突襲傷害', '攻擊次數', '次數', 'attacks']);
-            // 修正：CSV 標題 "泰坦傷害" 是 "單次傷害"，需要加總
             const damageIdx  = guessColumnIndex(csvHeaders, ['泰坦傷害', '傷害', 'damage', 'dmg']);
 
             if (playerIdx === -1 || countIdx === -1 || damageIdx === -1) {
-                alert('無法自動識別必要欄位！\n\n請確認 CSV 包含以下標題：\n- 玩家名稱\n- 總突擊傷害（作為次數）\n- 泰坦傷害（作為單次傷害）');
+                alert('無法自動識別必要欄位！\n\n請確認 CSV 包含：玩家名稱、總突擊傷害（次數）、泰坦傷害（單次傷害）');
                 return;
             }
 
-            // 2. 數據聚合計算 (加總邏輯)
             const grouped = {};
             csvRows.forEach(row => {
                 const playerName = (row[playerIdx] || '').trim();
@@ -1724,21 +1728,18 @@
                 const rawDmg   = parseNumber(row[damageIdx]); // 這是單次傷害
 
                 if (!grouped[playerName]) {
-                    // 初始化：次數設為0(稍後處理)，總傷設為0
                     grouped[playerName] = { player: playerName, count: 0, total: 0 };
                 }
                 
-                // 【關鍵修正邏輯】
-                // 1. 總傷害：累加 CSV 中每一行的「泰坦傷害」
+                // 1. 累加傷害：將每一行的單次傷害加總
                 grouped[playerName].total += rawDmg;
                 
-                // 2. 攻擊次數：
-                // 因為 CSV 每一行都有 "總突擊傷害" (例如 18)，且每行的值應該都一樣。
-                // 我們只需要取最後一行的值即可 (最後一行的值通常是最終總次數)。
-                grouped[playerName].count = rawCount; 
+                // 2. 更新次數：只在讀到大於 0 的有效值時才更新，防止被後續無效行覆蓋
+                if (rawCount > 0) {
+                    grouped[playerName].count = rawCount; 
+                }
             });
 
-            // 3. 產生分析結果
             analysisData = Object.values(grouped).map(p => ({
                 ...p,
                 avg: p.count > 0 ? p.total / p.count : 0
@@ -1749,7 +1750,6 @@
             saveAnalysisState();
             renderAnalysisTable();
         }
-
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         

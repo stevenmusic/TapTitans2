@@ -1703,27 +1703,31 @@
                 // 主要處理函式：修正加總邏輯
         function processPastedCSV() {
     const rawText = document.getElementById('csv-text-input').value.trim();
-    if (!rawText) { alert('請先貼上 CSV 資料！'); return; }
+    if (!rawText) { alert('請先在上方框框貼上 CSV 資料！'); return; }
     const rows = parseCSV(rawText);
+    if (rows.length < 2) { alert('解析失敗，請確認內容格式'); return; }
+
     csvHeaders = rows[0].map(h => h.trim());
     csvRows = rows.slice(1);
     
-    // 改進：優先找精確名稱，找不到才找包含名稱的
+    // 為了精準抓取欄位，改用嚴格比對
     function findExact(headers, targets) {
         for (let target of targets) {
             let idx = headers.findIndex(h => h === target);
             if (idx !== -1) return idx;
         }
-        // 若找不到精確名稱，再用原本的模糊搜尋
         return guessColumnIndex(headers, targets);
     }
 
+    // 這裡我們精準指定名稱，就不會抓錯欄位了
     const playerIdx = findExact(csvHeaders, ['玩家名稱', '玩家', 'player']);
     const countIdx  = findExact(csvHeaders, ['總突擊傷害', '總突襲傷害', '攻擊次數']);
-    const damageIdx = findExact(csvHeaders, ['泰坦傷害', '泰坦傷害']); // 這裡改成精確匹配，避免抓到「總突擊傷害」
+    const damageIdx = findExact(csvHeaders, ['泰坦傷害']); // 精準對應「泰坦傷害」
 
-    // 彈出視窗顯示抓到的位置（平板也能看）
-    alert(`偵測到的欄位索引:\n玩家: ${playerIdx}\n次數: ${countIdx}\n傷害: ${damageIdx}`);
+    if (playerIdx === -1 || countIdx === -1 || damageIdx === -1) {
+        alert('無法自動識別必要欄位，請檢查 CSV 標題是否正確');
+        return;
+    }
 
     const grouped = {};
     csvRows.forEach(row => {
@@ -1741,11 +1745,6 @@
         if (rawCount > 0) grouped[playerName].count = rawCount; 
     });
 
-    // 檢查 mfchen 的結果
-    if (grouped['《亞瑟斯》mfchen']) {
-        alert(`mfchen 統計結果:\n次數: ${grouped['《亞瑟斯》mfchen'].count}\n總傷: ${grouped['《亞瑟斯》mfchen'].total}`);
-    }
-
     analysisData = Object.values(grouped).map(p => ({
         ...p,
         avg: p.count > 0 ? p.total / p.count : 0
@@ -1754,7 +1753,6 @@
     saveAnalysisState();
     renderAnalysisTable();
 }
-
 
         function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
         

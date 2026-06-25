@@ -867,33 +867,31 @@
                         <h1>突襲分析</h1>
                     </div>
 
-                    <div class="analysis-toolbar" style="flex-direction: column; align-items: stretch;">
-                    <textarea id="csv-text-input" placeholder="請在此貼上 CSV 文字內容..." style="width:100%; height:120px; margin-bottom: 10px; padding: 8px;"></textarea>
-    
-          <div style="display: flex; gap: 8px;">
-               <button class="btn-analysis import" onclick="parseRawText()">解析 CSV 文字</button>
-               <button class="btn-analysis clear" onclick="clearAnalysisData()">🗑 清除資料</button>
-               <button class="btn-analysis export" onclick="exportAnalysisImage()">✨ 儲存圖片</button>
-    </div>
-</div>
-            <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
-    <div class="mapping-row">
-        <label>玩家欄位</label>
-        <select id="map-player"></select>
-    </div>
-    <div class="mapping-row">
-        <label>傷害欄位</label>
-        <select id="map-damage"></select>
-    </div>
-    <div class="mapping-row">
-        <label>誤傷欄位（可選）</label>
-        <select id="map-miss">
-            <option value="">— 無 —</option>
-        </select>
-    </div>
-    <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
-</div>
+                    <div class="analysis-toolbar">
+                        <button class="btn-analysis import" onclick="document.getElementById('csv-file-input').click()">📂 匯入 CSV</button>
+                        <button class="btn-analysis clear" onclick="clearAnalysisData()">🗑 清除資料</button>
+                        <button class="btn-analysis export" onclick="exportAnalysisImage()">✨ 儲存圖片</button>
+                    </div>
+                    <div class="analysis-hint">提示：請使用 UTF-8 編碼的 CSV 檔案（Excel 另存新檔時選擇「CSV UTF-8」）</div>
+                    <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none;">
 
+                    <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
+                        <div class="mapping-row">
+                            <label>玩家欄位</label>
+                            <select id="map-player"></select>
+                        </div>
+                        <div class="mapping-row">
+                            <label>傷害欄位</label>
+                            <select id="map-damage"></select>
+                        </div>
+                        <div class="mapping-row">
+                            <label>誤傷欄位（可選）</label>
+                            <select id="map-miss">
+                                <option value="">— 無 —</option>
+                            </select>
+                        </div>
+                        <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
+                    </div>
 
                     <div class="analysis-empty" id="analysis-empty-state">
                         尚未匯入 CSV 資料<br>
@@ -938,7 +936,6 @@
     </div>
 
     <script>
-        alert("腳本已成功載入！");
         const totalTiers = 8;
         const defaultZoneHTML = '<span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拉入卡片<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span>';
 
@@ -1790,6 +1787,13 @@
             return Math.round(n).toLocaleString('en-US');
         }
 
+        /* 檔案匯入 */
+        document.getElementById('csv-file-input').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) handleCSVFile(file);
+            e.target.value = '';
+        });
+
         function handleCSVFile(file) {
             const reader = new FileReader();
             reader.onload = function (e) {
@@ -2042,48 +2046,6 @@
                 console.error('恢復分析資料失敗:', e);
             }
         }
-
-        // 存放解析後的數據
-let parsedData = []; 
-
-function parseRawText() {
-    // 1. 抓取文字區的內容
-    const text = document.getElementById('csv-text-input').value.trim();
-    if (!text) {
-        alert("請先貼上 CSV 文字！");
-        return;
-    }
-
-    // 2. 解析 CSV (以換行分割列，以逗號分割欄)
-    const rows = text.split('\n').filter(row => row.trim() !== "");
-    const headers = rows[0].split(',').map(h => h.trim());
-    
-    // 儲存所有資料到全域變數
-    parsedData = rows.map(row => row.split(',').map(cell => cell.trim()));
-
-    // 3. 更新 Mapping 下拉選單 (玩家、傷害、誤傷)
-    const selects = ['map-player', 'map-damage', 'map-miss'];
-    
-    selects.forEach(id => {
-        const select = document.getElementById(id);
-        select.innerHTML = ''; // 清空舊選項
-        
-        // 只有「誤傷」選項允許選「無」
-        if (id === 'map-miss') {
-            select.innerHTML += '<option value="">— 無 —</option>';
-        }
-
-        // 把 CSV 的第一行標題放入選單
-        headers.forEach((header, index) => {
-            select.innerHTML += `<option value="${index}">${header}</option>`;
-        });
-    });
-
-    // 4. 切換 UI 顯示
-    document.getElementById('csv-mapping-panel').style.display = 'block';
-    document.getElementById('analysis-empty-state').style.display = 'none';
-    document.getElementById('analysis-result-wrap').style.display = 'none';
-}
     </script>
 </body>
 </html>

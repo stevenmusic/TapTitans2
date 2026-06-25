@@ -867,13 +867,21 @@
                         <h1>突襲分析</h1>
                     </div>
 
-                    <div class="analysis-toolbar">
-                        <button class="btn-analysis import" onclick="document.getElementById('csv-file-input').click()">📂 匯入 CSV</button>
-                        <button class="btn-analysis clear" onclick="clearAnalysisData()">🗑 清除資料</button>
-                        <button class="btn-analysis export" onclick="exportAnalysisImage()">✨ 儲存圖片</button>
-                    </div>
-                    <div class="analysis-hint">提示：請使用 UTF-8 編碼的 CSV 檔案（Excel 另存新檔時選擇「CSV UTF-8」）</div>
-                    <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none;">
+                    <div class="analysis-toolbar" style="flex-direction: column;">
+    <textarea id="csv-text-input" 
+              style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
+              placeholder="請將 CSV 內容直接貼上此處..."></textarea>
+    
+    <div style="display: flex; gap: 8px; width: 100%;">
+        <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 2;">✅ 解析貼上內容</button>
+        <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;">🗑 清除</button>
+        <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存圖片</button>
+    </div>
+</div>
+
+<div class="analysis-hint">提示：請將 CSV 內容直接貼在上方框框內（系統會自動偵測欄位）</div>
+
+
 
                     <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
                         <div class="mapping-row">
@@ -1794,28 +1802,36 @@
             e.target.value = '';
         });
 
-        function handleCSVFile(file) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const text = e.target.result;
-                const rows = parseCSV(text);
-                if (rows.length < 2) {
-                    alert('CSV 內容不足，請確認檔案至少包含標題列與一列資料');
-                    return;
-                }
-                csvHeaders = rows[0].map(h => h.trim());
-                csvRows = rows.slice(1);
-                analysisData = [];
-                document.getElementById('analysis-result-wrap').style.display = 'none';
-                populateMappingPanel();
-                autoGuessMapping();
-                saveAnalysisState();
-            };
-            reader.onerror = function () {
-                alert('讀取檔案失敗，請重新嘗試');
-            };
-            reader.readAsText(file, 'UTF-8');
-        }
+        // 新增：處理貼上文字的函式
+function processPastedCSV() {
+    const rawText = document.getElementById('csv-text-input').value.trim();
+    if (!rawText) {
+        alert('請先在上方框框貼上 CSV 資料！');
+        return;
+    }
+
+    // 利用原本的 parseCSV 函式進行解析
+    const rows = parseCSV(rawText);
+    
+    // 簡單檢核是否有資料
+    if (rows.length < 2) {
+        alert('解析失敗，請確認貼上的內容是否為正確的 CSV 格式（含標題列與資料）');
+        return;
+    }
+
+    csvHeaders = rows[0].map(h => h.trim());
+    csvRows = rows.slice(1);
+    
+    // 初始化狀態
+    analysisData = [];
+    document.getElementById('analysis-result-wrap').style.display = 'none';
+    
+    // 顯示欄位對應視窗並自動偵測
+    populateMappingPanel();
+    autoGuessMapping();
+    saveAnalysisState();
+}
+
 
         function populateMappingPanel() {
             const playerSel = document.getElementById('map-player');

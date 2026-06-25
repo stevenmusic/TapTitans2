@@ -773,7 +773,6 @@
     </style>
 </head>
 <body>
-
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
@@ -893,6 +892,10 @@
                             <select id="map-damage"></select>
                         </div>
                         <div class="mapping-row">
+                            <label>攻擊次數欄位</label> <!-- 修改點：標籤名稱 -->
+                            <select id="map-count"></select>   <!-- 修改點：ID 改為 map-count -->
+                        </div>
+                        <div class="mapping-row">
                             <label>誤傷欄位（可選）</label>
                             <select id="map-miss">
                                 <option value="">— 無 —</option>
@@ -913,7 +916,7 @@
                                 <thead>
                                     <tr>
                                         <th onclick="sortAnalysisBy('player')">玩家</th>
-                                        <th onclick="sortAnalysisBy('count')">攻擊次數</th>
+                                        <th onclick="sortAnalysisBy('count')">攻擊次數</th> <!-- 修改點：標題文字 -->
                                         <th onclick="sortAnalysisBy('total')">總傷</th>
                                         <th onclick="sortAnalysisBy('avg')">均傷</th>
                                         <th onclick="sortAnalysisBy('miss')">誤傷</th>
@@ -1836,20 +1839,24 @@ function processPastedCSV() {
         function populateMappingPanel() {
             const playerSel = document.getElementById('map-player');
             const damageSel = document.getElementById('map-damage');
-            const missSel = document.getElementById('map-miss');
+            const countSel  = document.getElementById('map-count'); // 修改點：新增次數選擇器
+            const missSel   = document.getElementById('map-miss');
 
             playerSel.innerHTML = '';
             damageSel.innerHTML = '';
-            missSel.innerHTML = '<option value="">— 無 —</option>';
+            countSel.innerHTML  = ''; // 修改點
+            missSel.innerHTML   = '<option value="">— 無 —</option>';
 
             csvHeaders.forEach((h, idx) => {
                 const label = h || `欄位${idx + 1}`;
                 const o1 = document.createElement('option'); o1.value = idx; o1.textContent = label;
                 const o2 = document.createElement('option'); o2.value = idx; o2.textContent = label;
-                const o3 = document.createElement('option'); o3.value = idx; o3.textContent = label;
+                const o3 = document.createElement('option'); o3.value = idx; o3.textContent = label; // 修改點
+                const o4 = document.createElement('option'); o4.value = idx; o4.textContent = label;
                 playerSel.appendChild(o1);
                 damageSel.appendChild(o2);
-                missSel.appendChild(o3);
+                countSel.appendChild(o3); // 修改點
+                missSel.appendChild(o4);
             });
 
             document.getElementById('csv-mapping-panel').style.display = 'block';
@@ -1859,11 +1866,14 @@ function processPastedCSV() {
         function autoGuessMapping() {
             const playerGuess = guessColumn(csvHeaders, ['玩家', 'player', 'name', '名稱', '姓名']);
             const damageGuess = guessColumn(csvHeaders, ['總傷', '傷害', 'damage', 'dmg']);
+            // 修改點：尋找「攻擊次數」欄位，向後相容「總突擊傷害」
+            const countGuess  = guessColumn(csvHeaders, ['攻擊次數', '總突擊傷害', '突擊次數', 'attacks', 'count']);
             const missGuess   = guessColumn(csvHeaders, ['誤傷', 'miss', 'wasted', 'overkill', '浪費']);
 
             if (playerGuess >= 0) document.getElementById('map-player').value = playerGuess;
             if (damageGuess >= 0) document.getElementById('map-damage').value = damageGuess;
-            if (missGuess >= 0) document.getElementById('map-miss').value = missGuess;
+            if (countGuess >= 0)  document.getElementById('map-count').value  = countGuess; // 修改點
+            if (missGuess >= 0)   document.getElementById('map-miss').value   = missGuess;
         }
 
         function computeAnalysis() {
@@ -1873,11 +1883,12 @@ function processPastedCSV() {
             }
             const playerIdx = parseInt(document.getElementById('map-player').value, 10);
             const damageIdx = parseInt(document.getElementById('map-damage').value, 10);
+            const countIdx  = parseInt(document.getElementById('map-count').value, 10); // 修改點
             const missRaw = document.getElementById('map-miss').value;
             const missIdx = missRaw === '' ? -1 : parseInt(missRaw, 10);
 
-            if (isNaN(playerIdx) || isNaN(damageIdx)) {
-                alert('請選擇玩家欄位與傷害欄位');
+            if (isNaN(playerIdx) || isNaN(damageIdx) || isNaN(countIdx)) { // 修改點
+                alert('請選擇玩家欄位、傷害欄位與攻擊次數欄位');
                 return;
             }
 
@@ -1886,12 +1897,20 @@ function processPastedCSV() {
                 const playerName = (row[playerIdx] || '').trim();
                 if (!playerName) return;
                 const dmg = parseNumber(row[damageIdx]);
+                const cnt = parseNumber(row[countIdx]); // 修改點：讀取次數
                 const miss = missIdx >= 0 ? parseMissValue(row[missIdx]) : 0;
 
                 if (!grouped[playerName]) {
+                    // 修改點：不再自己算 count，而是從 CSV 讀取
                     grouped[playerName] = { player: playerName, count: 0, total: 0, miss: 0 };
                 }
-                grouped[playerName].count += 1;
+                
+                // 修改點：
+                // 1. 次數直接取 CSV 的值（假設同一玩家每次行的次數一樣，取最後一個即可）
+                // 2. 或者如果 CSV 是每一筆攻擊記錄，則 count 欄位可能是 1 (此處邏輯維持原本的累加邏輯也沒問題，看 CSV 結構)
+                // 根據您的描述，CSV 中的「攻擊次數」是累計值（例如 18），每行都會重複出現。
+                // 因此我們應該直接取該欄位的值，而不是累加。
+                grouped[playerName].count = cnt; 
                 grouped[playerName].total += dmg;
                 grouped[playerName].miss += miss;
             });
@@ -2022,6 +2041,7 @@ function processPastedCSV() {
                     mapping: {
                         player: document.getElementById('map-player').value,
                         damage: document.getElementById('map-damage').value,
+                        count: document.getElementById('map-count').value, // 修改點
                         miss: document.getElementById('map-miss').value
                     },
                     data: analysisData
@@ -2049,6 +2069,9 @@ function processPastedCSV() {
                         }
                         if (state.mapping.damage !== undefined && state.mapping.damage !== '') {
                             document.getElementById('map-damage').value = state.mapping.damage;
+                        }
+                        if (state.mapping.count !== undefined && state.mapping.count !== '') { // 修改點
+                            document.getElementById('map-count').value = state.mapping.count;
                         }
                         if (state.mapping.miss !== undefined) {
                             document.getElementById('map-miss').value = state.mapping.miss;

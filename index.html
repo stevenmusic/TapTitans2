@@ -883,28 +883,26 @@
 
 
 
-                    <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
-                        <div class="mapping-row">
-                            <label>玩家欄位</label>
-                            <select id="map-player"></select>
-                        </div>
-                        <div class="mapping-row">
-                            <label>傷害欄位</label>
-                            <select id="map-damage"></select>
-                        </div>
-                        <div class="mapping-row">
-                            <label>誤傷欄位（可選）</label>
-                            <select id="map-miss">
-                                <option value="">— 無 —</option>
-                            </select>
-                        </div>
-                        <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
-                    </div>
-
-                    <div class="analysis-empty" id="analysis-empty-state">
-                        尚未匯入 CSV 資料<br>
-                        <span style="font-size:11px; opacity:0.75;">請點擊上方「匯入 CSV」按鈕開始分析</span>
-                    </div>
+                    <div class="mapping-panel" id="csv-mapping-panel" style="display:none; padding: 10px;">
+    <div style="font-size: 13px; font-weight: bold; color: #16314f; margin-bottom: 8px;">欄位對應設定</div>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+        <thead>
+            <tr style="background: #f4f9ff;">
+                <th style="padding: 5px; font-size: 11px;">玩家名稱</th>
+                <th style="padding: 5px; font-size: 11px;">總傷害</th>
+                <th style="padding: 5px; font-size: 11px;">誤傷</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="padding: 2px;"><select id="map-player" style="width: 100%; font-size: 12px;"></select></td>
+                <td style="padding: 2px;"><select id="map-damage" style="width: 100%; font-size: 12px;"></select></td>
+                <td style="padding: 2px;"><select id="map-miss" style="width: 100%; font-size: 12px;"><option value="">— 無 —</option></select></td>
+            </tr>
+        </tbody>
+    </table>
+    <button class="btn-mapping-confirm" onclick="computeAnalysis()">開始計算數據</button>
+</div>
 
                     <div id="analysis-result-wrap" style="display:none; width:100%;">
                         <div class="analysis-summary" id="analysis-summary"></div>
@@ -1921,15 +1919,71 @@ function processPastedCSV() {
         }
 
         function renderAnalysisTable() {
-            const tbody = document.getElementById('analysis-tbody');
-            const summary = document.getElementById('analysis-summary');
-            const wrap = document.getElementById('analysis-result-wrap');
-            const empty = document.getElementById('analysis-empty-state');
+    const tbody = document.getElementById('analysis-tbody');
+    const summary = document.getElementById('analysis-summary');
+    const wrap = document.getElementById('analysis-result-wrap');
+    const empty = document.getElementById('analysis-empty-state');
 
-            if (!analysisData.length) {
-                wrap.style.display = 'none';
-                return;
-            }
+    // 如果沒有資料，隱藏表格並顯示提示
+    if (!analysisData || analysisData.length === 0) {
+        wrap.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+
+    // 顯示表格與摘要，隱藏提示
+    empty.style.display = 'none';
+    wrap.style.display = 'block';
+
+    // 排序邏輯
+    const sorted = [...analysisData].sort((a, b) => {
+        if (analysisSortKey === 'player') {
+            return a.player.localeCompare(b.player) * -analysisSortDir;
+        }
+        // 若為數值類別則用減法排序
+        return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
+    });
+
+    // 1. 計算摘要數據
+    const totalPlayers = analysisData.length;
+    const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+    const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+    const totalMiss = analysisData.reduce((s, p) => s + p.miss, 0);
+
+    // 渲染摘要卡片
+    summary.innerHTML = `
+        <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
+        <div class="summary-card"><div class="num">${totalCount}</div><div class="label">總攻擊次數</div></div>
+        <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
+        <div class="summary-card"><div class="num">${formatNum(totalMiss)}</div><div class="label">總誤傷</div></div>
+    `;
+
+    // 2. 設定表頭 (依據您的順序需求)
+    const tableHead = document.querySelector('.analysis-table thead');
+    tableHead.innerHTML = `
+        <tr>
+            <th onclick="sortAnalysisBy('player')">玩家</th>
+            <th onclick="sortAnalysisBy('count')">次數</th>
+            <th onclick="sortAnalysisBy('total')">總傷害</th>
+            <th onclick="sortAnalysisBy('avg')">平均傷害</th>
+            <th onclick="sortAnalysisBy('miss')">誤傷</th>
+        </tr>
+    `;
+
+    // 3. 渲染資料列
+    tbody.innerHTML = '';
+    sorted.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="player-name">${escapeHtml(p.player)}</td>
+            <td>${p.count}</td>
+            <td>${formatNum(p.total)}</td>
+            <td>${formatNum(p.avg)}</td>
+            <td class="miss-value">${formatNum(p.miss)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
 
             empty.style.display = 'none';
             wrap.style.display = 'block';

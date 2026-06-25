@@ -2046,44 +2046,38 @@
         // 存放解析後的數據
 let parsedData = []; 
 
+// --- 修改後的解析函數 ---
 function parseRawText() {
-    // 1. 抓取文字區的內容
-    const text = document.getElementById('csv-text-input').value.trim();
+    const inputElement = document.getElementById('csv-text-input');
+    if (!inputElement) {
+        alert("找不到輸入框，請檢查 ID 是否正確");
+        return;
+    }
+    
+    const text = inputElement.value.trim();
     if (!text) {
         alert("請先貼上 CSV 文字！");
         return;
     }
 
-    // 2. 解析 CSV (以換行分割列，以逗號分割欄)
-    const rows = text.split('\n').filter(row => row.trim() !== "");
-    const headers = rows[0].split(',').map(h => h.trim());
+    // 解析 CSV
+    const rows = parseCSV(text); 
+    if (rows.length < 2) {
+        alert('CSV 格式似乎不正確，請確認包含標題列與資料');
+        return;
+    }
+
+    csvHeaders = rows[0].map(h => h.trim());
+    csvRows = rows.slice(1);
     
-    // 儲存所有資料到全域變數
-    parsedData = rows.map(row => row.split(',').map(cell => cell.trim()));
-
-    // 3. 更新 Mapping 下拉選單 (玩家、傷害、誤傷)
-    const selects = ['map-player', 'map-damage', 'map-miss'];
+    // 初始化 UI
+    populateMappingPanel();
+    autoGuessMapping();
     
-    selects.forEach(id => {
-        const select = document.getElementById(id);
-        select.innerHTML = ''; // 清空舊選項
-        
-        // 只有「誤傷」選項允許選「無」
-        if (id === 'map-miss') {
-            select.innerHTML += '<option value="">— 無 —</option>';
-        }
-
-        // 把 CSV 的第一行標題放入選單
-        headers.forEach((header, index) => {
-            select.innerHTML += `<option value="${index}">${header}</option>`;
-        });
-    });
-
-    // 4. 切換 UI 顯示
+    // 顯示區塊
     document.getElementById('csv-mapping-panel').style.display = 'block';
     document.getElementById('analysis-empty-state').style.display = 'none';
-    document.getElementById('analysis-result-wrap').style.display = 'none';
 }
-    </script>
+   <script>
 </body>
 </html>

@@ -876,25 +876,24 @@
                <button class="btn-analysis export" onclick="exportAnalysisImage()">✨ 儲存圖片</button>
     </div>
 </div>
+            <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
+    <div class="mapping-row">
+        <label>玩家欄位</label>
+        <select id="map-player"></select>
+    </div>
+    <div class="mapping-row">
+        <label>傷害欄位</label>
+        <select id="map-damage"></select>
+    </div>
+    <div class="mapping-row">
+        <label>誤傷欄位（可選）</label>
+        <select id="map-miss">
+            <option value="">— 無 —</option>
+        </select>
+    </div>
+    <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
+</div>
 
-
-                    <div class="mapping-panel" id="csv-mapping-panel" style="display:none;">
-                        <div class="mapping-row">
-                            <label>玩家欄位</label>
-                            <select id="map-player"></select>
-                        </div>
-                        <div class="mapping-row">
-                            <label>傷害欄位</label>
-                            <select id="map-damage"></select>
-                        </div>
-                        <div class="mapping-row">
-                            <label>誤傷欄位（可選）</label>
-                            <select id="map-miss">
-                                <option value="">— 無 —</option>
-                            </select>
-                        </div>
-                        <button class="btn-mapping-confirm" onclick="computeAnalysis()">計算數據</button>
-                    </div>
 
                     <div class="analysis-empty" id="analysis-empty-state">
                         尚未匯入 CSV 資料<br>
@@ -2049,6 +2048,48 @@
                 console.error('恢復分析資料失敗:', e);
             }
         }
+
+        // 存放解析後的數據
+let parsedData = []; 
+
+function parseRawText() {
+    // 1. 抓取文字區的內容
+    const text = document.getElementById('csv-text-input').value.trim();
+    if (!text) {
+        alert("請先貼上 CSV 文字！");
+        return;
+    }
+
+    // 2. 解析 CSV (以換行分割列，以逗號分割欄)
+    const rows = text.split('\n').filter(row => row.trim() !== "");
+    const headers = rows[0].split(',').map(h => h.trim());
+    
+    // 儲存所有資料到全域變數
+    parsedData = rows.map(row => row.split(',').map(cell => cell.trim()));
+
+    // 3. 更新 Mapping 下拉選單 (玩家、傷害、誤傷)
+    const selects = ['map-player', 'map-damage', 'map-miss'];
+    
+    selects.forEach(id => {
+        const select = document.getElementById(id);
+        select.innerHTML = ''; // 清空舊選項
+        
+        // 只有「誤傷」選項允許選「無」
+        if (id === 'map-miss') {
+            select.innerHTML += '<option value="">— 無 —</option>';
+        }
+
+        // 把 CSV 的第一行標題放入選單
+        headers.forEach((header, index) => {
+            select.innerHTML += `<option value="${index}">${header}</option>`;
+        });
+    });
+
+    // 4. 切換 UI 顯示
+    document.getElementById('csv-mapping-panel').style.display = 'block';
+    document.getElementById('analysis-empty-state').style.display = 'none';
+    document.getElementById('analysis-result-wrap').style.display = 'none';
+}
     </script>
 </body>
 </html>

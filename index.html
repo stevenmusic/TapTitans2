@@ -196,10 +196,10 @@
             background: #ffffff;
             border: 1px solid #c9ddf2;
             border-radius: 8px;
-            padding: 7px 10px;
+            padding: 7px 6px; /* 微調以適應5個欄位 */
             text-align: center;
             flex: 1;
-            min-width: 72px;
+            min-width: 60px; /* 微調以適應5個欄位 */
             box-sizing: border-box;
         }
         .summary-card .num { font-size: 15px; font-weight: 900; color: #0d47a1; }
@@ -763,10 +763,10 @@
     border-color: #ef4444;
     font-weight: bold;
 }
-        
     </style>
 </head>
 <body>
+
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
@@ -964,8 +964,8 @@
             <thead>
                 <tr>
                     <th onclick="sortAnalysisBy('player')">玩家</th>
-                    <th onclick="sortAnalysisBy('count')">攻擊次數</th>
-                    <th onclick="sortAnalysisBy('accident')">誤傷數值</th>
+                    <th onclick="sortAnalysisBy('count')">次數</th>
+                    <th onclick="sortAnalysisBy('accident')">誤傷</th>
                     <th onclick="sortAnalysisBy('total')">總傷</th>
                     <th onclick="sortAnalysisBy('avg')">均傷</th>
                 </tr>
@@ -1597,7 +1597,7 @@
                 requestAnimationFrame(() => {
                     if (clone) {
                         clone.style.left = currentTouchX - 29 + 'px';
-                        clone.style.top = currentTouchY - 29 + 'px';
+                        clone.style.top  = currentTouchY - 29 + 'px';
                     }
                 });
 
@@ -1696,7 +1696,7 @@
             });
         }
 
-        function closeModal() { 
+function closeModal() { 
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
             setTimeout(() => {
@@ -1857,7 +1857,9 @@ function processPastedCSV() {
     const findIndex = (keyword) => csvHeaders.findIndex(h => h === keyword);
     const pIdx = findIndex('玩家名稱');
     const bIdx = findIndex('泰坦名稱');
-    const cIdx = findIndex('總突襲傷害'); 
+    
+    // 修正：只要包含「突襲」字樣，就辨識為攻擊次數欄位
+    const cIdx = csvHeaders.findIndex(h => h.includes('突襲')); 
     const dIdx = findIndex('泰坦傷害'); 
 
     // 讀取 UI 上的 Boss 禁打部位設定 (回傳的是選取的部位名稱陣列)
@@ -1957,15 +1959,16 @@ function processPastedCSV() {
     const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
     const avgDamagePerHit = totalCount > 0 ? totalDamage / totalCount : 0;
 
-    // 3. 更新上方統計卡片
+    // 3. 更新上方統計卡片 (修正為五個欄位，順序：玩家數、平均次數、總誤傷、總傷害、平均傷害)
     summary.innerHTML = `
         <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
         <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-        <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
         <div class="summary-card"><div class="num">${formatNum(totalAccident)}</div><div class="label">總誤傷</div></div>
+        <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
+        <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
     `;
 
-    // 4. 渲染表格內容 (這裡確保是 5 個欄位)
+    // 4. 渲染表格內容 (欄位對應：玩家、次數、誤傷、總傷、均傷)
     tbody.innerHTML = '';
     sorted.forEach((p, index) => {
         const tr = document.createElement('tr');
@@ -1991,8 +1994,6 @@ function processPastedCSV() {
     `;
     tbody.appendChild(summaryTr);
 }
-
-
 
         function clearAnalysisData() { 
             if (!confirm('確定要清除目前的分析資料嗎？')) return; 

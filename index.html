@@ -1928,10 +1928,16 @@ function processPastedCSV() {
             grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         }
 
-        // 1. 攻擊次數：讀取「總突擊傷害」欄位數值並加總（同一玩家若打多隻泰坦會有多列，逐列加總）
-        //    找不到該欄位時，退回成每列 +1（避免欄位名稱不同時整個壞掉）
-        const hitCount = cIdx >= 0 ? parseNumber(row[cIdx]) : 1;
-        grouped[pName].count += hitCount; 
+        // 1. 攻擊次數：「總突擊傷害」欄位本身就是該玩家整場累計的總次數
+        //    （即使同一玩家打多隻泰坦、出現多列，這個值在每列都是重複的同一個總數）
+        //    所以這裡是「取值」而非「逐列加總」，避免變成 18+18+18 的重複疊加
+        if (cIdx >= 0) {
+            const hitCount = parseNumber(row[cIdx]);
+            grouped[pName].count = Math.max(grouped[pName].count, hitCount);
+        } else {
+            // 找不到該欄位時，退回成每列 +1（避免欄位名稱不同時整個壞掉）
+            grouped[pName].count += 1;
+        }
 
         // 2. 總傷害：累加
         const damageVal = parseNumber(row[dIdx]);

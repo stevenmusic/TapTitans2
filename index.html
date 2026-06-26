@@ -1529,28 +1529,26 @@
             });
         }
 
-        /* ── 自動偵測禁打部位（該部位傷害 < 全部部位總傷害 1% 視為禁打）──
-           注意：即使某個部位的欄位在 CSV 中完全不存在（boss 該部位沒有資料），
-           也要視為傷害 0，一樣納入比較，因為 0 必定小於 1% 門檻、理應算禁打。
-           固定用「8 個部位」逐一檢查，而不是只看 CSV 裡剛好出現的欄位，
-           這樣才不會漏掉那些完全沒被打到、欄位甚至不存在的部位。 */
-        function autoDetectBannedParts(headers, dataRows) {
-            const PART_MAP = {
-                '頭部(裝甲)': '頭部(裝甲)',
-                '肚子(裝甲)': '肚子(裝甲)',
-                '左臂(裝甲)': '左臂(裝甲)',
-                '右臂(裝甲)': '右臂(裝甲)',
-                '左手(裝甲)': '左手(裝甲)',
-                '右手(裝甲)': '右手(裝甲)',
-                '左腿(裝甲)': '左腿(裝甲)',
-                '右腿(裝甲)': '右腿(裝甲)',
-            };
-            const ALL_PARTS = Object.keys(PART_MAP); // 固定的 8 個部位，不受 CSV 欄位是否存在影響
+        /* ── 自動偵測禁打部位 ──
+           規則：該 boss、該部位的「肉體傷害」小於「總傷害」的 1%，就標記為禁打部位。
+           - 「總傷害」採用每筆紀錄的「泰坦傷害」欄位加總（該 boss 的全部紀錄）。
+           - 部位的肉體傷害欄位採用「{部位}(肉體)」命名；若 CSV 中該欄位不存在，視為 0
+             （0 必定小於門檻，因此一樣會被標記為禁打）。
+           - 標記只存「部位基礎名稱」（例如「頭部」），之後不論裝甲傷害欄位「頭部(裝甲)」
+             或肉體傷害欄位「頭部(肉體)」，都會在誤傷判定時一併視為禁打部位。 */
+        const PART_BASE_NAMES = ['頭部', '肚子', '左臂', '右臂', '左手', '右手', '左腿', '右腿'];
+        function armorHeaderOf(base) { return `${base}(裝甲)`; }
+        function fleshHeaderOf(base) { return `${base}(肉體)`; }
+        function basePartName(dataPart) { return dataPart.replace('(裝甲)', ''); }
 
+        function autoDetectBannedParts(headers, dataRows) {
             const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
-            const partHeadersPresent = headers.filter(h => PART_MAP[h]);
-            // CSV 完全沒有任何部位欄位（格式不對），無從判斷，直接跳過
-            if (partHeadersPresent.length === 0) return;
+            const dIdx = headers.findIndex(h => h === '泰坦傷害');
+            if (dIdx < 0) return; // 沒有總傷害欄位，無法算門檻，跳過
+
+            // CSV 至少要有一個部位的肉體傷害欄位，否則無從判斷，直接跳過
+            const hasAnyFleshCol = PART_BASE_NAMES.some(base => headers.includes(fleshHeaderOf(base)));
+            if (!hasAnyFleshCol) return;
 
             // 每次重新偵測前，先清除目前所有禁打部位選取，
             // 避免不同次匯入、或同一格位偵測到不同 boss 時殘留舊資料
@@ -1561,38 +1559,40 @@
                 }
             });
 
-            const bossDamage = {}; // { bossName: { partName: totalDmg } }
+            const bossTotalDmg = {};   // { bossName: 總傷害（泰坦傷害欄位加總） }
+            const bossFleshDmg = {};   // { bossName: { 部位基礎名稱: 肉體傷害合計 } }
 
             dataRows.forEach(row => {
                 const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
-                if (!bossDamage[bossName]) bossDamage[bossName] = {};
+                const dmg = parseNumber(row[dIdx]);
+                bossTotalDmg[bossName] = (bossTotalDmg[bossName] || 0) + dmg;
 
-                // 逐一檢查全部 8 個部位；CSV 沒有該欄位時視為 0（等同完全沒打到）
-                ALL_PARTS.forEach(part => {
-                    const colIdx = headers.indexOf(part);
+                if (!bossFleshDmg[bossName]) bossFleshDmg[bossName] = {};
+                PART_BASE_NAMES.forEach(base => {
+                    const colIdx = headers.indexOf(fleshHeaderOf(base));
                     const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
-                    bossDamage[bossName][part] = (bossDamage[bossName][part] || 0) + val;
+                    bossFleshDmg[bossName][base] = (bossFleshDmg[bossName][base] || 0) + val;
                 });
             });
 
             [1, 2, 3].forEach(slotIdx => {
                 const bossName = getBossSlotValue(slotIdx);
-                if (!bossName || !bossDamage[bossName]) return;
+                if (!bossName) return;
 
-                const bossData = bossDamage[bossName];
-                const totalBossDmg = ALL_PARTS.reduce((s, p) => s + (bossData[p] || 0), 0);
-                if (totalBossDmg === 0) return; // 完全沒有任何傷害資料，無法判斷門檻，跳過
+                const totalDmg = bossTotalDmg[bossName] || 0;
+                if (totalDmg === 0) return; // 沒有傷害資料，無法判斷門檻，跳過
 
-                const threshold = totalBossDmg * 0.01; // 1%
-                // 用全部 8 個部位去比較，0 傷害（包含欄位根本不存在）的部位一定會被判定為禁打
-                const bannedParts = ALL_PARTS.filter(p => (bossData[p] || 0) < threshold);
+                const threshold = totalDmg * 0.01; // 總傷害的 1%
+                const fleshData = bossFleshDmg[bossName] || {};
+                // 肉體傷害（欄位缺失視為 0）小於門檻 → 標記為禁打部位
+                const bannedBaseNames = PART_BASE_NAMES.filter(base => (fleshData[base] || 0) < threshold);
 
                 const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
                 if (!bossRowEl) return;
 
                 bossRowEl.querySelectorAll('.pill-btn').forEach(btn => {
-                    const dataPart = btn.getAttribute('data-part');
-                    if (bannedParts.includes(dataPart)) {
+                    const baseName = basePartName(btn.getAttribute('data-part'));
+                    if (bannedBaseNames.includes(baseName)) {
                         btn.classList.add('active');
                     }
                 });
@@ -1624,7 +1624,7 @@
             // 否則計算誤傷時讀到的還是尚未偵測完成的舊資料，導致誤傷率永遠是 0%
             autoDetectBannedParts(headers, dataRows);
 
-            // 讀取（剛剛自動偵測完成的）Boss 禁打部位設定
+            // 讀取（剛剛自動偵測完成的）Boss 禁打部位設定（存「部位基礎名稱」，例如「頭部」）
             const bossConfigs = {};
             [1, 2, 3].forEach(i => {
                 const root = document.getElementById(`boss-set-${i}`);
@@ -1632,7 +1632,7 @@
                 const name = getBossSlotValue(i);
                 if (name) {
                     bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
-                                             .map(btn => btn.getAttribute('data-part'));
+                                             .map(btn => basePartName(btn.getAttribute('data-part')));
                 }
             });
 
@@ -1659,15 +1659,26 @@
                 const damageVal = parseNumber(row[dIdx]);
                 grouped[pName].total += damageVal;
 
-                // 誤傷判定（依禁打部位）
+                // 誤傷判定：
+                // 1) 骨架受到的所有傷害（每個部位都有自己的「{部位}(骨架)」欄位），一律算誤傤
+                // 2) 禁打部位一旦標記，該部位無論是裝甲傷害欄位還是肉體傷害欄位，都算誤傤
                 const bossName = (row[bIdx] || '').trim();
-                const bannedParts = bossConfigs[bossName] || [];
+                const bannedBaseNames = bossConfigs[bossName] || [];
                 headers.forEach((header, idx) => {
                     if (idx === pIdx || idx === bIdx || idx === dIdx || idx === cIdx) return;
                     const val = parseNumber(row[idx]);
                     if (val <= 0) return;
-                    if (bannedParts.includes(header)) {
+
+                    if (header.endsWith('(骨架)')) {
                         grouped[pName].accident += val;
+                        return;
+                    }
+
+                    if (header.endsWith('(裝甲)') || header.endsWith('(肉體)')) {
+                        const baseName = header.replace('(裝甲)', '').replace('(肉體)', '');
+                        if (bannedBaseNames.includes(baseName)) {
+                            grouped[pName].accident += val;
+                        }
                     }
                 });
             });

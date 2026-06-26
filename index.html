@@ -1328,10 +1328,15 @@
         initTiers('container-support');
 
         /* ── 卡片池初始化 ── */
+                /* ── 卡片池初始化 ── */
         window.addEventListener('DOMContentLoaded', () => {
+            // 強制回到頂部，解決瀏覽器記憶捲動位置的問題
+            window.scrollTo(0, 0);
+            
             // 先恢復儲存的資料
             restoreState();
             restoreAnalysisState();
+
             
             const poolScroll = document.getElementById('pool-scroll');
             if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
@@ -1847,6 +1852,10 @@ document.addEventListener("DOMContentLoaded", () => {
 function processPastedCSV() {
     const rawText = document.getElementById('csv-text-input').value.trim();
     if (!rawText) return;
+    
+    // 強制讓網頁回到最上方
+    window.scrollTo(0, 0);
+
     const rows = parseCSV(rawText);
     if (rows.length < 2) return;
 
@@ -1876,6 +1885,9 @@ function processPastedCSV() {
     const parseNumber = (val) => parseFloat(val?.toString().replace(/,/g, '')) || 0;
 
     csvRows.forEach(row => {
+        // 確保該行有實際資料才處理
+        if(!row || row.length === 0) return; 
+        
         const pName = (row[pIdx] || '').trim();
         if (!pName) return;
         
@@ -1883,7 +1895,7 @@ function processPastedCSV() {
             grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         }
 
-        // 1. 攻擊次數：直接 +1，偵測玩家名字出現了幾次
+        // 1. 攻擊次數：玩家名字出現一次就 +1
         grouped[pName].count += 1; 
 
         // 2. 總傷害：累加

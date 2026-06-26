@@ -1964,8 +1964,8 @@ function processPastedCSV() {
     // 計算平均與誤傷率
     analysisData = Object.values(grouped).map(p => ({
         ...p,
-        // 均傷 = 總傷害 / 攻擊次數
-        avg: p.count > 0 ? (p.total / p.count) : 0,
+        // 均傷 = (總傷害 - 誤傷) / 攻擊次數
+        avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
         accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
     }));
 
@@ -2004,7 +2004,7 @@ function processPastedCSV() {
     const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
     
     const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
-    const avgDamagePerHit = totalCount > 0 ? totalDamage / totalCount : 0;
+    const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
 
     // 3. 更新上方統計卡片 (修正為五個欄位，順序：玩家數、平均次數、總誤傷、總傷害、平均傷害)
     summary.innerHTML = `

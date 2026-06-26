@@ -825,6 +825,16 @@
 
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
+                        <textarea id="csv-text-input" 
+                                  style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
+                                  placeholder="請將 CSV 內容直接貼上此處..."></textarea>
+                        
+                        <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
+                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 2;">✅ 解析貼上內容</button>
+                            <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;">🗑 清除</button>
+                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存圖片</button>
+                        </div>
+
                         <div class="boss-config-container">
                             <div class="boss-config-title">Boss 禁打部位（最多 3 組，自動偵測）</div>
                             
@@ -869,16 +879,6 @@
                                     <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
                                 </div>
                             </div>
-                        </div>
-
-                        <textarea id="csv-text-input" 
-                                  style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
-                                  placeholder="請將 CSV 內容直接貼上此處..."></textarea>
-                        
-                        <div style="display: flex; gap: 8px; width: 100%;">
-                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 2;">✅ 解析貼上內容</button>
-                            <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;">🗑 清除</button>
-                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存圖片</button>
                         </div>
                     </div>
 
@@ -1529,7 +1529,11 @@
             });
         }
 
-        /* ── 自動偵測禁打部位（肉體傷害 < 全部肉體傷害 1% 視為禁打）── */
+        /* ── 自動偵測禁打部位（該部位傷害 < 全部部位總傷害 1% 視為禁打）──
+           注意：即使某個部位的欄位在 CSV 中完全不存在（boss 該部位沒有資料），
+           也要視為傷害 0，一樣納入比較，因為 0 必定小於 1% 門檻、理應算禁打。
+           固定用「8 個部位」逐一檢查，而不是只看 CSV 裡剛好出現的欄位，
+           這樣才不會漏掉那些完全沒被打到、欄位甚至不存在的部位。 */
         function autoDetectBannedParts(headers, dataRows) {
             const PART_MAP = {
                 '頭部(裝甲)': '頭部(裝甲)',
@@ -1541,10 +1545,12 @@
                 '左腿(裝甲)': '左腿(裝甲)',
                 '右腿(裝甲)': '右腿(裝甲)',
             };
+            const ALL_PARTS = Object.keys(PART_MAP); // 固定的 8 個部位，不受 CSV 欄位是否存在影響
 
             const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
-            const partHeaders = headers.filter(h => PART_MAP[h]);
-            if (partHeaders.length === 0) return;
+            const partHeadersPresent = headers.filter(h => PART_MAP[h]);
+            // CSV 完全沒有任何部位欄位（格式不對），無從判斷，直接跳過
+            if (partHeadersPresent.length === 0) return;
 
             // 每次重新偵測前，先清除目前所有禁打部位選取，
             // 避免不同次匯入、或同一格位偵測到不同 boss 時殘留舊資料
@@ -1561,10 +1567,11 @@
                 const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
                 if (!bossDamage[bossName]) bossDamage[bossName] = {};
 
-                partHeaders.forEach(partH => {
-                    const colIdx = headers.indexOf(partH);
+                // 逐一檢查全部 8 個部位；CSV 沒有該欄位時視為 0（等同完全沒打到）
+                ALL_PARTS.forEach(part => {
+                    const colIdx = headers.indexOf(part);
                     const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
-                    bossDamage[bossName][partH] = (bossDamage[bossName][partH] || 0) + val;
+                    bossDamage[bossName][part] = (bossDamage[bossName][part] || 0) + val;
                 });
             });
 
@@ -1573,11 +1580,12 @@
                 if (!bossName || !bossDamage[bossName]) return;
 
                 const bossData = bossDamage[bossName];
-                const totalBossDmg = Object.values(bossData).reduce((s, v) => s + v, 0);
-                if (totalBossDmg === 0) return;
+                const totalBossDmg = ALL_PARTS.reduce((s, p) => s + (bossData[p] || 0), 0);
+                if (totalBossDmg === 0) return; // 完全沒有任何傷害資料，無法判斷門檻，跳過
 
                 const threshold = totalBossDmg * 0.01; // 1%
-                const bannedParts = partHeaders.filter(p => (bossData[p] || 0) < threshold);
+                // 用全部 8 個部位去比較，0 傷害（包含欄位根本不存在）的部位一定會被判定為禁打
+                const bannedParts = ALL_PARTS.filter(p => (bossData[p] || 0) < threshold);
 
                 const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
                 if (!bossRowEl) return;

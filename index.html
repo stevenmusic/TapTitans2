@@ -995,7 +995,7 @@
                                 <option value="5">5</option>
                                 <option value="M">M</option>
                             </select>
-                            <select class="tier-stage-select" id="analysis-stage-select" title="關卡"></select>
+                            <select class="tier-stage-select" id="analysis-stage-select"></select>
                             <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 1;" data-i18n="btnExport">分析</button>
                             <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;" data-i18n="btnClear">清除</button>
                             <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;" data-i18n="btnSaveImage">儲存圖片</button>
@@ -2397,9 +2397,17 @@
         // 展開狀態下，點把手收合，點卡片則交給卡片自己的長按拖曳邏輯處理
         // 卡片池的拖曳改用「事件委派」統一在 drawer 上處理（不再對每張卡片個別綁定），
         // 這樣才能同時兼顧「點一下展開」跟「往上滑就立刻拖曳」，不會互相打架、也不會重複觸發
+        //
+        // 修正：原本只要不是「往上拖曳出卡片」就一律當成「點一下」並切換展開/收合，
+        // 導致左右滑動卡片排（橫向捲動）放手時也被誤判成點擊，造成左右滑動很難滑順。
+        // 解法：全程記錄這次觸碰移動的最大距離（不分方向），touchend 時只有移動距離
+        // 小於門檻（真的只是輕點一下）才觸發展開/收合；左右滑動因為移動距離較大，
+        // 會被排除掉，交還給瀏覽器原生的橫向捲動處理。
+        const POOL_TAP_MOVE_THRESHOLD = 10; // px，小於這個距離才算「點一下」
         let poolTouchStartX = 0, poolTouchStartY = 0;
         let poolTracking = false, poolDragStarted = false;
         let poolTrackedCard = null, poolTrackedSrc = '';
+        let poolMaxMoveDist = 0;
 
         function setupCardPoolTapHandling() {
             const drawer = document.getElementById('card-pool-drawer');
@@ -2412,16 +2420,25 @@
                 poolTouchStartY = touch.clientY;
                 poolTracking = true;
                 poolDragStarted = false;
+                poolMaxMoveDist = 0;
                 poolTrackedCard = e.target.closest('.card-pool-card');
                 poolTrackedSrc = poolTrackedCard ? (poolTrackedCard.querySelector('img')?.src || '') : '';
             }, { passive: true });
 
             // 一觸碰卡片往上滑出一點距離，立刻視為拖曳，不用等長按
             drawer.addEventListener('touchmove', (e) => {
-                if (!poolTracking || poolDragStarted || !poolTrackedCard) return;
+                if (!poolTracking) return;
                 const touch = e.touches[0];
                 const dx = touch.clientX - poolTouchStartX;
                 const dy = touch.clientY - poolTouchStartY;
+
+                // 不論方向，持續記錄這次觸碰目前移動了多遠，
+                // 用來在 touchend 時判斷究竟是「點一下」還是「滑動」
+                const dist = Math.max(Math.abs(dx), Math.abs(dy));
+                if (dist > poolMaxMoveDist) poolMaxMoveDist = dist;
+
+                if (poolDragStarted || !poolTrackedCard) return;
+
                 if (dy < 0 && Math.abs(dy) > Math.abs(dx)) {
                     // 往上滑為主：擋掉預設的捲動行為，自己接手處理
                     e.preventDefault();
@@ -2435,19 +2452,22 @@
             }, { passive: false });
 
             drawer.addEventListener('touchend', (e) => {
-                if (poolTracking && !poolDragStarted) {
-                    // 不管點在把手、卡片還是空白處，只要不是拖曳，單純點一下就切換展開/收合
+                // 只有「幾乎沒有移動」才算是單純點一下，才切換展開/收合；
+                // 左右滑動過一段距離（例如在瀏覽卡片排）就不算點一下，避免放手時被誤觸發
+                if (poolTracking && !poolDragStarted && poolMaxMoveDist < POOL_TAP_MOVE_THRESHOLD) {
                     toggleCardPool();
                 }
                 poolTracking = false;
                 poolDragStarted = false;
                 poolTrackedCard = null;
+                poolMaxMoveDist = 0;
             }, { passive: true });
 
             drawer.addEventListener('touchcancel', () => {
                 poolTracking = false;
                 poolDragStarted = false;
                 poolTrackedCard = null;
+                poolMaxMoveDist = 0;
             }, { passive: true });
         }
 

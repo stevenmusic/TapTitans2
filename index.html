@@ -978,9 +978,9 @@
 
     <!-- 卡片池：固定於底部，預設收合，僅在爆裂/苦痛/支援頁顯示 -->
     <div class="card-pool-drawer" id="card-pool-drawer">
-        <div class="card-pool-handle" id="card-pool-handle" onclick="toggleCardPool()">
+        <div class="card-pool-handle" id="card-pool-handle">
             <span class="card-pool-handle-bar"></span>
-            <span id="card-pool-label">卡片池 ▲ 展開</span>
+            <span id="card-pool-label">卡片池</span>
         </div>
         <div class="card-pool-content" id="card-pool-content">
             <div class="card-pool-empty">卡片池資料尚未載入</div>
@@ -1300,6 +1300,7 @@
             restoreState();
             restoreAnalysisState();
             renderCardPool();
+            setupCardPoolTapHandling();
 
             switchPage(0);
 
@@ -1333,9 +1334,13 @@
         let isDraggingGlobal = false, isDraggingCard = false;
 
         function updateSwiperPosition(useTransition = false) {
+            // 每次都重新量測寬度，避免快取的 swiperWidth 過期（例如截圖過程中版面短暫變動），
+            // 導致對齊位置算錯而停在兩頁之間
+            swiperWidth = window.innerWidth;
             swiperContainer.style.transition = useTransition
                 ? 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)' : 'none';
             swiperContainer.style.transform = `translate3d(${-currentPage * swiperWidth}px, 0px, 0px)`;
+            void swiperContainer.offsetHeight; // 強制立即套用，避免畫面停在過渡中間的殘影
         }
 
         swiperContainer.addEventListener('touchstart', (e) => {
@@ -1419,6 +1424,9 @@
                     // 截圖時要去掉，避免圖片往下多出一大段空白
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
                     if (lastTierRow) lastTierRow.style.marginBottom = '0px';
+                    // 連同 export-area 自己原本較大的底部 padding 也一起縮小，盡量貼近第八組的底部
+                    const clonedExportArea = clonedDoc.getElementById(idMap[type]);
+                    if (clonedExportArea) clonedExportArea.style.paddingBottom = '4px';
                 }
             }).then(canvas => {
                 imgContainer.innerHTML = '';
@@ -1437,6 +1445,7 @@
 
             // 強制把滑動容器重新對齊回目前分頁，避免返回時頁面卡在兩頁之間、版面歪掉
             isSwiping = false;
+            translateX = -currentPage * window.innerWidth;
             updateSwiperPosition(false);
 
             setTimeout(() => {
@@ -1445,8 +1454,15 @@
                 void document.body.offsetHeight;
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 // 部分手機瀏覽器在圖層收起、版面重新計算後位置可能跑掉，這裡再次確認對齊
+                isSwiping = false;
                 updateSwiperPosition(true);
             }, 100);
+
+            // 再延遲一次做最後確認，涵蓋部分手機瀏覽器版面延遲穩定的情況
+            setTimeout(() => {
+                isSwiping = false;
+                updateSwiperPosition(true);
+            }, 400);
         }
 
         /* ── Boss 預設與連動 ── */
@@ -2002,9 +2018,30 @@
 
         function updateCardPoolUI() {
             const drawer = document.getElementById('card-pool-drawer');
-            const label = document.getElementById('card-pool-label');
             if (drawer) drawer.classList.toggle('expanded', cardPoolExpanded);
-            if (label) label.textContent = cardPoolExpanded ? '卡片池 ▼ 收合' : '卡片池 ▲ 展開';
+        }
+
+        // 收合狀態下，點一下卡片池任何地方（包括卡片本身）都直接展開，不會被判斷成拖曳；
+        // 展開狀態下，點把手收合，點卡片則交給卡片自己的長按拖曳邏輯處理
+        function setupCardPoolTapHandling() {
+            const drawer = document.getElementById('card-pool-drawer');
+            if (!drawer) return;
+
+            // 在 capture 階段提前攔截：收合時不讓 touchstart 傳到卡片本身，
+            // 這樣卡片就完全不會啟動長按拖曳的計時器
+            drawer.addEventListener('touchstart', (e) => {
+                if (!cardPoolExpanded) {
+                    e.stopPropagation();
+                }
+            }, { capture: true, passive: true });
+
+            drawer.addEventListener('click', (e) => {
+                if (!cardPoolExpanded) {
+                    toggleCardPool();
+                } else if (e.target.closest('.card-pool-handle')) {
+                    toggleCardPool();
+                }
+            });
         }
 
         // 每 0.5 秒檢查一次：只要偵測到目前正在拖曳（isDraggingCard / isDraggingGlobal），

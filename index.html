@@ -706,6 +706,11 @@
         }
 
         /* ── 卡片池（固定於底部）── */
+        :root {
+            /* 預設值；JS 載入後會依實際卡格大小校正，讓卡片池的卡片跟卡格一樣大 */
+            --card-pool-card-size: 50px;
+            --card-pool-collapsed-height: 62px;
+        }
         .card-pool-drawer {
             position: fixed;
             left: 0; right: 0;
@@ -739,12 +744,9 @@
         }
         /* 收合時只顯示一橫排（第一排），展開時顯示全部三橫排，內部可垂直滾動 */
         .card-pool-content {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
             padding: 6px 8px;
             background: #faf8f5;
-            max-height: 64px;
+            max-height: var(--card-pool-collapsed-height);
             overflow: hidden;
             transition: max-height 0.3s ease;
         }
@@ -753,18 +755,27 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
-        .card-pool-row {
-            display: flex;
-            gap: 6px;
-            flex-shrink: 0;
+        /* 三排共用同一個水平捲動位置，讓它們一起左右拖曳，而不是各排分開滑動 */
+        .card-pool-rows-scroll {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             touch-action: pan-x;
         }
+        .card-pool-rows-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: max-content;
+        }
+        .card-pool-row {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
         .card-pool-card {
-            flex: 0 0 50px;
-            width: 50px;
-            height: 50px;
+            flex: 0 0 var(--card-pool-card-size);
+            width: var(--card-pool-card-size);
+            height: var(--card-pool-card-size);
             border: 1px solid #e0d5c1;
             border-radius: 4px;
             overflow: hidden;
@@ -781,6 +792,19 @@
             font-size: 11px;
             line-height: 1.7;
             padding: 18px 10px;
+        }
+
+        /* 拖曳中跟著手指移動的卡片浮層：用 transform 取代 left/top，避免每次移動都觸發版面重排，拖曳才會滑順 */
+        .drag-clone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 11000;
+            opacity: 0.9;
+            object-fit: contain;
+            will-change: transform;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
         }
 
         /* ── 誤傷率超過 5% 的警示背景 ── */
@@ -1301,6 +1325,7 @@
             restoreAnalysisState();
             renderCardPool();
             setupCardPoolTapHandling();
+            syncCardPoolCardSize();
 
             switchPage(0);
 
@@ -1312,7 +1337,11 @@
             // 內容載入/還原後高度可能改變，延遲再次強制回到頂部，避免停在頁面中間
             setTimeout(() => window.scrollTo(0, 0), 60);
             setTimeout(() => window.scrollTo(0, 0), 300);
+            // 卡格大小可能要等版面完全穩定後量測才準確，延遲再校正一次
+            setTimeout(syncCardPoolCardSize, 300);
         });
+
+        window.addEventListener('resize', syncCardPoolCardSize);
 
         // 圖片、字型等資源載入完成後再次確認回到頂部
         window.addEventListener('load', () => window.scrollTo(0, 0));
@@ -1385,6 +1414,7 @@
             const poolDrawer = document.getElementById('card-pool-drawer');
             if (poolDrawer) {
                 poolDrawer.style.display = (pageIndex === 3) ? 'none' : 'flex';
+                if (pageIndex !== 3) syncCardPoolCardSize();
             }
         }
 
@@ -1424,9 +1454,15 @@
                     // 截圖時要去掉，避免圖片往下多出一大段空白
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
                     if (lastTierRow) lastTierRow.style.marginBottom = '0px';
-                    // 連同 export-area 自己原本較大的底部 padding 也一起縮小，盡量貼近第八組的底部
                     const clonedExportArea = clonedDoc.getElementById(idMap[type]);
-                    if (clonedExportArea) clonedExportArea.style.paddingBottom = '4px';
+                    if (clonedExportArea) {
+                        clonedExportArea.style.paddingBottom = '4px';
+                        // 真正的留白來源：.export-area 有 flex:1，會被撐到跟頁面一樣高（即使內容沒那麼長），
+                        // 截圖時要取消這個撐高行為，讓它縮回到內容實際的高度
+                        clonedExportArea.style.flex = 'none';
+                        clonedExportArea.style.height = 'auto';
+                        clonedExportArea.style.minHeight = '0';
+                    }
                 }
             }).then(canvas => {
                 imgContainer.innerHTML = '';
@@ -1888,6 +1924,12 @@
                         const hint = clonedDoc.querySelector('#export-analysis .analysis-hint');
                         if (toolbar) toolbar.style.display = 'none';
                         if (hint) hint.style.display = 'none';
+                        const clonedExportArea = clonedDoc.getElementById('export-analysis');
+                        if (clonedExportArea) {
+                            clonedExportArea.style.flex = 'none';
+                            clonedExportArea.style.height = 'auto';
+                            clonedExportArea.style.minHeight = '0';
+                        }
                     }
                 }).then(canvas => {
                     imgContainer.innerHTML = '';
@@ -2044,6 +2086,18 @@
             });
         }
 
+        // 量測實際的卡格（.drop-zone）大小，讓卡片池裡的卡片跟卡格一樣大；
+        // 不同裝置/螢幕寬度算出來的卡格大小不同，所以用 JS 動態量測再寫入 CSS 變數
+        function syncCardPoolCardSize() {
+            const sampleZone = document.querySelector('.drop-zone');
+            if (!sampleZone) return;
+            const size = Math.round(sampleZone.getBoundingClientRect().width);
+            if (size > 0) {
+                document.documentElement.style.setProperty('--card-pool-card-size', `${size}px`);
+                document.documentElement.style.setProperty('--card-pool-collapsed-height', `${size + 12}px`);
+            }
+        }
+
         // 每 0.5 秒檢查一次：只要偵測到目前正在拖曳（isDraggingCard / isDraggingGlobal），
         // 就重新計時；連續 10 秒沒有任何拖曳動作才自動收合
         function startCardPoolAutoCollapseWatcher() {
@@ -2068,7 +2122,8 @@
         }
 
         // 從 cards.js 的 PRESET_CARDS 陣列（圖片路徑字串陣列）畫出卡片池縮圖，
-        // 每 14 張分一橫排（對應 cards.js 裡「第一排/第二排/第三排」的分組）
+        // 每 14 張分一橫排（對應 cards.js 裡「第一排/第二排/第三排」的分組）。
+        // 三排共用一個水平捲動容器，左右拖曳時三排會一起移動。
         const CARD_POOL_ROW_SIZE = 14;
         function renderCardPool() {
             const content = document.getElementById('card-pool-content');
@@ -2081,6 +2136,10 @@
                 return;
             }
             content.innerHTML = '';
+            const scrollWrap = document.createElement('div');
+            scrollWrap.className = 'card-pool-rows-scroll';
+            const rowsInner = document.createElement('div');
+            rowsInner.className = 'card-pool-rows-inner';
             for (let i = 0; i < list.length; i += CARD_POOL_ROW_SIZE) {
                 const rowEl = document.createElement('div');
                 rowEl.className = 'card-pool-row';
@@ -2091,8 +2150,10 @@
                     rowEl.appendChild(cell);
                     attachCardPoolDragHandlers(cell, imgSrc);
                 });
-                content.appendChild(rowEl);
+                rowsInner.appendChild(rowEl);
             }
+            scrollWrap.appendChild(rowsInner);
+            content.appendChild(scrollWrap);
         }
 
         /* ── 拖曳系統（保留，用於配卡頁拖放功能） ── */
@@ -2102,6 +2163,7 @@
         let scrollTimer = null, scrollSpeed = 0;
         let cachedZones = [], lastHoveredZone = null;
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
+        let cloneHalfSize = 25;
         
         function cancelDrag() {
             clearTimeout(longPressTimer);
@@ -2145,6 +2207,8 @@
                 if (scrollSpeed < 0 && window.scrollY <= 0) return;
                 if (scrollSpeed > 0 && window.scrollY >= maxY) return;
                 window.scrollBy(0, scrollSpeed);
+                // 捲動後卡格在畫面上的座標會改變，重新量測一次才能正確判斷目前停在哪一格
+                updateZonesCache();
                 const target = findZone(currentTouchX, currentTouchY);
                 if (target !== lastHoveredZone) {
                     if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
@@ -2204,21 +2268,17 @@
             window._dragScrollY = window.scrollY;
             document.body.classList.add('drag-active');
 
+            // 拖曳浮層跟卡格/卡片池的卡片一樣大，視覺上更一致
+            const zoneEl = document.querySelector('.drop-zone');
+            const size = zoneEl ? Math.round(zoneEl.getBoundingClientRect().width) : 50;
+            cloneHalfSize = size / 2;
+
             clone = document.createElement('img');
             clone.src = imgSrc;
             clone.className = 'drag-clone';
-            Object.assign(clone.style, {
-                position: 'fixed',
-                left: `${x - 28}px`,
-                top: `${y - 28}px`,
-                width: '56px',
-                height: '56px',
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                zIndex: '11000',
-                opacity: '0.9',
-                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))'
-            });
+            clone.style.width = `${size}px`;
+            clone.style.height = `${size}px`;
+            clone.style.transform = `translate3d(${x - cloneHalfSize}px, ${y - cloneHalfSize}px, 0)`;
             document.body.appendChild(clone);
 
             updateZonesCache();
@@ -2228,33 +2288,43 @@
             document.addEventListener('touchcancel', handleCardPoolDragEnd, { passive: false });
         }
 
+        let cardDragFrameScheduled = false;
         function handleCardPoolDragMove(e) {
             if (!clone) return;
             e.preventDefault();
             const touch = e.touches[0];
             currentTouchX = touch.clientX;
             currentTouchY = touch.clientY;
-            clone.style.left = `${currentTouchX - 28}px`;
-            clone.style.top = `${currentTouchY - 28}px`;
 
-            const target = findZone(currentTouchX, currentTouchY);
-            if (target !== lastHoveredZone) {
-                if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                if (target) target.classList.add('drag-hover');
-                lastHoveredZone = target;
-            }
+            // 用 transform 取代 left/top，並把畫面更新批次到下一個動畫畫面（requestAnimationFrame），
+            // 避免每個 touchmove 事件都立刻觸發版面重排，拖曳才會滑順不卡頓
+            if (!cardDragFrameScheduled) {
+                cardDragFrameScheduled = true;
+                requestAnimationFrame(() => {
+                    cardDragFrameScheduled = false;
+                    if (!clone) return;
+                    clone.style.transform = `translate3d(${currentTouchX - cloneHalfSize}px, ${currentTouchY - cloneHalfSize}px, 0)`;
 
-            // 靠近螢幕上下邊緣時自動捲動，方便拖到畫面外的牌組
-            const edge = 60;
-            if (currentTouchY < edge) {
-                scrollSpeed = -12;
-                startAutoScroll();
-            } else if (currentTouchY > window.innerHeight - edge) {
-                scrollSpeed = 12;
-                startAutoScroll();
-            } else {
-                scrollSpeed = 0;
-                stopAutoScroll();
+                    const target = findZone(currentTouchX, currentTouchY);
+                    if (target !== lastHoveredZone) {
+                        if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                        if (target) target.classList.add('drag-hover');
+                        lastHoveredZone = target;
+                    }
+
+                    // 靠近螢幕上下邊緣時自動捲動，方便拖到畫面外的牌組
+                    const edge = 60;
+                    if (currentTouchY < edge) {
+                        scrollSpeed = -12;
+                        startAutoScroll();
+                    } else if (currentTouchY > window.innerHeight - edge) {
+                        scrollSpeed = 12;
+                        startAutoScroll();
+                    } else {
+                        scrollSpeed = 0;
+                        stopAutoScroll();
+                    }
+                });
             }
         }
 

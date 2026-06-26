@@ -634,6 +634,26 @@
             flex-shrink: 0;
         }
 
+        /* 自動偵測 boss 名稱顯示用標籤（取代原本需要手動選取的下拉選單） */
+        .boss-name-label {
+            padding: 6px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            min-width: 120px;
+            flex-shrink: 0;
+            background-color: #eef2f9;
+            color: #1e3a5f;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .boss-name-label.empty {
+            color: #94a3b8;
+            font-weight: 400;
+            background-color: #f8fafc;
+        }
+
         .pill-container {
             display: flex;
             flex-wrap: wrap;
@@ -708,7 +728,6 @@
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
-            <!-- 需求2：標題改為爆裂/苦痛/支援，顏色與儲存圖片按鈕一致 -->
             <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)">爆裂</button>
             <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)">苦痛</button>
             <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)">支援</button>
@@ -798,30 +817,19 @@
                 </div>
             </div>
 
-            <!-- 突襲分析（需求1：移除卡片池功能區段） -->
+            <!-- 突襲分析 -->
             <div class="page-view" id="page-analysis">
                 <div class="export-area" id="export-analysis">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <!-- 需求2：標題「突襲配卡」已移除，只保留頁面名稱 -->
                     </div>
 
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
                         <div class="boss-config-container">
-                            <div class="boss-config-title">Boss 禁打部位 (最多 3 組)</div>
+                            <div class="boss-config-title">Boss 禁打部位（最多 3 組，自動偵測）</div>
                             
                             <div class="boss-row" id="boss-set-1">
-                                <select class="boss-select" id="analysis-boss-select-1">
-                                    <option value="">選擇 Boss</option>
-                                    <option value="Lojak">Lojak</option>
-                                    <option value="Takedar">Takedar</option>
-                                    <option value="Jukk">Jukk</option>
-                                    <option value="Sterl">Sterl</option>
-                                    <option value="Mohaca">Mohaca</option>
-                                    <option value="Terro">Terro</option>
-                                    <option value="Klonk">Klonk</option>
-                                    <option value="Priker">Priker</option>
-                                </select>
+                                <div class="boss-name-label empty" id="analysis-boss-select-1">未偵測</div>
                                 <div class="pill-container">
                                     <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
                                     <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
@@ -835,17 +843,7 @@
                             </div>
                             
                             <div class="boss-row" id="boss-set-2">
-                                <select class="boss-select" id="analysis-boss-select-2">
-                                    <option value="">選擇 Boss</option>
-                                    <option value="Lojak">Lojak</option>
-                                    <option value="Takedar">Takedar</option>
-                                    <option value="Jukk">Jukk</option>
-                                    <option value="Sterl">Sterl</option>
-                                    <option value="Mohaca">Mohaca</option>
-                                    <option value="Terro">Terro</option>
-                                    <option value="Klonk">Klonk</option>
-                                    <option value="Priker">Priker</option>
-                                </select>
+                                <div class="boss-name-label empty" id="analysis-boss-select-2">未偵測</div>
                                 <div class="pill-container">
                                     <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
                                     <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
@@ -859,17 +857,7 @@
                             </div>
 
                             <div class="boss-row" id="boss-set-3">
-                                <select class="boss-select" id="analysis-boss-select-3">
-                                    <option value="">選擇 Boss</option>
-                                    <option value="Lojak">Lojak</option>
-                                    <option value="Takedar">Takedar</option>
-                                    <option value="Jukk">Jukk</option>
-                                    <option value="Sterl">Sterl</option>
-                                    <option value="Mohaca">Mohaca</option>
-                                    <option value="Terro">Terro</option>
-                                    <option value="Klonk">Klonk</option>
-                                    <option value="Priker">Priker</option>
-                                </select>
+                                <div class="boss-name-label empty" id="analysis-boss-select-3">未偵測</div>
                                 <div class="pill-container">
                                     <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
                                     <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
@@ -894,7 +882,7 @@
                         </div>
                     </div>
 
-                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「總突擊傷害」（此欄位實際為攻擊次數，名稱誤譯為傷害）、「泰坦傷害(單次傷害)」欄位</div>
+                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「總突擊傷害」（此欄位實際為攻擊次數，名稱誤譯為傷害）、「泰坦傷害(單次傷害)」欄位；Boss 名稱與禁打部位會自動偵測並填入上方欄位</div>
 
                     <div class="analysis-empty" id="analysis-empty-state">
                         尚未匯入 CSV 資料<br>
@@ -909,7 +897,6 @@
                                     <tr>
                                         <th onclick="sortAnalysisBy('player')">玩家</th>
                                         <th onclick="sortAnalysisBy('count')">次數</th>
-                                        <!-- 需求4：誤傷改為誤傷率 -->
                                         <th onclick="sortAnalysisBy('accidentRate')">誤傷率</th>
                                         <th onclick="sortAnalysisBy('total')">總傷</th>
                                         <th onclick="sortAnalysisBy('avg')">均傷</th>
@@ -925,8 +912,6 @@
 
         </div>
     </div>
-
-    <!-- 需求1：移除卡片池 pool-container -->
 
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
@@ -1236,7 +1221,6 @@
             restoreState();
             restoreAnalysisState();
 
-            // 需求1：不再初始化卡片池
             switchPage(0);
 
             // 膠囊按鈕點擊
@@ -1306,21 +1290,17 @@
 
         window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
-        /* ── 需求3：截圖雙欄版型 ──
-           截圖前建立左右欄，1-25在左、26-50在右（依玩家排名），截圖後還原 */
+        /* ── 截圖雙欄版型 ── */
         function buildScreenshotLayout(type, sortedRows) {
             const screenshotEl = document.getElementById(`screenshot-${type}`);
             const normalEl = document.getElementById(`container-${type}`);
             
-            // 取 pyramid-container 的所有 tier-row
             const tierRows = Array.from(normalEl.querySelectorAll('.tier-row'));
             const total = tierRows.length;
             const half = Math.ceil(total / 2);
             
-            // 隱藏正常版
             normalEl.style.display = 'none';
             
-            // 清空截圖版並建立雙欄
             screenshotEl.innerHTML = '';
             screenshotEl.className = 'screenshot-layout two-col';
             
@@ -1331,7 +1311,6 @@
             
             tierRows.forEach((row, idx) => {
                 const clone = row.cloneNode(true);
-                // 移除最後一個 tier-row 的 margin-bottom
                 clone.style.marginBottom = '0';
                 if (idx < half) {
                     leftCol.appendChild(clone);
@@ -1347,9 +1326,9 @@
         function restoreNormalLayout(type) {
             const screenshotEl = document.getElementById(`screenshot-${type}`);
             const normalEl = document.getElementById(`container-${type}`);
-            screenshotEl.className = 'screenshot-layout'; // 隱藏截圖版
+            screenshotEl.className = 'screenshot-layout';
             screenshotEl.innerHTML = '';
-            normalEl.style.display = ''; // 還原正常版
+            normalEl.style.display = '';
         }
 
         /* ── 圖片產出 ── */
@@ -1361,7 +1340,6 @@
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
 
-            // 建立截圖雙欄版型
             buildScreenshotLayout(type);
 
             exportArea.querySelectorAll('.label-custom-input').forEach(input => 
@@ -1383,7 +1361,6 @@
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
                 }
             }).then(canvas => {
-                // 還原正常版型
                 restoreNormalLayout(type);
 
                 imgContainer.innerHTML = '';
@@ -1456,15 +1433,27 @@
         let analysisSortKey = 'total';
         let analysisSortDir = -1;
 
-        // Boss 順序定義（需求5）
-        // Slot 1: Lojak, Takedar, Jukk
-        // Slot 2: Sterl, Mohaca, Terro
-        // Slot 3: Klonk, Priker
-        const BOSS_SLOT_ORDER = [
-            ['Lojak', 'Takedar', 'Jukk'],
-            ['Sterl', 'Mohaca', 'Terro'],
-            ['Klonk', 'Priker']
-        ];
+        /* ── 自動偵測 boss 名稱欄位的存取輔助函式 ──
+           現在用一個純文字標籤（div）取代下拉選單，data-value 存實際 boss 名稱，
+           textContent 顯示給使用者看的文字。 */
+        function setBossSlotValue(slotIdx, bossName) {
+            const el = document.getElementById(`analysis-boss-select-${slotIdx}`);
+            if (!el) return;
+            if (bossName) {
+                el.textContent = bossName;
+                el.dataset.value = bossName;
+                el.classList.remove('empty');
+            } else {
+                el.textContent = '未偵測';
+                el.dataset.value = '';
+                el.classList.add('empty');
+            }
+        }
+
+        function getBossSlotValue(slotIdx) {
+            const el = document.getElementById(`analysis-boss-select-${slotIdx}`);
+            return el ? (el.dataset.value || '') : '';
+        }
 
         /* CSV 解析 */
         function parseCSV(text) {
@@ -1512,43 +1501,36 @@
             return Math.round(n).toLocaleString('en-US');
         }
 
-        function formatAccident(n) {
-            if (!n) return '0';
-            if (n >= 10000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-            return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+        /* 百分比格式化：即使是 0.01% 這麼小的數值也要顯示小數點，
+           不要被四捨五入後變成單純的「0%」 */
+        function formatRate(rate) {
+            if (!rate || rate <= 0) return '0%';
+            if (rate < 0.01) return '<0.01%';
+            return rate.toFixed(2) + '%';
         }
 
-        /* ── 需求5：自動偵測 CSV 中的 Boss，依序填入下拉選單 ── */
-        function autoDetectBossesFromCSV(csvRows, bossColIdx) {
+        /* ── 自動偵測 CSV 中的 Boss，依出現順序填入下拉欄位 ──
+           8 種 boss（Jukk / Klonk / Lojak / Mohaca / Priker / Sterl / Takedar / Terro）
+           都可能出現在任何一個欄位中，因此不再限制特定分組，
+           單純依照在 CSV 中第一次出現的順序，取前 3 個不重複的 boss 名稱填入。 */
+        function autoDetectBossesFromCSV(dataRows, bossColIdx) {
             if (bossColIdx < 0) return;
-            
-            // 收集 CSV 中出現的所有 boss 名稱
-            const foundBosses = new Set();
-            csvRows.forEach(row => {
-                const name = (row[bossColIdx] || '').trim();
-                if (name) foundBosses.add(name);
-            });
 
-            // 依照 BOSS_SLOT_ORDER 順序，找出各 slot 應該填入哪個 boss
-            BOSS_SLOT_ORDER.forEach((slotBosses, slotIdx) => {
-                const selectId = `analysis-boss-select-${slotIdx + 1}`;
-                const selectEl = document.getElementById(selectId);
-                if (!selectEl) return;
-                
-                // 找到該 slot 中第一個在 CSV 出現的 boss
-                const matched = slotBosses.find(b => foundBosses.has(b));
-                if (matched) {
-                    selectEl.value = matched;
-                } else {
-                    selectEl.value = '';
+            const orderedBosses = [];
+            dataRows.forEach(row => {
+                const name = (row[bossColIdx] || '').trim();
+                if (name && !orderedBosses.includes(name)) {
+                    orderedBosses.push(name);
                 }
             });
+
+            [1, 2, 3].forEach((slotIdx, i) => {
+                setBossSlotValue(slotIdx, orderedBosses[i] || '');
+            });
         }
 
-        /* ── 需求6：自動偵測禁打部位（肉體傷害 < 全部肉體傷害 1% 視為禁打）──
-           欄位名稱格式為「{部位名稱}」，需判斷哪些是肉體傷害欄位 */
-        function autoDetectBannedParts(headers, csvRows) {
-            // 定義部位欄位與 data-part 屬性對應
+        /* ── 自動偵測禁打部位（肉體傷害 < 全部肉體傷害 1% 視為禁打）── */
+        function autoDetectBannedParts(headers, dataRows) {
             const PART_MAP = {
                 '頭部(裝甲)': '頭部(裝甲)',
                 '肚子(裝甲)': '肚子(裝甲)',
@@ -1560,22 +1542,25 @@
                 '右腿(裝甲)': '右腿(裝甲)',
             };
 
-            // 找出 boss 欄位索引
             const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
-            
-            // 找出哪些欄位是部位欄位（含「裝甲」字樣的欄位）
             const partHeaders = headers.filter(h => PART_MAP[h]);
-            
             if (partHeaders.length === 0) return;
 
-            // 計算各 boss 各部位的肉體傷害總和
-            // 先按 boss 分組
+            // 每次重新偵測前，先清除目前所有禁打部位選取，
+            // 避免不同次匯入、或同一格位偵測到不同 boss 時殘留舊資料
+            [1, 2, 3].forEach(slotIdx => {
+                const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
+                if (bossRowEl) {
+                    bossRowEl.querySelectorAll('.pill-btn.active').forEach(btn => btn.classList.remove('active'));
+                }
+            });
+
             const bossDamage = {}; // { bossName: { partName: totalDmg } }
-            
-            csvRows.forEach(row => {
+
+            dataRows.forEach(row => {
                 const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
                 if (!bossDamage[bossName]) bossDamage[bossName] = {};
-                
+
                 partHeaders.forEach(partH => {
                     const colIdx = headers.indexOf(partH);
                     const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
@@ -1583,10 +1568,8 @@
                 });
             });
 
-            // 對每個選單中已選到的 boss，計算禁打部位
             [1, 2, 3].forEach(slotIdx => {
-                const selectEl = document.getElementById(`analysis-boss-select-${slotIdx}`);
-                const bossName = selectEl ? selectEl.value : '';
+                const bossName = getBossSlotValue(slotIdx);
                 if (!bossName || !bossDamage[bossName]) return;
 
                 const bossData = bossDamage[bossName];
@@ -1594,20 +1577,16 @@
                 if (totalBossDmg === 0) return;
 
                 const threshold = totalBossDmg * 0.01; // 1%
-
-                // 找出禁打部位（傷害 < 1% 的部位）
                 const bannedParts = partHeaders.filter(p => (bossData[p] || 0) < threshold);
 
-                // 在對應的 boss-set 中，自動選取這些部位
                 const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
                 if (!bossRowEl) return;
-                
+
                 bossRowEl.querySelectorAll('.pill-btn').forEach(btn => {
                     const dataPart = btn.getAttribute('data-part');
                     if (bannedParts.includes(dataPart)) {
                         btn.classList.add('active');
                     }
-                    // 注意：不清除已手動選取的，只新增
                 });
             });
         }
@@ -1630,21 +1609,19 @@
             const dIdx = headers.findIndex(h => h === '泰坦傷害');
             const cIdx = headers.findIndex(h => h === '總突擊傷害');
 
-            // 需求5：自動偵測 boss 並填入下拉選單
+            // 自動偵測 boss 並直接顯示名稱（8 種 boss 都可能出現在任何一個欄位，全部掃描）
             autoDetectBossesFromCSV(dataRows, bIdx);
 
-            // 需求6：自動偵測禁打部位（先等 boss 選單設定後再跑）
-            setTimeout(() => {
-                autoDetectBannedParts(headers, dataRows);
-            }, 50);
+            // 自動偵測禁打部位 —— 必須在計算誤傷之前「同步」完成，不能延遲執行，
+            // 否則計算誤傷時讀到的還是尚未偵測完成的舊資料，導致誤傷率永遠是 0%
+            autoDetectBannedParts(headers, dataRows);
 
-            // 讀取 UI 上的 Boss 禁打部位設定
+            // 讀取（剛剛自動偵測完成的）Boss 禁打部位設定
             const bossConfigs = {};
             [1, 2, 3].forEach(i => {
                 const root = document.getElementById(`boss-set-${i}`);
                 if (!root) return;
-                const select = document.getElementById(`analysis-boss-select-${i}`);
-                const name = select ? select.value : '';
+                const name = getBossSlotValue(i);
                 if (name) {
                     bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
                                              .map(btn => btn.getAttribute('data-part'));
@@ -1687,18 +1664,15 @@
                 });
             });
 
-            // 計算平均傷害與誤傷率（需求4）
+            // 計算平均傷害與誤傷率
             analysisData = Object.values(grouped).map(p => ({
                 ...p,
                 avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
-                // 需求4：誤傷率 = 誤傷 / 總傷害 * 100%
+                // 誤傷率 = 誤傷 / 總傷害 * 100%
                 accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
             }));
 
             renderAnalysisTable();
-
-            // 需求6：分析完成後再跑一次禁打部位偵測（因為 setTimeout 可能還沒完成）
-            autoDetectBannedParts(headers, dataRows);
         }
 
         function sortAnalysisBy(key) {
@@ -1739,7 +1713,7 @@
             summary.innerHTML = `
                 <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
                 <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-                <div class="summary-card"><div class="num">${overallAccidentRate.toFixed(1)}%</div><div class="label">整體誤傷率</div></div>
+                <div class="summary-card"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">整體誤傷率</div></div>
                 <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
                 <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
             `;
@@ -1747,10 +1721,7 @@
             tbody.innerHTML = '';
             sorted.forEach((p, index) => {
                 const tr = document.createElement('tr');
-                // 需求4：顯示誤傷率（%），而非誤傷數值
-                const rateDisplay = p.accidentRate > 0 
-                    ? p.accidentRate.toFixed(1) + '%'
-                    : '0%';
+                const rateDisplay = formatRate(p.accidentRate);
                 tr.innerHTML = `
                     <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
                     <td>${p.count}</td>
@@ -1766,7 +1737,7 @@
             summaryTr.innerHTML = `
                 <td class="player-name">總計 / 平均</td>
                 <td>${Math.round(avgCount)}</td>
-                <td style="color: #d32f2f; font-weight: bold;">${overallAccidentRate.toFixed(1)}%</td>
+                <td style="color: #d32f2f; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
                 <td>${formatNum(totalDamage)}</td>
                 <td>${formatNum(avgDamagePerHit)}</td>
             `;
@@ -1780,6 +1751,15 @@
             document.getElementById('analysis-empty-state').style.display = 'block'; 
             document.getElementById('csv-text-input').value = ''; 
             localStorage.removeItem(ANALYSIS_STORAGE_KEY); 
+
+            // 重置 boss 自動偵測顯示與已選取的禁打部位
+            [1, 2, 3].forEach(i => {
+                setBossSlotValue(i, '');
+                const root = document.getElementById(`boss-set-${i}`);
+                if (root) {
+                    root.querySelectorAll('.pill-btn.active').forEach(btn => btn.classList.remove('active'));
+                }
+            });
         }
         
         function exportAnalysisImage() {

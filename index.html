@@ -71,9 +71,9 @@
             width: 100vw; 
             overflow: hidden;
             margin-top: 75px; 
-            margin-bottom: 92px;
+            margin-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: margin-bottom 0.3s ease;
-            min-height: calc(100vh - 75px - 92px);
+            min-height: calc(100vh - 75px - 92px - env(safe-area-inset-bottom, 0px));
             padding-bottom: 10px;
         }
         .swiper-container {
@@ -89,7 +89,7 @@
             display: flex; 
             flex-direction: column; 
             align-items: center;
-            min-height: calc(100vh - 75px - 92px);
+            min-height: calc(100vh - 75px - 92px - env(safe-area-inset-bottom, 0px));
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
@@ -548,18 +548,18 @@
             left: 0;
             width: 100%;
             background: rgba(90, 74, 66, 0.98);
-            padding: 7px 10px;
+            padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px)) 10px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             gap: 5px;
             z-index: 1000;
             box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
-            height: 92px;
+            height: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
         }
         #pool-container.expanded {
-            height: 230px;
+            height: calc(230px + env(safe-area-inset-bottom, 0px));
         }
         .pool-title-area {
             display: flex;
@@ -974,6 +974,12 @@
         </table>
     </div>
 </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
 
     <div id="pool-container">
         <div class="pool-title-area">
@@ -1427,23 +1433,30 @@
         /* ── 卡片池點擊事件（包含自動收合） ── */
         let poolAutoCollapseTimer = null;
 
+        // 重新計算 10 秒自動收合倒數：只要卡片池目前是展開狀態，
+        // 呼叫這個函式就會清掉舊的倒數、重新倒數 10 秒。
+        // 只要在這 10 秒內又呼叫一次（例如又有拖曳動作），就會繼續往後延，
+        // 真正做到「連續 10 秒沒有任何拖曳動作」才自動收合。
+        function resetPoolAutoCollapseTimer() {
+            clearTimeout(poolAutoCollapseTimer);
+            if (!poolContainer.classList.contains('expanded')) return;
+            poolAutoCollapseTimer = setTimeout(() => {
+                poolContainer.classList.remove('expanded');
+                poolSubtitle.innerText = '（點一下展開）';
+                poolAutoCollapseTimer = null;
+            }, 10000);
+        }
+
         poolContainer.addEventListener('click', function(e) {
             if (isDraggingCard || isDraggingGlobal) return;
             
             const isExpanding = !poolContainer.classList.contains('expanded');
             
             if (isExpanding) {
-                // 展開卡片池，啟動 10 秒自動收合計時器
+                // 展開卡片池，啟動 10 秒自動收合倒數
                 poolContainer.classList.add('expanded');
                 poolSubtitle.innerText = '（點一下收合）';
-                
-                // 清除舊計時器，啟動新計時器
-                clearTimeout(poolAutoCollapseTimer);
-                poolAutoCollapseTimer = setTimeout(() => {
-                    poolContainer.classList.remove('expanded');
-                    poolSubtitle.innerText = '（點一下展開）';
-                    poolAutoCollapseTimer = null;
-                }, 10000);  // 10 秒後自動收合
+                resetPoolAutoCollapseTimer();
             } else {
                 // 手動收合
                 clearTimeout(poolAutoCollapseTimer);
@@ -1455,6 +1468,8 @@
 
         document.addEventListener('click', function(e) {
             if (!poolContainer.contains(e.target)) {
+                clearTimeout(poolAutoCollapseTimer);
+                poolAutoCollapseTimer = null;
                 poolContainer.classList.remove('expanded');
                 poolSubtitle.innerText = '（點一下展開）';
             }
@@ -1463,6 +1478,7 @@
         poolContainer.addEventListener('touchmove', function(e) {
             if (!isDraggingCard) e.stopPropagation();
         }, { passive: true });
+
 
         /* ── 拖曳系統 ── */
         let clone = null, activeSrc = '';
@@ -1565,6 +1581,7 @@
                 currentTouchY = t.clientY;
                 activeSrc = el.src;
                 gestureMode = null;
+                resetPoolAutoCollapseTimer(); // 觸碰卡片視為操作，重新倒數 10 秒
                 longPressTimer = setTimeout(() => {
                     if (!gestureMode) {
                         isSwiping = false;
@@ -1599,6 +1616,8 @@
                 if (gestureMode === "scroll") return;
                 if (e.cancelable) e.preventDefault();
 
+                resetPoolAutoCollapseTimer(); // 拖曳進行中持續重新倒數，避免拖到一半被收合
+
                 requestAnimationFrame(() => {
                     if (clone) {
                         clone.style.left = currentTouchX - 29 + 'px';
@@ -1632,9 +1651,8 @@
                     if (drop) {
                         drop.innerHTML = `<img src="${activeSrc}">`;
                         autoSave();
-                        clearTimeout(poolAutoCollapseTimer);
-                        poolAutoCollapseTimer = null;
                     }
+                    resetPoolAutoCollapseTimer(); // 拖曳結束（無論是否放入），重新倒數 10 秒
                 }
                 
                 cancelDrag();

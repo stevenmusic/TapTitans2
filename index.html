@@ -169,6 +169,28 @@
         .btn-analysis.clear  { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: #fff; }
         .btn-analysis.export { background-color: #1565c0; color: #fff; }
 
+        /* Tier / 關卡 選擇按鈕：跟下方三個按鈕同一橫排，寬度較窄 */
+        .tier-stage-select {
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            border-radius: 12px;
+            background-color: #0d47a1;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            text-align-last: center;
+            padding: 0 2px;
+            min-height: 44px;
+            box-sizing: border-box;
+            cursor: pointer;
+            flex: 0 0 54px;
+            width: 54px;
+            box-shadow: 0 2px 3px rgba(0,0,0,0.15);
+        }
+        .tier-stage-select:focus { outline: none; }
+
         .analysis-hint {
             font-size: 10.5px;
             color: #5e7a9c;
@@ -744,6 +766,7 @@
         }
         /* 收合時只顯示一橫排（第一排），展開時顯示全部三橫排，內部可垂直滾動 */
         .card-pool-content {
+            box-sizing: border-box;
             padding: 6px 8px;
             background: #faf8f5;
             max-height: var(--card-pool-collapsed-height);
@@ -916,10 +939,20 @@
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
                                   placeholder="請將 CSV 內容直接貼上此處..."></textarea>
                         
-                        <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
-                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 2;">✅ 解析貼上內容</button>
+                        <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px;">
+                            <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
+                                <option value="">Tier</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="M">M</option>
+                            </select>
+                            <select class="tier-stage-select" id="analysis-stage-select" title="關卡"></select>
+                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 2;">✅ 匯出</button>
                             <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;">🗑 清除</button>
-                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存圖片</button>
+                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存</button>
                         </div>
 
                         <div class="boss-config-container">
@@ -1326,6 +1359,7 @@
             renderCardPool();
             setupCardPoolTapHandling();
             syncCardPoolCardSize();
+            populateStageSelect();
 
             switchPage(0);
 
@@ -1445,11 +1479,39 @@
                 scale: 2, 
                 backgroundColor: bgMap[type],
                 onclone: (clonedDoc) => {
-                    clonedDoc.querySelectorAll('.label-custom-input').forEach(ci => {
-                        ci.style.background = 'transparent'; 
-                        ci.style.border = 'none';
-                    });
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+
+                    // html2canvas 對 <select>/<input> 的文字渲染常常抓錯行高，導致文字看起來被切一半；
+                    // 截圖時改用同樣 class（保留顏色/底色/字級等樣式）的純文字 div 取代，文字才會完整置中顯示
+                    const bossSelectEl = clonedDoc.getElementById(`boss-select-${type}`);
+                    if (bossSelectEl) {
+                        const replacement = clonedDoc.createElement('div');
+                        replacement.className = bossSelectEl.className;
+                        const selectedOpt = bossSelectEl.options[bossSelectEl.selectedIndex];
+                        replacement.textContent = selectedOpt ? selectedOpt.text : '';
+                        replacement.style.display = 'flex';
+                        replacement.style.alignItems = 'center';
+                        replacement.style.justifyContent = 'center';
+                        replacement.style.boxSizing = 'border-box';
+                        replacement.style.whiteSpace = 'nowrap';
+                        bossSelectEl.replaceWith(replacement);
+                    }
+
+                    clonedDoc.querySelectorAll(`#${idMap[type]} .label-custom-input`).forEach(inputEl => {
+                        const replacement = clonedDoc.createElement('div');
+                        replacement.className = inputEl.className;
+                        replacement.textContent = inputEl.value || '';
+                        replacement.style.background = 'transparent';
+                        replacement.style.border = 'none';
+                        replacement.style.display = 'flex';
+                        replacement.style.alignItems = 'center';
+                        replacement.style.justifyContent = 'center';
+                        replacement.style.boxSizing = 'border-box';
+                        replacement.style.whiteSpace = 'nowrap';
+                        replacement.style.overflow = 'hidden';
+                        inputEl.replaceWith(replacement);
+                    });
+
                     // 最後一組牌組原本保留了 200px 的底部留白（讓卡片池抽屜不會擋住畫面），
                     // 截圖時要去掉，避免圖片往下多出一大段空白
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
@@ -1548,6 +1610,59 @@
         let analysisData = [];
         let analysisSortKey = 'total';
         let analysisSortDir = -1;
+
+        // 關卡選單 1-200，用迴圈產生（手寫 200 個 option 不切實際）
+        function populateStageSelect() {
+            const sel = document.getElementById('analysis-stage-select');
+            if (!sel || sel.options.length > 0) return;
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '關卡';
+            sel.appendChild(placeholder);
+            for (let i = 1; i <= 200; i++) {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = String(i);
+                sel.appendChild(opt);
+            }
+        }
+
+        // 截圖右下角的 Tier-關卡標籤（例如 (M-14)）+ 當天日期
+        function buildScreenshotTag() {
+            const tierSel = document.getElementById('analysis-tier-select');
+            const stageSel = document.getElementById('analysis-stage-select');
+            const tier = tierSel ? tierSel.value : '';
+            const stage = stageSel ? stageSel.value : '';
+
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.justifyContent = 'flex-end';
+            wrap.style.alignItems = 'baseline';
+            wrap.style.gap = '10px';
+            wrap.style.marginTop = '10px';
+            wrap.style.paddingRight = '4px';
+            wrap.style.width = '100%';
+            wrap.style.boxSizing = 'border-box';
+
+            if (tier && stage) {
+                const tagEl = document.createElement('span');
+                tagEl.textContent = `(${tier}-${stage})`;
+                tagEl.style.fontSize = '20px';
+                tagEl.style.fontWeight = '900';
+                tagEl.style.color = '#0d47a1';
+                wrap.appendChild(tagEl);
+            }
+
+            const d = new Date();
+            const dateStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+            const dateEl = document.createElement('span');
+            dateEl.textContent = dateStr;
+            dateEl.style.fontSize = '12px';
+            dateEl.style.color = '#5e7a9c';
+            wrap.appendChild(dateEl);
+
+            return wrap;
+        }
 
         /* ── 自動偵測 boss 名稱欄位的存取輔助函式 ──
            現在用一個純文字標籤（div）取代下拉選單，data-value 存實際 boss 名稱，
@@ -1929,6 +2044,7 @@
                             clonedExportArea.style.flex = 'none';
                             clonedExportArea.style.height = 'auto';
                             clonedExportArea.style.minHeight = '0';
+                            clonedExportArea.appendChild(buildScreenshotTag());
                         }
                     }
                 }).then(canvas => {
@@ -2010,6 +2126,7 @@
             });
 
             wrapper.appendChild(row);
+            wrapper.appendChild(buildScreenshotTag());
             return wrapper;
         }
         
@@ -2065,25 +2182,65 @@
 
         // 收合狀態下，點一下卡片池任何地方（包括卡片本身）都直接展開，不會被判斷成拖曳；
         // 展開狀態下，點把手收合，點卡片則交給卡片自己的長按拖曳邏輯處理
+        // 卡片池的拖曳改用「事件委派」統一在 drawer 上處理（不再對每張卡片個別綁定），
+        // 這樣才能同時兼顧「點一下展開」跟「往上滑就立刻拖曳」，不會互相打架、也不會重複觸發
+        let poolTouchStartX = 0, poolTouchStartY = 0;
+        let poolTracking = false, poolDragStarted = false;
+        let poolTrackedCard = null, poolTrackedSrc = '';
+
         function setupCardPoolTapHandling() {
             const drawer = document.getElementById('card-pool-drawer');
             if (!drawer) return;
 
-            // 在 capture 階段提前攔截：收合時不讓 touchstart 傳到卡片本身，
-            // 這樣卡片就完全不會啟動長按拖曳的計時器
             drawer.addEventListener('touchstart', (e) => {
-                if (!cardPoolExpanded) {
-                    e.stopPropagation();
-                }
-            }, { capture: true, passive: true });
+                if (isDraggingCard || clone) return;
+                const touch = e.touches[0];
+                poolTouchStartX = touch.clientX;
+                poolTouchStartY = touch.clientY;
+                poolTracking = true;
+                poolDragStarted = false;
+                poolTrackedCard = e.target.closest('.card-pool-card');
+                poolTrackedSrc = poolTrackedCard ? (poolTrackedCard.querySelector('img')?.src || '') : '';
+            }, { passive: true });
 
-            drawer.addEventListener('click', (e) => {
-                if (!cardPoolExpanded) {
-                    toggleCardPool();
-                } else if (e.target.closest('.card-pool-handle')) {
-                    toggleCardPool();
+            // 一觸碰卡片往上滑出一點距離，立刻視為拖曳，不用等長按
+            drawer.addEventListener('touchmove', (e) => {
+                if (!poolTracking || poolDragStarted || !poolTrackedCard) return;
+                const touch = e.touches[0];
+                const dx = touch.clientX - poolTouchStartX;
+                const dy = touch.clientY - poolTouchStartY;
+                if (dy < 0 && Math.abs(dy) > Math.abs(dx)) {
+                    // 往上滑為主：擋掉預設的捲動行為，自己接手處理
+                    e.preventDefault();
+                    if (dy < -8) {
+                        poolDragStarted = true;
+                        poolTracking = false;
+                        beginCardPoolDrag(poolTrackedSrc, touch.clientX, touch.clientY);
+                    }
                 }
-            });
+                // 水平滑動為主（在滑該排卡片）或往下滑：不處理，交給瀏覽器原生捲動
+            }, { passive: false });
+
+            drawer.addEventListener('touchend', (e) => {
+                if (poolTracking && !poolDragStarted) {
+                    const onHandle = e.target.closest('.card-pool-handle');
+                    if (onHandle) {
+                        toggleCardPool();
+                    } else if (!cardPoolExpanded) {
+                        // 收合狀態下，單純點一下（沒有明顯上滑）就展開
+                        toggleCardPool();
+                    }
+                }
+                poolTracking = false;
+                poolDragStarted = false;
+                poolTrackedCard = null;
+            }, { passive: true });
+
+            drawer.addEventListener('touchcancel', () => {
+                poolTracking = false;
+                poolDragStarted = false;
+                poolTrackedCard = null;
+            }, { passive: true });
         }
 
         // 量測實際的卡格（.drop-zone）大小，讓卡片池裡的卡片跟卡格一樣大；
@@ -2148,7 +2305,6 @@
                     cell.className = 'card-pool-card';
                     cell.innerHTML = `<img src="${imgSrc}" draggable="false">`;
                     rowEl.appendChild(cell);
-                    attachCardPoolDragHandlers(cell, imgSrc);
                 });
                 rowsInner.appendChild(rowEl);
             }
@@ -2219,45 +2375,6 @@
         }
 
         function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
-
-        /* ── 從卡片池長按拖曳卡片到牌組格子 ── */
-        function attachCardPoolDragHandlers(cardEl, imgSrc) {
-            let pendingTouch = null;
-
-            cardEl.addEventListener('touchstart', (e) => {
-                if (isDraggingCard || clone) return;
-                const touch = e.touches[0];
-                pendingTouch = { x: touch.clientX, y: touch.clientY };
-                clearTimeout(longPressTimer);
-                // 80ms 內手指沒有明顯移動就視為要拖曳，盡量縮短「按住才能拔出」的等待感
-                longPressTimer = setTimeout(() => {
-                    beginCardPoolDrag(imgSrc, pendingTouch.x, pendingTouch.y);
-                }, 80);
-            }, { passive: true });
-
-            cardEl.addEventListener('touchmove', (e) => {
-                // 長按尚未觸發拖曳前，若手指移動超過一定距離，視為在捲動卡片池，取消長按計時；
-                // 門檻放寬一些，避免手指自然的小幅晃動誤判成「想滑動」而一直取消，導致要按很多次才能拖出
-                if (!isDraggingCard && pendingTouch) {
-                    const touch = e.touches[0];
-                    const dx = Math.abs(touch.clientX - pendingTouch.x);
-                    const dy = Math.abs(touch.clientY - pendingTouch.y);
-                    if (dx > 18 || dy > 18) {
-                        clearTimeout(longPressTimer);
-                    }
-                }
-            }, { passive: true });
-
-            cardEl.addEventListener('touchend', () => {
-                clearTimeout(longPressTimer);
-                pendingTouch = null;
-            }, { passive: true });
-
-            cardEl.addEventListener('touchcancel', () => {
-                clearTimeout(longPressTimer);
-                pendingTouch = null;
-            }, { passive: true });
-        }
 
         function beginCardPoolDrag(imgSrc, x, y) {
             activeSrc = imgSrc;

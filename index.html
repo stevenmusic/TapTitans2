@@ -49,8 +49,8 @@
         }
         .nav-title {
             color: #ffffff; text-align: center;
-            font-size: 16px; font-weight: bold;
-            padding: 8px 0 2px 0; letter-spacing: 1px;
+            font-size: 23px; font-weight: bold;
+            padding: 16px 0 14px 0; letter-spacing: 2px;
         }
         .nav-tabs { display: flex; width: 100%; }
         .tab-btn {
@@ -75,10 +75,10 @@
         .swiper-wrapper {
             width: 100vw; 
             overflow: hidden;
-            margin-top: 75px; 
+            margin-top: 100px; 
             margin-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: margin-bottom 0.3s ease;
-            min-height: calc(100vh - 75px - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - 100px - 92px - env(safe-area-inset-bottom, 0px));
             padding-bottom: 10px;
         }
         .swiper-container {
@@ -94,7 +94,7 @@
             display: flex; 
             flex-direction: column; 
             align-items: center;
-            min-height: calc(100vh - 75px - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - 100px - 92px - env(safe-area-inset-bottom, 0px));
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
@@ -544,27 +544,10 @@
             background-color: #e8e0d5;
         }
 
-        /* ── 截圖專用雙欄版型 ── */
-        .screenshot-layout {
-            display: none;
-        }
-        .screenshot-layout.two-col {
-            display: flex !important;
-            flex-direction: row;
-            gap: 8px;
-            width: 100%;
-        }
-        .screenshot-col {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-
         /* ── 儲存指示器 ── */
         .save-indicator {
             position: fixed;
-            top: 85px;
+            top: 110px;
             right: 10px;
             background: rgba(0,0,0,0.7);
             color: #fff;
@@ -721,6 +704,80 @@
             box-shadow: 0 1px 2px rgba(0,0,0,0.2);
             filter: brightness(0.9);
         }
+
+        /* ── 卡片池（固定於底部，預設收合）── */
+        .card-pool-drawer {
+            position: fixed;
+            left: 0; right: 0;
+            bottom: 0;
+            z-index: 950;
+            background: #ffffff;
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.2);
+            transform: translateY(calc(100% - 40px));
+            transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+            display: flex;
+            flex-direction: column;
+            /* 預留安全區域，避免被瀏覽器網址列/手勢列擋住 */
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .card-pool-drawer.expanded {
+            transform: translateY(0);
+        }
+        .card-pool-handle {
+            height: 40px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            background: #5a4a42;
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+            user-select: none;
+        }
+        .card-pool-handle-bar {
+            width: 36px; height: 4px;
+            background: rgba(255,255,255,0.6);
+            border-radius: 3px;
+        }
+        .card-pool-content {
+            max-height: 38vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+            gap: 6px;
+            background: #faf8f5;
+        }
+        .card-pool-card {
+            aspect-ratio: 1;
+            border: 1px solid #e0d5c1;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .card-pool-card img {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+        .card-pool-empty {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: #9c8f80;
+            font-size: 11px;
+            line-height: 1.7;
+            padding: 18px 10px;
+        }
+
+        /* ── 誤傷率超過 5% 的警示背景 ── */
+        .rate-warning {
+            background-color: #ffcdd2 !important;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -762,8 +819,6 @@
                     </div>
                     <!-- 瀏覽版（正常顯示） -->
                     <div class="pyramid-container" id="container-burst"></div>
-                    <!-- 截圖版（截圖時才啟用） -->
-                    <div class="screenshot-layout" id="screenshot-burst"></div>
                 </div>
             </div>
 
@@ -788,7 +843,6 @@
                         <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-torment"></div>
-                    <div class="screenshot-layout" id="screenshot-torment"></div>
                 </div>
             </div>
 
@@ -813,7 +867,6 @@
                         <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-support"></div>
-                    <div class="screenshot-layout" id="screenshot-support"></div>
                 </div>
             </div>
 
@@ -913,6 +966,17 @@
         </div>
     </div>
 
+    <!-- 卡片池：固定於底部，預設收合，僅在爆裂/苦痛/支援頁顯示 -->
+    <div class="card-pool-drawer" id="card-pool-drawer">
+        <div class="card-pool-handle" id="card-pool-handle" onclick="toggleCardPool()">
+            <span class="card-pool-handle-bar"></span>
+            <span id="card-pool-label">卡片池 ▲ 展開</span>
+        </div>
+        <div class="card-pool-content" id="card-pool-content">
+            <div class="card-pool-empty">卡片池資料尚未載入</div>
+        </div>
+    </div>
+
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
@@ -920,6 +984,11 @@
     </div>
 
     <script>
+        // 避免瀏覽器在重新整理/返回時自動還原舊的捲動位置，導致畫面停在中間
+        if ('scrollRestoration' in history) {
+            history.scrollRestoration = 'manual';
+        }
+
         const totalTiers = 8;
         const defaultZoneHTML = '<span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拉入卡片<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span>';
 
@@ -1220,6 +1289,7 @@
             window.scrollTo(0, 0);
             restoreState();
             restoreAnalysisState();
+            renderCardPool();
 
             switchPage(0);
 
@@ -1227,7 +1297,16 @@
             document.querySelectorAll('.pill-btn').forEach(btn => {
                 btn.addEventListener('click', function() { this.classList.toggle('active'); });
             });
+
+            // 內容載入/還原後高度可能改變，延遲再次強制回到頂部，避免停在頁面中間
+            setTimeout(() => window.scrollTo(0, 0), 60);
+            setTimeout(() => window.scrollTo(0, 0), 300);
         });
+
+        // 圖片、字型等資源載入完成後再次確認回到頂部
+        window.addEventListener('load', () => window.scrollTo(0, 0));
+        // 從瀏覽器快取（例如上一頁返回）顯示頁面時，一律強制回到頂部
+        window.addEventListener('pageshow', () => window.scrollTo(0, 0));
 
         /* ── Swiper ── */
         const swiperContainer = document.getElementById('main-swiper');
@@ -1286,52 +1365,17 @@
             [tabBurst, tabTorment, tabSupport, tabAnalysis].forEach(t => t.classList.remove('active'));
             [tabBurst, tabTorment, tabSupport, tabAnalysis][pageIndex].classList.add('active');
             updateSwiperPosition(true);
+
+            // 卡片池只在爆裂/苦痛/支援頁面顯示，突襲分析頁面不需要
+            const poolDrawer = document.getElementById('card-pool-drawer');
+            if (poolDrawer) {
+                poolDrawer.style.display = (pageIndex === 3) ? 'none' : 'flex';
+            }
         }
 
         window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
-        /* ── 截圖雙欄版型 ── */
-        function buildScreenshotLayout(type, sortedRows) {
-            const screenshotEl = document.getElementById(`screenshot-${type}`);
-            const normalEl = document.getElementById(`container-${type}`);
-            
-            const tierRows = Array.from(normalEl.querySelectorAll('.tier-row'));
-            const total = tierRows.length;
-            const half = Math.ceil(total / 2);
-            
-            normalEl.style.display = 'none';
-            
-            screenshotEl.innerHTML = '';
-            screenshotEl.className = 'screenshot-layout two-col';
-            
-            const leftCol = document.createElement('div');
-            leftCol.className = 'screenshot-col';
-            const rightCol = document.createElement('div');
-            rightCol.className = 'screenshot-col';
-            
-            tierRows.forEach((row, idx) => {
-                const clone = row.cloneNode(true);
-                clone.style.marginBottom = '0';
-                if (idx < half) {
-                    leftCol.appendChild(clone);
-                } else {
-                    rightCol.appendChild(clone);
-                }
-            });
-            
-            screenshotEl.appendChild(leftCol);
-            screenshotEl.appendChild(rightCol);
-        }
-
-        function restoreNormalLayout(type) {
-            const screenshotEl = document.getElementById(`screenshot-${type}`);
-            const normalEl = document.getElementById(`container-${type}`);
-            screenshotEl.className = 'screenshot-layout';
-            screenshotEl.innerHTML = '';
-            normalEl.style.display = '';
-        }
-
-        /* ── 圖片產出 ── */
+        /* ── 圖片產出（直接截圖 8 個牌組，不做雙欄拆分）── */
         function generateImage(type) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
             const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
@@ -1339,8 +1383,6 @@
             const exportArea = document.getElementById(idMap[type]);
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
-
-            buildScreenshotLayout(type);
 
             exportArea.querySelectorAll('.label-custom-input').forEach(input => 
                 input.setAttribute('value', input.value)
@@ -1361,14 +1403,11 @@
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
                 }
             }).then(canvas => {
-                restoreNormalLayout(type);
-
                 imgContainer.innerHTML = '';
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
             }).catch(() => { 
-                restoreNormalLayout(type);
                 alert("生成失敗"); 
                 closeModal(); 
             });
@@ -1504,8 +1543,7 @@
         /* 百分比格式化：即使是 0.01% 這麼小的數值也要顯示小數點，
            不要被四捨五入後變成單純的「0%」 */
         function formatRate(rate) {
-            if (!rate || rate <= 0) return '0%';
-            if (rate < 0.01) return '<0.01%';
+            if (!rate || rate < 0.01) return '0%';
             return rate.toFixed(2) + '%';
         }
 
@@ -1729,10 +1767,13 @@
             // 整體誤傷率
             const overallAccidentRate = totalDamage > 0 ? (totalAccident / totalDamage) * 100 : 0;
 
+            // 誤傷率超過 5% 時，額外加上警示背景
+            const rateCellClass = (rate) => 'rate-cell' + (rate > 5 ? ' rate-warning' : '');
+
             summary.innerHTML = `
                 <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
                 <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-                <div class="summary-card"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">整體誤傷率</div></div>
+                <div class="summary-card ${overallAccidentRate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">整體誤傷率</div></div>
                 <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
                 <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
             `;
@@ -1744,7 +1785,7 @@
                 tr.innerHTML = `
                     <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
                     <td>${p.count}</td>
-                    <td style="color: #d32f2f; font-weight: bold;">${rateDisplay}</td>
+                    <td class="${rateCellClass(p.accidentRate)}" style="color: #d32f2f; font-weight: bold;">${rateDisplay}</td>
                     <td>${formatNum(p.total)}</td>
                     <td>${formatNum(p.avg)}</td>
                 `;
@@ -1756,7 +1797,7 @@
             summaryTr.innerHTML = `
                 <td class="player-name">總計 / 平均</td>
                 <td>${Math.round(avgCount)}</td>
-                <td style="color: #d32f2f; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
+                <td class="${rateCellClass(overallAccidentRate)}" style="color: #d32f2f; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
                 <td>${formatNum(totalDamage)}</td>
                 <td>${formatNum(avgDamagePerHit)}</td>
             `;
@@ -1784,28 +1825,104 @@
         function exportAnalysisImage() {
             if (!analysisData.length) { alert('尚無資料可匯出，請先匯入 CSV 並計算數據'); return; }
             window.scrollTo({ top: 0, behavior: 'smooth' });
-            const exportArea = document.getElementById('export-analysis');
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
             imgContainer.innerHTML = "正在組裝分析圖...";
             modal.style.display = "flex";
-            html2canvas(exportArea, {
-                useCORS: true, scale: 2, backgroundColor: '#e3f2fd',
-                onclone: (clonedDoc) => { 
-                    const toolbar = clonedDoc.querySelector('#export-analysis .analysis-toolbar'); 
-                    const hint = clonedDoc.querySelector('#export-analysis .analysis-hint'); 
-                    if (toolbar) toolbar.style.display = 'none'; 
-                    if (hint) hint.style.display = 'none'; 
-                }
-            }).then(canvas => { 
-                imgContainer.innerHTML = ''; 
-                const img = document.createElement('img'); 
-                img.src = canvas.toDataURL('image/png'); 
-                imgContainer.appendChild(img); 
-            }).catch(() => { 
-                alert("生成失敗"); 
-                closeModal(); 
+
+            const SPLIT_AT = 25;
+
+            if (analysisData.length <= SPLIT_AT) {
+                // 人數不多，維持單欄直接截圖
+                const exportArea = document.getElementById('export-analysis');
+                html2canvas(exportArea, {
+                    useCORS: true, scale: 2, backgroundColor: '#e3f2fd',
+                    onclone: (clonedDoc) => {
+                        const toolbar = clonedDoc.querySelector('#export-analysis .analysis-toolbar');
+                        const hint = clonedDoc.querySelector('#export-analysis .analysis-hint');
+                        if (toolbar) toolbar.style.display = 'none';
+                        if (hint) hint.style.display = 'none';
+                    }
+                }).then(canvas => {
+                    imgContainer.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = canvas.toDataURL('image/png');
+                    imgContainer.appendChild(img);
+                }).catch(() => {
+                    alert("生成失敗");
+                    closeModal();
+                });
+                return;
+            }
+
+            // 人數超過 25：建立離屏雙欄版面，1-25 名在左、26 名以後（含總計列）在右，合併成橫式圖片
+            const offscreen = buildAnalysisTwoColExport(SPLIT_AT);
+            document.body.appendChild(offscreen);
+
+            html2canvas(offscreen, { useCORS: true, scale: 2, backgroundColor: '#e3f2fd' })
+                .then(canvas => {
+                    offscreen.remove();
+                    imgContainer.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = canvas.toDataURL('image/png');
+                    imgContainer.appendChild(img);
+                })
+                .catch(() => {
+                    offscreen.remove();
+                    alert("生成失敗");
+                    closeModal();
+                });
+        }
+
+        /* 建立離屏（畫面外）的雙欄分析表格，用於突襲分析截圖 */
+        function buildAnalysisTwoColExport(splitPoint) {
+            const sourceTable = document.getElementById('analysis-table');
+            const theadHTML = sourceTable.querySelector('thead').outerHTML;
+            const allRows = Array.from(document.getElementById('analysis-tbody').children);
+            const leftRows = allRows.slice(0, splitPoint);
+            const rightRows = allRows.slice(splitPoint);
+
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'absolute';
+            wrapper.style.left = '-99999px';
+            wrapper.style.top = '0';
+            wrapper.style.background = '#e3f2fd';
+            wrapper.style.padding = '14px';
+            wrapper.style.boxSizing = 'border-box';
+            wrapper.style.display = 'inline-block';
+
+            const summarySource = document.getElementById('analysis-summary');
+            if (summarySource) {
+                const summaryClone = summarySource.cloneNode(true);
+                summaryClone.style.maxWidth = 'none';
+                summaryClone.style.marginBottom = '12px';
+                wrapper.appendChild(summaryClone);
+            }
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '16px';
+            row.style.alignItems = 'flex-start';
+
+            [leftRows, rightRows].forEach(rowsSubset => {
+                if (rowsSubset.length === 0) return;
+                const colWrap = document.createElement('div');
+                colWrap.className = 'analysis-table-wrap';
+                colWrap.style.margin = '0';
+                colWrap.style.width = '380px';
+                colWrap.style.maxWidth = 'none';
+                const table = document.createElement('table');
+                table.className = 'analysis-table';
+                table.innerHTML = theadHTML;
+                const tbody = document.createElement('tbody');
+                rowsSubset.forEach(tr => tbody.appendChild(tr.cloneNode(true)));
+                table.appendChild(tbody);
+                colWrap.appendChild(table);
+                row.appendChild(colWrap);
             });
+
+            wrapper.appendChild(row);
+            return wrapper;
         }
         
         function saveAnalysisState() { 
@@ -1835,6 +1952,75 @@
             }
         }
 
+        /* ══════════════════════════════════════════════════════════
+           卡片池（固定於底部，預設收合）
+           ══════════════════════════════════════════════════════════ */
+        let cardPoolExpanded = false;
+        let lastCardDragTime = 0;
+        let cardPoolWatcherInterval = null;
+
+        function toggleCardPool() {
+            cardPoolExpanded = !cardPoolExpanded;
+            if (cardPoolExpanded) {
+                lastCardDragTime = Date.now();
+                startCardPoolAutoCollapseWatcher();
+            } else {
+                stopCardPoolAutoCollapseWatcher();
+            }
+            updateCardPoolUI();
+        }
+
+        function updateCardPoolUI() {
+            const drawer = document.getElementById('card-pool-drawer');
+            const label = document.getElementById('card-pool-label');
+            if (drawer) drawer.classList.toggle('expanded', cardPoolExpanded);
+            if (label) label.textContent = cardPoolExpanded ? '卡片池 ▼ 收合' : '卡片池 ▲ 展開';
+        }
+
+        // 每 0.5 秒檢查一次：只要偵測到目前正在拖曳（isDraggingCard / isDraggingGlobal），
+        // 就重新計時；連續 10 秒沒有任何拖曳動作才自動收合
+        function startCardPoolAutoCollapseWatcher() {
+            stopCardPoolAutoCollapseWatcher();
+            cardPoolWatcherInterval = setInterval(() => {
+                if (typeof isDraggingCard !== 'undefined' && (isDraggingCard || isDraggingGlobal)) {
+                    lastCardDragTime = Date.now();
+                }
+                if (Date.now() - lastCardDragTime >= 10000) {
+                    cardPoolExpanded = false;
+                    updateCardPoolUI();
+                    stopCardPoolAutoCollapseWatcher();
+                }
+            }, 500);
+        }
+
+        function stopCardPoolAutoCollapseWatcher() {
+            if (cardPoolWatcherInterval) {
+                clearInterval(cardPoolWatcherInterval);
+                cardPoolWatcherInterval = null;
+            }
+        }
+
+        // 從 cards.js 的 PRESET_CARDS 陣列（圖片路徑字串陣列）畫出卡片池縮圖
+        function renderCardPool() {
+            const content = document.getElementById('card-pool-content');
+            if (!content) return;
+            // 注意：cards.js 用 `const PRESET_CARDS = [...]` 宣告，不會掛在 window 上，
+            // 所以要用裸變數名稱讀取，不能寫成 window.PRESET_CARDS
+            const list = (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) ? PRESET_CARDS : null;
+            if (!list || list.length === 0) {
+                content.innerHTML = '<div class="card-pool-empty">卡片池資料尚未載入（找不到 cards.js 的 PRESET_CARDS 陣列）。</div>';
+                return;
+            }
+            content.innerHTML = '';
+            list.forEach(imgSrc => {
+                const cell = document.createElement('div');
+                cell.className = 'card-pool-card';
+                cell.innerHTML = `<img src="${imgSrc}" draggable="false">`;
+                content.appendChild(cell);
+                attachCardPoolDragHandlers(cell, imgSrc);
+            });
+        }
+
         /* ── 拖曳系統（保留，用於配卡頁拖放功能） ── */
         let clone = null, activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
@@ -1850,6 +2036,7 @@
             document.body.style.overflow = '';
             document.body.style.overflowY = '';
             document.body.style.overscrollBehavior = '';
+            document.body.classList.remove('drag-active');
             if (window._dragScrollY !== undefined) window.scrollTo(0, window._dragScrollY);
             document.querySelectorAll('.drag-clone').forEach(el => el.remove());
             clone = null;
@@ -1894,6 +2081,119 @@
         }
 
         function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
+
+        /* ── 從卡片池長按拖曳卡片到牌組格子 ── */
+        function attachCardPoolDragHandlers(cardEl, imgSrc) {
+            let pendingTouch = null;
+
+            cardEl.addEventListener('touchstart', (e) => {
+                if (isDraggingCard || clone) return;
+                const touch = e.touches[0];
+                pendingTouch = { x: touch.clientX, y: touch.clientY };
+                clearTimeout(longPressTimer);
+                longPressTimer = setTimeout(() => {
+                    beginCardPoolDrag(imgSrc, pendingTouch.x, pendingTouch.y);
+                }, 150);
+            }, { passive: true });
+
+            cardEl.addEventListener('touchmove', (e) => {
+                // 長按尚未觸發拖曳前，若手指移動超過一點距離，視為在捲動卡片池，取消長按計時
+                if (!isDraggingCard && pendingTouch) {
+                    const touch = e.touches[0];
+                    const dx = Math.abs(touch.clientX - pendingTouch.x);
+                    const dy = Math.abs(touch.clientY - pendingTouch.y);
+                    if (dx > 8 || dy > 8) {
+                        clearTimeout(longPressTimer);
+                    }
+                }
+            }, { passive: true });
+
+            cardEl.addEventListener('touchend', () => {
+                clearTimeout(longPressTimer);
+                pendingTouch = null;
+            }, { passive: true });
+
+            cardEl.addEventListener('touchcancel', () => {
+                clearTimeout(longPressTimer);
+                pendingTouch = null;
+            }, { passive: true });
+        }
+
+        function beginCardPoolDrag(imgSrc, x, y) {
+            activeSrc = imgSrc;
+            isDraggingCard = true;
+            gestureMode = 'drag';
+            currentTouchX = x;
+            currentTouchY = y;
+            window._dragScrollY = window.scrollY;
+            document.body.classList.add('drag-active');
+
+            clone = document.createElement('img');
+            clone.src = imgSrc;
+            clone.className = 'drag-clone';
+            Object.assign(clone.style, {
+                position: 'fixed',
+                left: `${x - 28}px`,
+                top: `${y - 28}px`,
+                width: '56px',
+                height: '56px',
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                zIndex: '11000',
+                opacity: '0.9',
+                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))'
+            });
+            document.body.appendChild(clone);
+
+            updateZonesCache();
+
+            document.addEventListener('touchmove', handleCardPoolDragMove, { passive: false });
+            document.addEventListener('touchend', handleCardPoolDragEnd, { passive: false });
+            document.addEventListener('touchcancel', handleCardPoolDragEnd, { passive: false });
+        }
+
+        function handleCardPoolDragMove(e) {
+            if (!clone) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            currentTouchX = touch.clientX;
+            currentTouchY = touch.clientY;
+            clone.style.left = `${currentTouchX - 28}px`;
+            clone.style.top = `${currentTouchY - 28}px`;
+
+            const target = findZone(currentTouchX, currentTouchY);
+            if (target !== lastHoveredZone) {
+                if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                if (target) target.classList.add('drag-hover');
+                lastHoveredZone = target;
+            }
+
+            // 靠近螢幕上下邊緣時自動捲動，方便拖到畫面外的牌組
+            const edge = 60;
+            if (currentTouchY < edge) {
+                scrollSpeed = -12;
+                startAutoScroll();
+            } else if (currentTouchY > window.innerHeight - edge) {
+                scrollSpeed = 12;
+                startAutoScroll();
+            } else {
+                scrollSpeed = 0;
+                stopAutoScroll();
+            }
+        }
+
+        function handleCardPoolDragEnd() {
+            document.removeEventListener('touchmove', handleCardPoolDragMove, { passive: false });
+            document.removeEventListener('touchend', handleCardPoolDragEnd, { passive: false });
+            document.removeEventListener('touchcancel', handleCardPoolDragEnd, { passive: false });
+
+            const target = lastHoveredZone || findZone(currentTouchX, currentTouchY);
+            if (target) {
+                target.innerHTML = `<img src="${activeSrc}">`;
+                autoSave();
+            }
+            cancelDrag();
+        }
 
         document.addEventListener('touchstart', function() { 
             if (!isDraggingCard && clone) cancelDrag(); 

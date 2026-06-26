@@ -1857,12 +1857,9 @@ function processPastedCSV() {
     const findIndex = (keyword) => csvHeaders.findIndex(h => h === keyword);
     const pIdx = findIndex('玩家名稱');
     const bIdx = findIndex('泰坦名稱');
-    
-    // 修正：只要包含「突襲」字樣，就辨識為攻擊次數欄位
-    const cIdx = csvHeaders.findIndex(h => h.includes('突襲')); 
     const dIdx = findIndex('泰坦傷害'); 
 
-    // 讀取 UI 上的 Boss 禁打部位設定 (回傳的是選取的部位名稱陣列)
+    // 讀取 UI 上的 Boss 禁打部位設定
     const bossConfigs = {};
     [1, 2, 3].forEach(i => {
         const root = document.getElementById(`boss-set-${i}`);
@@ -1870,7 +1867,6 @@ function processPastedCSV() {
         const select = root.querySelector('.boss-select');
         const name = select ? select.value : ""; 
         if (name) {
-            // 注意：這裡假設 data-part 的值與 CSV 的標題完全一致
             bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
                                      .map(btn => btn.getAttribute('data-part'));
         }
@@ -1887,13 +1883,11 @@ function processPastedCSV() {
             grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         }
 
-        const count = parseNumber(row[cIdx]);
-        const damageVal = parseNumber(row[dIdx]);
-
-        // 1. 攻擊次數：直接賦值，不累加 (符合你的要求)
-        grouped[pName].count = count; 
+        // 1. 攻擊次數：直接 +1，偵測玩家名字出現了幾次
+        grouped[pName].count += 1; 
 
         // 2. 總傷害：累加
+        const damageVal = parseNumber(row[dIdx]);
         grouped[pName].total += damageVal; 
 
         // 3. 誤傷判定：只檢查勾選的部位
@@ -1902,12 +1896,12 @@ function processPastedCSV() {
 
         csvHeaders.forEach((header, idx) => {
             // 跳過非傷害欄位
-            if (idx === pIdx || idx === bIdx || idx === cIdx || idx === dIdx) return;
+            if (idx === pIdx || idx === bIdx || idx === dIdx) return;
             
             const val = parseNumber(row[idx]);
             if (val <= 0) return;
 
-            // 嚴格判定：只有該 header 在該 Boss 的 bannedParts 清單中，才算誤傷
+            // 嚴格判定
             if (bannedParts.includes(header)) {
                 grouped[pName].accident += val; 
             }
@@ -1917,7 +1911,7 @@ function processPastedCSV() {
     // 計算平均與誤傷率
     analysisData = Object.values(grouped).map(p => ({
         ...p,
-        // 平均傷害 = 總傷害 / 攻擊次數
+        // 均傷 = 總傷害 / 攻擊次數
         avg: p.count > 0 ? (p.total / p.count) : 0,
         accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
     }));

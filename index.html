@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Tap Titans 2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- 請確認這兩個外部 JS 檔案存在於您的專案中 -->
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
 
@@ -56,10 +55,16 @@
         .nav-tabs { display: flex; width: 100%; }
         .tab-btn {
             flex: 1; padding: 10px 0 14px 0; text-align: center;
-            color: #bfa89e; font-weight: bold; font-size: 13px;
-            border: none; background: none; cursor: pointer;
+            font-weight: bold; font-size: 13px;
+            border: none; cursor: pointer;
             transition: all 0.3s; position: relative;
         }
+        /* 各分頁 tab 顏色 */
+        #tab-burst   { background-color: #8b263e; color: rgba(255,255,255,0.7); }
+        #tab-torment { background-color: #4a148c; color: rgba(255,255,255,0.7); }
+        #tab-support { background-color: #2e7d32; color: rgba(255,255,255,0.7); }
+        #tab-analysis { background-color: #0d47a1; color: rgba(255,255,255,0.7); }
+
         .tab-btn.active { color: #ffffff; }
         .tab-btn.active::after {
             content: ''; position: absolute; bottom: 0; left: 10%; width: 80%;
@@ -196,10 +201,10 @@
             background: #ffffff;
             border: 1px solid #c9ddf2;
             border-radius: 8px;
-            padding: 7px 6px; /* 微調以適應5個欄位 */
+            padding: 7px 6px;
             text-align: center;
             flex: 1;
-            min-width: 60px; /* 微調以適應5個欄位 */
+            min-width: 60px;
             box-sizing: border-box;
         }
         .summary-card .num { font-size: 15px; font-weight: 900; color: #0d47a1; }
@@ -212,7 +217,7 @@
             -webkit-overflow-scrolling: touch;
             border-radius: 8px;
             box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-            margin-bottom: 220px;
+            margin-bottom: 20px;
         }
         .analysis-table {
             width: 100%;
@@ -260,10 +265,8 @@
             background-repeat: no-repeat;
             background-position: right 8px center;
             background-size: 10px 7px;
-            
             width: 160px;           
             min-width: 140px;
-            
             text-align: center;
             text-align-last: center;
         }
@@ -541,83 +544,120 @@
             background-color: #e8e0d5;
         }
 
-        /* ── 卡片池容器 ── */
-        #pool-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
+        /* ── 截圖專用雙欄版型 ── */
+        .screenshot-layout {
+            display: none;
+        }
+        .screenshot-layout.two-col {
+            display: flex !important;
+            flex-direction: row;
+            gap: 8px;
             width: 100%;
-            background: rgba(90, 74, 66, 0.98);
-            padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px)) 10px;
-            box-sizing: border-box;
+        }
+        .screenshot-col {
+            flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 5px;
-            z-index: 1000;
-            box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
-            height: calc(92px + env(safe-area-inset-bottom, 0px));
-            transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
+            gap: 3px;
         }
-        #pool-container.expanded {
-            height: calc(230px + env(safe-area-inset-bottom, 0px));
-        }
-        .pool-title-area {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            color: #f4ece1;
-            font-weight: bold;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .pool-title {
-            font-size: 13px;
-            letter-spacing: 1px;
-        }
-        .pool-subtitle {
-            font-size: 10px;
-            color: #bfa89e;
-            font-weight: normal;
-        }
-        .pool-scroll {
-            flex: 1;
-            overflow-x: auto;
-            overflow-y: hidden;
-            display: flex;
-            gap: 8px;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-x;
-            scrollbar-width: none;
-        }
-        .pool-scroll::-webkit-scrollbar { display: none; }
-        #pool-container.expanded .pool-scroll {
-            display: grid;
-            grid-template-columns: repeat(14, 58px);
-            grid-auto-rows: 58px;
-            gap: 8px;
-            overflow-x: auto;
-            overflow-y: hidden;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-x;
-        }
-        .draggable-thumb {
-            width: 58px;
-            height: 58px;
-            min-width: 58px;
-            border-radius: 6px;
-            object-fit: cover;
-            user-select: none;
-            -webkit-user-drag: none;
-        }
-        .drag-clone {
+
+        /* ── 儲存指示器 ── */
+        .save-indicator {
             position: fixed;
-            width: 58px;
-            height: 58px;
-            border-radius: 6px;
-            object-fit: cover;
-            opacity: 0.85;
+            top: 85px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
             pointer-events: none;
-            z-index: 10000;
+        }
+        .save-indicator.show {
+            opacity: 1;
+        }
+
+        #result-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 10000;
+            justify-content: center; align-items: center; flex-direction: column;
+            padding: 20px; box-sizing: border-box;
+        }
+        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+        #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
+        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+
+        body.drag-active {
+            overflow: hidden !important;
+            overscroll-behavior: none;
+            touch-action: none;
+        }
+        .nav-header {
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+        
+        /* Boss 設定區區塊 */
+        .boss-config-container {
+            background-color: #f9fbfd;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .boss-config-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 12px;
+        }
+        .boss-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .boss-row:last-child { border-bottom: none; }
+
+        .boss-select {
+            padding: 6px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+
+        .pill-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .pill-btn {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            background-color: #ffffff;
+            color: #64748b;
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        .pill-btn.active {
+            background-color: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            font-weight: bold;
         }
 
         .btn-clear-all {
@@ -661,108 +701,6 @@
             box-shadow: 0 1px 2px rgba(0,0,0,0.2);
             filter: brightness(0.9);
         }
-
-        .save-indicator {
-            position: fixed;
-            top: 85px;
-            right: 10px;
-            background: rgba(0,0,0,0.7);
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            z-index: 999;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            pointer-events: none;
-        }
-        .save-indicator.show {
-            opacity: 1;
-        }
-
-        #result-modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 10000;
-            justify-content: center; align-items: center; flex-direction: column;
-            padding: 20px; box-sizing: border-box;
-        }
-        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
-        #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
-        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
-
-        body.drag-active {
-            overflow: hidden !important;
-            overscroll-behavior: none;
-            touch-action: none;
-        }
-        .nav-header, #pool-container {
-            will-change: transform;
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-        }
-        
-/* Boss 設定區區塊 */
-.boss-config-container {
-    background-color: #f9fbfd;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 15px;
-    margin-bottom: 20px;
-}
-.boss-config-title {
-    font-size: 16px;
-    font-weight: bold;
-    color: #2d3748;
-    margin-bottom: 12px;
-}
-/* 修改後的 Boss 橫向排列樣式 */
-.boss-row {
-    display: flex;
-    flex-wrap: wrap; /* 螢幕寬度不足時，膠囊會自動往下排 */
-    align-items: center; /* 讓下拉選單和膠囊垂直置中對齊 */
-    gap: 10px;
-    padding: 12px 0;
-    border-bottom: 1px dashed #e2e8f0;
-}
-.boss-row:last-child { border-bottom: none; }
-
-/* 下拉選單樣式 */
-.boss-select {
-    padding: 6px 10px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 14px;
-    min-width: 120px;
-    flex-shrink: 0; /* 確保選單不會被壓縮 */
-}
-
-/* 膠囊容器：佔據剩下的空間 */
-.pill-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    flex: 1; /* 讓容器自動填滿剩餘寬度 */
-}
-
-/* 膠囊按鈕保持不變 */
-.pill-btn {
-    display: inline-block;
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 1px solid #cbd5e1;
-    background-color: #ffffff;
-    color: #64748b;
-    font-size: 13px;
-    cursor: pointer;
-    user-select: none;
-    transition: all 0.2s ease;
-}
-.pill-btn.active {
-    background-color: #ef4444;
-    color: #ffffff;
-    border-color: #ef4444;
-    font-weight: bold;
-}
     </style>
 </head>
 <body>
@@ -770,9 +708,10 @@
     <div class="nav-header">
         <div class="nav-title">Tap Titans 2</div>
         <div class="nav-tabs">
-            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)">突襲配卡-爆裂場</button>
-            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)">突襲配卡-苦痛場</button>
-            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)">突襲配卡-支援場</button>
+            <!-- 需求2：標題改為爆裂/苦痛/支援，顏色與儲存圖片按鈕一致 -->
+            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)">爆裂</button>
+            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)">苦痛</button>
+            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)">支援</button>
             <button class="tab-btn"        id="tab-analysis" onclick="switchPage(3)">突襲分析</button>
         </div>
     </div>
@@ -782,10 +721,10 @@
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
 
+            <!-- 爆裂場 -->
             <div class="page-view" id="page-burst">
                 <div class="export-area" id="export-burst">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <h1>突襲配卡 - 爆裂場</h1>
                         <select class="boss-select-burst" id="boss-select-burst">
                             <option value="">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
@@ -802,14 +741,17 @@
                         <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;">一鍵清除所有牌組</button>
                         <button class="btn-download" onclick="generateImage('burst')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
                     </div>
+                    <!-- 瀏覽版（正常顯示） -->
                     <div class="pyramid-container" id="container-burst"></div>
+                    <!-- 截圖版（截圖時才啟用） -->
+                    <div class="screenshot-layout" id="screenshot-burst"></div>
                 </div>
             </div>
 
+            <!-- 苦痛場 -->
             <div class="page-view" id="page-torment">
                 <div class="export-area" id="export-torment">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <h1>突襲配卡 - 苦痛場</h1>
                         <select class="boss-select-torment" id="boss-select-torment">
                             <option value="">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
@@ -827,13 +769,14 @@
                         <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-torment"></div>
+                    <div class="screenshot-layout" id="screenshot-torment"></div>
                 </div>
             </div>
 
+            <!-- 支援場 -->
             <div class="page-view" id="page-support">
                 <div class="export-area" id="export-support">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <h1>突襲配卡 - 支援場</h1>
                         <select class="boss-select-support" id="boss-select-support">
                             <option value="">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
@@ -851,94 +794,95 @@
                         <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-support"></div>
+                    <div class="screenshot-layout" id="screenshot-support"></div>
                 </div>
             </div>
 
+            <!-- 突襲分析（需求1：移除卡片池功能區段） -->
             <div class="page-view" id="page-analysis">
                 <div class="export-area" id="export-analysis">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <h1>突襲分析</h1>
+                        <!-- 需求2：標題「突襲配卡」已移除，只保留頁面名稱 -->
                     </div>
 
                     <div class="analysis-toolbar" style="flex-direction: column;">
 
-<div class="boss-config-container">
-    <div class="boss-config-title">Boss 禁打部位 (最多 3 組)</div>
-    
-    <div class="boss-row" id="boss-set-1">
-        <select class="boss-select">
-            <option value="">選擇 Boss</option>
-            <option value="Jukk">Jukk</option>
-            <option value="Klonk">Klonk</option>
-            <option value="Lojak">Lojak</option>
-            <option value="Mohaca">Mohaca</option>
-            <option value="Priker">Priker</option>
-            <option value="Sterl">Sterl</option>
-            <option value="Takedar">Takedar</option>
-            <option value="Terro">Terro</option>
-        </select>
-        <div class="pill-container">
-            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
-        </div>
-    </div>
-    
-    <div class="boss-row" id="boss-set-2">
-        <select class="boss-select">
-            <option value="">選擇 Boss</option>
-            <option value="Jukk">Jukk</option>
-            <option value="Klonk">Klonk</option>
-            <option value="Lojak">Lojak</option>
-            <option value="Mohaca">Mohaca</option>
-            <option value="Priker">Priker</option>
-            <option value="Sterl">Sterl</option>
-            <option value="Takedar">Takedar</option>
-            <option value="Terro">Terro</option>
-        </select>
-        <div class="pill-container">
-            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
-        </div>
-    </div>
+                        <div class="boss-config-container">
+                            <div class="boss-config-title">Boss 禁打部位 (最多 3 組)</div>
+                            
+                            <div class="boss-row" id="boss-set-1">
+                                <select class="boss-select" id="analysis-boss-select-1">
+                                    <option value="">選擇 Boss</option>
+                                    <option value="Lojak">Lojak</option>
+                                    <option value="Takedar">Takedar</option>
+                                    <option value="Jukk">Jukk</option>
+                                    <option value="Sterl">Sterl</option>
+                                    <option value="Mohaca">Mohaca</option>
+                                    <option value="Terro">Terro</option>
+                                    <option value="Klonk">Klonk</option>
+                                    <option value="Priker">Priker</option>
+                                </select>
+                                <div class="pill-container">
+                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                </div>
+                            </div>
+                            
+                            <div class="boss-row" id="boss-set-2">
+                                <select class="boss-select" id="analysis-boss-select-2">
+                                    <option value="">選擇 Boss</option>
+                                    <option value="Lojak">Lojak</option>
+                                    <option value="Takedar">Takedar</option>
+                                    <option value="Jukk">Jukk</option>
+                                    <option value="Sterl">Sterl</option>
+                                    <option value="Mohaca">Mohaca</option>
+                                    <option value="Terro">Terro</option>
+                                    <option value="Klonk">Klonk</option>
+                                    <option value="Priker">Priker</option>
+                                </select>
+                                <div class="pill-container">
+                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                </div>
+                            </div>
 
-    <div class="boss-row" id="boss-set-3">
-        <select class="boss-select">
-            <option value="">選擇 Boss</option>
-            <option value="Jukk">Jukk</option>
-            <option value="Klonk">Klonk</option>
-            <option value="Lojak">Lojak</option>
-            <option value="Mohaca">Mohaca</option>
-            <option value="Priker">Priker</option>
-            <option value="Sterl">Sterl</option>
-            <option value="Takedar">Takedar</option>
-            <option value="Terro">Terro</option>
-        </select>
-        <div class="pill-container">
-            <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-            <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-            <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-            <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-            <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-            <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-            <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-            <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
-        </div>
-    </div>
-</div>
+                            <div class="boss-row" id="boss-set-3">
+                                <select class="boss-select" id="analysis-boss-select-3">
+                                    <option value="">選擇 Boss</option>
+                                    <option value="Lojak">Lojak</option>
+                                    <option value="Takedar">Takedar</option>
+                                    <option value="Jukk">Jukk</option>
+                                    <option value="Sterl">Sterl</option>
+                                    <option value="Mohaca">Mohaca</option>
+                                    <option value="Terro">Terro</option>
+                                    <option value="Klonk">Klonk</option>
+                                    <option value="Priker">Priker</option>
+                                </select>
+                                <div class="pill-container">
+                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                </div>
+                            </div>
+                        </div>
 
-                        
                         <textarea id="csv-text-input" 
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
                                   placeholder="請將 CSV 內容直接貼上此處..."></textarea>
@@ -958,22 +902,23 @@
                     </div>
 
                     <div id="analysis-result-wrap" style="display:none; width:100%;">
-    <div class="analysis-summary" id="analysis-summary"></div>
-    <div class="analysis-table-wrap">
-        <table class="analysis-table" id="analysis-table">
-            <thead>
-                <tr>
-                    <th onclick="sortAnalysisBy('player')">玩家</th>
-                    <th onclick="sortAnalysisBy('count')">次數</th>
-                    <th onclick="sortAnalysisBy('accident')">誤傷</th>
-                    <th onclick="sortAnalysisBy('total')">總傷</th>
-                    <th onclick="sortAnalysisBy('avg')">均傷</th>
-                </tr>
-            </thead>
-            <tbody id="analysis-tbody"></tbody>
-        </table>
-    </div>
-</div>
+                        <div class="analysis-summary" id="analysis-summary"></div>
+                        <div class="analysis-table-wrap">
+                            <table class="analysis-table" id="analysis-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortAnalysisBy('player')">玩家</th>
+                                        <th onclick="sortAnalysisBy('count')">次數</th>
+                                        <!-- 需求4：誤傷改為誤傷率 -->
+                                        <th onclick="sortAnalysisBy('accidentRate')">誤傷率</th>
+                                        <th onclick="sortAnalysisBy('total')">總傷</th>
+                                        <th onclick="sortAnalysisBy('avg')">均傷</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analysis-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
 
                 </div>
             </div>
@@ -981,13 +926,7 @@
         </div>
     </div>
 
-    <div id="pool-container">
-        <div class="pool-title-area">
-            <span class="pool-title">卡片池</span>
-            <span class="pool-subtitle" id="pool-subtitle">（點一下展開）</span>
-        </div>
-        <div class="pool-scroll" id="pool-scroll"></div>
-    </div>
+    <!-- 需求1：移除卡片池 pool-container -->
 
     <div id="result-modal">
         <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
@@ -1014,26 +953,21 @@
                         label: tierRow.querySelector('.label-custom-input').value,
                         blocks: []
                     };
-
                     tierRow.querySelectorAll('.grid-block').forEach(block => {
                         const blockData = {
                             parts: [],
                             type: block.querySelector('.check-select').value,
                             cards: []
                         };
-
                         block.querySelectorAll('.part-tag.active').forEach(tag => {
                             blockData.parts.push(tag.textContent);
                         });
-
                         block.querySelectorAll('.drop-zone').forEach(zone => {
                             const img = zone.querySelector('img');
                             blockData.cards.push(img ? img.src : null);
                         });
-
                         tierData.blocks.push(blockData);
                     });
-
                     tiers.push(tierData);
                 });
                 data[containerId] = tiers;
@@ -1044,23 +978,17 @@
         function restoreState() {
             const saved = localStorage.getItem(STORAGE_KEY);
             if (!saved) return;
-
             try {
                 const data = JSON.parse(saved);
                 ['container-burst', 'container-torment', 'container-support'].forEach(containerId => {
                     const container = document.getElementById(containerId);
                     const savedTiers = data[containerId];
                     if (!savedTiers) return;
-
                     const tierRows = container.querySelectorAll('.tier-row');
                     savedTiers.forEach((tierData, tierIdx) => {
                         const tierRow = tierRows[tierIdx];
                         if (!tierRow) return;
-
-                        // 恢復備註
                         tierRow.querySelector('.label-custom-input').value = tierData.label || '';
-
-                        // 調整區塊數量
                         const gridSection = tierRow.querySelector('.grid-section');
                         while (gridSection.querySelectorAll('.grid-block').length < tierData.blocks.length) {
                             gridSection.appendChild(createGridBlock());
@@ -1068,25 +996,17 @@
                         while (gridSection.querySelectorAll('.grid-block').length > tierData.blocks.length) {
                             gridSection.removeChild(gridSection.lastChild);
                         }
-
-                        // 恢復每個區塊的資料
                         const blocks = gridSection.querySelectorAll('.grid-block');
                         tierData.blocks.forEach((blockData, blockIdx) => {
                             const block = blocks[blockIdx];
                             if (!block) return;
-
-                            // 恢復部位選擇
                             const customDropdown = block.querySelector('.custom-dropdown');
                             block.querySelectorAll('.part-tag').forEach(tag => {
                                 const isActive = blockData.parts && blockData.parts.includes(tag.textContent);
                                 tag.classList.toggle('active', isActive);
                             });
                             updateSelectedPartsDisplay(customDropdown);
-
-                            // 恢復類型選擇
                             block.querySelector('.check-select').value = blockData.type || '肉甲';
-
-                            // 恢復卡片圖片
                             const zones = block.querySelectorAll('.drop-zone');
                             blockData.cards.forEach((cardSrc, zoneIdx) => {
                                 if (zones[zoneIdx]) {
@@ -1111,13 +1031,9 @@
                 try {
                     const state = serializeState();
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-                    
-                    // 顯示儲存提示
                     const indicator = document.getElementById('save-indicator');
                     indicator.classList.add('show');
-                    setTimeout(() => {
-                        indicator.classList.remove('show');
-                    }, 1500);
+                    setTimeout(() => { indicator.classList.remove('show'); }, 1500);
                 } catch (e) {
                     console.error('儲存失敗:', e);
                 }
@@ -1128,13 +1044,10 @@
         function createGridBlock() {
             const block = document.createElement('div');
             block.className = 'grid-block';
-
             const selectsCol = document.createElement('div');
             selectsCol.className = 'selects-col';
-
             const customDropdown = document.createElement('div');
             customDropdown.className = 'custom-dropdown';
-            
             const trigger = document.createElement('button');
             trigger.className = 'dropdown-trigger';
             trigger.type = 'button';
@@ -1146,10 +1059,8 @@
                 });
                 customDropdown.classList.toggle('open');
             });
-            
             const dropdownContent = document.createElement('div');
             dropdownContent.className = 'dropdown-content';
-            
             ['全部位', '任一單部位', '頭', '肚', '手', '腳'].forEach((text, idx) => {
                 const btn = document.createElement('button');
                 btn.className = 'part-tag' + (idx === 0 ? ' active' : '');
@@ -1162,11 +1073,9 @@
                 });
                 dropdownContent.appendChild(btn);
             });
-            
             customDropdown.appendChild(trigger);
             customDropdown.appendChild(dropdownContent);
             selectsCol.appendChild(customDropdown);
-
             const typeSel = document.createElement('select');
             typeSel.className = 'check-select';
             ['肉甲','肉','甲'].forEach(opt => {
@@ -1176,10 +1085,8 @@
             });
             typeSel.addEventListener('change', autoSave);
             selectsCol.appendChild(typeSel);
-
             const cardsCol = document.createElement('div');
             cardsCol.className = 'cards-col';
-
             for (let i = 0; i < 3; i++) {
                 const zone = document.createElement('div');
                 zone.className = 'drop-zone';
@@ -1188,15 +1095,12 @@
                 setupZoneTouchClear(zone);
                 cardsCol.appendChild(zone);
             }
-
             const row = document.createElement('div');
             row.className = 'block-row';
             row.appendChild(selectsCol);
             row.appendChild(cardsCol);
-
             block.appendChild(row);
             updateSelectedPartsDisplay(customDropdown);
-            
             return block;
         }
 
@@ -1204,7 +1108,6 @@
             const dropdownContent = tag.parentNode;
             const customDropdown = dropdownContent.parentNode;
             const text = tag.textContent;
-
             if (text === '全部位' || text === '任一單部位') {
                 if (!tag.classList.contains('active')) {
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => b.classList.remove('active'));
@@ -1215,9 +1118,7 @@
             } else {
                 if (!tag.classList.contains('active')) {
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => {
-                        if (b.textContent === '全部位' || b.textContent === '任一單部位') {
-                            b.classList.remove('active');
-                        }
+                        if (b.textContent === '全部位' || b.textContent === '任一單部位') b.classList.remove('active');
                     });
                     tag.classList.add('active');
                 } else {
@@ -1230,7 +1131,6 @@
         function updateSelectedPartsDisplay(dropdownEl) {
             const trigger = dropdownEl.querySelector('.dropdown-trigger');
             const activeTags = Array.from(dropdownEl.querySelectorAll('.part-tag.active')).map(btn => btn.textContent);
-            
             trigger.innerHTML = '';
             if (activeTags.length === 0) {
                 trigger.textContent = '部位 ▾';
@@ -1266,12 +1166,9 @@
                             <button class="btn-action del" onclick="removeLastGridBlock(this)">－</button>
                         </div>
                     </div>`;
-                
-                // 添加備註輸入事件監聽
                 const memoInput = tierRow.querySelector('.label-custom-input');
                 memoInput.addEventListener('change', autoSave);
                 memoInput.addEventListener('input', autoSave);
-                
                 tierRow.querySelector('.grid-section').appendChild(createGridBlock());
                 container.appendChild(tierRow);
             }
@@ -1333,37 +1230,19 @@
         initTiers('container-torment');
         initTiers('container-support');
 
-        /* ── 卡片池初始化 ── */
-                /* ── 卡片池初始化 ── */
+        /* ── DOMContentLoaded ── */
         window.addEventListener('DOMContentLoaded', () => {
-            // 強制回到頂部，解決瀏覽器記憶捲動位置的問題
             window.scrollTo(0, 0);
-            
-            // 先恢復儲存的資料
             restoreState();
             restoreAnalysisState();
 
-            
-            const poolScroll = document.getElementById('pool-scroll');
-            if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
-                const ROW_SIZE = 14;
-                const rows = [
-                    PRESET_CARDS.slice(0, ROW_SIZE),
-                    PRESET_CARDS.slice(ROW_SIZE, ROW_SIZE * 2),
-                    PRESET_CARDS.slice(ROW_SIZE * 2, ROW_SIZE * 3)
-                ];
-                rows.forEach(row => {
-                    row.forEach(src => {
-                        if (!src || src.trim() === '') return;
-                        const img = document.createElement('img');
-                        img.src = src;
-                        img.className = 'draggable-thumb';
-                        setupTouchDrag(img);
-                        poolScroll.appendChild(img);
-                    });
-                });
-            }
+            // 需求1：不再初始化卡片池
             switchPage(0);
+
+            // 膠囊按鈕點擊
+            document.querySelectorAll('.pill-btn').forEach(btn => {
+                btn.addEventListener('click', function() { this.classList.toggle('active'); });
+            });
         });
 
         /* ── Swiper ── */
@@ -1372,8 +1251,6 @@
         const tabTorment  = document.getElementById('tab-torment');
         const tabSupport  = document.getElementById('tab-support');
         const tabAnalysis = document.getElementById('tab-analysis');
-        const poolContainer = document.getElementById('pool-container');
-        const poolSubtitle  = document.getElementById('pool-subtitle');
         const TOTAL_PAGES = 4;
 
         let currentPage = 0;
@@ -1402,7 +1279,6 @@
             let base = -currentPage * swiperWidth;
             let target = base + deltaX;
             const maxOffset = -(TOTAL_PAGES - 1) * swiperWidth;
-            // 阻尼效果
             if (target > 0) target = deltaX / (1 + deltaX / (swiperWidth * 0.6));
             else if (target < maxOffset) { const ov = target - maxOffset; target = maxOffset + ov / (1 + Math.abs(ov) / (swiperWidth * 0.6)); }
             translateX = target;
@@ -1430,240 +1306,51 @@
 
         window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
 
-        /* ── 卡片池點擊事件（包含自動收合） ── */
-        let poolAutoCollapseTimer = null;
-
-        // 重新計算 10 秒自動收合倒數：只要卡片池目前是展開狀態，
-        // 呼叫這個函式就會清掉舊的倒數、重新倒數 10 秒。
-        // 只要在這 10 秒內又呼叫一次（例如又有拖曳動作），就會繼續往後延，
-        // 真正做到「連續 10 秒沒有任何拖曳動作」才自動收合。
-        function resetPoolAutoCollapseTimer() {
-            clearTimeout(poolAutoCollapseTimer);
-            if (!poolContainer.classList.contains('expanded')) return;
-            poolAutoCollapseTimer = setTimeout(() => {
-                poolContainer.classList.remove('expanded');
-                poolSubtitle.innerText = '（點一下展開）';
-                poolAutoCollapseTimer = null;
-            }, 10000);
-        }
-
-        poolContainer.addEventListener('click', function(e) {
-            if (isDraggingCard || isDraggingGlobal) return;
+        /* ── 需求3：截圖雙欄版型 ──
+           截圖前建立左右欄，1-25在左、26-50在右（依玩家排名），截圖後還原 */
+        function buildScreenshotLayout(type, sortedRows) {
+            const screenshotEl = document.getElementById(`screenshot-${type}`);
+            const normalEl = document.getElementById(`container-${type}`);
             
-            const isExpanding = !poolContainer.classList.contains('expanded');
+            // 取 pyramid-container 的所有 tier-row
+            const tierRows = Array.from(normalEl.querySelectorAll('.tier-row'));
+            const total = tierRows.length;
+            const half = Math.ceil(total / 2);
             
-            if (isExpanding) {
-                // 展開卡片池，啟動 10 秒自動收合倒數
-                poolContainer.classList.add('expanded');
-                poolSubtitle.innerText = '（點一下收合）';
-                resetPoolAutoCollapseTimer();
-            } else {
-                // 手動收合
-                clearTimeout(poolAutoCollapseTimer);
-                poolAutoCollapseTimer = null;
-                poolContainer.classList.remove('expanded');
-                poolSubtitle.innerText = '（點一下展開）';
-            }
-        });
-
-        document.addEventListener('click', function(e) {
-            if (!poolContainer.contains(e.target)) {
-                clearTimeout(poolAutoCollapseTimer);
-                poolAutoCollapseTimer = null;
-                poolContainer.classList.remove('expanded');
-                poolSubtitle.innerText = '（點一下展開）';
-            }
-        });
-
-        poolContainer.addEventListener('touchmove', function(e) {
-            if (!isDraggingCard) e.stopPropagation();
-        }, { passive: true });
-
-
-        /* ── 拖曳系統 ── */
-        let clone = null, activeSrc = '';
-        let touchStartPos = { x: 0, y: 0 };
-        let gestureMode = null;
-        let scrollTimer = null, scrollSpeed = 0;
-        let cachedZones = [], lastHoveredZone = null;
-        let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
-        
-        function cancelDrag() {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-            stopAutoScroll();
-            // 恢復 overflow
-            document.body.style.overflow = '';
-            document.body.style.overflowY = '';
-            document.body.style.overscrollBehavior = '';
-            if (window._dragScrollY !== undefined) {
-                window.scrollTo(0, window._dragScrollY);
-            }
-            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
-            clone = null;
-            if (lastHoveredZone) {
-                lastHoveredZone.classList.remove('drag-hover');
-                lastHoveredZone = null;
-            }
-            isDraggingCard = false;
-            isDraggingGlobal = false;
-            gestureMode = null;
-            void document.body.offsetHeight;
-        }
-
-        function updateZonesCache() {
-            cachedZones = [];
-            const activePageId = ['page-burst', 'page-torment', 'page-support', 'page-analysis'][currentPage];
-            document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
-                const r = zone.getBoundingClientRect();
-                cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
+            // 隱藏正常版
+            normalEl.style.display = 'none';
+            
+            // 清空截圖版並建立雙欄
+            screenshotEl.innerHTML = '';
+            screenshotEl.className = 'screenshot-layout two-col';
+            
+            const leftCol = document.createElement('div');
+            leftCol.className = 'screenshot-col';
+            const rightCol = document.createElement('div');
+            rightCol.className = 'screenshot-col';
+            
+            tierRows.forEach((row, idx) => {
+                const clone = row.cloneNode(true);
+                // 移除最後一個 tier-row 的 margin-bottom
+                clone.style.marginBottom = '0';
+                if (idx < half) {
+                    leftCol.appendChild(clone);
+                } else {
+                    rightCol.appendChild(clone);
+                }
             });
+            
+            screenshotEl.appendChild(leftCol);
+            screenshotEl.appendChild(rightCol);
         }
 
-        function findZone(x, y) {
-            for (const z of cachedZones) {
-                if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el;
-            }
-            return null;
+        function restoreNormalLayout(type) {
+            const screenshotEl = document.getElementById(`screenshot-${type}`);
+            const normalEl = document.getElementById(`container-${type}`);
+            screenshotEl.className = 'screenshot-layout'; // 隱藏截圖版
+            screenshotEl.innerHTML = '';
+            normalEl.style.display = ''; // 還原正常版
         }
-
-        function startAutoScroll() {
-            if (scrollTimer) return;
-            scrollTimer = setInterval(() => {
-                if (gestureMode !== "drag" || scrollSpeed === 0) return;
-                const maxY = document.documentElement.scrollHeight - window.innerHeight;
-                if (scrollSpeed < 0 && window.scrollY <= 0) return;
-                if (scrollSpeed > 0 && window.scrollY >= maxY) return;
-                window.scrollBy(0, scrollSpeed);
-                const target = findZone(currentTouchX, currentTouchY);
-                if (target !== lastHoveredZone) {
-                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                    if (target) target.classList.add('drag-hover');
-                    lastHoveredZone = target;
-                }
-            }, 30);
-        }
-
-        function stopAutoScroll() { 
-            clearInterval(scrollTimer); 
-            scrollTimer = null; 
-            scrollSpeed = 0; 
-        }
-
-        function triggerDrag(el) {
-            if (isDraggingCard) return;
-            isDraggingCard = true;
-            isDraggingGlobal = true;
-            gestureMode = "drag";
-
-            document.body.style.overflow = 'hidden';
-            document.body.style.overflowY = 'hidden';
-            document.body.style.overscrollBehavior = 'none';
-            window._dragScrollY = window.scrollY;
-
-            updateZonesCache();
-            lastHoveredZone = null;
-
-            clone = el.cloneNode(true);
-            clone.className = 'drag-clone';
-            clone.style.left = currentTouchX - 29 + 'px';
-            clone.style.top  = currentTouchY - 29 + 'px';
-            document.body.appendChild(clone);
-        }
-
-        function setupTouchDrag(el) {
-            el.addEventListener('touchstart', (e) => {
-                if (isDraggingCard) cancelDrag();
-                const t = e.touches[0];
-                touchStartPos.x = t.clientX;
-                touchStartPos.y = t.clientY;
-                currentTouchX = t.clientX;
-                currentTouchY = t.clientY;
-                activeSrc = el.src;
-                gestureMode = null;
-                resetPoolAutoCollapseTimer(); // 觸碰卡片視為操作，重新倒數 10 秒
-                longPressTimer = setTimeout(() => {
-                    if (!gestureMode) {
-                        isSwiping = false;
-                        triggerDrag(el);
-                    }
-                }, 350); // 長按 350ms 觸發拖曳
-            }, { passive: true });
-
-            el.addEventListener('touchmove', (e) => {
-                const t = e.touches[0];
-                currentTouchX = t.clientX;
-                currentTouchY = t.clientY;
-                const dx = currentTouchX - touchStartPos.x;
-                const dy = currentTouchY - touchStartPos.y;
-
-                if (!gestureMode) {
-                    // 判斷是滑動還是拖曳
-                    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
-                        gestureMode = "scroll";
-                        clearTimeout(longPressTimer);
-                        return;
-                    }
-                    if (dy < -15 && Math.abs(dx) < 20) { // 上拉拖曳
-                        clearTimeout(longPressTimer);
-                        isSwiping = false;
-                        triggerDrag(el);
-                        return;
-                    }
-                    return;
-                }
-
-                if (gestureMode === "scroll") return;
-                if (e.cancelable) e.preventDefault();
-
-                resetPoolAutoCollapseTimer(); // 拖曳進行中持續重新倒數，避免拖到一半被收合
-
-                requestAnimationFrame(() => {
-                    if (clone) {
-                        clone.style.left = currentTouchX - 29 + 'px';
-                        clone.style.top  = currentTouchY - 29 + 'px';
-                    }
-                });
-
-                // 自動捲軸邊界判斷
-                const h = window.innerHeight;
-                const top = 120;
-                const bottom = h - 120;
-                if (currentTouchY < top) scrollSpeed = -8;
-                else if (currentTouchY > bottom) scrollSpeed = 8;
-                else scrollSpeed = 0;
-
-                // 高亮目標區域
-                const zone = findZone(currentTouchX, currentTouchY);
-                if (zone !== lastHoveredZone) {
-                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
-                    if (zone) zone.classList.add('drag-hover');
-                    lastHoveredZone = zone;
-                }
-            }, { passive: false });
-
-            el.addEventListener('touchend', () => {
-                clearTimeout(longPressTimer);
-                
-                if (isDraggingCard) {
-                    updateZonesCache();
-                    const drop = findZone(currentTouchX, currentTouchY);
-                    if (drop) {
-                        drop.innerHTML = `<img src="${activeSrc}">`;
-                        autoSave();
-                    }
-                    resetPoolAutoCollapseTimer(); // 拖曳結束（無論是否放入），重新倒數 10 秒
-                }
-                
-                cancelDrag();
-            });
-
-            el.addEventListener('touchcancel', cancelDrag);
-        }
-
-        document.addEventListener('touchstart', function() { 
-            if (!isDraggingCard && clone) cancelDrag(); 
-        }, { passive: true });
 
         /* ── 圖片產出 ── */
         function generateImage(type) {
@@ -1674,13 +1361,8 @@
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
 
-            // 儲存原始樣式
-            const originalMargin = [];
-            const lastTiers = exportArea.querySelectorAll('.pyramid-container > .tier-row:last-child');
-            lastTiers.forEach(tier => {
-                originalMargin.push(tier.style.marginBottom);
-                tier.style.marginBottom = '10px';
-            });
+            // 建立截圖雙欄版型
+            buildScreenshotLayout(type);
 
             exportArea.querySelectorAll('.label-custom-input').forEach(input => 
                 input.setAttribute('value', input.value)
@@ -1699,27 +1381,23 @@
                         ci.style.border = 'none';
                     });
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
-                    clonedDoc.querySelectorAll('.pyramid-container > .tier-row:last-child').forEach(tier => {
-                        tier.style.marginBottom = '20px';
-                    });
                 }
             }).then(canvas => {
-                // 還原原始樣式
-                lastTiers.forEach((tier, i) => {
-                    tier.style.marginBottom = originalMargin[i] || '';
-                });
+                // 還原正常版型
+                restoreNormalLayout(type);
 
                 imgContainer.innerHTML = '';
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
             }).catch(() => { 
+                restoreNormalLayout(type);
                 alert("生成失敗"); 
                 closeModal(); 
             });
         }
 
-function closeModal() { 
+        function closeModal() { 
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
             setTimeout(() => {
@@ -1730,7 +1408,7 @@ function closeModal() {
             }, 100);
         }
 
-        /* ── Boss 預設與連端 ── */
+        /* ── Boss 預設與連動 ── */
         function applyBossPreset(mode, bossName, containerId) {
             const preset = (typeof BOSS_PRESETS !== 'undefined') && BOSS_PRESETS?.[bossName]?.[mode];
             if (!preset) return;
@@ -1739,22 +1417,16 @@ function closeModal() {
                 const tier = tiers[i];
                 if (!tier) return;
                 tier.querySelector('.label-custom-input').value = group.label;
-
                 const partTagMap = {'全部位':'全部位','全':'全部位','任一單部位':'任一單部位','單':'任一單部位','頭':'頭','肚':'肚','手':'手','腳':'腳'};
                 tier.querySelectorAll('.part-tag').forEach(tag => {
                     const matched = group.parts && group.parts.some(p => partTagMap[p] === tag.textContent || p === tag.textContent);
                     tag.classList.toggle('active', !!matched);
                 });
-
                 tier.querySelectorAll('.custom-dropdown').forEach(dropdown => {
                     updateSelectedPartsDisplay(dropdown);
                 });
-
                 const typeSel = tier.querySelector('.check-select');
-                if (typeSel && group.type) {
-                    typeSel.value = group.type;
-                }
-
+                if (typeSel && group.type) typeSel.value = group.type;
                 const zones = tier.querySelectorAll('.drop-zone');
                 group.cards.forEach((card, idx) => {
                     if (zones[idx]) zones[idx].innerHTML = `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
@@ -1773,9 +1445,9 @@ function closeModal() {
             applyBossPreset('support', this.value, 'container-support');
         });
 
-        /* ════════════════════════════════════════
-           突襲分析 - CSV 匯入與數據計算 (修正版)
-           ════════════════════════════════════════ */
+        /* ══════════════════════════════════════════════════════════
+           突襲分析 - CSV 匯入與數據計算
+           ══════════════════════════════════════════════════════════ */
         const ANALYSIS_STORAGE_KEY = 'tt2_analysis_data_v3';
 
         let csvHeaders = [];
@@ -1784,60 +1456,45 @@ function closeModal() {
         let analysisSortKey = 'total';
         let analysisSortDir = -1;
 
-        /* CSV 解析（支援含逗號 / 換行的引號欄位） */
+        // Boss 順序定義（需求5）
+        // Slot 1: Lojak, Takedar, Jukk
+        // Slot 2: Sterl, Mohaca, Terro
+        // Slot 3: Klonk, Priker
+        const BOSS_SLOT_ORDER = [
+            ['Lojak', 'Takedar', 'Jukk'],
+            ['Sterl', 'Mohaca', 'Terro'],
+            ['Klonk', 'Priker']
+        ];
+
+        /* CSV 解析 */
         function parseCSV(text) {
             text = text.replace(/^\uFEFF/, '');
             const rows = [];
             let row = [];
             let field = '';
             let inQuotes = false;
-
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
                 const next = text[i + 1];
-
                 if (inQuotes) {
                     if (char === '"') {
                         if (next === '"') { field += '"'; i++; }
                         else { inQuotes = false; }
-                    } else {
-                        field += char;
-                    }
+                    } else { field += char; }
                 } else {
-                    if (char === '"') {
-                        inQuotes = true;
-                    } else if (char === ',') {
-                        row.push(field); field = '';
-                    } else if (char === '\r') {
-                        // 忽略，由 \n 統一處理換行
-                    } else if (char === '\n') {
-                        row.push(field); field = '';
-                        rows.push(row); row = [];
-                    } else {
-                        field += char;
-                    }
+                    if (char === '"') { inQuotes = true; }
+                    else if (char === ',') { row.push(field); field = ''; }
+                    else if (char === '\r') { /* ignore */ }
+                    else if (char === '\n') { row.push(field); field = ''; rows.push(row); row = []; }
+                    else { field += char; }
                 }
             }
-            if (field.length > 0 || row.length > 0) {
-                row.push(field);
-                rows.push(row);
-            }
+            if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
             return rows.filter(r => r.some(c => c.trim() !== ''));
-        }
-
-        function guessColumnIndex(headers, keywords) {
-            for (let i = 0; i < headers.length; i++) {
-                const h = (headers[i] || '').toLowerCase();
-                for (const kw of keywords) {
-                    if (h.includes(kw.toLowerCase())) return i;
-                }
-            }
-            return -1;
         }
 
         function parseNumber(val) {
             if (val === undefined || val === null) return 0;
-            // 移除逗號與空白，但保留數字、小數點、負號與科學記號符號(e/E)
             const cleaned = String(val).replace(/[, ]/g, '');
             const n = parseFloat(cleaned);
             return isNaN(n) ? 0 : n;
@@ -1849,198 +1506,272 @@ function closeModal() {
             return div.innerHTML;
         }
 
-                /* 修正後的數值格式化 (支援百萬單位 M，超過 10000M 自動換成十億 B) */
         function formatNum(n) {
-    if (n >= 10000000000) {
-        // 超過 10000M（= 10B）時改用 B（十億）為單位
-        return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-    }
-    if (n >= 1000000) {
-        // toFixed(1) 強制保留一位小數，.replace 移除 .0 的情況
-        return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    }
-    return Math.round(n).toLocaleString('en-US');
-}
+            if (n >= 10000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            return Math.round(n).toLocaleString('en-US');
+        }
 
-        /* 誤傷專用格式化：永遠以 M（百萬）為單位顯示，未滿 1M 也顯示小數，
-           例如 100000 → 0.1M，方便跟總傷害的單位對齊比較；剛好是 0 則直接顯示 0 */
         function formatAccident(n) {
-    if (!n) return '0';
-    if (n >= 10000000000) {
-        return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-    }
-    return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-}
-
-        // 主要處理函式：修正加總邏輯
-                // 主要處理函式：修正加總邏輯
-        // 頁面載入時綁定膠囊按鈕
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll('.pill-btn').forEach(btn => {
-        btn.addEventListener('click', function() { this.classList.toggle('active'); });
-    });
-});
-
-function processPastedCSV() {
-    const rawText = document.getElementById('csv-text-input').value.trim();
-    if (!rawText) return;
-    
-    // 強制讓網頁回到最上方
-    window.scrollTo(0, 0);
-
-    const rows = parseCSV(rawText);
-    if (rows.length < 2) return;
-
-    const csvHeaders = rows[0].map(h => h.trim());
-    const csvRows = rows.slice(1);
-
-    // 識別欄位索引
-    const findIndex = (keyword) => csvHeaders.findIndex(h => h === keyword);
-    const pIdx = findIndex('玩家名稱');
-    const bIdx = findIndex('泰坦名稱');
-    const dIdx = findIndex('泰坦傷害'); 
-    const cIdx = findIndex('總突擊傷害'); // 此欄位名稱雖寫「傷害」，實際內容是攻擊次數（翻譯誤植）
-
-    // 讀取 UI 上的 Boss 禁打部位設定
-    const bossConfigs = {};
-    [1, 2, 3].forEach(i => {
-        const root = document.getElementById(`boss-set-${i}`);
-        if (!root) return;
-        const select = root.querySelector('.boss-select');
-        const name = select ? select.value : ""; 
-        if (name) {
-            bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
-                                     .map(btn => btn.getAttribute('data-part'));
-        }
-    });
-
-    const grouped = {};
-    const parseNumber = (val) => parseFloat(val?.toString().replace(/,/g, '')) || 0;
-
-    csvRows.forEach(row => {
-        // 確保該行有實際資料才處理
-        if(!row || row.length === 0) return; 
-        
-        const pName = (row[pIdx] || '').trim();
-        if (!pName) return;
-        
-        if (!grouped[pName]) {
-            grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
+            if (!n) return '0';
+            if (n >= 10000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+            return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
         }
 
-        // 1. 攻擊次數：「總突擊傷害」欄位本身就是該玩家整場累計的總次數
-        //    （即使同一玩家打多隻泰坦、出現多列，這個值在每列都是重複的同一個總數）
-        //    所以這裡是「取值」而非「逐列加總」，避免變成 18+18+18 的重複疊加
-        if (cIdx >= 0) {
-            const hitCount = parseNumber(row[cIdx]);
-            grouped[pName].count = Math.max(grouped[pName].count, hitCount);
-        } else {
-            // 找不到該欄位時，退回成每列 +1（避免欄位名稱不同時整個壞掉）
-            grouped[pName].count += 1;
-        }
-
-        // 2. 總傷害：累加
-        const damageVal = parseNumber(row[dIdx]);
-        grouped[pName].total += damageVal; 
-
-        // 3. 誤傷判定：只檢查勾選的部位
-        const bossName = (row[bIdx] || '').trim();
-        const bannedParts = bossConfigs[bossName] || [];
-
-        csvHeaders.forEach((header, idx) => {
-            // 跳過非傷害欄位
-            if (idx === pIdx || idx === bIdx || idx === dIdx || idx === cIdx) return;
+        /* ── 需求5：自動偵測 CSV 中的 Boss，依序填入下拉選單 ── */
+        function autoDetectBossesFromCSV(csvRows, bossColIdx) {
+            if (bossColIdx < 0) return;
             
-            const val = parseNumber(row[idx]);
-            if (val <= 0) return;
+            // 收集 CSV 中出現的所有 boss 名稱
+            const foundBosses = new Set();
+            csvRows.forEach(row => {
+                const name = (row[bossColIdx] || '').trim();
+                if (name) foundBosses.add(name);
+            });
 
-            // 嚴格判定
-            if (bannedParts.includes(header)) {
-                grouped[pName].accident += val; 
-            }
-        });
-    });
+            // 依照 BOSS_SLOT_ORDER 順序，找出各 slot 應該填入哪個 boss
+            BOSS_SLOT_ORDER.forEach((slotBosses, slotIdx) => {
+                const selectId = `analysis-boss-select-${slotIdx + 1}`;
+                const selectEl = document.getElementById(selectId);
+                if (!selectEl) return;
+                
+                // 找到該 slot 中第一個在 CSV 出現的 boss
+                const matched = slotBosses.find(b => foundBosses.has(b));
+                if (matched) {
+                    selectEl.value = matched;
+                } else {
+                    selectEl.value = '';
+                }
+            });
+        }
 
-    // 計算平均與誤傷率
-    analysisData = Object.values(grouped).map(p => ({
-        ...p,
-        // 均傷 = (總傷害 - 誤傷) / 攻擊次數
-        avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
-        accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
-    }));
+        /* ── 需求6：自動偵測禁打部位（肉體傷害 < 全部肉體傷害 1% 視為禁打）──
+           欄位名稱格式為「{部位名稱}」，需判斷哪些是肉體傷害欄位 */
+        function autoDetectBannedParts(headers, csvRows) {
+            // 定義部位欄位與 data-part 屬性對應
+            const PART_MAP = {
+                '頭部(裝甲)': '頭部(裝甲)',
+                '肚子(裝甲)': '肚子(裝甲)',
+                '左臂(裝甲)': '左臂(裝甲)',
+                '右臂(裝甲)': '右臂(裝甲)',
+                '左手(裝甲)': '左手(裝甲)',
+                '右手(裝甲)': '右手(裝甲)',
+                '左腿(裝甲)': '左腿(裝甲)',
+                '右腿(裝甲)': '右腿(裝甲)',
+            };
 
-    renderAnalysisTable();
-}
+            // 找出 boss 欄位索引
+            const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
+            
+            // 找出哪些欄位是部位欄位（含「裝甲」字樣的欄位）
+            const partHeaders = headers.filter(h => PART_MAP[h]);
+            
+            if (partHeaders.length === 0) return;
 
-        function sortAnalysisBy(key) { if (analysisSortKey === key) { analysisSortDir *= -1; } else { analysisSortKey = key; analysisSortDir = -1; } renderAnalysisTable(); }
+            // 計算各 boss 各部位的肉體傷害總和
+            // 先按 boss 分組
+            const bossDamage = {}; // { bossName: { partName: totalDmg } }
+            
+            csvRows.forEach(row => {
+                const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
+                if (!bossDamage[bossName]) bossDamage[bossName] = {};
+                
+                partHeaders.forEach(partH => {
+                    const colIdx = headers.indexOf(partH);
+                    const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
+                    bossDamage[bossName][partH] = (bossDamage[bossName][partH] || 0) + val;
+                });
+            });
+
+            // 對每個選單中已選到的 boss，計算禁打部位
+            [1, 2, 3].forEach(slotIdx => {
+                const selectEl = document.getElementById(`analysis-boss-select-${slotIdx}`);
+                const bossName = selectEl ? selectEl.value : '';
+                if (!bossName || !bossDamage[bossName]) return;
+
+                const bossData = bossDamage[bossName];
+                const totalBossDmg = Object.values(bossData).reduce((s, v) => s + v, 0);
+                if (totalBossDmg === 0) return;
+
+                const threshold = totalBossDmg * 0.01; // 1%
+
+                // 找出禁打部位（傷害 < 1% 的部位）
+                const bannedParts = partHeaders.filter(p => (bossData[p] || 0) < threshold);
+
+                // 在對應的 boss-set 中，自動選取這些部位
+                const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
+                if (!bossRowEl) return;
+                
+                bossRowEl.querySelectorAll('.pill-btn').forEach(btn => {
+                    const dataPart = btn.getAttribute('data-part');
+                    if (bannedParts.includes(dataPart)) {
+                        btn.classList.add('active');
+                    }
+                    // 注意：不清除已手動選取的，只新增
+                });
+            });
+        }
+
+        /* ── 主要 CSV 處理函式 ── */
+        function processPastedCSV() {
+            const rawText = document.getElementById('csv-text-input').value.trim();
+            if (!rawText) return;
+            
+            window.scrollTo(0, 0);
+
+            const rows = parseCSV(rawText);
+            if (rows.length < 2) return;
+
+            const headers = rows[0].map(h => h.trim());
+            const dataRows = rows.slice(1);
+
+            const pIdx = headers.findIndex(h => h === '玩家名稱');
+            const bIdx = headers.findIndex(h => h === '泰坦名稱');
+            const dIdx = headers.findIndex(h => h === '泰坦傷害');
+            const cIdx = headers.findIndex(h => h === '總突擊傷害');
+
+            // 需求5：自動偵測 boss 並填入下拉選單
+            autoDetectBossesFromCSV(dataRows, bIdx);
+
+            // 需求6：自動偵測禁打部位（先等 boss 選單設定後再跑）
+            setTimeout(() => {
+                autoDetectBannedParts(headers, dataRows);
+            }, 50);
+
+            // 讀取 UI 上的 Boss 禁打部位設定
+            const bossConfigs = {};
+            [1, 2, 3].forEach(i => {
+                const root = document.getElementById(`boss-set-${i}`);
+                if (!root) return;
+                const select = document.getElementById(`analysis-boss-select-${i}`);
+                const name = select ? select.value : '';
+                if (name) {
+                    bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active'))
+                                             .map(btn => btn.getAttribute('data-part'));
+                }
+            });
+
+            const grouped = {};
+
+            dataRows.forEach(row => {
+                if (!row || row.length === 0) return;
+                const pName = (row[pIdx] || '').trim();
+                if (!pName) return;
+                
+                if (!grouped[pName]) {
+                    grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
+                }
+
+                // 攻擊次數（取最大值避免重複加總）
+                if (cIdx >= 0) {
+                    const hitCount = parseNumber(row[cIdx]);
+                    grouped[pName].count = Math.max(grouped[pName].count, hitCount);
+                } else {
+                    grouped[pName].count += 1;
+                }
+
+                // 總傷害累加
+                const damageVal = parseNumber(row[dIdx]);
+                grouped[pName].total += damageVal;
+
+                // 誤傷判定（依禁打部位）
+                const bossName = (row[bIdx] || '').trim();
+                const bannedParts = bossConfigs[bossName] || [];
+                headers.forEach((header, idx) => {
+                    if (idx === pIdx || idx === bIdx || idx === dIdx || idx === cIdx) return;
+                    const val = parseNumber(row[idx]);
+                    if (val <= 0) return;
+                    if (bannedParts.includes(header)) {
+                        grouped[pName].accident += val;
+                    }
+                });
+            });
+
+            // 計算平均傷害與誤傷率（需求4）
+            analysisData = Object.values(grouped).map(p => ({
+                ...p,
+                avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
+                // 需求4：誤傷率 = 誤傷 / 總傷害 * 100%
+                accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
+            }));
+
+            renderAnalysisTable();
+
+            // 需求6：分析完成後再跑一次禁打部位偵測（因為 setTimeout 可能還沒完成）
+            autoDetectBannedParts(headers, dataRows);
+        }
+
+        function sortAnalysisBy(key) {
+            if (analysisSortKey === key) { analysisSortDir *= -1; }
+            else { analysisSortKey = key; analysisSortDir = -1; }
+            renderAnalysisTable();
+        }
         
         function renderAnalysisTable() {
-    const tbody = document.getElementById('analysis-tbody');
-    const summary = document.getElementById('analysis-summary');
-    const wrap = document.getElementById('analysis-result-wrap');
-    const empty = document.getElementById('analysis-empty-state');
+            const tbody = document.getElementById('analysis-tbody');
+            const summary = document.getElementById('analysis-summary');
+            const wrap = document.getElementById('analysis-result-wrap');
+            const empty = document.getElementById('analysis-empty-state');
 
-    if (!analysisData || analysisData.length === 0) {
-        wrap.style.display = 'none';
-        empty.style.display = 'block';
-        return;
-    }
+            if (!analysisData || analysisData.length === 0) {
+                wrap.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
 
-    empty.style.display = 'none';
-    wrap.style.display = 'block';
+            empty.style.display = 'none';
+            wrap.style.display = 'block';
 
-    // 1. 排序處理
-    const sorted = [...analysisData].sort((a, b) => {
-        if (analysisSortKey === 'player') { 
-            return a.player.localeCompare(b.player) * -analysisSortDir; 
+            const sorted = [...analysisData].sort((a, b) => {
+                if (analysisSortKey === 'player') return a.player.localeCompare(b.player) * -analysisSortDir;
+                return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
+            });
+
+            const totalPlayers = analysisData.length;
+            const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+            const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+            const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
+            const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
+            const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
+            // 整體誤傷率
+            const overallAccidentRate = totalDamage > 0 ? (totalAccident / totalDamage) * 100 : 0;
+
+            summary.innerHTML = `
+                <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
+                <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
+                <div class="summary-card"><div class="num">${overallAccidentRate.toFixed(1)}%</div><div class="label">整體誤傷率</div></div>
+                <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
+                <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
+            `;
+
+            tbody.innerHTML = '';
+            sorted.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                // 需求4：顯示誤傷率（%），而非誤傷數值
+                const rateDisplay = p.accidentRate > 0 
+                    ? p.accidentRate.toFixed(1) + '%'
+                    : '0%';
+                tr.innerHTML = `
+                    <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
+                    <td>${p.count}</td>
+                    <td style="color: #d32f2f; font-weight: bold;">${rateDisplay}</td>
+                    <td>${formatNum(p.total)}</td>
+                    <td>${formatNum(p.avg)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const summaryTr = document.createElement('tr');
+            summaryTr.className = 'summary-row';
+            summaryTr.innerHTML = `
+                <td class="player-name">總計 / 平均</td>
+                <td>${Math.round(avgCount)}</td>
+                <td style="color: #d32f2f; font-weight: bold;">${overallAccidentRate.toFixed(1)}%</td>
+                <td>${formatNum(totalDamage)}</td>
+                <td>${formatNum(avgDamagePerHit)}</td>
+            `;
+            tbody.appendChild(summaryTr);
         }
-        return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
-    });
-
-    // 2. 計算統計數據
-    const totalPlayers = analysisData.length;
-    const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
-    const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
-    const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
-    
-    const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
-    const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
-
-    // 3. 更新上方統計卡片 (修正為五個欄位，順序：玩家數、平均次數、總誤傷、總傷害、平均傷害)
-    summary.innerHTML = `
-        <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
-        <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-        <div class="summary-card"><div class="num">${formatAccident(totalAccident)}</div><div class="label">總誤傷</div></div>
-        <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
-        <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
-    `;
-
-    // 4. 渲染表格內容 (欄位對應：玩家、次數、誤傷、總傷、均傷)
-    tbody.innerHTML = '';
-    sorted.forEach((p, index) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
-            <td>${p.count}</td>
-            <td style="color: #d32f2f; font-weight: bold;">${formatAccident(p.accident)}</td>
-            <td>${formatNum(p.total)}</td>
-            <td>${formatNum(p.avg)}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-
-    // 5. 表格底部統計行
-    const summaryTr = document.createElement('tr');
-    summaryTr.className = 'summary-row';
-    summaryTr.innerHTML = `
-        <td class="player-name">總計 / 平均</td>
-        <td>${Math.round(avgCount)}</td>
-        <td style="color: #d32f2f; font-weight: bold;">${formatAccident(totalAccident)}</td>
-        <td>${formatNum(totalDamage)}</td>
-        <td>${formatNum(avgDamagePerHit)}</td>
-    `;
-    tbody.appendChild(summaryTr);
-}
 
         function clearAnalysisData() { 
             if (!confirm('確定要清除目前的分析資料嗎？')) return; 
@@ -2092,7 +1823,9 @@ function processPastedCSV() {
             if (!saved) return;
             try {
                 const state = JSON.parse(saved);
-                csvHeaders = state.headers || []; csvRows = state.rows || []; analysisData = state.data || [];
+                csvHeaders = state.headers || [];
+                csvRows = state.rows || [];
+                analysisData = state.data || [];
                 if (analysisData.length) { 
                     renderAnalysisTable(); 
                     document.getElementById('analysis-empty-state').style.display = 'none'; 
@@ -2102,6 +1835,70 @@ function processPastedCSV() {
                 console.error('恢復分析資料失敗:', e); 
             }
         }
+
+        /* ── 拖曳系統（保留，用於配卡頁拖放功能） ── */
+        let clone = null, activeSrc = '';
+        let touchStartPos = { x: 0, y: 0 };
+        let gestureMode = null;
+        let scrollTimer = null, scrollSpeed = 0;
+        let cachedZones = [], lastHoveredZone = null;
+        let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
+        
+        function cancelDrag() {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+            stopAutoScroll();
+            document.body.style.overflow = '';
+            document.body.style.overflowY = '';
+            document.body.style.overscrollBehavior = '';
+            if (window._dragScrollY !== undefined) window.scrollTo(0, window._dragScrollY);
+            document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+            clone = null;
+            if (lastHoveredZone) { lastHoveredZone.classList.remove('drag-hover'); lastHoveredZone = null; }
+            isDraggingCard = false;
+            isDraggingGlobal = false;
+            gestureMode = null;
+            void document.body.offsetHeight;
+        }
+
+        function updateZonesCache() {
+            cachedZones = [];
+            const activePageId = ['page-burst', 'page-torment', 'page-support', 'page-analysis'][currentPage];
+            document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
+                const r = zone.getBoundingClientRect();
+                cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
+            });
+        }
+
+        function findZone(x, y) {
+            for (const z of cachedZones) {
+                if (x >= z.l && x <= z.r && y >= z.t && y <= z.b) return z.el;
+            }
+            return null;
+        }
+
+        function startAutoScroll() {
+            if (scrollTimer) return;
+            scrollTimer = setInterval(() => {
+                if (gestureMode !== "drag" || scrollSpeed === 0) return;
+                const maxY = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollSpeed < 0 && window.scrollY <= 0) return;
+                if (scrollSpeed > 0 && window.scrollY >= maxY) return;
+                window.scrollBy(0, scrollSpeed);
+                const target = findZone(currentTouchX, currentTouchY);
+                if (target !== lastHoveredZone) {
+                    if (lastHoveredZone) lastHoveredZone.classList.remove('drag-hover');
+                    if (target) target.classList.add('drag-hover');
+                    lastHoveredZone = target;
+                }
+            }, 30);
+        }
+
+        function stopAutoScroll() { clearInterval(scrollTimer); scrollTimer = null; scrollSpeed = 0; }
+
+        document.addEventListener('touchstart', function() { 
+            if (!isDraggingCard && clone) cancelDrag(); 
+        }, { passive: true });
     </script>
 </body>
 </html>

@@ -950,7 +950,7 @@
                         </div>
                     </div>
 
-                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「泰坦傷害(單次傷害)」欄位；攻擊次數以同一玩家名稱在資料中出現的次數計算</div>
+                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「總突擊傷害」（此欄位實際為攻擊次數，名稱誤譯為傷害）、「泰坦傷害(單次傷害)」欄位</div>
 
                     <div class="analysis-empty" id="analysis-empty-state">
                         尚未匯入 CSV 資料<br>
@@ -1863,8 +1863,9 @@ function closeModal() {
 }
 
         /* 誤傷專用格式化：永遠以 M（百萬）為單位顯示，未滿 1M 也顯示小數，
-           例如 100000 → 0.1M，方便跟總傷害的單位對齊比較 */
+           例如 100000 → 0.1M，方便跟總傷害的單位對齊比較；剛好是 0 則直接顯示 0 */
         function formatAccident(n) {
+    if (!n) return '0';
     if (n >= 10000000000) {
         return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
     }
@@ -1898,6 +1899,7 @@ function processPastedCSV() {
     const pIdx = findIndex('玩家名稱');
     const bIdx = findIndex('泰坦名稱');
     const dIdx = findIndex('泰坦傷害'); 
+    const cIdx = findIndex('總突擊傷害'); // 此欄位名稱雖寫「傷害」，實際內容是攻擊次數（翻譯誤植）
 
     // 讀取 UI 上的 Boss 禁打部位設定
     const bossConfigs = {};
@@ -1926,8 +1928,10 @@ function processPastedCSV() {
             grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
         }
 
-        // 1. 攻擊次數：玩家名字出現一次就 +1
-        grouped[pName].count += 1; 
+        // 1. 攻擊次數：讀取「總突擊傷害」欄位數值並加總（同一玩家若打多隻泰坦會有多列，逐列加總）
+        //    找不到該欄位時，退回成每列 +1（避免欄位名稱不同時整個壞掉）
+        const hitCount = cIdx >= 0 ? parseNumber(row[cIdx]) : 1;
+        grouped[pName].count += hitCount; 
 
         // 2. 總傷害：累加
         const damageVal = parseNumber(row[dIdx]);
@@ -1939,7 +1943,7 @@ function processPastedCSV() {
 
         csvHeaders.forEach((header, idx) => {
             // 跳過非傷害欄位
-            if (idx === pIdx || idx === bIdx || idx === dIdx) return;
+            if (idx === pIdx || idx === bIdx || idx === dIdx || idx === cIdx) return;
             
             const val = parseNumber(row[idx]);
             if (val <= 0) return;

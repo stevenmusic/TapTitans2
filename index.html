@@ -950,7 +950,7 @@
                         </div>
                     </div>
 
-                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「總突擊傷害(次數)」、「泰坦傷害(單次傷害)」欄位並進行加總</div>
+                    <div class="analysis-hint">提示：系統將自動識別「玩家名稱」、「泰坦傷害(單次傷害)」欄位；攻擊次數以同一玩家名稱在資料中出現的次數計算</div>
 
                     <div class="analysis-empty" id="analysis-empty-state">
                         尚未匯入 CSV 資料<br>
@@ -1849,13 +1849,26 @@ function closeModal() {
             return div.innerHTML;
         }
 
-                /* 修正後的數值格式化 (支援百萬單位 M) */
+                /* 修正後的數值格式化 (支援百萬單位 M，超過 10000M 自動換成十億 B) */
         function formatNum(n) {
+    if (n >= 10000000000) {
+        // 超過 10000M（= 10B）時改用 B（十億）為單位
+        return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+    }
     if (n >= 1000000) {
         // toFixed(1) 強制保留一位小數，.replace 移除 .0 的情況
         return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     }
     return Math.round(n).toLocaleString('en-US');
+}
+
+        /* 誤傷專用格式化：永遠以 M（百萬）為單位顯示，未滿 1M 也顯示小數，
+           例如 100000 → 0.1M，方便跟總傷害的單位對齊比較 */
+        function formatAccident(n) {
+    if (n >= 10000000000) {
+        return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+    }
+    return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
 }
 
         // 主要處理函式：修正加總邏輯
@@ -1987,7 +2000,7 @@ function processPastedCSV() {
     summary.innerHTML = `
         <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
         <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-        <div class="summary-card"><div class="num">${formatNum(totalAccident)}</div><div class="label">總誤傷</div></div>
+        <div class="summary-card"><div class="num">${formatAccident(totalAccident)}</div><div class="label">總誤傷</div></div>
         <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
         <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
     `;
@@ -1999,7 +2012,7 @@ function processPastedCSV() {
         tr.innerHTML = `
             <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
             <td>${p.count}</td>
-            <td style="color: #d32f2f; font-weight: bold;">${formatNum(p.accident)}</td>
+            <td style="color: #d32f2f; font-weight: bold;">${formatAccident(p.accident)}</td>
             <td>${formatNum(p.total)}</td>
             <td>${formatNum(p.avg)}</td>
         `;
@@ -2012,7 +2025,7 @@ function processPastedCSV() {
     summaryTr.innerHTML = `
         <td class="player-name">總計 / 平均</td>
         <td>${Math.round(avgCount)}</td>
-        <td style="color: #d32f2f; font-weight: bold;">${formatNum(totalAccident)}</td>
+        <td style="color: #d32f2f; font-weight: bold;">${formatAccident(totalAccident)}</td>
         <td>${formatNum(totalDamage)}</td>
         <td>${formatNum(avgDamagePerHit)}</td>
     `;

@@ -47,10 +47,31 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
             display: flex; flex-direction: column;
         }
+        .nav-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 16px 0 14px 0;
+        }
         .nav-title {
             color: #ffffff; text-align: center;
             font-size: 23px; font-weight: bold;
-            padding: 16px 0 14px 0; letter-spacing: 2px;
+            letter-spacing: 2px;
+        }
+        .lang-toggle-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.5);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 14px;
+            padding: 4px 10px;
+            cursor: pointer;
         }
         .nav-tabs { display: flex; width: 100%; }
         .tab-btn {
@@ -835,21 +856,56 @@
             background-color: #ffcdd2 !important;
             border-radius: 3px;
         }
+
+        /* ── 英文版按鈕尺寸調整：英文字通常比中文長，統一縮小字級/留白，避免文字超出格子 ── */
+        body.lang-en .btn-clear-all,
+        body.lang-en .btn-download {
+            font-size: 11px;
+        }
+        body.lang-en .btn-analysis {
+            font-size: 11px;
+            padding: 8px 4px;
+        }
+        body.lang-en .tier-stage-select {
+            font-size: 11px;
+        }
+        body.lang-en .check-select {
+            font-size: 10px !important;
+        }
+        body.lang-en .pill-btn {
+            font-size: 11px;
+            padding: 5px 8px;
+        }
+        body.lang-en .boss-select-burst,
+        body.lang-en .boss-select-torment,
+        body.lang-en .boss-select-support {
+            font-size: 11px;
+        }
+        body.lang-en .dropdown-trigger,
+        body.lang-en .selected-part-badge {
+            font-size: 10px !important;
+        }
+        body.lang-en .lang-toggle-btn {
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
 
     <div class="nav-header">
-        <div class="nav-title">Tap Titans 2</div>
+        <div class="nav-title-row">
+            <div class="nav-title">Tap Titans 2</div>
+            <button class="lang-toggle-btn" id="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+        </div>
         <div class="nav-tabs">
-            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)">爆裂</button>
-            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)">苦痛</button>
-            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)">支援</button>
-            <button class="tab-btn"        id="tab-analysis" onclick="switchPage(3)">突襲分析</button>
+            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)" data-i18n="tabBurst">爆裂</button>
+            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)" data-i18n="tabTorment">苦痛</button>
+            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)" data-i18n="tabSupport">支援</button>
+            <button class="tab-btn"        id="tab-analysis" onclick="switchPage(3)" data-i18n="tabAnalysis">突襲分析</button>
         </div>
     </div>
 
-    <div class="save-indicator" id="save-indicator">✓ 已儲存</div>
+    <div class="save-indicator" id="save-indicator" data-i18n="savedIndicator">✓ 已儲存</div>
 
     <div class="swiper-wrapper">
         <div class="swiper-container" id="main-swiper">
@@ -859,7 +915,7 @@
                 <div class="export-area" id="export-burst">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
                         <select class="boss-select-burst" id="boss-select-burst">
-                            <option value="">選擇 Boss</option>
+                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
                             <option value="Klonk">Klonk</option>
                             <option value="Lojak">Lojak</option>
@@ -871,8 +927,8 @@
                         </select>
                     </div>
                     <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('burst')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
+                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                        <button class="btn-download" onclick="generateImage('burst')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
                     </div>
                     <!-- 瀏覽版（正常顯示） -->
                     <div class="pyramid-container" id="container-burst"></div>
@@ -884,7 +940,7 @@
                 <div class="export-area" id="export-torment">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
                         <select class="boss-select-torment" id="boss-select-torment">
-                            <option value="">選擇 Boss</option>
+                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
                             <option value="Klonk">Klonk</option>
                             <option value="Lojak">Lojak</option>
@@ -896,8 +952,8 @@
                         </select>
                     </div>
                     <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
+                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                        <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-torment"></div>
                 </div>
@@ -908,7 +964,7 @@
                 <div class="export-area" id="export-support">
                     <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
                         <select class="boss-select-support" id="boss-select-support">
-                            <option value="">選擇 Boss</option>
+                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                             <option value="Jukk">Jukk</option>
                             <option value="Klonk">Klonk</option>
                             <option value="Lojak">Lojak</option>
@@ -920,8 +976,8 @@
                         </select>
                     </div>
                     <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
+                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                        <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
                     </div>
                     <div class="pyramid-container" id="container-support"></div>
                 </div>
@@ -937,11 +993,11 @@
 
                         <textarea id="csv-text-input" 
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
-                                  placeholder="請將突襲報告直接貼上此處..."></textarea>
+                                  placeholder="請將 CSV 內容直接貼上此處..." data-i18n-placeholder="csvPlaceholder"></textarea>
                         
                         <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px;">
                             <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
-                                <option value="">Tier</option>
+                                <option value="" data-i18n="tierPlaceholder">Tier</option>
                                 <option value="1">1</option>
                                 <option value="2">2</option>
                                 <option value="3">3</option>
@@ -950,61 +1006,63 @@
                                 <option value="M">M</option>
                             </select>
                             <select class="tier-stage-select" id="analysis-stage-select" title="關卡"></select>
-                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 1;">✅ 分析</button>
-                            <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;">🗑 清除</button>
-                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;">✨ 儲存圖片</button>
+                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 1;" data-i18n="btnExport">分析</button>
+                            <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;" data-i18n="btnClear">清除</button>
+                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;" data-i18n="btnSaveImage">儲存圖片</button>
                         </div>
 
                         <div class="boss-config-container">
-                            <div class="boss-config-title"> Boss 禁打部位（自動偵測）</div>
+                            <div class="boss-config-title" data-i18n="bossBannedPartsTitle">Boss 禁打部位（自動偵測）</div>
                             
                             <div class="boss-row" id="boss-set-1">
                                 <div class="boss-name-label empty" id="analysis-boss-select-1">未偵測</div>
                                 <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
                                 </div>
                             </div>
                             
                             <div class="boss-row" id="boss-set-2">
                                 <div class="boss-name-label empty" id="analysis-boss-select-2">未偵測</div>
                                 <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
                                 </div>
                             </div>
 
                             <div class="boss-row" id="boss-set-3">
                                 <div class="boss-name-label empty" id="analysis-boss-select-3">未偵測</div>
                                 <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)">右腳</div>
+                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
+                    <div class="analysis-hint" data-i18n="analysisHint">提示：系統將自動識別「玩家名稱」、「總突擊傷害」（此欄位實際為攻擊次數，名稱誤譯為傷害）、「泰坦傷害(單次傷害)」欄位；Boss 名稱與禁打部位會自動偵測並填入上方欄位</div>
+
                     <div class="analysis-empty" id="analysis-empty-state">
-                        尚未匯入突襲報告 <br>
-                        <span style="font-size:11px; opacity:0.75;">請點擊上方按鈕開始分析</span>
+                        <span data-i18n="noCsvYet">尚未匯入 CSV 資料</span><br>
+                        <span style="font-size:11px; opacity:0.75;" data-i18n="tapButtonAbove">請點擊上方按鈕開始分析</span>
                     </div>
 
                     <div id="analysis-result-wrap" style="display:none; width:100%;">
@@ -1013,11 +1071,11 @@
                             <table class="analysis-table" id="analysis-table">
                                 <thead>
                                     <tr>
-                                        <th onclick="sortAnalysisBy('player')">玩家</th>
-                                        <th onclick="sortAnalysisBy('count')">次數</th>
-                                        <th onclick="sortAnalysisBy('accidentRate')">誤傷率</th>
-                                        <th onclick="sortAnalysisBy('total')">總傷</th>
-                                        <th onclick="sortAnalysisBy('avg')">均傷</th>
+                                        <th onclick="sortAnalysisBy('player')" data-i18n="colPlayer">玩家</th>
+                                        <th onclick="sortAnalysisBy('count')" data-i18n="colHits">次數</th>
+                                        <th onclick="sortAnalysisBy('accidentRate')" data-i18n="colMissRate">誤傷率</th>
+                                        <th onclick="sortAnalysisBy('total')" data-i18n="colTotalDmg">總傷</th>
+                                        <th onclick="sortAnalysisBy('avg')" data-i18n="colAvgDmg">均傷</th>
                                     </tr>
                                 </thead>
                                 <tbody id="analysis-tbody"></tbody>
@@ -1035,17 +1093,17 @@
     <div class="card-pool-drawer" id="card-pool-drawer">
         <div class="card-pool-handle" id="card-pool-handle">
             <span class="card-pool-handle-bar"></span>
-            <span id="card-pool-label">卡片池</span>
+            <span id="card-pool-label" data-i18n="cardPoolLabel">卡片池</span>
         </div>
         <div class="card-pool-content" id="card-pool-content">
-            <div class="card-pool-empty">卡片池資料尚未載入</div>
+            <div class="card-pool-empty" data-i18n="cardPoolNotLoaded">卡片池資料尚未載入</div>
         </div>
     </div>
 
     <div id="result-modal">
-        <p>💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
+        <p data-i18n="modalImageReady">💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
-        <button class="btn-close" onclick="closeModal()">返回修改</button>
+        <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
     </div>
 
     <script>
@@ -1054,8 +1112,151 @@
             history.scrollRestoration = 'manual';
         }
 
+        /* ══════════════════════════════════════════════════════════
+           中英文翻譯字典與切換邏輯
+           ══════════════════════════════════════════════════════════ */
+        const I18N = {
+            zh: {
+                tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援', tabAnalysis: '突襲分析',
+                savedIndicator: '✓ 已儲存',
+                selectBossOption: '選擇 Boss',
+                btnClearAllDecks: '一鍵清除所有牌組',
+                btnSaveImageDeco: '✨ 儲存圖片 ✨',
+                memoPlaceholder: '點擊備註...',
+                dropCard: '拉入卡片',
+                doubleTapClear: '雙擊清除',
+                limitMaxBlocks: '限制：每一組最多只能有 3 個區塊（9 格）唷！',
+                limitMinBlocks: '限制：每一組最少必須保留 1 個區塊（3 格）唷！',
+                confirmClearZones: '確定要清空當前頁面所有牌組嗎？',
+                csvPlaceholder: '請將 CSV 內容直接貼上此處...',
+                tierPlaceholder: 'Tier',
+                stagePlaceholder: '關卡',
+                btnExport: '分析',
+                btnClear: '清除',
+                btnSaveImage: '儲存圖片',
+                bossBannedPartsTitle: 'Boss 禁打部位（自動偵測）',
+                notDetected: '未偵測',
+                partHead: '頭', partBelly: '肚',
+                partLShoulder: '左肩', partRShoulder: '右肩',
+                partLHand: '左手', partRHand: '右手',
+                partLFoot: '左腳', partRFoot: '右腳',
+                analysisHint: '提示：系統將自動識別「玩家名稱」、「總突擊傷害」（此欄位實際為攻擊次數，名稱誤譯為傷害）、「泰坦傷害(單次傷害)」欄位；Boss 名稱與禁打部位會自動偵測並填入上方欄位',
+                noCsvYet: '尚未匯入 CSV 資料',
+                tapButtonAbove: '請點擊上方按鈕開始分析',
+                colPlayer: '玩家', colHits: '次數', colMissRate: '誤傷率', colTotalDmg: '總傷', colAvgDmg: '均傷',
+                cardPoolLabel: '卡片池',
+                cardPoolNotLoaded: '卡片池資料尚未載入',
+                cardPoolNotLoadedDetail: '卡片池資料尚未載入（找不到 cards.js 的 PRESET_CARDS 陣列）。',
+                modalImageReady: '💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿',
+                btnBackToEdit: '返回修改',
+                tierPartTriggerDefault: '部位 ▾',
+                tierPartAll: '全部位', tierPartSingle: '任一單部位', tierPartSingleShort: '單部位',
+                tierPartHead: '頭', tierPartBelly: '肚', tierPartHand: '手', tierPartFoot: '腳',
+                typeFleshArmor: '肉甲', typeFlesh: '肉', typeArmor: '甲',
+                generatingDeckImage: '正在組裝配卡圖...',
+                generatingAnalysisImage: '正在組裝分析圖...',
+                generateFailed: '生成失敗',
+                noAnalysisDataToExport: '尚無資料可匯出，請先匯入 CSV 並計算數據',
+                confirmClearAnalysisData: '確定要清除目前的分析資料嗎？',
+                playerNumSummaryRow: '總計 / 平均',
+                statPlayers: '玩家數', statAvgHits: '平均次數', statOverallMissRate: '整體誤傷率',
+                statTotalDmg: '總傷害', statAvgDmg: '平均傷害',
+            },
+            en: {
+                tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support', tabAnalysis: 'Raid Analysis',
+                savedIndicator: '✓ Saved',
+                selectBossOption: 'Select Boss',
+                btnClearAllDecks: 'Clear All Decks',
+                btnSaveImageDeco: '✨ Save Image ✨',
+                memoPlaceholder: 'Tap to add note...',
+                dropCard: 'Drop card',
+                doubleTapClear: 'Double-tap to clear',
+                limitMaxBlocks: 'Limit: each tier can have at most 3 blocks (9 slots)!',
+                limitMinBlocks: 'Limit: each tier must keep at least 1 block (3 slots)!',
+                confirmClearZones: 'Clear all decks on this page?',
+                csvPlaceholder: 'Paste CSV content here...',
+                tierPlaceholder: 'Tier',
+                stagePlaceholder: 'Stage',
+                btnExport: 'Analyze',
+                btnClear: 'Clear',
+                btnSaveImage: 'Save',
+                bossBannedPartsTitle: 'Boss Banned Parts (auto-detected)',
+                notDetected: 'Not detected',
+                partHead: 'Head', partBelly: 'Belly',
+                partLShoulder: 'L.Arm', partRShoulder: 'R.Arm',
+                partLHand: 'L.Hand', partRHand: 'R.Hand',
+                partLFoot: 'L.Foot', partRFoot: 'R.Foot',
+                analysisHint: 'Tip: the system auto-detects the "Player Name", "Total Assault Damage" (this column is actually hit count, mislabeled as damage), and "Titan Damage (single hit)" columns; boss names and banned parts are auto-detected and filled in above',
+                noCsvYet: 'No CSV data imported yet',
+                tapButtonAbove: 'Tap the button above to start analyzing',
+                colPlayer: 'Player', colHits: 'Hits', colMissRate: 'Miss Rate', colTotalDmg: 'Total Dmg', colAvgDmg: 'Avg Dmg',
+                cardPoolLabel: 'Card Pool',
+                cardPoolNotLoaded: 'Card pool data not loaded yet',
+                cardPoolNotLoadedDetail: 'Card pool data not loaded yet (could not find the PRESET_CARDS array in cards.js).',
+                modalImageReady: '💡 Image generated! Long-press the image below to save it to your photo album.',
+                btnBackToEdit: 'Back to Edit',
+                tierPartTriggerDefault: 'Part ▾',
+                tierPartAll: 'All Zones', tierPartSingle: 'Any Single Zone', tierPartSingleShort: 'Single',
+                tierPartHead: 'Head', tierPartBelly: 'Belly', tierPartHand: 'Hand', tierPartFoot: 'Foot',
+                typeFleshArmor: 'Both', typeFlesh: 'Flesh', typeArmor: 'Armor',
+                generatingDeckImage: 'Generating deck image...',
+                generatingAnalysisImage: 'Generating analysis image...',
+                generateFailed: 'Failed to generate image',
+                noAnalysisDataToExport: 'No data to export yet. Please import CSV and calculate first.',
+                confirmClearAnalysisData: 'Clear the current analysis data?',
+                playerNumSummaryRow: 'Total / Average',
+                statPlayers: 'Players', statAvgHits: 'Avg Hits', statOverallMissRate: 'Overall Miss Rate',
+                statTotalDmg: 'Total Dmg', statAvgDmg: 'Avg Dmg',
+            }
+        };
+
+        let currentLang = localStorage.getItem('tt2_lang') || 'zh';
+
+        function t(key) {
+            return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key]
+                 : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+        }
+
+        function toggleLanguage() {
+            currentLang = (currentLang === 'zh') ? 'en' : 'zh';
+            localStorage.setItem('tt2_lang', currentLang);
+            applyLanguage();
+        }
+
+        function applyLanguage() {
+            document.documentElement.lang = (currentLang === 'en') ? 'en' : 'zh-TW';
+            document.body.classList.toggle('lang-en', currentLang === 'en');
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                el.textContent = t(el.getAttribute('data-i18n'));
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+            });
+
+            const langBtn = document.getElementById('lang-toggle-btn');
+            if (langBtn) langBtn.textContent = (currentLang === 'zh') ? 'EN' : '中文';
+
+            // 重新畫一次會動態產生文字的部分，確保切換語言後立刻生效
+            document.querySelectorAll('.custom-dropdown').forEach(updateSelectedPartsDisplay);
+            document.querySelectorAll('.tier-row .drop-zone').forEach(zone => {
+                if (!zone.querySelector('img')) zone.innerHTML = getDefaultZoneHTML();
+            });
+            if (typeof renderCardPool === 'function') renderCardPool();
+            if (typeof renderAnalysisTable === 'function' && analysisData && analysisData.length) renderAnalysisTable();
+            const stageSel = document.getElementById('analysis-stage-select');
+            if (stageSel && stageSel.options.length > 0) stageSel.options[0].textContent = t('stagePlaceholder');
+            // Boss 偵測欄位是用目前儲存的值重新顯示（已偵測到的 boss 名稱要保留，
+            // 不能被上面通用的 data-i18n 邏輯誤蓋成「未偵測」的翻譯文字）
+            if (typeof getBossSlotValue === 'function' && typeof setBossSlotValue === 'function') {
+                [1, 2, 3].forEach(i => setBossSlotValue(i, getBossSlotValue(i)));
+            }
+        }
+
         const totalTiers = 8;
-        const defaultZoneHTML = '<span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拉入卡片<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span>';
+        function getDefaultZoneHTML() {
+            return `<span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">${t('dropCard')}<br><span style="font-size:4.5px;opacity:0.7;">${t('doubleTapClear')}</span></span>`;
+        }
 
         /* ── 自動儲存系統 ── */
         const STORAGE_KEY = 'tt2_card_config';
@@ -1079,7 +1280,7 @@
                             cards: []
                         };
                         block.querySelectorAll('.part-tag.active').forEach(tag => {
-                            blockData.parts.push(tag.textContent);
+                            blockData.parts.push(tag.dataset.key);
                         });
                         block.querySelectorAll('.drop-zone').forEach(zone => {
                             const img = zone.querySelector('img');
@@ -1093,6 +1294,11 @@
             });
             return data;
         }
+
+        // 舊版資料是用中文字當儲存的 key（例如「全部位」「肉甲」），
+        // 這裡做個對照表，讓切換語言後仍能正確讀回先前儲存的配卡
+        const LEGACY_PART_LABEL_TO_KEY = { '全部位': 'all', '任一單部位': 'single', '頭': 'head', '肚': 'belly', '手': 'hand', '腳': 'foot' };
+        const LEGACY_TYPE_LABEL_TO_VALUE = { '肉甲': 'fleshArmor', '肉': 'flesh', '甲': 'armor' };
 
         function restoreState() {
             const saved = localStorage.getItem(STORAGE_KEY);
@@ -1121,18 +1327,21 @@
                             if (!block) return;
                             const customDropdown = block.querySelector('.custom-dropdown');
                             block.querySelectorAll('.part-tag').forEach(tag => {
-                                const isActive = blockData.parts && blockData.parts.includes(tag.textContent);
+                                const key = tag.dataset.key;
+                                const isActive = blockData.parts && (blockData.parts.includes(key) || blockData.parts.some(p => LEGACY_PART_LABEL_TO_KEY[p] === key));
                                 tag.classList.toggle('active', isActive);
                             });
                             updateSelectedPartsDisplay(customDropdown);
-                            block.querySelector('.check-select').value = blockData.type || '肉甲';
+                            let savedType = blockData.type || 'fleshArmor';
+                            if (LEGACY_TYPE_LABEL_TO_VALUE[savedType]) savedType = LEGACY_TYPE_LABEL_TO_VALUE[savedType];
+                            block.querySelector('.check-select').value = savedType;
                             const zones = block.querySelectorAll('.drop-zone');
                             blockData.cards.forEach((cardSrc, zoneIdx) => {
                                 if (zones[zoneIdx]) {
                                     if (cardSrc) {
                                         zones[zoneIdx].innerHTML = `<img src="${cardSrc}">`;
                                     } else {
-                                        zones[zoneIdx].innerHTML = defaultZoneHTML;
+                                        zones[zoneIdx].innerHTML = getDefaultZoneHTML();
                                     }
                                 }
                             });
@@ -1170,7 +1379,7 @@
             const trigger = document.createElement('button');
             trigger.className = 'dropdown-trigger';
             trigger.type = 'button';
-            trigger.textContent = '部位 ▾';
+            trigger.textContent = t('tierPartTriggerDefault');
             trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
                 document.querySelectorAll('.custom-dropdown').forEach(d => {
@@ -1180,11 +1389,20 @@
             });
             const dropdownContent = document.createElement('div');
             dropdownContent.className = 'dropdown-content';
-            ['全部位', '任一單部位', '頭', '肚', '手', '腳'].forEach((text, idx) => {
+            [
+                { key: 'all', i18n: 'tierPartAll' },
+                { key: 'single', i18n: 'tierPartSingle' },
+                { key: 'head', i18n: 'tierPartHead' },
+                { key: 'belly', i18n: 'tierPartBelly' },
+                { key: 'hand', i18n: 'tierPartHand' },
+                { key: 'foot', i18n: 'tierPartFoot' }
+            ].forEach((item, idx) => {
                 const btn = document.createElement('button');
                 btn.className = 'part-tag' + (idx === 0 ? ' active' : '');
                 btn.type = 'button';
-                btn.textContent = text;
+                btn.dataset.key = item.key;
+                btn.dataset.i18n = item.i18n;
+                btn.textContent = t(item.i18n);
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     togglePartTag(btn);
@@ -1197,9 +1415,15 @@
             selectsCol.appendChild(customDropdown);
             const typeSel = document.createElement('select');
             typeSel.className = 'check-select';
-            ['肉甲','肉','甲'].forEach(opt => {
+            [
+                { value: 'fleshArmor', i18n: 'typeFleshArmor' },
+                { value: 'flesh', i18n: 'typeFlesh' },
+                { value: 'armor', i18n: 'typeArmor' }
+            ].forEach(opt => {
                 const o = document.createElement('option');
-                o.value = opt; o.textContent = opt;
+                o.value = opt.value;
+                o.dataset.i18n = opt.i18n;
+                o.textContent = t(opt.i18n);
                 typeSel.appendChild(o);
             });
             typeSel.addEventListener('change', autoSave);
@@ -1209,7 +1433,7 @@
             for (let i = 0; i < 3; i++) {
                 const zone = document.createElement('div');
                 zone.className = 'drop-zone';
-                zone.innerHTML = defaultZoneHTML;
+                zone.innerHTML = getDefaultZoneHTML();
                 zone.addEventListener('dblclick', () => handleZoneClear(zone));
                 setupZoneTouchClear(zone);
                 cardsCol.appendChild(zone);
@@ -1226,8 +1450,8 @@
         function togglePartTag(tag) {
             const dropdownContent = tag.parentNode;
             const customDropdown = dropdownContent.parentNode;
-            const text = tag.textContent;
-            if (text === '全部位' || text === '任一單部位') {
+            const key = tag.dataset.key;
+            if (key === 'all' || key === 'single') {
                 if (!tag.classList.contains('active')) {
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => b.classList.remove('active'));
                     tag.classList.add('active');
@@ -1237,7 +1461,7 @@
             } else {
                 if (!tag.classList.contains('active')) {
                     dropdownContent.querySelectorAll('.part-tag').forEach(b => {
-                        if (b.textContent === '全部位' || b.textContent === '任一單部位') b.classList.remove('active');
+                        if (b.dataset.key === 'all' || b.dataset.key === 'single') b.classList.remove('active');
                     });
                     tag.classList.add('active');
                 } else {
@@ -1249,17 +1473,18 @@
 
         function updateSelectedPartsDisplay(dropdownEl) {
             const trigger = dropdownEl.querySelector('.dropdown-trigger');
-            const activeTags = Array.from(dropdownEl.querySelectorAll('.part-tag.active')).map(btn => btn.textContent);
+            if (!trigger) return;
+            const activeTags = Array.from(dropdownEl.querySelectorAll('.part-tag.active'));
             trigger.innerHTML = '';
             if (activeTags.length === 0) {
-                trigger.textContent = '部位 ▾';
+                trigger.textContent = t('tierPartTriggerDefault');
             } else {
                 const row = document.createElement('div');
                 row.className = 'selected-parts-inline-row';
-                activeTags.forEach(text => {
+                activeTags.forEach(tagEl => {
                     const badge = document.createElement('span');
                     badge.className = 'selected-part-badge';
-                    badge.textContent = text === '全部位' ? '全部位' : (text === '任一單部位' ? '單部位' : text);
+                    badge.textContent = (tagEl.dataset.key === 'single') ? t('tierPartSingleShort') : t(tagEl.dataset.i18n);
                     row.appendChild(badge);
                 });
                 trigger.appendChild(row);
@@ -1277,7 +1502,7 @@
                     </div>
                     <div class="grid-section"></div>
                     <div class="tier-memo-col">
-                        <input type="text" class="label-custom-input" placeholder="點擊備註...">
+                        <input type="text" class="label-custom-input" placeholder="點擊備註..." data-i18n-placeholder="memoPlaceholder">
                     </div>
                     <div class="tier-control-col">
                         <div class="tier-buttons">
@@ -1296,7 +1521,7 @@
         function addGridBlock(button) {
             const gridSection = button.closest('.tier-row').querySelector('.grid-section');
             if (gridSection.querySelectorAll('.grid-block').length >= 3) {
-                alert("限制：每一組最多只能有 3 個區塊（9 格）唷！"); return;
+                alert(t('limitMaxBlocks')); return;
             }
             gridSection.appendChild(createGridBlock());
             autoSave();
@@ -1306,7 +1531,7 @@
             const gridSection = button.closest('.tier-row').querySelector('.grid-section');
             const blocks = gridSection.querySelectorAll('.grid-block');
             if (blocks.length <= 1) {
-                alert("限制：每一組最少必須保留 1 個區塊（3 格）唷！"); return;
+                alert(t('limitMinBlocks')); return;
             }
             gridSection.removeChild(blocks[blocks.length - 1]);
             autoSave();
@@ -1314,7 +1539,7 @@
 
         function handleZoneClear(zoneEl) {
             if (zoneEl.querySelector('img')) {
-                zoneEl.innerHTML = defaultZoneHTML;
+                zoneEl.innerHTML = getDefaultZoneHTML();
                 autoSave();
             }
         }
@@ -1334,9 +1559,9 @@
         function clearAllZones() {
             const activeContainerId = ['container-burst', 'container-torment', 'container-support'][currentPage];
             if (!activeContainerId) return;
-            if (!confirm("確定要清空當前頁面所有牌組嗎？")) return;
+            if (!confirm(t('confirmClearZones'))) return;
             document.querySelectorAll(`#${activeContainerId} .drop-zone`).forEach(zone => {
-                zone.innerHTML = defaultZoneHTML;
+                zone.innerHTML = getDefaultZoneHTML();
             });
             autoSave();
         }
@@ -1358,6 +1583,7 @@
             setupCardPoolTapHandling();
             syncCardPoolCardSize();
             populateStageSelect();
+            applyLanguage();
 
             switchPage(0);
 
@@ -1469,7 +1695,7 @@
                 input.setAttribute('value', input.value)
             );
 
-            imgContainer.innerHTML = "正在組裝配卡圖...";
+            imgContainer.innerHTML = t('generatingDeckImage');
             modal.style.display = "flex";
 
             html2canvas(exportArea, {
@@ -1530,7 +1756,7 @@
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
             }).catch(() => { 
-                alert("生成失敗"); 
+                alert(t('generateFailed')); 
                 closeModal(); 
             });
         }
@@ -1570,16 +1796,19 @@
                 const tier = tiers[i];
                 if (!tier) return;
                 tier.querySelector('.label-custom-input').value = group.label;
-                const partTagMap = {'全部位':'全部位','全':'全部位','任一單部位':'任一單部位','單':'任一單部位','頭':'頭','肚':'肚','手':'手','腳':'腳'};
+                // bossPreset.js 裡的資料是用中文字標示部位（例如「全部位」「頭」），
+                // 這裡轉成對應的 data-key 去比對，跟目前顯示的語言無關
+                const partTagMap = {'全部位':'all','全':'all','任一單部位':'single','單':'single','頭':'head','肚':'belly','手':'hand','腳':'foot'};
                 tier.querySelectorAll('.part-tag').forEach(tag => {
-                    const matched = group.parts && group.parts.some(p => partTagMap[p] === tag.textContent || p === tag.textContent);
+                    const matched = group.parts && group.parts.some(p => partTagMap[p] === tag.dataset.key);
                     tag.classList.toggle('active', !!matched);
                 });
                 tier.querySelectorAll('.custom-dropdown').forEach(dropdown => {
                     updateSelectedPartsDisplay(dropdown);
                 });
                 const typeSel = tier.querySelector('.check-select');
-                if (typeSel && group.type) typeSel.value = group.type;
+                const typeMap = { '肉甲': 'fleshArmor', '肉': 'flesh', '甲': 'armor' };
+                if (typeSel && group.type) typeSel.value = typeMap[group.type] || group.type;
                 const zones = tier.querySelectorAll('.drop-zone');
                 group.cards.forEach((card, idx) => {
                     if (zones[idx]) zones[idx].innerHTML = `<img src="images/IMG_${String(card).padStart(4,'0')}.jpeg">`;
@@ -1615,7 +1844,7 @@
             if (!sel || sel.options.length > 0) return;
             const placeholder = document.createElement('option');
             placeholder.value = '';
-            placeholder.textContent = '關卡';
+            placeholder.textContent = t('stagePlaceholder');
             sel.appendChild(placeholder);
             for (let i = 1; i <= 200; i++) {
                 const opt = document.createElement('option');
@@ -1674,7 +1903,7 @@
                 el.dataset.value = bossName;
                 el.classList.remove('empty');
             } else {
-                el.textContent = '未偵測';
+                el.textContent = t('notDetected');
                 el.dataset.value = '';
                 el.classList.add('empty');
             }
@@ -1962,11 +2191,11 @@
             const rateCellClass = (rate) => 'rate-cell' + (rate > 5 ? ' rate-warning' : '');
 
             summary.innerHTML = `
-                <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">玩家數</div></div>
-                <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">平均次數</div></div>
-                <div class="summary-card ${overallAccidentRate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">整體誤傷率</div></div>
-                <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">總傷害</div></div>
-                <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">平均傷害</div></div>
+                <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">${t('statPlayers')}</div></div>
+                <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">${t('statAvgHits')}</div></div>
+                <div class="summary-card ${overallAccidentRate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">${t('statOverallMissRate')}</div></div>
+                <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">${t('statTotalDmg')}</div></div>
+                <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">${t('statAvgDmg')}</div></div>
             `;
 
             tbody.innerHTML = '';
@@ -1986,7 +2215,7 @@
             const summaryTr = document.createElement('tr');
             summaryTr.className = 'summary-row';
             summaryTr.innerHTML = `
-                <td class="player-name">總計 / 平均</td>
+                <td class="player-name">${t('playerNumSummaryRow')}</td>
                 <td>${Math.round(avgCount)}</td>
                 <td class="${rateCellClass(overallAccidentRate)}" style="color: #d32f2f; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
                 <td>${formatNum(totalDamage)}</td>
@@ -1996,7 +2225,7 @@
         }
 
         function clearAnalysisData() { 
-            if (!confirm('確定要清除目前的分析資料嗎？')) return; 
+            if (!confirm(t('confirmClearAnalysisData'))) return; 
             csvHeaders = []; csvRows = []; analysisData = []; 
             document.getElementById('analysis-result-wrap').style.display = 'none'; 
             document.getElementById('analysis-empty-state').style.display = 'block'; 
@@ -2014,7 +2243,7 @@
         }
         
         function exportAnalysisImage() {
-            if (!analysisData.length) { alert('尚無資料可匯出，請先匯入 CSV 並計算數據'); return; }
+            if (!analysisData.length) { alert(t('noAnalysisDataToExport')); return; }
 
             // 避免截圖前還停留在「滑動中」的暫時狀態，導致稍後返回時頁面卡在兩頁之間
             isSwiping = false;
@@ -2023,7 +2252,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
-            imgContainer.innerHTML = "正在組裝分析圖...";
+            imgContainer.innerHTML = t('generatingAnalysisImage');
             modal.style.display = "flex";
 
             const SPLIT_AT = 25;
@@ -2052,7 +2281,7 @@
                     img.src = canvas.toDataURL('image/png');
                     imgContainer.appendChild(img);
                 }).catch(() => {
-                    alert("生成失敗");
+                    alert(t('generateFailed'));
                     closeModal();
                 });
                 return;
@@ -2072,7 +2301,7 @@
                 })
                 .catch(() => {
                     offscreen.remove();
-                    alert("生成失敗");
+                    alert(t('generateFailed'));
                     closeModal();
                 });
         }
@@ -2222,13 +2451,8 @@
 
             drawer.addEventListener('touchend', (e) => {
                 if (poolTracking && !poolDragStarted) {
-                    const onHandle = e.target.closest('.card-pool-handle');
-                    if (onHandle) {
-                        toggleCardPool();
-                    } else if (!cardPoolExpanded) {
-                        // 收合狀態下，單純點一下（沒有明顯上滑）就展開
-                        toggleCardPool();
-                    }
+                    // 不管點在把手、卡片還是空白處，只要不是拖曳，單純點一下就切換展開/收合
+                    toggleCardPool();
                 }
                 poolTracking = false;
                 poolDragStarted = false;
@@ -2288,7 +2512,7 @@
             // 所以要用裸變數名稱讀取，不能寫成 window.PRESET_CARDS
             const list = (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) ? PRESET_CARDS : null;
             if (!list || list.length === 0) {
-                content.innerHTML = '<div class="card-pool-empty">卡片池資料尚未載入（找不到 cards.js 的 PRESET_CARDS 陣列）。</div>';
+                content.innerHTML = `<div class="card-pool-empty">${t('cardPoolNotLoadedDetail')}</div>`;
                 return;
             }
             content.innerHTML = '';

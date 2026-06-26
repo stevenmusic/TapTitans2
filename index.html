@@ -705,7 +705,7 @@
             filter: brightness(0.9);
         }
 
-        /* ── 卡片池（固定於底部，預設收合）── */
+        /* ── 卡片池（固定於底部）── */
         .card-pool-drawer {
             position: fixed;
             left: 0; right: 0;
@@ -713,15 +713,10 @@
             z-index: 950;
             background: #ffffff;
             box-shadow: 0 -2px 12px rgba(0,0,0,0.2);
-            transform: translateY(calc(100% - 40px));
-            transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
             display: flex;
             flex-direction: column;
             /* 預留安全區域，避免被瀏覽器網址列/手勢列擋住 */
             padding-bottom: env(safe-area-inset-bottom, 0px);
-        }
-        .card-pool-drawer.expanded {
-            transform: translateY(0);
         }
         .card-pool-handle {
             height: 40px;
@@ -742,18 +737,34 @@
             background: rgba(255,255,255,0.6);
             border-radius: 3px;
         }
+        /* 收合時只顯示一橫排（第一排），展開時顯示全部三橫排，內部可垂直滾動 */
         .card-pool-content {
-            max-height: 38vh;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 6px 8px;
+            background: #faf8f5;
+            max-height: 64px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .card-pool-drawer.expanded .card-pool-content {
+            max-height: 44vh;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
-            padding: 8px;
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+        }
+        .card-pool-row {
+            display: flex;
             gap: 6px;
-            background: #faf8f5;
+            flex-shrink: 0;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;
         }
         .card-pool-card {
-            aspect-ratio: 1;
+            flex: 0 0 50px;
+            width: 50px;
+            height: 50px;
             border: 1px solid #e0d5c1;
             border-radius: 4px;
             overflow: hidden;
@@ -765,7 +776,6 @@
             pointer-events: none;
         }
         .card-pool-empty {
-            grid-column: 1 / -1;
             text-align: center;
             color: #9c8f80;
             font-size: 11px;
@@ -1377,6 +1387,10 @@
 
         /* ── 圖片產出（直接截圖 8 個牌組，不做雙欄拆分）── */
         function generateImage(type) {
+            // 避免截圖前如果還停留在「滑動中」的暫時狀態，導致稍後返回時頁面卡在兩頁之間
+            isSwiping = false;
+            updateSwiperPosition(false);
+
             window.scrollTo({ top: 0, behavior: 'smooth' });
             const idMap = { burst: 'export-burst', torment: 'export-torment', support: 'export-support' };
             const bgMap = { burst: '#f4ece1', torment: '#ede7f6', support: '#e8f5e9' };
@@ -1401,6 +1415,10 @@
                         ci.style.border = 'none';
                     });
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+                    // 最後一組牌組原本保留了 200px 的底部留白（讓卡片池抽屜不會擋住畫面），
+                    // 截圖時要去掉，避免圖片往下多出一大段空白
+                    const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
+                    if (lastTierRow) lastTierRow.style.marginBottom = '0px';
                 }
             }).then(canvas => {
                 imgContainer.innerHTML = '';
@@ -1416,11 +1434,18 @@
         function closeModal() { 
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
+
+            // 強制把滑動容器重新對齊回目前分頁，避免返回時頁面卡在兩頁之間、版面歪掉
+            isSwiping = false;
+            updateSwiperPosition(false);
+
             setTimeout(() => {
                 document.body.style.overflow = 'visible';
                 document.body.style.overflowY = 'visible';
                 void document.body.offsetHeight;
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+                // 部分手機瀏覽器在圖層收起、版面重新計算後位置可能跑掉，這裡再次確認對齊
+                updateSwiperPosition(true);
             }, 100);
         }
 
@@ -1824,6 +1849,11 @@
         
         function exportAnalysisImage() {
             if (!analysisData.length) { alert('尚無資料可匯出，請先匯入 CSV 並計算數據'); return; }
+
+            // 避免截圖前還停留在「滑動中」的暫時狀態，導致稍後返回時頁面卡在兩頁之間
+            isSwiping = false;
+            updateSwiperPosition(false);
+
             window.scrollTo({ top: 0, behavior: 'smooth' });
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
@@ -2000,7 +2030,9 @@
             }
         }
 
-        // 從 cards.js 的 PRESET_CARDS 陣列（圖片路徑字串陣列）畫出卡片池縮圖
+        // 從 cards.js 的 PRESET_CARDS 陣列（圖片路徑字串陣列）畫出卡片池縮圖，
+        // 每 14 張分一橫排（對應 cards.js 裡「第一排/第二排/第三排」的分組）
+        const CARD_POOL_ROW_SIZE = 14;
         function renderCardPool() {
             const content = document.getElementById('card-pool-content');
             if (!content) return;
@@ -2012,13 +2044,18 @@
                 return;
             }
             content.innerHTML = '';
-            list.forEach(imgSrc => {
-                const cell = document.createElement('div');
-                cell.className = 'card-pool-card';
-                cell.innerHTML = `<img src="${imgSrc}" draggable="false">`;
-                content.appendChild(cell);
-                attachCardPoolDragHandlers(cell, imgSrc);
-            });
+            for (let i = 0; i < list.length; i += CARD_POOL_ROW_SIZE) {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'card-pool-row';
+                list.slice(i, i + CARD_POOL_ROW_SIZE).forEach(imgSrc => {
+                    const cell = document.createElement('div');
+                    cell.className = 'card-pool-card';
+                    cell.innerHTML = `<img src="${imgSrc}" draggable="false">`;
+                    rowEl.appendChild(cell);
+                    attachCardPoolDragHandlers(cell, imgSrc);
+                });
+                content.appendChild(rowEl);
+            }
         }
 
         /* ── 拖曳系統（保留，用於配卡頁拖放功能） ── */
@@ -2091,18 +2128,20 @@
                 const touch = e.touches[0];
                 pendingTouch = { x: touch.clientX, y: touch.clientY };
                 clearTimeout(longPressTimer);
+                // 80ms 內手指沒有明顯移動就視為要拖曳，盡量縮短「按住才能拔出」的等待感
                 longPressTimer = setTimeout(() => {
                     beginCardPoolDrag(imgSrc, pendingTouch.x, pendingTouch.y);
-                }, 150);
+                }, 80);
             }, { passive: true });
 
             cardEl.addEventListener('touchmove', (e) => {
-                // 長按尚未觸發拖曳前，若手指移動超過一點距離，視為在捲動卡片池，取消長按計時
+                // 長按尚未觸發拖曳前，若手指移動超過一定距離，視為在捲動卡片池，取消長按計時；
+                // 門檻放寬一些，避免手指自然的小幅晃動誤判成「想滑動」而一直取消，導致要按很多次才能拖出
                 if (!isDraggingCard && pendingTouch) {
                     const touch = e.touches[0];
                     const dx = Math.abs(touch.clientX - pendingTouch.x);
                     const dy = Math.abs(touch.clientY - pendingTouch.y);
-                    if (dx > 8 || dy > 8) {
+                    if (dx > 18 || dy > 18) {
                         clearTimeout(longPressTimer);
                     }
                 }

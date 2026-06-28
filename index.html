@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tap Titans 2 - Raid Toolkit</title>
+    <title>Tap Titans 2 - Toolkit</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
@@ -1096,6 +1096,47 @@
 
         .abyss-panel { width: 100%; max-width: 500px; box-sizing: border-box; }
 
+        /* ── 深淵錦標賽：技能配點／出裝順序 左右滑動 ── */
+        .abyss-swiper-wrapper {
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .abyss-swiper-container {
+            display: flex;
+            width: 200%;
+            transition: none;
+            will-change: transform;
+            transform: translate3d(0px, 0px, 0px);
+        }
+        .abyss-swiper-page {
+            width: 50%;
+            flex-shrink: 0;
+            box-sizing: border-box;
+            padding: 0 4px;
+        }
+
+        .abyss-sp-select {
+            width: 100%;
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            border-radius: 12px;
+            background-color: #6a3fb5;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+            text-align: center;
+            text-align-last: center;
+            padding: 11px 0;
+            margin-bottom: 14px;
+            box-sizing: border-box;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(106,63,181,0.35);
+        }
+        .abyss-sp-select:focus { outline: none; }
+
         .abyss-sp-card {
             background: #ffffff;
             border: 1px solid #e3d9f7;
@@ -1177,7 +1218,7 @@
     <div class="view" id="view-home">
         <div class="home-header">
             <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
-            <div class="home-eyebrow" data-i18n="homeEyebrow">RAID TOOLKIT</div>
+            <div class="home-eyebrow" data-i18n="homeEyebrow">TT2 TOOLKIT</div>
             <div class="home-title">Tap Titans 2</div>
             <div class="home-subtitle" data-i18n="appSubtitle">配卡與戰報分析工具</div>
             <p class="home-tagline" data-i18n="homeTagline">突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名</p>
@@ -1210,7 +1251,7 @@
                     <div class="home-nav-arrow">›</div>
                 </button>
             </div>
-            <div class="home-footnote" data-i18n="homeFootnote">TT2 RAID TOOLKIT</div>
+            <div class="home-footnote" data-i18n="homeFootnote">TT2 TOOLKIT</div>
         </div>
     </div>
 
@@ -1471,10 +1512,17 @@
         </div>
 
         <div class="standalone-page" id="page-abyss-detail">
-            <div class="export-area">
-                <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
-                <div id="abyss-sp-panel" class="abyss-panel"></div>
-                <div id="abyss-gear-panel" class="abyss-panel" style="display:none;"></div>
+            <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
+            <div class="abyss-swiper-wrapper" id="abyss-swiper-wrapper">
+                <div class="abyss-swiper-container" id="abyss-swiper-container">
+                    <div class="abyss-swiper-page" id="abyss-page-sp">
+                        <select class="abyss-sp-select" id="abyss-sp-select"></select>
+                        <div class="abyss-sp-image-wrap" id="abyss-sp-image-wrap"></div>
+                    </div>
+                    <div class="abyss-swiper-page" id="abyss-page-gear">
+                        <div id="abyss-gear-panel"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1495,9 +1543,9 @@
            ══════════════════════════════════════════════════════════ */
         const I18N = {
             zh: {
-                homeEyebrow: 'RAID TOOLKIT',
-                appSubtitle: '配卡與戰報分析工具',
-                homeTagline: '突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名',
+                homeEyebrow: 'TT2 TOOLKIT',
+                appSubtitle: '配卡、戰報分析與錦標賽攻略工具',
+                homeTagline: '突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名；另外也收錄深淵錦標賽各模式攻略',
                 homeSectionLabel: '選擇功能',
                 navDeckTitle: '牌組建構',
                 navDeckDesc: '配置爆裂／苦痛／支援牌組，自動儲存進度',
@@ -1508,7 +1556,7 @@
                 abyssListPageTitle: '深淵錦標賽',
                 tabSkillPoints: '技能配點',
                 tabGearOrder: '出裝順序',
-                homeFootnote: 'TT2 RAID TOOLKIT',
+                homeFootnote: 'TT2 TOOLKIT',
                 deckBuilderPageTitle: '牌組建構',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
@@ -1556,9 +1604,9 @@
                 statTotalDmg: '總傷害', statAvgDmg: '平均傷害',
             },
             en: {
-                homeEyebrow: 'RAID TOOLKIT',
-                appSubtitle: 'Deck Builder & Report Analyzer',
-                homeTagline: 'Build your decks before the raid, then paste your report afterward to analyze miss rates and damage rankings.',
+                homeEyebrow: 'TT2 TOOLKIT',
+                appSubtitle: 'Deck Builder, Report Analyzer & Tournament Guides',
+                homeTagline: 'Build your decks before the raid, then paste your report afterward to analyze miss rates and damage rankings. Also includes Abyssal Tournament build guides for every mode.',
                 homeSectionLabel: 'Choose a tool',
                 navDeckTitle: 'Deck Builder',
                 navDeckDesc: 'Set up Burst / Affliction / Support decks — auto-saved as you go',
@@ -1569,7 +1617,7 @@
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
                 tabGearOrder: 'Gear Order',
-                homeFootnote: 'TT2 RAID TOOLKIT',
+                homeFootnote: 'TT2 TOOLKIT',
                 deckBuilderPageTitle: 'Deck Builder',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
@@ -3085,9 +3133,7 @@
         };
 
         const ABYSS_MODES = [
-            { key: 'bladeBombardment',      name: '刀片轟炸',   build: '', gearSteps: [] },
-            { key: 'solarEclipse',          name: '日蝕',       build: '', gearSteps: [] },
-            { key: 'metabolicGrowth',       name: '代謝繁殖',   build: '', gearSteps: [] },
+            { key: 'solarEclipse',          name: '日蝕',         build: '影分身流', gearSteps: [] },
             {
                 key: 'companionFrenzy',
                 name: '同伴狂潮',
@@ -3104,9 +3150,11 @@
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ]
             },
-            { key: 'shimmeringBlacksmith',  name: '波光粼粼的鐵匠', build: '', gearSteps: [] },
-            { key: 'timeStorm',             name: '時間風暴',   build: '', gearSteps: [] },
-            { key: 'enchantedMind',         name: '魔法的心',   build: '', gearSteps: [] }
+            { key: 'timeStorm',             name: '時間風暴',     build: '寵物流',   gearSteps: [] },
+            { key: 'bladeBombardment',      name: '刀片轟炸',     build: '匕首流',   gearSteps: [] },
+            { key: 'enchantedMind',         name: '魔法的心',     build: '寵物流',   gearSteps: [] },
+            { key: 'metabolicGrowth',       name: '代謝繁殖',     build: '天堂流',   gearSteps: [] },
+            { key: 'shimmeringBlacksmith',  name: '波光粼粼的鐵匠', build: '寵物流',  gearSteps: [] }
         ];
 
         let currentAbyssModeKey = null;
@@ -3116,7 +3164,7 @@
             if (!wrap) return;
             wrap.innerHTML = '';
             ABYSS_MODES.forEach(mode => {
-                const hasData = !!mode.build && mode.gearSteps.length > 0;
+                const hasBuild = !!mode.build;
                 const card = document.createElement('button');
                 card.className = 'abyss-mode-card';
                 card.type = 'button';
@@ -3125,7 +3173,7 @@
                     <div class="mode-icon">${ABYSS_MODE_ICONS[mode.key] || '🌀'}</div>
                     <div class="mode-text">
                         <div class="mode-name">${mode.name}</div>
-                        <div class="mode-build${hasData ? '' : ' pending'}">${hasData ? mode.build : '尚未建立攻略'}</div>
+                        <div class="mode-build${hasBuild ? '' : ' pending'}">${hasBuild ? mode.build : '尚未建立攻略'}</div>
                     </div>
                     <div class="mode-arrow">›</div>`;
                 wrap.appendChild(card);
@@ -3136,42 +3184,55 @@
             const mode = ABYSS_MODES.find(m => m.key === modeKey);
             if (!mode) return;
             currentAbyssModeKey = modeKey;
+            showView('abyssDetail');
             document.getElementById('abyss-detail-title').textContent = mode.name;
             document.getElementById('abyss-build-subtitle').textContent = mode.build ? `流派：${mode.build}` : '此模式攻略尚未建立';
             renderAbyssSpPanel(mode);
             renderAbyssGearPanel(mode);
-            switchAbyssTab('sp');
-            showView('abyssDetail');
+            abyssCurrentPage = 0;
+            document.getElementById('abyss-tab-sp').classList.add('active');
+            document.getElementById('abyss-tab-gear').classList.remove('active');
+            updateAbyssSwiperPosition(false);
         }
 
         function renderAbyssSpPanel(mode) {
-            const panel = document.getElementById('abyss-sp-panel');
-            if (!panel) return;
-            panel.innerHTML = '';
+            const select = document.getElementById('abyss-sp-select');
+            if (!select) return;
+            if (select.options.length === 0) {
+                ABYSS_SP_CHECKPOINTS.forEach(sp => {
+                    const opt = document.createElement('option');
+                    opt.value = String(sp);
+                    opt.textContent = `${sp} 點`;
+                    select.appendChild(opt);
+                });
+            }
+            select.value = String(ABYSS_SP_CHECKPOINTS[0]);
+            updateAbyssSpImage(mode, ABYSS_SP_CHECKPOINTS[0]);
+        }
+
+        function updateAbyssSpImage(mode, sp) {
+            const wrap = document.getElementById('abyss-sp-image-wrap');
+            if (!wrap) return;
             if (!mode.build) {
-                panel.innerHTML = `<div class="abyss-empty-state">此模式攻略尚未建立<br>補上資料後會自動顯示</div>`;
+                wrap.innerHTML = `<div class="abyss-sp-placeholder">此模式攻略尚未建立<br>補上資料後會自動顯示</div>`;
                 return;
             }
-            ABYSS_SP_CHECKPOINTS.forEach(sp => {
-                const imgPath = `images/abyss/${mode.key}/${sp}.jpg`;
-                const card = document.createElement('div');
-                card.className = 'abyss-sp-card';
-                card.innerHTML = `
-                    <div class="abyss-sp-badge">${sp} 點</div>
-                    <div class="abyss-sp-image-wrap">
-                        <img src="${imgPath}" alt="${sp} 點配點截圖"
-                             onerror="this.parentNode.innerHTML='&lt;div class=&quot;abyss-sp-placeholder&quot;&gt;技能配點截圖尚未上傳&lt;br&gt;(${sp} 點)&lt;/div&gt;'">
-                    </div>`;
-                panel.appendChild(card);
-            });
+            const imgPath = `images/abyss/${mode.key}/${sp}.jpg`;
+            wrap.innerHTML = `<img src="${imgPath}" alt="${sp} 點配點截圖"
+                 onerror="this.parentNode.innerHTML='&lt;div class=&quot;abyss-sp-placeholder&quot;&gt;技能配點截圖尚未上傳&lt;br&gt;(${sp} 點)&lt;/div&gt;'">`;
         }
+
+        document.getElementById('abyss-sp-select').addEventListener('change', function () {
+            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+            if (mode) updateAbyssSpImage(mode, this.value);
+        });
 
         function renderAbyssGearPanel(mode) {
             const panel = document.getElementById('abyss-gear-panel');
             if (!panel) return;
             panel.innerHTML = '';
             if (!mode.build || mode.gearSteps.length === 0) {
-                panel.innerHTML = `<div class="abyss-empty-state">此模式攻略尚未建立<br>補上資料後會自動顯示</div>`;
+                panel.innerHTML = `<div class="abyss-empty-state">出裝順序尚未建立<br>補上資料後會自動顯示</div>`;
                 return;
             }
             mode.gearSteps.forEach((step, idx) => {
@@ -3188,17 +3249,71 @@
             });
         }
 
+        /* ── 技能配點／出裝順序 左右滑動 ── */
+        const ABYSS_TOTAL_PAGES = 2;
+        let abyssCurrentPage = 0;
+        let abyssSwiperWidth = 0;
+        let abyssStartX = 0, abyssTranslateX = 0;
+        let abyssIsSwiping = false, abyssSwipeStartTime = 0;
+
+        function updateAbyssSwiperPosition(useTransition = false) {
+            const wrapper = document.getElementById('abyss-swiper-wrapper');
+            const container = document.getElementById('abyss-swiper-container');
+            if (!wrapper || !container) return;
+            abyssSwiperWidth = wrapper.clientWidth;
+            container.style.transition = useTransition
+                ? 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)' : 'none';
+            container.style.transform = `translate3d(${-abyssCurrentPage * abyssSwiperWidth}px, 0px, 0px)`;
+            void container.offsetHeight;
+        }
+
         function switchAbyssTab(tab) {
             const tabSp = document.getElementById('abyss-tab-sp');
             const tabGear = document.getElementById('abyss-tab-gear');
-            const panelSp = document.getElementById('abyss-sp-panel');
-            const panelGear = document.getElementById('abyss-gear-panel');
-            if (!tabSp || !tabGear || !panelSp || !panelGear) return;
+            if (!tabSp || !tabGear) return;
+            abyssCurrentPage = (tab === 'gear') ? 1 : 0;
             tabSp.classList.toggle('active', tab === 'sp');
             tabGear.classList.toggle('active', tab === 'gear');
-            panelSp.style.display = (tab === 'sp') ? 'block' : 'none';
-            panelGear.style.display = (tab === 'gear') ? 'block' : 'none';
+            updateAbyssSwiperPosition(true);
         }
+
+        const abyssSwiperContainer = document.getElementById('abyss-swiper-container');
+
+        abyssSwiperContainer.addEventListener('touchstart', (e) => {
+            abyssStartX = e.touches[0].clientX;
+            abyssSwipeStartTime = Date.now();
+            abyssIsSwiping = true;
+            abyssSwiperContainer.style.transition = 'none';
+        }, { passive: true });
+
+        abyssSwiperContainer.addEventListener('touchmove', (e) => {
+            if (!abyssIsSwiping) return;
+            const deltaX = e.touches[0].clientX - abyssStartX;
+            let base = -abyssCurrentPage * abyssSwiperWidth;
+            let target = base + deltaX;
+            const maxOffset = -(ABYSS_TOTAL_PAGES - 1) * abyssSwiperWidth;
+            if (target > 0) target = deltaX / (1 + deltaX / (abyssSwiperWidth * 0.6));
+            else if (target < maxOffset) { const ov = target - maxOffset; target = maxOffset + ov / (1 + Math.abs(ov) / (abyssSwiperWidth * 0.6)); }
+            abyssTranslateX = target;
+            requestAnimationFrame(() => { if (abyssIsSwiping) abyssSwiperContainer.style.transform = `translate3d(${abyssTranslateX}px, 0px, 0px)`; });
+        }, { passive: true });
+
+        abyssSwiperContainer.addEventListener('touchend', (e) => {
+            if (!abyssIsSwiping) return;
+            abyssIsSwiping = false;
+            const deltaX = e.changedTouches[0].clientX - abyssStartX;
+            const velocity = Math.abs(deltaX) / (Date.now() - abyssSwipeStartTime);
+            if (velocity > 0.4 || Math.abs(deltaX) > abyssSwiperWidth / 2) {
+                if (deltaX < 0 && abyssCurrentPage < ABYSS_TOTAL_PAGES - 1) abyssCurrentPage++;
+                else if (deltaX > 0 && abyssCurrentPage > 0) abyssCurrentPage--;
+            }
+            switchAbyssTab(abyssCurrentPage === 1 ? 'gear' : 'sp');
+        });
+
+        window.addEventListener('resize', () => {
+            if (currentView === 'abyssDetail') updateAbyssSwiperPosition(false);
+        });
     </script>
+
 </body>
 </html>

@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Report Analyzer · TT2 Raid Toolkit</title>
+    <link rel="stylesheet" href="theme.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        .page-wrap { max-width: 500px; margin: 0 auto; padding: 14px 12px 30px; }
+
+        .csv-input {
+            width: 100%; height: 120px; font-size: 12px; padding: 10px;
+            background: var(--bg-surface-2); color: var(--text-primary);
+            border: 1px solid var(--border-soft-2); border-radius: 10px;
+            box-sizing: border-box; resize: vertical; margin-bottom: 8px;
+        }
+        .csv-input::placeholder { color: var(--text-muted); }
+
+        .stage-row { display: flex; gap: 6px; width: 100%; margin-bottom: 14px; flex-wrap: wrap; }
+        .tier-stage-select {
+            appearance: none; -webkit-appearance: none; border: 1px solid var(--border-soft-2);
+            border-radius: 10px; background: var(--bg-surface-2); color: var(--text-primary);
+            font-size: 13px; font-weight: 700; text-align: center; text-align-last: center;
+            padding: 0 2px; min-height: 44px; box-sizing: border-box; cursor: pointer;
+            flex: 0 0 54px; width: 54px;
+        }
+        .tier-stage-select:focus { outline: none; border-color: var(--accent-gold-deep); }
+
+        .btn-row { display: flex; gap: 6px; flex: 1; min-width: 200px; }
+        .btn-row > button { flex: 1; min-width: 70px; padding: 8px 6px; font-size: 12px; }
+        body.lang-en .btn-row > button { font-size: 11px; }
+
+        /* ── 強化後的卡片：更大留白、更圓角、更明顯陰影 ── */
+        .boss-config-container {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-soft);
+            border-left: 4px solid var(--mode-analysis);
+            border-radius: 14px;
+            padding: 18px 16px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-card);
+        }
+        .boss-config-title { font-size: 15px; font-weight: 800; color: var(--text-primary); margin-bottom: 12px; }
+        .boss-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px dashed var(--border-soft); }
+        .boss-row:last-child { border-bottom: none; }
+
+        .boss-name-label {
+            padding: 6px 10px; border: 1px solid var(--border-soft-2); border-radius: 8px;
+            font-size: 14px; font-weight: 700; min-width: 110px; flex-shrink: 0;
+            background: var(--bg-surface-2); color: var(--accent-gold); text-align: center; box-sizing: border-box;
+        }
+        .boss-name-label.empty { color: var(--text-muted); font-weight: 400; }
+
+        .pill-container { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+        .pill-btn {
+            display: inline-block; padding: 6px 12px; border-radius: 8px;
+            border: 1px solid var(--border-soft-2); background: var(--bg-surface-2);
+            color: var(--text-secondary); font-size: 13px; font-weight: 600;
+            cursor: pointer; user-select: none;
+            transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+        }
+        .pill-btn:active { transform: scale(0.96); }
+        .pill-btn.active {
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-deep) 100%);
+            color: var(--accent-gold-text); border-color: var(--accent-gold-deep); font-weight: 700;
+            box-shadow: 0 0 6px rgba(201,151,31,0.55);
+        }
+        body.lang-en .pill-btn { font-size: 11px; padding: 5px 8px; }
+
+        .analysis-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 50px 20px; line-height: 1.8; width: 100%; }
+
+        .analysis-summary { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 10px; width: 100%; }
+        .summary-card {
+            background: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px;
+            padding: 10px 6px; text-align: center; flex: 1; min-width: 60px; box-sizing: border-box;
+            box-shadow: var(--shadow-card);
+        }
+        .summary-card .num { font-size: 15px; font-weight: 900; color: var(--mode-analysis); }
+        .summary-card .label { font-size: 9.5px; color: var(--text-muted); margin-top: 2px; }
+        .summary-card.rate-warning .num { color: #f0859e; }
+
+        .analysis-table-wrap {
+            width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+            border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px;
+            border: 1px solid var(--border-soft);
+        }
+        .analysis-table { width: 100%; border-collapse: collapse; background: var(--bg-surface); font-size: 12px; min-width: 380px; }
+        .analysis-table th, .analysis-table td { padding: 9px 6px; text-align: center; border-bottom: 1px solid var(--border-soft); white-space: nowrap; color: var(--text-primary); }
+        .analysis-table th { background: var(--bg-surface-2); color: var(--text-secondary); font-size: 11px; cursor: pointer; user-select: none; position: sticky; top: 0; }
+        .analysis-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+        .analysis-table tbody tr:active { background: var(--bg-surface-3); }
+        .analysis-table .player-name { text-align: left; font-weight: 700; }
+        .analysis-table .summary-row { background: var(--bg-surface-3); font-weight: 900; color: var(--accent-gold); border-top: 2px solid var(--accent-gold-deep); }
+        .rate-warning { background-color: rgba(240,133,158,0.18) !important; border-radius: 3px; }
+
+        #result-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 10000;
+            justify-content: center; align-items: center; flex-direction: column;
+            padding: 20px; box-sizing: border-box;
+        }
+        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 12px; }
+        #result-modal p { margin-top: 10px; font-size: 13px; color: var(--text-secondary); text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app-header">
+        <div class="app-header-row">
+            <div class="app-header-left">
+                <a class="back-btn" href="index.html">←</a>
+                <div class="app-title-block">
+                    <div class="app-title-eyebrow" data-i18n="eyebrow">TT2 RAID TOOLKIT</div>
+                    <div class="app-title-main" data-i18n="pageTitle">Report Analyzer</div>
+                </div>
+            </div>
+            <button class="lang-toggle-btn" id="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+        </div>
+    </div>
+
+    <div class="page-wrap" id="export-analysis">
+
+        <textarea id="csv-text-input" class="csv-input" placeholder="請將 CSV 內容直接貼上此處..." data-i18n-placeholder="csvPlaceholder"></textarea>
+
+        <div class="stage-row">
+            <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
+                <option value="" data-i18n="tierPlaceholder">Tier</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="M">M</option>
+            </select>
+            <select class="tier-stage-select" id="analysis-stage-select"></select>
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="exportAnalysisImage()" data-i18n="btnSaveImage">儲存圖片</button>
+                <button class="btn-danger-ghost" onclick="clearAnalysisData()" data-i18n="btnClear">清除</button>
+            </div>
+        </div>
+
+        <div class="boss-config-container">
+            <div class="boss-config-title" data-i18n="bossBannedPartsTitle">Boss 禁打部位（自動偵測）</div>
+
+            <div class="boss-row" id="boss-set-1">
+                <div class="boss-name-label empty" id="analysis-boss-select-1">未偵測</div>
+                <div class="pill-container">
+                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                </div>
+            </div>
+
+            <div class="boss-row" id="boss-set-2">
+                <div class="boss-name-label empty" id="analysis-boss-select-2">未偵測</div>
+                <div class="pill-container">
+                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                </div>
+            </div>
+
+            <div class="boss-row" id="boss-set-3">
+                <div class="boss-name-label empty" id="analysis-boss-select-3">未偵測</div>
+                <div class="pill-container">
+                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="analysis-empty" id="analysis-empty-state">
+            <span data-i18n="noCsvYet">尚未匯入 CSV 資料</span><br>
+            <span style="font-size:11px; opacity:0.75;" data-i18n="tapButtonAbove">請點擊上方按鈕開始分析</span>
+        </div>
+
+        <div id="analysis-result-wrap" style="display:none; width:100%;">
+            <div class="analysis-summary" id="analysis-summary"></div>
+            <div class="analysis-table-wrap">
+                <table class="analysis-table" id="analysis-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortAnalysisBy('player')" data-i18n="colPlayer">玩家</th>
+                            <th onclick="sortAnalysisBy('count')" data-i18n="colHits">次數</th>
+                            <th onclick="sortAnalysisBy('accidentRate')" data-i18n="colMissRate">誤傷率</th>
+                            <th onclick="sortAnalysisBy('total')" data-i18n="colTotalDmg">總傷</th>
+                            <th onclick="sortAnalysisBy('avg')" data-i18n="colAvgDmg">均傷</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analysis-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="result-modal">
+        <p data-i18n="modalImageReady">💡 分析圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
+        <div id="image-container"></div>
+        <button class="btn-secondary" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
+    </div>
+
+    <script>
+        const I18N = {
+            zh: {
+                eyebrow: 'TT2 突襲工具箱',
+                pageTitle: '戰報分析',
+                csvPlaceholder: '請將 CSV 內容直接貼上此處...',
+                tierPlaceholder: 'Tier',
+                stagePlaceholder: '關卡',
+                btnExport: '分析',
+                btnClear: '清除',
+                btnSaveImage: '儲存圖片',
+                bossBannedPartsTitle: 'Boss 禁打部位（自動偵測）',
+                notDetected: '未偵測',
+                partHead: '頭', partBelly: '肚',
+                partLShoulder: '左肩', partRShoulder: '右肩',
+                partLHand: '左手', partRHand: '右手',
+                partLFoot: '左腳', partRFoot: '右腳',
+                noCsvYet: '尚未匯入 CSV 資料',
+                tapButtonAbove: '請點擊上方按鈕開始分析',
+                colPlayer: '玩家', colHits: '次數', colMissRate: '誤傷率', colTotalDmg: '總傷', colAvgDmg: '均傷',
+                modalImageReady: '💡 分析圖已生成！請【長按下方圖片】即可儲存至手機相簿',
+                btnBackToEdit: '返回修改',
+                generatingAnalysisImage: '正在組裝分析圖...',
+                generateFailed: '生成失敗',
+                noAnalysisDataToExport: '尚無資料可匯出，請先匯入 CSV 並計算數據',
+                confirmClearAnalysisData: '確定要清除目前的分析資料嗎？',
+                playerNumSummaryRow: '總計 / 平均',
+                statPlayers: '玩家數', statAvgHits: '平均次數', statOverallMissRate: '整體誤傷率',
+                statTotalDmg: '總傷害', statAvgDmg: '平均傷害',
+            },
+            en: {
+                eyebrow: 'TT2 RAID TOOLKIT',
+                pageTitle: 'Report Analyzer',
+                csvPlaceholder: 'Paste CSV content here...',
+                tierPlaceholder: 'Tier',
+                stagePlaceholder: 'Stage',
+                btnExport: 'Analyze',
+                btnClear: 'Clear',
+                btnSaveImage: 'Save',
+                bossBannedPartsTitle: 'Boss Banned Parts (auto-detected)',
+                notDetected: 'Not detected',
+                partHead: 'Head', partBelly: 'Belly',
+                partLShoulder: 'L.Arm', partRShoulder: 'R.Arm',
+                partLHand: 'L.Hand', partRHand: 'R.Hand',
+                partLFoot: 'L.Foot', partRFoot: 'R.Foot',
+                noCsvYet: 'No CSV data imported yet',
+                tapButtonAbove: 'Tap the button above to start analyzing',
+                colPlayer: 'Player', colHits: 'Hits', colMissRate: 'Miss Rate', colTotalDmg: 'Total Dmg', colAvgDmg: 'Avg Dmg',
+                modalImageReady: '💡 Image generated! Long-press the image below to save it to your photo album.',
+                btnBackToEdit: 'Back to Edit',
+                generatingAnalysisImage: 'Generating analysis image...',
+                generateFailed: 'Failed to generate image',
+                noAnalysisDataToExport: 'No data to export yet. Please import CSV and calculate first.',
+                confirmClearAnalysisData: 'Clear the current analysis data?',
+                playerNumSummaryRow: 'Total / Average',
+                statPlayers: 'Players', statAvgHits: 'Avg Hits', statOverallMissRate: 'Overall Miss Rate',
+                statTotalDmg: 'Total Dmg', statAvgDmg: 'Avg Dmg',
+            }
+        };
+
+        let currentLang = localStorage.getItem('tt2_lang') || 'zh';
+
+        function t(key) {
+            return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key]
+                 : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+        }
+
+        function toggleLanguage() {
+            currentLang = (currentLang === 'zh') ? 'en' : 'zh';
+            localStorage.setItem('tt2_lang', currentLang);
+            applyLanguage();
+        }
+
+        function applyLanguage() {
+            document.documentElement.lang = (currentLang === 'en') ? 'en' : 'zh-TW';
+            document.body.classList.toggle('lang-en', currentLang === 'en');
+
+            document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.getAttribute('data-i18n-placeholder')); });
+
+            const langBtn = document.getElementById('lang-toggle-btn');
+            if (langBtn) langBtn.textContent = (currentLang === 'zh') ? 'EN' : '中文';
+
+            if (analysisData && analysisData.length) renderAnalysisTable();
+            const stageSel = document.getElementById('analysis-stage-select');
+            if (stageSel && stageSel.options.length > 0) stageSel.options[0].textContent = t('stagePlaceholder');
+            [1, 2, 3].forEach(i => setBossSlotValue(i, getBossSlotValue(i)));
+        }
+
+        let csvHeaders = [];
+        let csvRows = [];
+        let analysisData = [];
+        let analysisSortKey = 'total';
+        let analysisSortDir = -1;
+        const ANALYSIS_STORAGE_KEY = 'tt2_analysis_data_v3';
+
+        function populateStageSelect() {
+            const sel = document.getElementById('analysis-stage-select');
+            if (!sel || sel.options.length > 0) return;
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = t('stagePlaceholder');
+            sel.appendChild(placeholder);
+            for (let i = 1; i <= 200; i++) {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = String(i);
+                sel.appendChild(opt);
+            }
+        }
+
+        function buildScreenshotTag() {
+            const tierSel = document.getElementById('analysis-tier-select');
+            const stageSel = document.getElementById('analysis-stage-select');
+            const tier = tierSel ? tierSel.value : '';
+            const stage = stageSel ? stageSel.value : '';
+
+            const wrap = document.createElement('div');
+            wrap.style.display = 'flex';
+            wrap.style.justifyContent = 'flex-end';
+            wrap.style.alignItems = 'baseline';
+            wrap.style.gap = '10px';
+            wrap.style.marginTop = '10px';
+            wrap.style.paddingRight = '4px';
+            wrap.style.width = '100%';
+            wrap.style.boxSizing = 'border-box';
+
+            if (tier && stage) {
+                const tagEl = document.createElement('span');
+                tagEl.textContent = `${tier}-${stage}`;
+                tagEl.style.fontSize = '20px';
+                tagEl.style.fontWeight = '900';
+                tagEl.style.color = '#f3cd6e';
+                wrap.appendChild(tagEl);
+            }
+
+            const d = new Date();
+            const dateStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+            const dateEl = document.createElement('span');
+            dateEl.textContent = dateStr;
+            dateEl.style.fontSize = '20px';
+            dateEl.style.fontWeight = '900';
+            dateEl.style.color = '#9aa4b2';
+            wrap.appendChild(dateEl);
+
+            return wrap;
+        }
+
+        function setBossSlotValue(slotIdx, bossName) {
+            const el = document.getElementById(`analysis-boss-select-${slotIdx}`);
+            if (!el) return;
+            if (bossName) {
+                el.textContent = bossName;
+                el.dataset.value = bossName;
+                el.classList.remove('empty');
+            } else {
+                el.textContent = t('notDetected');
+                el.dataset.value = '';
+                el.classList.add('empty');
+            }
+        }
+
+        function getBossSlotValue(slotIdx) {
+            const el = document.getElementById(`analysis-boss-select-${slotIdx}`);
+            return el ? (el.dataset.value || '') : '';
+        }
+
+        function parseCSV(text) {
+            text = text.replace(/^\uFEFF/, '');
+            const rows = [];
+            let row = [];
+            let field = '';
+            let inQuotes = false;
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const next = text[i + 1];
+                if (inQuotes) {
+                    if (char === '"') {
+                        if (next === '"') { field += '"'; i++; }
+                        else { inQuotes = false; }
+                    } else { field += char; }
+                } else {
+                    if (char === '"') { inQuotes = true; }
+                    else if (char === ',') { row.push(field); field = ''; }
+                    else if (char === '\r') { /* ignore */ }
+                    else if (char === '\n') { row.push(field); field = ''; rows.push(row); row = []; }
+                    else { field += char; }
+                }
+            }
+            if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+            return rows.filter(r => r.some(c => c.trim() !== ''));
+        }
+
+        function parseNumber(val) {
+            if (val === undefined || val === null) return 0;
+            const cleaned = String(val).replace(/[, ]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? 0 : n;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function formatNum(n) {
+            if (n >= 10000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+            if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            return Math.round(n).toLocaleString('en-US');
+        }
+
+        function formatRate(rate) {
+            if (!rate || rate < 0.01) return '0%';
+            return rate.toFixed(2) + '%';
+        }
+
+        function autoDetectBossesFromCSV(dataRows, bossColIdx) {
+            if (bossColIdx < 0) return;
+            const orderedBosses = [];
+            dataRows.forEach(row => {
+                const name = (row[bossColIdx] || '').trim();
+                if (name && !orderedBosses.includes(name)) orderedBosses.push(name);
+            });
+            [1, 2, 3].forEach((slotIdx, i) => { setBossSlotValue(slotIdx, orderedBosses[i] || ''); });
+        }
+
+        const PART_BASE_NAMES = ['頭部', '肚子', '左臂', '右臂', '左手', '右手', '左腿', '右腿'];
+        function fleshHeaderOf(base) { return `${base}(肉體)`; }
+        function basePartName(dataPart) { return dataPart.replace('(裝甲)', ''); }
+
+        function autoDetectBannedParts(headers, dataRows) {
+            const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
+            const dIdx = headers.findIndex(h => h === '泰坦傷害');
+            if (dIdx < 0) return;
+
+            const hasAnyFleshCol = PART_BASE_NAMES.some(base => headers.includes(fleshHeaderOf(base)));
+            if (!hasAnyFleshCol) return;
+
+            [1, 2, 3].forEach(slotIdx => {
+                const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
+                if (bossRowEl) bossRowEl.querySelectorAll('.pill-btn.active').forEach(btn => btn.classList.remove('active'));
+            });
+
+            const bossTotalDmg = {};
+            const bossFleshDmg = {};
+
+            dataRows.forEach(row => {
+                const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
+                const dmg = parseNumber(row[dIdx]);
+                bossTotalDmg[bossName] = (bossTotalDmg[bossName] || 0) + dmg;
+                if (!bossFleshDmg[bossName]) bossFleshDmg[bossName] = {};
+                PART_BASE_NAMES.forEach(base => {
+                    const colIdx = headers.indexOf(fleshHeaderOf(base));
+                    const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
+                    bossFleshDmg[bossName][base] = (bossFleshDmg[bossName][base] || 0) + val;
+                });
+            });
+
+            [1, 2, 3].forEach(slotIdx => {
+                const bossName = getBossSlotValue(slotIdx);
+                if (!bossName) return;
+                const totalDmg = bossTotalDmg[bossName] || 0;
+                if (totalDmg === 0) return;
+                const threshold = totalDmg * 0.01;
+                const fleshData = bossFleshDmg[bossName] || {};
+                const bannedBaseNames = PART_BASE_NAMES.filter(base => (fleshData[base] || 0) < threshold);
+                const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
+                if (!bossRowEl) return;
+                bossRowEl.querySelectorAll('.pill-btn').forEach(btn => {
+                    const baseName = basePartName(btn.getAttribute('data-part'));
+                    if (bannedBaseNames.includes(baseName)) btn.classList.add('active');
+                });
+            });
+        }
+
+        function processPastedCSV() {
+            const rawText = document.getElementById('csv-text-input').value.trim();
+            if (!rawText) return;
+
+            window.scrollTo(0, 0);
+
+            const rows = parseCSV(rawText);
+            if (rows.length < 2) return;
+
+            const headers = rows[0].map(h => h.trim());
+            const dataRows = rows.slice(1);
+
+            const pIdx = headers.findIndex(h => h === '玩家名稱');
+            const bIdx = headers.findIndex(h => h === '泰坦名稱');
+            const dIdx = headers.findIndex(h => h === '泰坦傷害');
+            const cIdx = headers.findIndex(h => h === '總突擊傷害');
+
+            autoDetectBossesFromCSV(dataRows, bIdx);
+            autoDetectBannedParts(headers, dataRows);
+
+            const bossConfigs = {};
+            [1, 2, 3].forEach(i => {
+                const root = document.getElementById(`boss-set-${i}`);
+                if (!root) return;
+                const name = getBossSlotValue(i);
+                if (name) {
+                    bossConfigs[name] = Array.from(root.querySelectorAll('.pill-btn.active')).map(btn => basePartName(btn.getAttribute('data-part')));
+                }
+            });
+
+            const grouped = {};
+
+            dataRows.forEach(row => {
+                if (!row || row.length === 0) return;
+                const pName = (row[pIdx] || '').trim();
+                if (!pName) return;
+
+                if (!grouped[pName]) grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
+
+                if (cIdx >= 0) {
+                    const hitCount = parseNumber(row[cIdx]);
+                    grouped[pName].count = Math.max(grouped[pName].count, hitCount);
+                } else {
+                    grouped[pName].count += 1;
+                }
+
+                const damageVal = parseNumber(row[dIdx]);
+                grouped[pName].total += damageVal;
+
+                const bossName = (row[bIdx] || '').trim();
+                const bannedBaseNames = bossConfigs[bossName] || [];
+                headers.forEach((header, idx) => {
+                    if (idx === pIdx || idx === bIdx || idx === dIdx || idx === cIdx) return;
+                    const val = parseNumber(row[idx]);
+                    if (val <= 0) return;
+
+                    if (header.endsWith('(骨架)')) { grouped[pName].accident += val; return; }
+
+                    if (header.endsWith('(裝甲)') || header.endsWith('(肉體)')) {
+                        const baseName = header.replace('(裝甲)', '').replace('(肉體)', '');
+                        if (bannedBaseNames.includes(baseName)) grouped[pName].accident += val;
+                    }
+                });
+            });
+
+            analysisData = Object.values(grouped).map(p => ({
+                ...p,
+                avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
+                accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
+            }));
+
+            renderAnalysisTable();
+        }
+
+        function sortAnalysisBy(key) {
+            if (analysisSortKey === key) { analysisSortDir *= -1; }
+            else { analysisSortKey = key; analysisSortDir = -1; }
+            renderAnalysisTable();
+        }
+
+        function renderAnalysisTable() {
+            const tbody = document.getElementById('analysis-tbody');
+            const summary = document.getElementById('analysis-summary');
+            const wrap = document.getElementById('analysis-result-wrap');
+            const empty = document.getElementById('analysis-empty-state');
+
+            if (!analysisData || analysisData.length === 0) {
+                wrap.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+
+            empty.style.display = 'none';
+            wrap.style.display = 'block';
+
+            const sorted = [...analysisData].sort((a, b) => {
+                if (analysisSortKey === 'player') return a.player.localeCompare(b.player) * -analysisSortDir;
+                return (a[analysisSortKey] - b[analysisSortKey]) * analysisSortDir;
+            });
+
+            const totalPlayers = analysisData.length;
+            const totalCount = analysisData.reduce((s, p) => s + p.count, 0);
+            const totalDamage = analysisData.reduce((s, p) => s + p.total, 0);
+            const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
+            const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
+            const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
+            const overallAccidentRate = totalDamage > 0 ? (totalAccident / totalDamage) * 100 : 0;
+
+            const rateCellClass = (rate) => 'rate-cell' + (rate > 5 ? ' rate-warning' : '');
+
+            summary.innerHTML = `
+                <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">${t('statPlayers')}</div></div>
+                <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">${t('statAvgHits')}</div></div>
+                <div class="summary-card ${overallAccidentRate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">${t('statOverallMissRate')}</div></div>
+                <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">${t('statTotalDmg')}</div></div>
+                <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">${t('statAvgDmg')}</div></div>
+            `;
+
+            tbody.innerHTML = '';
+            sorted.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                const rateDisplay = formatRate(p.accidentRate);
+                tr.innerHTML = `
+                    <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
+                    <td>${p.count}</td>
+                    <td class="${rateCellClass(p.accidentRate)}" style="color: #f0859e; font-weight: bold;">${rateDisplay}</td>
+                    <td>${formatNum(p.total)}</td>
+                    <td>${formatNum(p.avg)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const summaryTr = document.createElement('tr');
+            summaryTr.className = 'summary-row';
+            summaryTr.innerHTML = `
+                <td class="player-name">${t('playerNumSummaryRow')}</td>
+                <td>${Math.round(avgCount)}</td>
+                <td class="${rateCellClass(overallAccidentRate)}" style="color: #f0859e; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
+                <td>${formatNum(totalDamage)}</td>
+                <td>${formatNum(avgDamagePerHit)}</td>
+            `;
+            tbody.appendChild(summaryTr);
+        }
+
+        function clearAnalysisData() {
+            if (!confirm(t('confirmClearAnalysisData'))) return;
+            csvHeaders = []; csvRows = []; analysisData = [];
+            document.getElementById('analysis-result-wrap').style.display = 'none';
+            document.getElementById('analysis-empty-state').style.display = 'block';
+            document.getElementById('csv-text-input').value = '';
+            localStorage.removeItem(ANALYSIS_STORAGE_KEY);
+
+            [1, 2, 3].forEach(i => {
+                setBossSlotValue(i, '');
+                const root = document.getElementById(`boss-set-${i}`);
+                if (root) root.querySelectorAll('.pill-btn.active').forEach(btn => btn.classList.remove('active'));
+            });
+        }
+
+        function exportAnalysisImage() {
+            if (!analysisData.length) { alert(t('noAnalysisDataToExport')); return; }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+            imgContainer.innerHTML = t('generatingAnalysisImage');
+            modal.style.display = "flex";
+
+            const SPLIT_AT = 25;
+
+            if (analysisData.length <= SPLIT_AT) {
+                const exportArea = document.getElementById('export-analysis');
+                html2canvas(exportArea, {
+                    useCORS: true, scale: 2, backgroundColor: '#1a1f29',
+                    onclone: (clonedDoc) => {
+                        const csvBox = clonedDoc.getElementById('csv-text-input');
+                        if (csvBox) csvBox.style.display = 'none';
+                        const stageRow = clonedDoc.querySelector('#export-analysis .stage-row');
+                        if (stageRow) stageRow.style.display = 'none';
+                        const clonedExportArea = clonedDoc.getElementById('export-analysis');
+                        if (clonedExportArea) clonedExportArea.appendChild(buildScreenshotTag());
+                    }
+                }).then(canvas => {
+                    imgContainer.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = canvas.toDataURL('image/png');
+                    imgContainer.appendChild(img);
+                }).catch(() => { alert(t('generateFailed')); closeModal(); });
+                return;
+            }
+
+            const offscreen = buildAnalysisTwoColExport(SPLIT_AT);
+            document.body.appendChild(offscreen);
+
+            html2canvas(offscreen, { useCORS: true, scale: 2, backgroundColor: '#1a1f29' })
+                .then(canvas => {
+                    offscreen.remove();
+                    imgContainer.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = canvas.toDataURL('image/png');
+                    imgContainer.appendChild(img);
+                })
+                .catch(() => { offscreen.remove(); alert(t('generateFailed')); closeModal(); });
+        }
+
+        function buildAnalysisTwoColExport(splitPoint) {
+            const sourceTable = document.getElementById('analysis-table');
+            const theadHTML = sourceTable.querySelector('thead').outerHTML;
+            const allRows = Array.from(document.getElementById('analysis-tbody').children);
+            const leftRows = allRows.slice(0, splitPoint);
+            const rightRows = allRows.slice(splitPoint);
+
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'absolute';
+            wrapper.style.left = '-99999px';
+            wrapper.style.top = '0';
+            wrapper.style.background = '#1a1f29';
+            wrapper.style.padding = '14px';
+            wrapper.style.boxSizing = 'border-box';
+            wrapper.style.display = 'inline-block';
+
+            const summarySource = document.getElementById('analysis-summary');
+            if (summarySource) {
+                const summaryClone = summarySource.cloneNode(true);
+                summaryClone.style.maxWidth = 'none';
+                summaryClone.style.marginBottom = '12px';
+                wrapper.appendChild(summaryClone);
+            }
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.gap = '16px';
+            row.style.alignItems = 'flex-start';
+
+            [leftRows, rightRows].forEach(rowsSubset => {
+                if (rowsSubset.length === 0) return;
+                const colWrap = document.createElement('div');
+                colWrap.className = 'analysis-table-wrap';
+                colWrap.style.margin = '0';
+                colWrap.style.width = '380px';
+                colWrap.style.maxWidth = 'none';
+                const table = document.createElement('table');
+                table.className = 'analysis-table';
+                table.innerHTML = theadHTML;
+                const tbody = document.createElement('tbody');
+                rowsSubset.forEach(tr => tbody.appendChild(tr.cloneNode(true)));
+                table.appendChild(tbody);
+                colWrap.appendChild(table);
+                row.appendChild(colWrap);
+            });
+
+            wrapper.appendChild(row);
+            wrapper.appendChild(buildScreenshotTag());
+            return wrapper;
+        }
+
+        function saveAnalysisState() {
+            try {
+                const state = { headers: csvHeaders, rows: csvRows, data: analysisData };
+                localStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify(state));
+            } catch (e) { console.error('儲存分析資料失敗:', e); }
+        }
+
+        function restoreAnalysisState() {
+            const saved = localStorage.getItem(ANALYSIS_STORAGE_KEY);
+            if (!saved) return;
+            try {
+                const state = JSON.parse(saved);
+                csvHeaders = state.headers || [];
+                csvRows = state.rows || [];
+                analysisData = state.data || [];
+                if (analysisData.length) {
+                    renderAnalysisTable();
+                    document.getElementById('analysis-empty-state').style.display = 'none';
+                    document.getElementById('analysis-result-wrap').style.display = 'block';
+                }
+            } catch (e) { console.error('恢復分析資料失敗:', e); }
+        }
+
+        function closeModal() {
+            document.getElementById('result-modal').style.display = "none";
+        }
+
+        document.querySelectorAll('.pill-btn').forEach(btn => {
+            btn.addEventListener('click', function() { this.classList.toggle('active'); });
+        });
+
+        // 貼上內容後自動觸發分析，不需要再按「分析」按鈕。
+        // 用 setTimeout(0) 是因為 paste 事件觸發時，textarea 的內容還沒真正寫入，
+        // 要等瀏覽器完成貼上動作後才能讀到完整文字。
+        document.getElementById('csv-text-input').addEventListener('paste', () => {
+            setTimeout(processPastedCSV, 0);
+        });
+
+        populateStageSelect();
+        restoreAnalysisState();
+        applyLanguage();
+    </script>
+</body>
+</html>

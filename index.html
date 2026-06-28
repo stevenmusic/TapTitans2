@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>TT2 Raid Toolkit</title>
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        .lang-row { display: flex; justify-content: flex-end; padding: 14px 16px 0; }
+
+        .home-wrap { max-width: 480px; margin: 0 auto; padding: 18px 18px 40px; }
+
+        .home-hero { text-align: center; margin-bottom: 30px; }
+        .home-hero .eyebrow {
+            font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+            color: var(--accent-gold); font-weight: 800;
+        }
+        .home-hero h1 { font-size: 27px; font-weight: 900; margin: 8px 0 6px; }
+        .home-hero p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin: 0; }
+
+        .nav-card-list { display: flex; flex-direction: column; gap: 14px; }
+        .nav-card {
+            display: block;
+            padding: 20px 18px;
+            border-radius: var(--radius-card);
+            border: 1px solid var(--border-soft);
+            background: linear-gradient(160deg, var(--bg-surface) 0%, var(--bg-surface-2) 100%);
+            box-shadow: var(--shadow-card);
+            position: relative;
+            overflow: hidden;
+        }
+        .nav-card::before {
+            content: '';
+            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+        }
+        .nav-card.deck::before { background: var(--mode-burst); }
+        .nav-card.analyze::before { background: var(--mode-analysis); }
+        .nav-card .tag {
+            font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px;
+            text-transform: uppercase; color: var(--text-muted);
+        }
+        .nav-card .icon-row { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+        .nav-card .icon {
+            font-size: 22px; width: 42px; height: 42px; flex-shrink: 0;
+            border-radius: 11px; display: flex; align-items: center; justify-content: center;
+        }
+        .nav-card.deck .icon { background: var(--mode-burst-soft); }
+        .nav-card.analyze .icon { background: var(--mode-analysis-soft); }
+        .nav-card h2 { font-size: 17px; font-weight: 800; margin: 0; }
+        .nav-card p { font-size: 12.5px; color: var(--text-secondary); margin: 10px 0 14px; line-height: 1.55; }
+        .nav-card .cta {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12.5px; font-weight: 800; color: var(--accent-gold);
+        }
+
+        .home-footer { text-align: center; margin-top: 28px; font-size: 11px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <div class="lang-row">
+        <button class="lang-toggle-btn" id="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+    </div>
+
+    <div class="home-wrap">
+        <div class="home-hero">
+            <div class="eyebrow" data-i18n="heroEyebrow">TAP TITANS 2</div>
+            <h1 data-i18n="heroTitle">TT2 Raid Toolkit</h1>
+            <p data-i18n="heroSubtitle">Deck Builder + Report Analyzer</p>
+        </div>
+
+        <div class="nav-card-list">
+            <a class="nav-card deck" href="deckbuilder.html">
+                <div class="tag" data-i18n="deckTag">BEFORE RAID</div>
+                <div class="icon-row">
+                    <div class="icon">⚔️</div>
+                    <h2 data-i18n="deckTitle">Deck Builder</h2>
+                </div>
+                <p data-i18n="deckDesc">Plan your Burst / Torment / Support decks before the raid starts.</p>
+                <div class="cta" data-i18n="deckCta">Build Deck →</div>
+            </a>
+
+            <a class="nav-card analyze" href="reportanalyzer.html">
+                <div class="tag" data-i18n="analyzeTag">AFTER RAID</div>
+                <div class="icon-row">
+                    <div class="icon">📊</div>
+                    <h2 data-i18n="analyzeTitle">Report Analyzer</h2>
+                </div>
+                <p data-i18n="analyzeDesc">Paste the raid CSV report to auto-detect banned parts and miss rates.</p>
+                <div class="cta" data-i18n="analyzeCta">Analyze Report →</div>
+            </a>
+        </div>
+
+        <div class="home-footer" data-i18n="homeFooter">A fan-made companion for Tap Titans 2</div>
+    </div>
+
+    <script>
+        const I18N = {
+            zh: {
+                heroEyebrow: 'TAP TITANS 2',
+                heroTitle: 'TT2 Raid Toolkit',
+                heroSubtitle: '配卡工具 + 戰報分析',
+                deckTag: '突襲前', deckTitle: '配卡工具',
+                deckDesc: '突襲開始前，先規劃好爆裂／苦痛／支援的牌組。',
+                deckCta: '前往配卡 →',
+                analyzeTag: '突襲後', analyzeTitle: '戰報分析',
+                analyzeDesc: '貼上突襲 CSV 戰報，自動偵測禁打部位與誤傷率。',
+                analyzeCta: '前往分析 →',
+                homeFooter: 'Tap Titans 2 玩家自製小工具',
+            },
+            en: {
+                heroEyebrow: 'TAP TITANS 2',
+                heroTitle: 'TT2 Raid Toolkit',
+                heroSubtitle: 'Deck Builder + Report Analyzer',
+                deckTag: 'BEFORE RAID', deckTitle: 'Deck Builder',
+                deckDesc: 'Plan your Burst / Torment / Support decks before the raid starts.',
+                deckCta: 'Build Deck →',
+                analyzeTag: 'AFTER RAID', analyzeTitle: 'Report Analyzer',
+                analyzeDesc: 'Paste the raid CSV report to auto-detect banned parts and miss rates.',
+                analyzeCta: 'Analyze Report →',
+                homeFooter: 'A fan-made companion for Tap Titans 2',
+            }
+        };
+
+        let currentLang = localStorage.getItem('tt2_lang') || 'zh';
+
+        function t(key) {
+            return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key]
+                 : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+        }
+
+        function applyLanguage() {
+            document.documentElement.lang = (currentLang === 'en') ? 'en' : 'zh-TW';
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                el.textContent = t(el.getAttribute('data-i18n'));
+            });
+            const btn = document.getElementById('lang-toggle-btn');
+            if (btn) btn.textContent = (currentLang === 'zh') ? 'EN' : '中文';
+        }
+
+        function toggleLanguage() {
+            currentLang = (currentLang === 'zh') ? 'en' : 'zh';
+            localStorage.setItem('tt2_lang', currentLang);
+            applyLanguage();
+        }
+
+        applyLanguage();
+    </script>
+</body>
+</html>

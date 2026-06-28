@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tap Titans 2</title>
+    <title>Tap Titans 2 - Raid Toolkit</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
 
     <style>
-        html { 
-            font-size: 18px; 
-            scroll-behavior: smooth; 
+        html {
+            font-size: 18px;
+            scroll-behavior: smooth;
             height: 100%;
         }
         :root {
@@ -25,6 +25,7 @@
             --text-analysis: #0d47a1;
             --card-bg: #ffffff;
             --border-color: #e0d5c1;
+            --header-h: 100px;
         }
 
         body {
@@ -40,30 +41,186 @@
             height: auto;
         }
 
-        /* ── 導覽 ── */
-        .nav-header {
-            position: fixed; top: 0; left: 0; width: 100%;
-            background: #5a4a42; z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            display: flex; flex-direction: column;
+        .view { width: 100%; }
+
+        /* ══════════════════════════════════════════════════════════
+           首頁
+           ══════════════════════════════════════════════════════════ */
+        #view-home {
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-color: #fdf9f2;
+            display: flex;
+            flex-direction: column;
         }
-        .nav-title-row {
+        .home-header {
+            position: relative;
+            padding: 56px 24px 34px 24px;
+            text-align: center;
+            background: linear-gradient(160deg, #fff7e6 0%, #f4ece1 55%, #ecd9b3 100%);
+            border-bottom: 1px solid #e6d8b8;
+        }
+        .home-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #b8860b;
+            background: rgba(201,151,31,0.12);
+            border: 1px solid rgba(201,151,31,0.35);
+            border-radius: 20px;
+            padding: 5px 14px;
+            margin-bottom: 16px;
+        }
+        .home-title {
+            font-size: 32px;
+            font-weight: 900;
+            color: #4a3728;
+            letter-spacing: 1px;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .home-subtitle {
+            margin-top: 6px;
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #9c7b3f;
+            letter-spacing: 1px;
+        }
+        .home-tagline {
+            margin: 18px auto 0 auto;
+            max-width: 320px;
+            font-size: 12.5px;
+            color: #8a7a68;
+            line-height: 1.8;
+        }
+        .home-content {
+            padding: 24px 18px 22px 18px;
+            max-width: 460px;
+            margin: 0 auto;
+            box-sizing: border-box;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .home-section-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #b3a48c;
+            margin: 0 4px 12px 4px;
+        }
+        .home-nav-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1;
+            min-height: 0;
+        }
+        .home-nav-card {
             display: flex;
             align-items: center;
-            justify-content: center;
-            position: relative;
-            padding: 16px 0 14px 0;
+            gap: 16px;
+            width: 100%;
+            flex: 1;
+            min-height: 96px;
+            background: #ffffff;
+            border: 1px solid #ece3d4;
+            border-radius: 18px;
+            padding: 18px 16px;
+            box-shadow: 0 6px 18px rgba(90,74,66,0.10);
+            cursor: pointer;
+            text-align: left;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            font-family: inherit;
+            box-sizing: border-box;
         }
-        .nav-title {
+        .home-nav-card:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 8px rgba(90,74,66,0.12);
+        }
+        .home-nav-card.deck { border-left: 5px solid #8b263e; }
+        .home-nav-card.analysis { border-left: 5px solid #0d47a1; }
+        .home-nav-icon {
+            font-size: 30px;
+            flex-shrink: 0;
+            width: 58px; height: 58px;
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .home-nav-card.deck .home-nav-icon { background: #faeaea; }
+        .home-nav-card.analysis .home-nav-icon { background: #e7eff9; }
+        .home-nav-text { flex: 1; min-width: 0; }
+        .home-nav-title {
+            font-size: 17px; font-weight: 800; color: #3d2c1e; margin-bottom: 4px;
+        }
+        .home-nav-card.analysis .home-nav-title { color: #16314f; }
+        .home-nav-desc {
+            font-size: 12px; color: #8a7a68; line-height: 1.6;
+        }
+        .home-nav-arrow {
+            font-size: 22px; color: #d8c8a8; flex-shrink: 0;
+        }
+        .home-nav-card.analysis .home-nav-arrow { color: #c4d2e6; }
+        .home-footnote {
+            margin-top: 14px;
+            text-align: center;
+            font-size: 10.5px;
+            color: #c2b59a;
+            letter-spacing: 0.5px;
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           共用導覽 header（牌組建構 / 戰報分析）
+           ══════════════════════════════════════════════════════════ */
+        .nav-header {
+            position: fixed; top: 0; left: 0; width: 100%;
+            background: linear-gradient(135deg, #6b5544 0%, #524338 100%);
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+            display: flex; flex-direction: column;
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+        .nav-title-row {
+            display: grid;
+            grid-template-columns: 38px 1fr 38px;
+            align-items: center;
+            gap: 6px;
+            padding: 14px 12px 12px 12px;
+        }
+        .nav-title-row .nav-title {
+            grid-column: 2;
             color: #ffffff; text-align: center;
-            font-size: 23px; font-weight: bold;
-            letter-spacing: 2px;
+            font-size: 17px; font-weight: 800;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .back-btn {
+            grid-column: 1;
+            justify-self: start;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.45);
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            font-family: inherit;
         }
         .lang-toggle-btn {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
             background: rgba(255,255,255,0.15);
             border: 1px solid rgba(255,255,255,0.5);
             color: #fff;
@@ -72,6 +229,18 @@
             border-radius: 14px;
             padding: 4px 10px;
             cursor: pointer;
+            font-family: inherit;
+        }
+        .nav-title-row .lang-toggle-btn {
+            grid-column: 3;
+            justify-self: end;
+        }
+        .home-header .lang-toggle-btn {
+            position: absolute;
+            top: 18px; right: 18px;
+            background: rgba(90,74,66,0.08);
+            border: 1px solid rgba(90,74,66,0.3);
+            color: #5a4a42;
         }
         .nav-tabs { display: flex; width: 100%; }
         .tab-btn {
@@ -79,12 +248,11 @@
             font-weight: bold; font-size: 13px;
             border: none; cursor: pointer;
             transition: all 0.3s; position: relative;
+            font-family: inherit;
         }
-        /* 各分頁 tab 顏色 */
         #tab-burst   { background-color: #8b263e; color: rgba(255,255,255,0.7); }
         #tab-torment { background-color: #4a148c; color: rgba(255,255,255,0.7); }
         #tab-support { background-color: #2e7d32; color: rgba(255,255,255,0.7); }
-        #tab-analysis { background-color: #0d47a1; color: rgba(255,255,255,0.7); }
 
         .tab-btn.active { color: #ffffff; }
         .tab-btn.active::after {
@@ -92,35 +260,46 @@
             height: 3px; background: #ffffff; border-radius: 2px;
         }
 
-        /* ── Swiper 容器 ── */
+        /* ── Swiper 容器（牌組建構：爆裂／苦痛／支援）── */
         .swiper-wrapper {
-            width: 100vw; 
+            width: 100vw;
             overflow: hidden;
-            margin-top: 100px; 
+            margin-top: var(--header-h, 100px);
             margin-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: margin-bottom 0.3s ease;
-            min-height: calc(100vh - 100px - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             padding-bottom: 10px;
         }
         .swiper-container {
-            display: flex; width: 400vw;
+            display: flex; width: 300vw;
             transition: none; will-change: transform;
             transform: translate3d(0px, 0px, 0px);
         }
 
         .page-view {
-            width: 100vw; 
+            width: 100vw;
             box-sizing: border-box;
             padding: 4px 5px;
-            display: flex; 
-            flex-direction: column; 
+            display: flex;
+            flex-direction: column;
             align-items: center;
-            min-height: calc(100vh - 100px - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
             flex: 1;
             padding-bottom: 20px;
+        }
+
+        /* ── 獨立頁面（戰報分析：不需要 swiper / 卡片池）── */
+        .standalone-page {
+            margin-top: var(--header-h, 64px);
+            min-height: calc(100vh - var(--header-h, 64px));
+            box-sizing: border-box;
+            padding: 4px 5px 50px 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         /* ── 爆裂場 ── */
@@ -190,7 +369,6 @@
         .btn-analysis.clear  { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: #fff; }
         .btn-analysis.export { background-color: #1565c0; color: #fff; }
 
-        /* Tier / 關卡 選擇按鈕：跟下方三個按鈕同一橫排，寬度較窄；用跟「匯出」按鈕不同的顏色區分 */
         .tier-stage-select {
             appearance: none;
             -webkit-appearance: none;
@@ -233,12 +411,13 @@
         .summary-card {
             background: #ffffff;
             border: 1px solid #c9ddf2;
-            border-radius: 8px;
-            padding: 7px 6px;
+            border-radius: 12px;
+            padding: 8px 6px;
             text-align: center;
             flex: 1;
             min-width: 60px;
             box-sizing: border-box;
+            box-shadow: 0 2px 6px rgba(13,71,161,0.06);
         }
         .summary-card .num { font-size: 15px; font-weight: 900; color: #0d47a1; }
         .summary-card .label { font-size: 9.5px; color: #7a93b3; margin-top: 2px; }
@@ -248,8 +427,8 @@
             max-width: 500px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            border-radius: 8px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            border-radius: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             margin-bottom: 20px;
         }
         .analysis-table {
@@ -278,27 +457,27 @@
         .analysis-table tbody tr:active { background: #e3edfb; }
         .analysis-table .miss-value { color: #d32f2f; font-weight: 700; }
         .analysis-table .player-name { text-align: left; font-weight: 700; }
-        .analysis-table .summary-row { 
-            background: #e3edfb; 
-            font-weight: 900; 
-            color: #0d47a1; 
-            border-top: 2px solid #0d47a1; 
+        .analysis-table .summary-row {
+            background: #e3edfb;
+            font-weight: 900;
+            color: #0d47a1;
+            border-top: 2px solid #0d47a1;
         }
 
         /* ── Boss select ── */
         .boss-select-burst, .boss-select-torment, .boss-select-support {
-            appearance: none; 
+            appearance: none;
             -webkit-appearance: none;
-            border: none; 
-            border-radius: 6px;
+            border: none;
+            border-radius: 8px;
             padding: 4px 28px 4px 10px;
-            font-size: 13px; 
-            font-weight: bold; 
+            font-size: 13px;
+            font-weight: bold;
             cursor: pointer;
             background-repeat: no-repeat;
             background-position: right 8px center;
             background-size: 10px 7px;
-            width: 160px;           
+            width: 160px;
             min-width: 140px;
             text-align: center;
             text-align-last: center;
@@ -312,11 +491,11 @@
 
         /* ── 共用版面 ── */
         .subtitle { display: none; }
-        .export-area { 
-            padding: 6px 4px 30px 4px; 
-            border-radius: 10px; 
-            width: 100%; 
-            max-width: 500px; 
+        .export-area {
+            padding: 6px 4px 30px 4px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 500px;
             box-sizing: border-box;
             flex: 1;
             display: flex;
@@ -326,25 +505,26 @@
             display: flex; align-items: center; justify-content: center;
             gap: 8px; flex-wrap: wrap; margin-bottom: 5px;
         }
-        .pyramid-container { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 3px;
+        .pyramid-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
             width: 100%;
             flex-shrink: 0;
         }
         .pyramid-container > .tier-row:last-child {
-            margin-bottom: 200px;   
+            margin-bottom: 200px;
         }
-        
-        .tier-row { 
-            background: var(--card-bg); 
-            border: 1px solid var(--border-color); 
-            border-radius: 5px; 
-            padding: 6px 4px; 
+
+        .tier-row {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 8px 6px;
             display: flex;
-            align-items: flex-start; 
+            align-items: flex-start;
             gap: 4px;
+            box-shadow: 0 2px 6px rgba(90,74,66,0.07);
         }
         .tier-num-col {
             display: flex;
@@ -352,22 +532,22 @@
             justify-content: center;
             flex-shrink: 0;
             padding-left: 1px;
-            margin-top: 16px; 
+            margin-top: 16px;
         }
         .tier-num {
             font-size: 13px; font-weight: 900; color: inherit;
         }
-        
+
         .tier-memo-col {
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            width: 70px;       
-            margin: 0 4px;    
-            margin-top: 13px; 
+            width: 70px;
+            margin: 0 4px;
+            margin-top: 13px;
         }
-        
+
         .tier-control-col {
             display: flex;
             flex-direction: column;
@@ -375,22 +555,21 @@
             justify-content: center;
             flex-shrink: 0;
             width: 44px;
-            margin-top: 4px; 
+            margin-top: 4px;
         }
         .label-custom-input {
-            border: 1px solid #e2d7c5; 
-            background: #faf8f5; 
-            border-radius: 5px;
+            border: 1px solid #e2d7c5;
+            background: #faf8f5;
+            border-radius: 6px;
             font-family: inherit;
-            padding: 4px 2px;  
-            font-size: 11px;   
+            padding: 4px 2px;
+            font-size: 11px;
             box-sizing: border-box;
-            width: 100%; 
+            width: 100%;
             text-align: center;
             outline: none;
         }
 
-        /* 可展開折疊多選菜單（Linear 風格扁平列表 + Mobalytics 卡片層次 + TT2 金色配色） */
         .custom-dropdown {
             position: relative;
             width: 100%;
@@ -421,7 +600,7 @@
             display: none;
             position: absolute;
             top: calc(100% + 4px); left: 0;
-            width: 116px; 
+            width: 116px;
             background-color: #fffaf0;
             border: 1px solid #d9c7a1;
             border-radius: 10px;
@@ -430,7 +609,7 @@
             padding: 5px;
             box-sizing: border-box;
             flex-direction: column;
-            gap: 4px; 
+            gap: 4px;
         }
         .custom-dropdown.open .dropdown-content {
             display: flex;
@@ -442,7 +621,7 @@
             border-radius: 6px;
             font-size: 12px !important;
             font-weight: 700;
-            padding: 6px 3px; 
+            padding: 6px 3px;
             cursor: pointer;
             background: #ffffff;
             color: #5a4a42;
@@ -474,7 +653,7 @@
             white-space: nowrap;
         }
         .selected-part-badge {
-            background-color: transparent; 
+            background-color: transparent;
             padding: 1px 2px;
             border-radius: 2px;
             font-size: 12px;
@@ -483,39 +662,40 @@
             white-space: nowrap;
         }
 
-        .tier-buttons { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 3px; 
-            justify-content: center; 
-            width: 100%; 
+        .tier-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            justify-content: center;
+            width: 100%;
         }
-        .btn-action { 
-            border: none; 
-            padding: 4px 0; 
-            font-size: 12px; 
-            font-weight: bold; 
-            border-radius: 3px; 
-            cursor: pointer; 
-            width: 100%; 
-            text-align: center; 
+        .btn-action {
+            border: none;
+            padding: 4px 0;
+            font-size: 12px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
             box-sizing: border-box;
+            font-family: inherit;
         }
 
-        .grid-section { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 3px; 
+        .grid-section {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
             flex: 1;
         }
-        .grid-block { 
-            border: none; 
-            padding: 0; 
+        .grid-block {
+            border: none;
+            padding: 0;
         }
         .block-row {
             display: flex;
             align-items: center;
-            gap: 5px;        
+            gap: 5px;
             width: 100%;
         }
 
@@ -523,9 +703,9 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 3px;         
+            gap: 3px;
             flex-shrink: 0;
-            width: 72px; 
+            width: 72px;
         }
 
         .check-select {
@@ -538,14 +718,14 @@
             font-size: 12px !important;
             font-weight: 700;
             height: 26px;
-            text-align: center;    
-            text-align-last: center; 
+            text-align: center;
+            text-align-last: center;
             cursor: pointer;
             width: 100%;
             box-sizing: border-box;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23ffffff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 6px center; 
+            background-position: right 6px center;
             background-size: 5px 3px;
         }
         .check-select:focus { outline: none; }
@@ -553,17 +733,17 @@
         .cards-col {
             display: flex;
             flex: 1;
-            gap: 4px;         
+            gap: 4px;
             align-items: center;
             justify-content: space-between;
         }
 
         .drop-zone {
-            flex: 1;          
-            aspect-ratio: 1;  
-            max-width: 100%;  
+            flex: 1;
+            aspect-ratio: 1;
+            max-width: 100%;
             border: 1.5px dashed #d0c8bc;
-            border-radius: 4px;
+            border-radius: 6px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -591,7 +771,7 @@
         /* ── 儲存指示器 ── */
         .save-indicator {
             position: fixed;
-            top: 110px;
+            top: calc(var(--header-h, 100px) + 10px);
             right: 10px;
             background: rgba(0,0,0,0.7);
             color: #fff;
@@ -615,26 +795,22 @@
         }
         #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
-        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
 
         body.drag-active {
             overflow: hidden !important;
             overscroll-behavior: none;
             touch-action: none;
         }
-        .nav-header {
-            will-change: transform;
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-        }
-        
+
         /* Boss 設定區區塊 */
         .boss-config-container {
             background-color: #f9fbfd;
             border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 15px;
+            border-radius: 16px;
+            padding: 16px;
             margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(13,71,161,0.05);
         }
         .boss-config-title {
             font-size: 16px;
@@ -661,11 +837,10 @@
             flex-shrink: 0;
         }
 
-        /* 自動偵測 boss 名稱顯示用標籤（取代原本需要手動選取的下拉選單） */
         .boss-name-label {
             padding: 6px 10px;
             border: 1px solid #cbd5e1;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 14px;
             font-weight: 700;
             min-width: 120px;
@@ -691,7 +866,7 @@
         .pill-btn {
             display: inline-block;
             padding: 6px 12px;
-            border-radius: 8px;
+            border-radius: 10px;
             border: 1px solid #d9c7a1;
             background-color: #fffaf0;
             color: #5a4a42;
@@ -717,7 +892,7 @@
             background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
             color: #ffffff;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             font-size: 13px;
             font-weight: 700;
             cursor: pointer;
@@ -730,12 +905,13 @@
             text-align: center;
             flex: 1;
             max-width: 48%;
+            font-family: inherit;
         }
         .btn-download {
             padding: 8px 16px;
             color: white;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             font-size: 13px;
             font-weight: 700;
             cursor: pointer;
@@ -747,6 +923,7 @@
             text-align: center;
             flex: 1;
             max-width: 48%;
+            font-family: inherit;
         }
         .btn-clear-all:active {
             transform: translateY(1px);
@@ -756,7 +933,6 @@
 
         /* ── 卡片池（固定於底部）── */
         :root {
-            /* 預設值；JS 載入後會依實際卡格大小校正，讓卡片池的卡片跟卡格一樣大 */
             --card-pool-card-size: 50px;
             --card-pool-collapsed-height: 62px;
         }
@@ -766,10 +942,11 @@
             bottom: 0;
             z-index: 950;
             background: #ffffff;
-            box-shadow: 0 -2px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 -3px 14px rgba(0,0,0,0.18);
             display: flex;
             flex-direction: column;
-            /* 預留安全區域，避免被瀏覽器網址列/手勢列擋住 */
+            border-radius: 16px 16px 0 0;
+            overflow: hidden;
             padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         .card-pool-handle {
@@ -791,7 +968,6 @@
             background: rgba(255,255,255,0.6);
             border-radius: 3px;
         }
-        /* 收合時只顯示一橫排（第一排），展開時顯示全部三橫排，內部可垂直滾動 */
         .card-pool-content {
             box-sizing: border-box;
             padding: 6px 8px;
@@ -805,7 +981,6 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
-        /* 三排共用同一個水平捲動位置，讓它們一起左右拖曳，而不是各排分開滑動 */
         .card-pool-rows-scroll {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -827,7 +1002,7 @@
             width: var(--card-pool-card-size);
             height: var(--card-pool-card-size);
             border: 1px solid #e0d5c1;
-            border-radius: 4px;
+            border-radius: 6px;
             overflow: hidden;
             background: #fff;
         }
@@ -844,7 +1019,6 @@
             padding: 18px 10px;
         }
 
-        /* 拖曳中跟著手指移動的卡片浮層：用 transform 取代 left/top，避免每次移動都觸發版面重排，拖曳才會滑順 */
         .drag-clone {
             position: fixed;
             top: 0;
@@ -860,10 +1034,10 @@
         /* ── 誤傷率超過 5% 的警示背景 ── */
         .rate-warning {
             background-color: #ffcdd2 !important;
-            border-radius: 3px;
+            border-radius: 5px;
         }
 
-        /* ── 英文版按鈕尺寸調整：英文字通常比中文長，統一縮小字級/留白，避免文字超出格子 ── */
+        /* ── 英文版按鈕尺寸調整 ── */
         body.lang-en .btn-clear-all,
         body.lang-en .btn-download {
             font-size: 11px;
@@ -898,214 +1072,272 @@
         body.lang-en .lang-toggle-btn {
             font-size: 11px;
         }
+        body.lang-en .nav-title-row .nav-title {
+            font-size: 15px;
+        }
+        body.lang-en .home-title {
+            font-size: 27px;
+        }
+        body.lang-en .home-nav-title {
+            font-size: 14.5px;
+        }
     </style>
 </head>
 <body>
 
-    <div class="nav-header">
-        <div class="nav-title-row">
-            <div class="nav-title">Tap Titans 2</div>
-            <button class="lang-toggle-btn" id="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+    <!-- ══════════════════════════════════════════════════════════
+         首頁（導航入口）
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-home">
+        <div class="home-header">
+            <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+            <div class="home-eyebrow" data-i18n="homeEyebrow">RAID TOOLKIT</div>
+            <div class="home-title">Tap Titans 2</div>
+            <div class="home-subtitle" data-i18n="appSubtitle">配卡與戰報分析工具</div>
+            <p class="home-tagline" data-i18n="homeTagline">突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名</p>
         </div>
-        <div class="nav-tabs">
-            <button class="tab-btn active" id="tab-burst"    onclick="switchPage(0)" data-i18n="tabBurst">爆裂</button>
-            <button class="tab-btn"        id="tab-torment"  onclick="switchPage(1)" data-i18n="tabTorment">苦痛</button>
-            <button class="tab-btn"        id="tab-support"  onclick="switchPage(2)" data-i18n="tabSupport">支援</button>
-            <button class="tab-btn"        id="tab-analysis" onclick="switchPage(3)" data-i18n="tabAnalysis">突襲分析</button>
+        <div class="home-content">
+            <div class="home-section-label" data-i18n="homeSectionLabel">選擇功能</div>
+            <div class="home-nav-cards">
+                <button class="home-nav-card deck" onclick="showView('deck')">
+                    <div class="home-nav-icon">⚔️</div>
+                    <div class="home-nav-text">
+                        <div class="home-nav-title" data-i18n="navDeckTitle">牌組建構</div>
+                        <div class="home-nav-desc" data-i18n="navDeckDesc">配置爆裂／苦痛／支援牌組，自動儲存進度</div>
+                    </div>
+                    <div class="home-nav-arrow">›</div>
+                </button>
+                <button class="home-nav-card analysis" onclick="showView('analysis')">
+                    <div class="home-nav-icon">📊</div>
+                    <div class="home-nav-text">
+                        <div class="home-nav-title" data-i18n="navAnalysisTitle">戰報分析</div>
+                        <div class="home-nav-desc" data-i18n="navAnalysisDesc">貼上突襲 CSV，自動算出誤傷率與傷害排名</div>
+                    </div>
+                    <div class="home-nav-arrow">›</div>
+                </button>
+            </div>
+            <div class="home-footnote" data-i18n="homeFootnote">TT2 RAID TOOLKIT</div>
         </div>
     </div>
 
-    <div class="save-indicator" id="save-indicator" data-i18n="savedIndicator">✓ 已儲存</div>
+    <!-- ══════════════════════════════════════════════════════════
+         牌組建構（爆裂 / 苦痛 / 支援）
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-deck" style="display:none;">
 
-    <div class="swiper-wrapper">
-        <div class="swiper-container" id="main-swiper">
-
-            <!-- 爆裂場 -->
-            <div class="page-view" id="page-burst">
-                <div class="export-area" id="export-burst">
-                    <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <select class="boss-select-burst" id="boss-select-burst">
-                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
-                            <option value="Jukk">Jukk</option>
-                            <option value="Klonk">Klonk</option>
-                            <option value="Lojak">Lojak</option>
-                            <option value="Mohaca">Mohaca</option>
-                            <option value="Priker">Priker</option>
-                            <option value="Sterl">Sterl</option>
-                            <option value="Takedar">Takedar</option>
-                            <option value="Terro">Terro</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('burst')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
-                    </div>
-                    <!-- 瀏覽版（正常顯示） -->
-                    <div class="pyramid-container" id="container-burst"></div>
-                </div>
+        <div class="nav-header" id="nav-header-deck">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" data-i18n-title="backAria" title="返回首頁">←</button>
+                <div class="nav-title" data-i18n="deckBuilderPageTitle">牌組建構</div>
+                <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
             </div>
-
-            <!-- 苦痛場 -->
-            <div class="page-view" id="page-torment">
-                <div class="export-area" id="export-torment">
-                    <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <select class="boss-select-torment" id="boss-select-torment">
-                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
-                            <option value="Jukk">Jukk</option>
-                            <option value="Klonk">Klonk</option>
-                            <option value="Lojak">Lojak</option>
-                            <option value="Mohaca">Mohaca</option>
-                            <option value="Priker">Priker</option>
-                            <option value="Sterl">Sterl</option>
-                            <option value="Takedar">Takedar</option>
-                            <option value="Terro">Terro</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
-                    </div>
-                    <div class="pyramid-container" id="container-torment"></div>
-                </div>
+            <div class="nav-tabs">
+                <button class="tab-btn active" id="tab-burst"   onclick="switchPage(0)" data-i18n="tabBurst">爆裂</button>
+                <button class="tab-btn"        id="tab-torment" onclick="switchPage(1)" data-i18n="tabTorment">苦痛</button>
+                <button class="tab-btn"        id="tab-support" onclick="switchPage(2)" data-i18n="tabSupport">支援</button>
             </div>
+        </div>
 
-            <!-- 支援場 -->
-            <div class="page-view" id="page-support">
-                <div class="export-area" id="export-support">
-                    <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                        <select class="boss-select-support" id="boss-select-support">
-                            <option value="" data-i18n="selectBossOption">選擇 Boss</option>
-                            <option value="Jukk">Jukk</option>
-                            <option value="Klonk">Klonk</option>
-                            <option value="Lojak">Lojak</option>
-                            <option value="Mohaca">Mohaca</option>
-                            <option value="Priker">Priker</option>
-                            <option value="Sterl">Sterl</option>
-                            <option value="Takedar">Takedar</option>
-                            <option value="Terro">Terro</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
-                        <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
-                        <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
-                    </div>
-                    <div class="pyramid-container" id="container-support"></div>
-                </div>
-            </div>
+        <div class="save-indicator" id="save-indicator" data-i18n="savedIndicator">✓ 已儲存</div>
 
-            <!-- 突襲分析 -->
-            <div class="page-view" id="page-analysis">
-                <div class="export-area" id="export-analysis">
-                    <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
-                    </div>
+        <div class="swiper-wrapper">
+            <div class="swiper-container" id="main-swiper">
 
-                    <div class="analysis-toolbar" style="flex-direction: column;">
-
-                        <textarea id="csv-text-input" 
-                                  style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
-                                  placeholder="請將 CSV 內容直接貼上此處..." data-i18n-placeholder="csvPlaceholder"></textarea>
-                        
-                        <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
-                            <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
-                                <option value="" data-i18n="tierPlaceholder">Tier</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5">5</option>
-                                <option value="M">M</option>
+                <!-- 爆裂場 -->
+                <div class="page-view" id="page-burst">
+                    <div class="export-area" id="export-burst">
+                        <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <select class="boss-select-burst" id="boss-select-burst">
+                                <option value="" data-i18n="selectBossOption">選擇 Boss</option>
+                                <option value="Jukk">Jukk</option>
+                                <option value="Klonk">Klonk</option>
+                                <option value="Lojak">Lojak</option>
+                                <option value="Mohaca">Mohaca</option>
+                                <option value="Priker">Priker</option>
+                                <option value="Sterl">Sterl</option>
+                                <option value="Takedar">Takedar</option>
+                                <option value="Terro">Terro</option>
                             </select>
-                            <select class="tier-stage-select" id="analysis-stage-select"></select>
-                            <button class="btn-analysis import" onclick="processPastedCSV()" style="flex: 1;" data-i18n="btnExport">分析</button>
-                            <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;" data-i18n="btnClear">清除</button>
-                            <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;" data-i18n="btnSaveImage">儲存圖片</button>
                         </div>
-
-                        <div class="boss-config-container">
-                            <div class="boss-config-title" data-i18n="bossBannedPartsTitle">Boss 禁打部位（自動偵測）</div>
-                            
-                            <div class="boss-row" id="boss-set-1">
-                                <div class="boss-name-label empty" id="analysis-boss-select-1">未偵測</div>
-                                <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
-                                </div>
-                            </div>
-                            
-                            <div class="boss-row" id="boss-set-2">
-                                <div class="boss-name-label empty" id="analysis-boss-select-2">未偵測</div>
-                                <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
-                                </div>
-                            </div>
-
-                            <div class="boss-row" id="boss-set-3">
-                                <div class="boss-name-label empty" id="analysis-boss-select-3">未偵測</div>
-                                <div class="pill-container">
-                                    <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
-                                    <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
-                                    <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
-                                    <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
-                                    <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
-                                    <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
-                                    <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
-                                    <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
-                                </div>
-                            </div>
+                        <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
+                            <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                            <button class="btn-download" onclick="generateImage('burst')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
                         </div>
+                        <div class="pyramid-container" id="container-burst"></div>
                     </div>
-
-
-                    <div class="analysis-empty" id="analysis-empty-state">
-                        <span data-i18n="noCsvYet">尚未匯入 CSV 資料</span><br>
-                        <span style="font-size:11px; opacity:0.75;" data-i18n="tapButtonAbove">請點擊上方按鈕開始分析</span>
-                    </div>
-
-                    <div id="analysis-result-wrap" style="display:none; width:100%;">
-                        <div class="analysis-summary" id="analysis-summary"></div>
-                        <div class="analysis-table-wrap">
-                            <table class="analysis-table" id="analysis-table">
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortAnalysisBy('player')" data-i18n="colPlayer">玩家</th>
-                                        <th onclick="sortAnalysisBy('count')" data-i18n="colHits">次數</th>
-                                        <th onclick="sortAnalysisBy('accidentRate')" data-i18n="colMissRate">誤傷率</th>
-                                        <th onclick="sortAnalysisBy('total')" data-i18n="colTotalDmg">總傷</th>
-                                        <th onclick="sortAnalysisBy('avg')" data-i18n="colAvgDmg">均傷</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="analysis-tbody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
                 </div>
-            </div>
 
+                <!-- 苦痛場 -->
+                <div class="page-view" id="page-torment">
+                    <div class="export-area" id="export-torment">
+                        <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <select class="boss-select-torment" id="boss-select-torment">
+                                <option value="" data-i18n="selectBossOption">選擇 Boss</option>
+                                <option value="Jukk">Jukk</option>
+                                <option value="Klonk">Klonk</option>
+                                <option value="Lojak">Lojak</option>
+                                <option value="Mohaca">Mohaca</option>
+                                <option value="Priker">Priker</option>
+                                <option value="Sterl">Sterl</option>
+                                <option value="Takedar">Takedar</option>
+                                <option value="Terro">Terro</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
+                            <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                            <button class="btn-download" onclick="generateImage('torment')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
+                        </div>
+                        <div class="pyramid-container" id="container-torment"></div>
+                    </div>
+                </div>
+
+                <!-- 支援場 -->
+                <div class="page-view" id="page-support">
+                    <div class="export-area" id="export-support">
+                        <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <select class="boss-select-support" id="boss-select-support">
+                                <option value="" data-i18n="selectBossOption">選擇 Boss</option>
+                                <option value="Jukk">Jukk</option>
+                                <option value="Klonk">Klonk</option>
+                                <option value="Lojak">Lojak</option>
+                                <option value="Mohaca">Mohaca</option>
+                                <option value="Priker">Priker</option>
+                                <option value="Sterl">Sterl</option>
+                                <option value="Takedar">Takedar</option>
+                                <option value="Terro">Terro</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
+                            <button class="btn-clear-all" onclick="clearAllZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllDecks">一鍵清除所有牌組</button>
+                            <button class="btn-download" onclick="generateImage('support')" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
+                        </div>
+                        <div class="pyramid-container" id="container-support"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 卡片池：固定於底部，預設收合 -->
+        <div class="card-pool-drawer" id="card-pool-drawer">
+            <div class="card-pool-handle" id="card-pool-handle">
+                <span class="card-pool-handle-bar"></span>
+                <span id="card-pool-label" data-i18n="cardPoolLabel">卡片池</span>
+            </div>
+            <div class="card-pool-content" id="card-pool-content">
+                <div class="card-pool-empty" data-i18n="cardPoolNotLoaded">卡片池資料尚未載入</div>
+            </div>
         </div>
     </div>
 
-    <!-- 卡片池：固定於底部，預設收合，僅在爆裂/苦痛/支援頁面顯示 -->
-    <div class="card-pool-drawer" id="card-pool-drawer">
-        <div class="card-pool-handle" id="card-pool-handle">
-            <span class="card-pool-handle-bar"></span>
-            <span id="card-pool-label" data-i18n="cardPoolLabel">卡片池</span>
+    <!-- ══════════════════════════════════════════════════════════
+         戰報分析
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-analysis" style="display:none;">
+
+        <div class="nav-header" id="nav-header-analysis">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" data-i18n-title="backAria" title="返回首頁">←</button>
+                <div class="nav-title" data-i18n="analysisPageTitle">戰報分析</div>
+                <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+            </div>
         </div>
-        <div class="card-pool-content" id="card-pool-content">
-            <div class="card-pool-empty" data-i18n="cardPoolNotLoaded">卡片池資料尚未載入</div>
+
+        <div class="standalone-page" id="page-analysis">
+            <div class="export-area" id="export-analysis">
+
+                <div class="analysis-toolbar" style="flex-direction: column;">
+
+                    <textarea id="csv-text-input"
+                              style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 10px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;"
+                              placeholder="請將 CSV 內容直接貼上此處，貼上後將自動分析..." data-i18n-placeholder="csvPlaceholder"></textarea>
+
+                    <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
+                        <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
+                            <option value="" data-i18n="tierPlaceholder">Tier</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="M">M</option>
+                        </select>
+                        <select class="tier-stage-select" id="analysis-stage-select"></select>
+                        <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;" data-i18n="btnClear">清除</button>
+                        <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;" data-i18n="btnSaveImage">儲存圖片</button>
+                    </div>
+
+                    <div class="boss-config-container">
+                        <div class="boss-config-title" data-i18n="bossBannedPartsTitle">Boss 禁打部位（自動偵測）</div>
+
+                        <div class="boss-row" id="boss-set-1">
+                            <div class="boss-name-label empty" id="analysis-boss-select-1">未偵測</div>
+                            <div class="pill-container">
+                                <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                            </div>
+                        </div>
+
+                        <div class="boss-row" id="boss-set-2">
+                            <div class="boss-name-label empty" id="analysis-boss-select-2">未偵測</div>
+                            <div class="pill-container">
+                                <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                            </div>
+                        </div>
+
+                        <div class="boss-row" id="boss-set-3">
+                            <div class="boss-name-label empty" id="analysis-boss-select-3">未偵測</div>
+                            <div class="pill-container">
+                                <div class="pill-btn" data-part="頭部(裝甲)" data-i18n="partHead">頭</div>
+                                <div class="pill-btn" data-part="肚子(裝甲)" data-i18n="partBelly">肚</div>
+                                <div class="pill-btn" data-part="左臂(裝甲)" data-i18n="partLShoulder">左肩</div>
+                                <div class="pill-btn" data-part="右臂(裝甲)" data-i18n="partRShoulder">右肩</div>
+                                <div class="pill-btn" data-part="左手(裝甲)" data-i18n="partLHand">左手</div>
+                                <div class="pill-btn" data-part="右手(裝甲)" data-i18n="partRHand">右手</div>
+                                <div class="pill-btn" data-part="左腿(裝甲)" data-i18n="partLFoot">左腳</div>
+                                <div class="pill-btn" data-part="右腿(裝甲)" data-i18n="partRFoot">右腳</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-empty" id="analysis-empty-state">
+                    <span data-i18n="noCsvYet">尚未匯入 CSV 資料</span><br>
+                    <span style="font-size:11px; opacity:0.75;" data-i18n="tapButtonAbove">請點擊上方按鈕開始分析</span>
+                </div>
+
+                <div id="analysis-result-wrap" style="display:none; width:100%;">
+                    <div class="analysis-summary" id="analysis-summary"></div>
+                    <div class="analysis-table-wrap">
+                        <table class="analysis-table" id="analysis-table">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortAnalysisBy('player')" data-i18n="colPlayer">玩家</th>
+                                    <th onclick="sortAnalysisBy('count')" data-i18n="colHits">次數</th>
+                                    <th onclick="sortAnalysisBy('accidentRate')" data-i18n="colMissRate">誤傷率</th>
+                                    <th onclick="sortAnalysisBy('total')" data-i18n="colTotalDmg">總傷</th>
+                                    <th onclick="sortAnalysisBy('avg')" data-i18n="colAvgDmg">均傷</th>
+                                </tr>
+                            </thead>
+                            <tbody id="analysis-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
         </div>
     </div>
 
@@ -1116,7 +1348,6 @@
     </div>
 
     <script>
-        // 避免瀏覽器在重新整理/返回時自動還原舊的捲動位置，導致畫面停在中間
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
         }
@@ -1126,7 +1357,19 @@
            ══════════════════════════════════════════════════════════ */
         const I18N = {
             zh: {
-                tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援', tabAnalysis: '突襲分析',
+                homeEyebrow: 'RAID TOOLKIT',
+                appSubtitle: '配卡與戰報分析工具',
+                homeTagline: '突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名',
+                homeSectionLabel: '選擇功能',
+                navDeckTitle: '牌組建構',
+                navDeckDesc: '配置爆裂／苦痛／支援牌組，自動儲存進度',
+                navAnalysisTitle: '戰報分析',
+                navAnalysisDesc: '貼上突襲 CSV，自動算出誤傷率與傷害排名',
+                homeFootnote: 'TT2 RAID TOOLKIT',
+                deckBuilderPageTitle: '牌組建構',
+                analysisPageTitle: '戰報分析',
+                backAria: '返回首頁',
+                tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
                 savedIndicator: '✓ 已儲存',
                 selectBossOption: '選擇 Boss',
                 btnClearAllDecks: '一鍵清除所有牌組',
@@ -1137,10 +1380,9 @@
                 limitMaxBlocks: '限制：每一組最多只能有 3 個區塊（9 格）唷！',
                 limitMinBlocks: '限制：每一組最少必須保留 1 個區塊（3 格）唷！',
                 confirmClearZones: '確定要清空當前頁面所有牌組嗎？',
-                csvPlaceholder: '請將 CSV 內容直接貼上此處...',
+                csvPlaceholder: '請將 CSV 內容直接貼上此處，貼上後將自動分析...',
                 tierPlaceholder: 'Tier',
                 stagePlaceholder: '關卡',
-                btnExport: '分析',
                 btnClear: '清除',
                 btnSaveImage: '儲存圖片',
                 bossBannedPartsTitle: 'Boss 禁打部位（自動偵測）',
@@ -1171,7 +1413,19 @@
                 statTotalDmg: '總傷害', statAvgDmg: '平均傷害',
             },
             en: {
-                tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support', tabAnalysis: 'Raid Analysis',
+                homeEyebrow: 'RAID TOOLKIT',
+                appSubtitle: 'Deck Builder & Report Analyzer',
+                homeTagline: 'Build your decks before the raid, then paste your report afterward to analyze miss rates and damage rankings.',
+                homeSectionLabel: 'Choose a tool',
+                navDeckTitle: 'Deck Builder',
+                navDeckDesc: 'Set up Burst / Affliction / Support decks — auto-saved as you go',
+                navAnalysisTitle: 'Report Analyzer',
+                navAnalysisDesc: 'Paste your raid CSV to get miss rates and damage rankings',
+                homeFootnote: 'TT2 RAID TOOLKIT',
+                deckBuilderPageTitle: 'Deck Builder',
+                analysisPageTitle: 'Report Analyzer',
+                backAria: 'Back to home',
+                tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
                 savedIndicator: '✓ Saved',
                 selectBossOption: 'Select Boss',
                 btnClearAllDecks: 'Clear All Decks',
@@ -1182,10 +1436,9 @@
                 limitMaxBlocks: 'Limit: each tier can have at most 3 blocks (9 slots)!',
                 limitMinBlocks: 'Limit: each tier must keep at least 1 block (3 slots)!',
                 confirmClearZones: 'Clear all decks on this page?',
-                csvPlaceholder: 'Paste CSV content here...',
+                csvPlaceholder: 'Paste CSV content here — it analyzes automatically...',
                 tierPlaceholder: 'Tier',
                 stagePlaceholder: 'Stage',
-                btnExport: 'Analyze',
                 btnClear: 'Clear',
                 btnSaveImage: 'Save',
                 bossBannedPartsTitle: 'Boss Banned Parts (auto-detected)',
@@ -1240,11 +1493,14 @@
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
             });
+            document.querySelectorAll('[data-i18n-title]').forEach(el => {
+                el.title = t(el.getAttribute('data-i18n-title'));
+            });
 
-            const langBtn = document.getElementById('lang-toggle-btn');
-            if (langBtn) langBtn.textContent = (currentLang === 'zh') ? 'EN' : '中文';
+            document.querySelectorAll('.lang-toggle-btn').forEach(btn => {
+                btn.textContent = (currentLang === 'zh') ? 'EN' : '中文';
+            });
 
-            // 重新畫一次會動態產生文字的部分，確保切換語言後立刻生效
             document.querySelectorAll('.custom-dropdown').forEach(updateSelectedPartsDisplay);
             document.querySelectorAll('.tier-row .drop-zone').forEach(zone => {
                 if (!zone.querySelector('img')) zone.innerHTML = getDefaultZoneHTML();
@@ -1253,8 +1509,6 @@
             if (typeof renderAnalysisTable === 'function' && analysisData && analysisData.length) renderAnalysisTable();
             const stageSel = document.getElementById('analysis-stage-select');
             if (stageSel && stageSel.options.length > 0) stageSel.options[0].textContent = t('stagePlaceholder');
-            // Boss 偵測欄位是用目前儲存的值重新顯示（已偵測到的 boss 名稱要保留，
-            // 不能被上面通用的 data-i18n 邏輯誤蓋成「未偵測」的翻譯文字）
             if (typeof getBossSlotValue === 'function' && typeof setBossSlotValue === 'function') {
                 [1, 2, 3].forEach(i => setBossSlotValue(i, getBossSlotValue(i)));
             }
@@ -1302,8 +1556,6 @@
             return data;
         }
 
-        // 舊版資料是用中文字當儲存的 key（例如「全部位」「肉甲」），
-        // 這裡做個對照表，讓切換語言後仍能正確讀回先前儲存的配卡
         const LEGACY_PART_LABEL_TO_KEY = { '全部位': 'all', '任一單部位': 'single', '頭': 'head', '肚': 'belly', '手': 'hand', '腳': 'foot' };
         const LEGACY_TYPE_LABEL_TO_VALUE = { '肉甲': 'fleshArmor', '肉': 'flesh', '甲': 'armor' };
 
@@ -1581,6 +1833,37 @@
         initTiers('container-torment');
         initTiers('container-support');
 
+        /* ── 視圖（首頁 / 牌組建構 / 戰報分析）切換 ── */
+        let currentView = 'home';
+
+        function syncHeaderHeight() {
+            let headerEl = null;
+            if (currentView === 'deck') headerEl = document.getElementById('nav-header-deck');
+            else if (currentView === 'analysis') headerEl = document.getElementById('nav-header-analysis');
+            if (headerEl) {
+                document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
+            }
+        }
+
+        function showView(view) {
+            currentView = view;
+            document.getElementById('view-home').style.display = (view === 'home') ? 'block' : 'none';
+            document.getElementById('view-deck').style.display = (view === 'deck') ? 'block' : 'none';
+            document.getElementById('view-analysis').style.display = (view === 'analysis') ? 'block' : 'none';
+
+            window.scrollTo(0, 0);
+
+            if (view === 'deck') {
+                swiperWidth = window.innerWidth;
+                isSwiping = false;
+                updateSwiperPosition(false);
+                syncCardPoolCardSize();
+            }
+
+            syncHeaderHeight();
+            setTimeout(() => window.scrollTo(0, 0), 60);
+        }
+
         /* ── DOMContentLoaded ── */
         window.addEventListener('DOMContentLoaded', () => {
             window.scrollTo(0, 0);
@@ -1592,34 +1875,31 @@
             populateStageSelect();
             applyLanguage();
 
-            switchPage(0);
+            showView('home');
 
-            // 膠囊按鈕點擊
             document.querySelectorAll('.pill-btn').forEach(btn => {
                 btn.addEventListener('click', function() { this.classList.toggle('active'); });
             });
 
-            // 內容載入/還原後高度可能改變，延遲再次強制回到頂部，避免停在頁面中間
             setTimeout(() => window.scrollTo(0, 0), 60);
             setTimeout(() => window.scrollTo(0, 0), 300);
-            // 卡格大小可能要等版面完全穩定後量測才準確，延遲再校正一次
             setTimeout(syncCardPoolCardSize, 300);
         });
 
-        window.addEventListener('resize', syncCardPoolCardSize);
+        window.addEventListener('resize', () => {
+            syncCardPoolCardSize();
+            syncHeaderHeight();
+        });
 
-        // 圖片、字型等資源載入完成後再次確認回到頂部
         window.addEventListener('load', () => window.scrollTo(0, 0));
-        // 從瀏覽器快取（例如上一頁返回）顯示頁面時，一律強制回到頂部
         window.addEventListener('pageshow', () => window.scrollTo(0, 0));
 
-        /* ── Swiper ── */
+        /* ── Swiper（牌組建構：爆裂／苦痛／支援）── */
         const swiperContainer = document.getElementById('main-swiper');
         const tabBurst    = document.getElementById('tab-burst');
         const tabTorment  = document.getElementById('tab-torment');
         const tabSupport  = document.getElementById('tab-support');
-        const tabAnalysis = document.getElementById('tab-analysis');
-        const TOTAL_PAGES = 4;
+        const TOTAL_PAGES = 3;
 
         let currentPage = 0;
         let swiperWidth = window.innerWidth;
@@ -1628,13 +1908,11 @@
         let isDraggingGlobal = false, isDraggingCard = false;
 
         function updateSwiperPosition(useTransition = false) {
-            // 每次都重新量測寬度，避免快取的 swiperWidth 過期（例如截圖過程中版面短暫變動），
-            // 導致對齊位置算錯而停在兩頁之間
             swiperWidth = window.innerWidth;
             swiperContainer.style.transition = useTransition
                 ? 'transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1)' : 'none';
             swiperContainer.style.transform = `translate3d(${-currentPage * swiperWidth}px, 0px, 0px)`;
-            void swiperContainer.offsetHeight; // 強制立即套用，避免畫面停在過渡中間的殘影
+            void swiperContainer.offsetHeight;
         }
 
         swiperContainer.addEventListener('touchstart', (e) => {
@@ -1671,23 +1949,15 @@
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
-            [tabBurst, tabTorment, tabSupport, tabAnalysis].forEach(t => t.classList.remove('active'));
-            [tabBurst, tabTorment, tabSupport, tabAnalysis][pageIndex].classList.add('active');
+            [tabBurst, tabTorment, tabSupport].forEach(tabEl => tabEl.classList.remove('active'));
+            [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
             updateSwiperPosition(true);
-
-            // 卡片池只在爆裂/苦痛/支援頁面顯示，突襲分析頁面不需要
-            const poolDrawer = document.getElementById('card-pool-drawer');
-            if (poolDrawer) {
-                poolDrawer.style.display = (pageIndex === 3) ? 'none' : 'flex';
-                if (pageIndex !== 3) syncCardPoolCardSize();
-            }
         }
 
-        window.addEventListener('resize', () => { swiperWidth = window.innerWidth; updateSwiperPosition(false); });
+        window.addEventListener('resize', () => { swiperWidth = window.innerWidth; if (currentView === 'deck') updateSwiperPosition(false); });
 
-        /* ── 圖片產出（直接截圖 8 個牌組，不做雙欄拆分）── */
+        /* ── 圖片產出（直接截圖牌組，不做雙欄拆分）── */
         function generateImage(type) {
-            // 避免截圖前如果還停留在「滑動中」的暫時狀態，導致稍後返回時頁面卡在兩頁之間
             isSwiping = false;
             updateSwiperPosition(false);
 
@@ -1698,7 +1968,7 @@
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
 
-            exportArea.querySelectorAll('.label-custom-input').forEach(input => 
+            exportArea.querySelectorAll('.label-custom-input').forEach(input =>
                 input.setAttribute('value', input.value)
             );
 
@@ -1706,14 +1976,12 @@
             modal.style.display = "flex";
 
             html2canvas(exportArea, {
-                useCORS: true, 
-                scale: 2, 
+                useCORS: true,
+                scale: 2,
                 backgroundColor: bgMap[type],
                 onclone: (clonedDoc) => {
                     clonedDoc.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
 
-                    // html2canvas 對 <select>/<input> 的文字渲染常常抓錯行高，導致文字看起來被切一半；
-                    // 截圖時改用同樣 class（保留顏色/底色/字級等樣式）的純文字 div 取代，文字才會完整置中顯示
                     const bossSelectEl = clonedDoc.getElementById(`boss-select-${type}`);
                     if (bossSelectEl) {
                         const replacement = clonedDoc.createElement('div');
@@ -1743,15 +2011,11 @@
                         inputEl.replaceWith(replacement);
                     });
 
-                    // 最後一組牌組原本保留了 200px 的底部留白（讓卡片池抽屜不會擋住畫面），
-                    // 截圖時要去掉，避免圖片往下多出一大段空白
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
                     if (lastTierRow) lastTierRow.style.marginBottom = '0px';
                     const clonedExportArea = clonedDoc.getElementById(idMap[type]);
                     if (clonedExportArea) {
                         clonedExportArea.style.paddingBottom = '4px';
-                        // 真正的留白來源：.export-area 有 flex:1，會被撐到跟頁面一樣高（即使內容沒那麼長），
-                        // 截圖時要取消這個撐高行為，讓它縮回到內容實際的高度
                         clonedExportArea.style.flex = 'none';
                         clonedExportArea.style.height = 'auto';
                         clonedExportArea.style.minHeight = '0';
@@ -1762,35 +2026,38 @@
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
-            }).catch(() => { 
-                alert(t('generateFailed')); 
-                closeModal(); 
+            }).catch(() => {
+                alert(t('generateFailed'));
+                closeModal();
             });
         }
 
-        function closeModal() { 
+        function closeModal() {
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
 
-            // 強制把滑動容器重新對齊回目前分頁，避免返回時頁面卡在兩頁之間、版面歪掉
-            isSwiping = false;
-            translateX = -currentPage * window.innerWidth;
-            updateSwiperPosition(false);
+            if (currentView === 'deck') {
+                isSwiping = false;
+                translateX = -currentPage * window.innerWidth;
+                updateSwiperPosition(false);
+            }
 
             setTimeout(() => {
                 document.body.style.overflow = 'visible';
                 document.body.style.overflowY = 'visible';
                 void document.body.offsetHeight;
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                // 部分手機瀏覽器在圖層收起、版面重新計算後位置可能跑掉，這裡再次確認對齊
-                isSwiping = false;
-                updateSwiperPosition(true);
+                if (currentView === 'deck') {
+                    isSwiping = false;
+                    updateSwiperPosition(true);
+                }
             }, 100);
 
-            // 再延遲一次做最後確認，涵蓋部分手機瀏覽器版面延遲穩定的情況
             setTimeout(() => {
-                isSwiping = false;
-                updateSwiperPosition(true);
+                if (currentView === 'deck') {
+                    isSwiping = false;
+                    updateSwiperPosition(true);
+                }
             }, 400);
         }
 
@@ -1803,8 +2070,6 @@
                 const tier = tiers[i];
                 if (!tier) return;
                 tier.querySelector('.label-custom-input').value = group.label;
-                // bossPreset.js 裡的資料是用中文字標示部位（例如「全部位」「頭」），
-                // 這裡轉成對應的 data-key 去比對，跟目前顯示的語言無關
                 const partTagMap = {'全部位':'all','全':'all','任一單部位':'single','單':'single','頭':'head','肚':'belly','手':'hand','腳':'foot'};
                 tier.querySelectorAll('.part-tag').forEach(tag => {
                     const matched = group.parts && group.parts.some(p => partTagMap[p] === tag.dataset.key);
@@ -1845,7 +2110,6 @@
         let analysisSortKey = 'total';
         let analysisSortDir = -1;
 
-        // 關卡選單 1-200，用迴圈產生（手寫 200 個 option 不切實際）
         function populateStageSelect() {
             const sel = document.getElementById('analysis-stage-select');
             if (!sel || sel.options.length > 0) return;
@@ -1861,7 +2125,6 @@
             }
         }
 
-        // 截圖右下角的 Tier-關卡標籤（例如 (M-14)）+ 當天日期
         function buildScreenshotTag() {
             const tierSel = document.getElementById('analysis-tier-select');
             const stageSel = document.getElementById('analysis-stage-select');
@@ -1899,9 +2162,6 @@
             return wrap;
         }
 
-        /* ── 自動偵測 boss 名稱欄位的存取輔助函式 ──
-           現在用一個純文字標籤（div）取代下拉選單，data-value 存實際 boss 名稱，
-           textContent 顯示給使用者看的文字。 */
         function setBossSlotValue(slotIdx, bossName) {
             const el = document.getElementById(`analysis-boss-select-${slotIdx}`);
             if (!el) return;
@@ -1921,7 +2181,6 @@
             return el ? (el.dataset.value || '') : '';
         }
 
-        /* CSV 解析 */
         function parseCSV(text) {
             text = text.replace(/^\uFEFF/, '');
             const rows = [];
@@ -1967,17 +2226,11 @@
             return Math.round(n).toLocaleString('en-US');
         }
 
-        /* 百分比格式化：即使是 0.01% 這麼小的數值也要顯示小數點，
-           不要被四捨五入後變成單純的「0%」 */
         function formatRate(rate) {
             if (!rate || rate < 0.01) return '0%';
             return rate.toFixed(2) + '%';
         }
 
-        /* ── 自動偵測 CSV 中的 Boss，依出現順序填入下拉欄位 ──
-           8 種 boss（Jukk / Klonk / Lojak / Mohaca / Priker / Sterl / Takedar / Terro）
-           都可能出現在任何一個欄位中，因此不再限制特定分組，
-           單純依照在 CSV 中第一次出現的順序，取前 3 個不重複的 boss 名稱填入。 */
         function autoDetectBossesFromCSV(dataRows, bossColIdx) {
             if (bossColIdx < 0) return;
 
@@ -1994,13 +2247,6 @@
             });
         }
 
-        /* ── 自動偵測禁打部位 ──
-           規則：該 boss、該部位的「肉體傷害」小於「總傷害」的 1%，就標記為禁打部位。
-           - 「總傷害」採用每筆紀錄的「泰坦傷害」欄位加總（該 boss 的全部紀錄）。
-           - 部位的肉體傷害欄位採用「{部位}(肉體)」命名；若 CSV 中該欄位不存在，視為 0
-             （0 必定小於門檻，因此一樣會被標記為禁打）。
-           - 標記只存「部位基礎名稱」（例如「頭部」），之後不論裝甲傷害欄位「頭部(裝甲)」
-             或肉體傷害欄位「頭部(肉體)」，都會在誤傷判定時一併視為禁打部位。 */
         const PART_BASE_NAMES = ['頭部', '肚子', '左臂', '右臂', '左手', '右手', '左腿', '右腿'];
         function armorHeaderOf(base) { return `${base}(裝甲)`; }
         function fleshHeaderOf(base) { return `${base}(肉體)`; }
@@ -2009,14 +2255,11 @@
         function autoDetectBannedParts(headers, dataRows) {
             const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
             const dIdx = headers.findIndex(h => h === '泰坦傷害');
-            if (dIdx < 0) return; // 沒有總傷害欄位，無法算門檻，跳過
+            if (dIdx < 0) return;
 
-            // CSV 至少要有一個部位的肉體傷害欄位，否則無從判斷，直接跳過
             const hasAnyFleshCol = PART_BASE_NAMES.some(base => headers.includes(fleshHeaderOf(base)));
             if (!hasAnyFleshCol) return;
 
-            // 每次重新偵測前，先清除目前所有禁打部位選取，
-            // 避免不同次匯入、或同一格位偵測到不同 boss 時殘留舊資料
             [1, 2, 3].forEach(slotIdx => {
                 const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
                 if (bossRowEl) {
@@ -2024,8 +2267,8 @@
                 }
             });
 
-            const bossTotalDmg = {};   // { bossName: 總傷害（泰坦傷害欄位加總） }
-            const bossFleshDmg = {};   // { bossName: { 部位基礎名稱: 肉體傷害合計 } }
+            const bossTotalDmg = {};
+            const bossFleshDmg = {};
 
             dataRows.forEach(row => {
                 const bossName = bossColIdx >= 0 ? (row[bossColIdx] || '').trim() : '__all__';
@@ -2045,11 +2288,10 @@
                 if (!bossName) return;
 
                 const totalDmg = bossTotalDmg[bossName] || 0;
-                if (totalDmg === 0) return; // 沒有傷害資料，無法判斷門檻，跳過
+                if (totalDmg === 0) return;
 
-                const threshold = totalDmg * 0.01; // 總傷害的 1%
+                const threshold = totalDmg * 0.01;
                 const fleshData = bossFleshDmg[bossName] || {};
-                // 肉體傷害（欄位缺失視為 0）小於門檻 → 標記為禁打部位
                 const bannedBaseNames = PART_BASE_NAMES.filter(base => (fleshData[base] || 0) < threshold);
 
                 const bossRowEl = document.getElementById(`boss-set-${slotIdx}`);
@@ -2064,12 +2306,9 @@
             });
         }
 
-        /* ── 主要 CSV 處理函式 ── */
         function processPastedCSV() {
             const rawText = document.getElementById('csv-text-input').value.trim();
             if (!rawText) return;
-            
-            window.scrollTo(0, 0);
 
             const rows = parseCSV(rawText);
             if (rows.length < 2) return;
@@ -2082,14 +2321,9 @@
             const dIdx = headers.findIndex(h => h === '泰坦傷害');
             const cIdx = headers.findIndex(h => h === '總突擊傷害');
 
-            // 自動偵測 boss 並直接顯示名稱（8 種 boss 都可能出現在任何一個欄位，全部掃描）
             autoDetectBossesFromCSV(dataRows, bIdx);
-
-            // 自動偵測禁打部位 —— 必須在計算誤傷之前「同步」完成，不能延遲執行，
-            // 否則計算誤傷時讀到的還是尚未偵測完成的舊資料，導致誤傷率永遠是 0%
             autoDetectBannedParts(headers, dataRows);
 
-            // 讀取（剛剛自動偵測完成的）Boss 禁打部位設定（存「部位基礎名稱」，例如「頭部」）
             const bossConfigs = {};
             [1, 2, 3].forEach(i => {
                 const root = document.getElementById(`boss-set-${i}`);
@@ -2107,12 +2341,11 @@
                 if (!row || row.length === 0) return;
                 const pName = (row[pIdx] || '').trim();
                 if (!pName) return;
-                
+
                 if (!grouped[pName]) {
                     grouped[pName] = { player: pName, count: 0, total: 0, accident: 0 };
                 }
 
-                // 攻擊次數（取最大值避免重複加總）
                 if (cIdx >= 0) {
                     const hitCount = parseNumber(row[cIdx]);
                     grouped[pName].count = Math.max(grouped[pName].count, hitCount);
@@ -2120,13 +2353,9 @@
                     grouped[pName].count += 1;
                 }
 
-                // 總傷害累加
                 const damageVal = parseNumber(row[dIdx]);
                 grouped[pName].total += damageVal;
 
-                // 誤傷判定：
-                // 1) 骨架受到的所有傷害（每個部位都有自己的「{部位}(骨架)」欄位），一律算誤傤
-                // 2) 禁打部位一旦標記，該部位無論是裝甲傷害欄位還是肉體傷害欄位，都算誤傤
                 const bossName = (row[bIdx] || '').trim();
                 const bannedBaseNames = bossConfigs[bossName] || [];
                 headers.forEach((header, idx) => {
@@ -2148,23 +2377,32 @@
                 });
             });
 
-            // 計算平均傷害與誤傷率
             analysisData = Object.values(grouped).map(p => ({
                 ...p,
                 avg: p.count > 0 ? ((p.total - p.accident) / p.count) : 0,
-                // 誤傷率 = 誤傷 / 總傷害 * 100%
                 accidentRate: p.total > 0 ? (p.accident / p.total) * 100 : 0
             }));
 
             renderAnalysisTable();
         }
 
+        /* 貼上／輸入 CSV 後自動分析，不需要再手動按「分析」鈕 */
+        let csvAutoAnalyzeTimer = null;
+        document.getElementById('csv-text-input').addEventListener('input', () => {
+            clearTimeout(csvAutoAnalyzeTimer);
+            csvAutoAnalyzeTimer = setTimeout(() => {
+                if (document.getElementById('csv-text-input').value.trim()) {
+                    processPastedCSV();
+                }
+            }, 300);
+        });
+
         function sortAnalysisBy(key) {
             if (analysisSortKey === key) { analysisSortDir *= -1; }
             else { analysisSortKey = key; analysisSortDir = -1; }
             renderAnalysisTable();
         }
-        
+
         function renderAnalysisTable() {
             const tbody = document.getElementById('analysis-tbody');
             const summary = document.getElementById('analysis-summary');
@@ -2191,10 +2429,8 @@
             const totalAccident = analysisData.reduce((s, p) => s + p.accident, 0);
             const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
             const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
-            // 整體誤傷率
             const overallAccidentRate = totalDamage > 0 ? (totalAccident / totalDamage) * 100 : 0;
 
-            // 誤傷率超過 5% 時，額外加上警示背景
             const rateCellClass = (rate) => 'rate-cell' + (rate > 5 ? ' rate-warning' : '');
 
             summary.innerHTML = `
@@ -2231,15 +2467,14 @@
             tbody.appendChild(summaryTr);
         }
 
-        function clearAnalysisData() { 
-            if (!confirm(t('confirmClearAnalysisData'))) return; 
-            csvHeaders = []; csvRows = []; analysisData = []; 
-            document.getElementById('analysis-result-wrap').style.display = 'none'; 
-            document.getElementById('analysis-empty-state').style.display = 'block'; 
-            document.getElementById('csv-text-input').value = ''; 
-            localStorage.removeItem(ANALYSIS_STORAGE_KEY); 
+        function clearAnalysisData() {
+            if (!confirm(t('confirmClearAnalysisData'))) return;
+            csvHeaders = []; csvRows = []; analysisData = [];
+            document.getElementById('analysis-result-wrap').style.display = 'none';
+            document.getElementById('analysis-empty-state').style.display = 'block';
+            document.getElementById('csv-text-input').value = '';
+            localStorage.removeItem(ANALYSIS_STORAGE_KEY);
 
-            // 重置 boss 自動偵測顯示與已選取的禁打部位
             [1, 2, 3].forEach(i => {
                 setBossSlotValue(i, '');
                 const root = document.getElementById(`boss-set-${i}`);
@@ -2248,13 +2483,9 @@
                 }
             });
         }
-        
+
         function exportAnalysisImage() {
             if (!analysisData.length) { alert(t('noAnalysisDataToExport')); return; }
-
-            // 避免截圖前還停留在「滑動中」的暫時狀態，導致稍後返回時頁面卡在兩頁之間
-            isSwiping = false;
-            updateSwiperPosition(false);
 
             window.scrollTo({ top: 0, behavior: 'smooth' });
             const modal = document.getElementById('result-modal');
@@ -2265,7 +2496,6 @@
             const SPLIT_AT = 25;
 
             if (analysisData.length <= SPLIT_AT) {
-                // 人數不多，維持單欄直接截圖
                 const exportArea = document.getElementById('export-analysis');
                 html2canvas(exportArea, {
                     useCORS: true, scale: 2, backgroundColor: '#e3f2fd',
@@ -2292,7 +2522,6 @@
                 return;
             }
 
-            // 人數超過 25：建立離屏雙欄版面，1-25 名在左、26 名以後（含總計列）在右，合併成橫式圖片
             const offscreen = buildAnalysisTwoColExport(SPLIT_AT);
             document.body.appendChild(offscreen);
 
@@ -2311,7 +2540,6 @@
                 });
         }
 
-        /* 建立離屏（畫面外）的雙欄分析表格，用於突襲分析截圖 */
         function buildAnalysisTwoColExport(splitPoint) {
             const sourceTable = document.getElementById('analysis-table');
             const theadHTML = sourceTable.querySelector('thead').outerHTML;
@@ -2362,16 +2590,16 @@
             wrapper.appendChild(buildScreenshotTag());
             return wrapper;
         }
-        
-        function saveAnalysisState() { 
-            try { 
-                const state = { headers: csvHeaders, rows: csvRows, data: analysisData }; 
-                localStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify(state)); 
-            } catch (e) { 
-                console.error('儲存分析資料失敗:', e); 
-            } 
+
+        function saveAnalysisState() {
+            try {
+                const state = { headers: csvHeaders, rows: csvRows, data: analysisData };
+                localStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {
+                console.error('儲存分析資料失敗:', e);
+            }
         }
-        
+
         function restoreAnalysisState() {
             const saved = localStorage.getItem(ANALYSIS_STORAGE_KEY);
             if (!saved) return;
@@ -2380,13 +2608,13 @@
                 csvHeaders = state.headers || [];
                 csvRows = state.rows || [];
                 analysisData = state.data || [];
-                if (analysisData.length) { 
-                    renderAnalysisTable(); 
-                    document.getElementById('analysis-empty-state').style.display = 'none'; 
-                    document.getElementById('analysis-result-wrap').style.display = 'block'; 
+                if (analysisData.length) {
+                    renderAnalysisTable();
+                    document.getElementById('analysis-empty-state').style.display = 'none';
+                    document.getElementById('analysis-result-wrap').style.display = 'block';
                 }
-            } catch (e) { 
-                console.error('恢復分析資料失敗:', e); 
+            } catch (e) {
+                console.error('恢復分析資料失敗:', e);
             }
         }
 
@@ -2413,17 +2641,7 @@
             if (drawer) drawer.classList.toggle('expanded', cardPoolExpanded);
         }
 
-        // 收合狀態下，點一下卡片池任何地方（包括卡片本身）都直接展開，不會被判斷成拖曳；
-        // 展開狀態下，點把手收合，點卡片則交給卡片自己的長按拖曳邏輯處理
-        // 卡片池的拖曳改用「事件委派」統一在 drawer 上處理（不再對每張卡片個別綁定），
-        // 這樣才能同時兼顧「點一下展開」跟「往上滑就立刻拖曳」，不會互相打架、也不會重複觸發
-        //
-        // 修正：原本只要不是「往上拖曳出卡片」就一律當成「點一下」並切換展開/收合，
-        // 導致左右滑動卡片排（橫向捲動）放手時也被誤判成點擊，造成左右滑動很難滑順。
-        // 解法：全程記錄這次觸碰移動的最大距離（不分方向），touchend 時只有移動距離
-        // 小於門檻（真的只是輕點一下）才觸發展開/收合；左右滑動因為移動距離較大，
-        // 會被排除掉，交還給瀏覽器原生的橫向捲動處理。
-        const POOL_TAP_MOVE_THRESHOLD = 10; // px，小於這個距離才算「點一下」
+        const POOL_TAP_MOVE_THRESHOLD = 10;
         let poolTouchStartX = 0, poolTouchStartY = 0;
         let poolTracking = false, poolDragStarted = false;
         let poolTrackedCard = null, poolTrackedSrc = '';
@@ -2445,22 +2663,18 @@
                 poolTrackedSrc = poolTrackedCard ? (poolTrackedCard.querySelector('img')?.src || '') : '';
             }, { passive: true });
 
-            // 一觸碰卡片往上滑出一點距離，立刻視為拖曳，不用等長按
             drawer.addEventListener('touchmove', (e) => {
                 if (!poolTracking) return;
                 const touch = e.touches[0];
                 const dx = touch.clientX - poolTouchStartX;
                 const dy = touch.clientY - poolTouchStartY;
 
-                // 不論方向，持續記錄這次觸碰目前移動了多遠，
-                // 用來在 touchend 時判斷究竟是「點一下」還是「滑動」
                 const dist = Math.max(Math.abs(dx), Math.abs(dy));
                 if (dist > poolMaxMoveDist) poolMaxMoveDist = dist;
 
                 if (poolDragStarted || !poolTrackedCard) return;
 
                 if (dy < 0 && Math.abs(dy) > Math.abs(dx)) {
-                    // 往上滑為主：擋掉預設的捲動行為，自己接手處理
                     e.preventDefault();
                     if (dy < -8) {
                         poolDragStarted = true;
@@ -2468,12 +2682,9 @@
                         beginCardPoolDrag(poolTrackedSrc, touch.clientX, touch.clientY);
                     }
                 }
-                // 水平滑動為主（在滑該排卡片）或往下滑：不處理，交給瀏覽器原生捲動
             }, { passive: false });
 
             drawer.addEventListener('touchend', (e) => {
-                // 只有「幾乎沒有移動」才算是單純點一下，才切換展開/收合；
-                // 左右滑動過一段距離（例如在瀏覽卡片排）就不算點一下，避免放手時被誤觸發
                 if (poolTracking && !poolDragStarted && poolMaxMoveDist < POOL_TAP_MOVE_THRESHOLD) {
                     toggleCardPool();
                 }
@@ -2491,8 +2702,6 @@
             }, { passive: true });
         }
 
-        // 量測實際的卡格（.drop-zone）大小，讓卡片池裡的卡片跟卡格一樣大；
-        // 不同裝置/螢幕寬度算出來的卡格大小不同，所以用 JS 動態量測再寫入 CSS 變數
         function syncCardPoolCardSize() {
             const sampleZone = document.querySelector('.drop-zone');
             if (!sampleZone) return;
@@ -2503,8 +2712,6 @@
             }
         }
 
-        // 每 0.5 秒檢查一次：只要偵測到目前正在拖曳（isDraggingCard / isDraggingGlobal），
-        // 就重新計時；連續 10 秒沒有任何拖曳動作才自動收合
         function startCardPoolAutoCollapseWatcher() {
             stopCardPoolAutoCollapseWatcher();
             cardPoolWatcherInterval = setInterval(() => {
@@ -2526,15 +2733,10 @@
             }
         }
 
-        // 從 cards.js 的 PRESET_CARDS 陣列（圖片路徑字串陣列）畫出卡片池縮圖，
-        // 每 14 張分一橫排（對應 cards.js 裡「第一排/第二排/第三排」的分組）。
-        // 三排共用一個水平捲動容器，左右拖曳時三排會一起移動。
         const CARD_POOL_ROW_SIZE = 14;
         function renderCardPool() {
             const content = document.getElementById('card-pool-content');
             if (!content) return;
-            // 注意：cards.js 用 `const PRESET_CARDS = [...]` 宣告，不會掛在 window 上，
-            // 所以要用裸變數名稱讀取，不能寫成 window.PRESET_CARDS
             const list = (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) ? PRESET_CARDS : null;
             if (!list || list.length === 0) {
                 content.innerHTML = `<div class="card-pool-empty">${t('cardPoolNotLoadedDetail')}</div>`;
@@ -2560,7 +2762,7 @@
             content.appendChild(scrollWrap);
         }
 
-        /* ── 拖曳系統（保留，用於配卡頁拖放功能） ── */
+        /* ── 拖曳系統（配卡頁拖放功能）── */
         let clone = null, activeSrc = '';
         let touchStartPos = { x: 0, y: 0 };
         let gestureMode = null;
@@ -2568,7 +2770,7 @@
         let cachedZones = [], lastHoveredZone = null;
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
         let cloneHalfSize = 25;
-        
+
         function cancelDrag() {
             clearTimeout(longPressTimer);
             longPressTimer = null;
@@ -2589,7 +2791,8 @@
 
         function updateZonesCache() {
             cachedZones = [];
-            const activePageId = ['page-burst', 'page-torment', 'page-support', 'page-analysis'][currentPage];
+            const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
+            if (!activePageId) return;
             document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
                 const r = zone.getBoundingClientRect();
                 cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
@@ -2611,7 +2814,6 @@
                 if (scrollSpeed < 0 && window.scrollY <= 0) return;
                 if (scrollSpeed > 0 && window.scrollY >= maxY) return;
                 window.scrollBy(0, scrollSpeed);
-                // 捲動後卡格在畫面上的座標會改變，重新量測一次才能正確判斷目前停在哪一格
                 updateZonesCache();
                 const target = findZone(currentTouchX, currentTouchY);
                 if (target !== lastHoveredZone) {
@@ -2633,7 +2835,6 @@
             window._dragScrollY = window.scrollY;
             document.body.classList.add('drag-active');
 
-            // 拖曳浮層跟卡格/卡片池的卡片一樣大，視覺上更一致
             const zoneEl = document.querySelector('.drop-zone');
             const size = zoneEl ? Math.round(zoneEl.getBoundingClientRect().width) : 50;
             cloneHalfSize = size / 2;
@@ -2661,8 +2862,6 @@
             currentTouchX = touch.clientX;
             currentTouchY = touch.clientY;
 
-            // 用 transform 取代 left/top，並把畫面更新批次到下一個動畫畫面（requestAnimationFrame），
-            // 避免每個 touchmove 事件都立刻觸發版面重排，拖曳才會滑順不卡頓
             if (!cardDragFrameScheduled) {
                 cardDragFrameScheduled = true;
                 requestAnimationFrame(() => {
@@ -2677,7 +2876,6 @@
                         lastHoveredZone = target;
                     }
 
-                    // 靠近螢幕上下邊緣時自動捲動，方便拖到畫面外的牌組
                     const edge = 60;
                     if (currentTouchY < edge) {
                         scrollSpeed = -12;
@@ -2706,8 +2904,8 @@
             cancelDrag();
         }
 
-        document.addEventListener('touchstart', function() { 
-            if (!isDraggingCard && clone) cancelDrag(); 
+        document.addEventListener('touchstart', function() {
+            if (!isDraggingCard && clone) cancelDrag();
         }, { passive: true });
     </script>
 </body>

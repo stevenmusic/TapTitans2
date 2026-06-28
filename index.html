@@ -1313,23 +1313,23 @@
             transform: translateY(-1px);
         }
 
-        .abyss-sp-export-row { width: 100%; margin-top: 6px; }
-        .abyss-export-btn {
+        .abyss-sp-export-row {
             width: 100%;
-            border: none;
-            border-radius: 12px;
-            background-color: #6a3fb5;
-            color: #fff;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 10px 0;
-            cursor: pointer;
-            font-family: inherit;
-            box-shadow: 0 2px 6px rgba(106,63,181,0.3);
+            max-width: 360px;
+            margin: 0 auto 14px auto;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .abyss-export-meta {
+            text-align: center;
+            font-size: 10.5px;
+            color: #8a72b8;
+            margin-bottom: 5px;
+            line-height: 1.5;
         }
         .abyss-export-output {
             width: 100%;
-            margin-top: 8px;
             font-size: 11px;
             padding: 8px;
             border: 1px solid #e3d9f7;
@@ -1337,7 +1337,27 @@
             box-sizing: border-box;
             resize: vertical;
             font-family: monospace;
+            margin-bottom: 6px;
         }
+        .abyss-export-btns {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+        .abyss-export-btn {
+            flex: 1;
+            border: none;
+            border-radius: 12px;
+            background-color: #6a3fb5;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 9px 0;
+            cursor: pointer;
+            font-family: inherit;
+            box-shadow: 0 2px 6px rgba(106,63,181,0.3);
+        }
+        .abyss-export-btn.apply { background-color: #2e7d32; box-shadow: 0 2px 6px rgba(46,125,50,0.3); }
 
 
         .abyss-sp-card {
@@ -1722,11 +1742,15 @@
                             <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
                             <select class="abyss-sp-select" id="abyss-sp-select"></select>
                         </div>
-                        <div id="abyss-skill-trees"></div>
                         <div class="abyss-sp-export-row">
-                            <button type="button" class="abyss-export-btn" id="abyss-export-btn">📋 複製此檢查點配點設定</button>
-                            <textarea class="abyss-export-output" id="abyss-export-output" readonly rows="3" style="display:none;"></textarea>
+                            <div class="abyss-export-meta" id="abyss-export-meta"></div>
+                            <textarea class="abyss-export-output" id="abyss-export-output" rows="3" placeholder='可在此直接編輯配點 JSON，例如 {"rogue_root":1}，按「套用」更新上面的技能樹'></textarea>
+                            <div class="abyss-export-btns">
+                                <button type="button" class="abyss-export-btn" id="abyss-export-btn">📋 複製</button>
+                                <button type="button" class="abyss-export-btn apply" id="abyss-apply-btn">✅ 套用</button>
+                            </div>
                         </div>
+                        <div id="abyss-skill-trees"></div>
                     </div>
                     <div class="abyss-swiper-page" id="abyss-page-gear">
                         <div id="abyss-gear-panel"></div>
@@ -3507,6 +3531,7 @@
             setSkillValue(mode, currentAbyssCheckpoint, skillId, next);
             const node = document.querySelector(`.skill-node[data-skill="${skillId}"]`);
             if (node) updateSkillNodeDisplay(node, next);
+            refreshExportArea();
         }
 
         /* ── 點方格彈出較大的 ▲▼，點箭頭以外的任何地方就立刻收起 ── */
@@ -3579,22 +3604,48 @@
             container.addEventListener('mouseleave', stopPress);
         })();
 
-        document.getElementById('abyss-export-btn').addEventListener('click', () => {
+        function refreshExportArea() {
             const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
-            if (!mode) return;
+            const meta = document.getElementById('abyss-export-meta');
+            const ta = document.getElementById('abyss-export-output');
+            if (!mode || !meta || !ta) return;
             const data = (mode.spData && mode.spData[currentAbyssCheckpoint]) || {};
             const nonZero = {};
             let total = 0;
             Object.keys(data).forEach(k => {
                 if (data[k]) { nonZero[k] = data[k]; total += data[k]; }
             });
-            const text = `${mode.name}（${mode.key}）／檢查點：${currentAbyssCheckpoint} 點\n實際總配點數：${total}\n配點明細：${JSON.stringify(nonZero)}`;
+            meta.textContent = `${mode.name}（${mode.key}）／${currentAbyssCheckpoint} 點檢查點／目前總配點數：${total}`;
+            ta.value = JSON.stringify(nonZero);
+        }
+
+        document.getElementById('abyss-export-btn').addEventListener('click', () => {
             const ta = document.getElementById('abyss-export-output');
-            ta.style.display = 'block';
-            ta.value = text;
             ta.focus();
             ta.select();
             try { document.execCommand('copy'); } catch (e) { /* 部分手機瀏覽器不支援，仍可手動長按複製 */ }
+        });
+
+        document.getElementById('abyss-apply-btn').addEventListener('click', () => {
+            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+            if (!mode) return;
+            const ta = document.getElementById('abyss-export-output');
+            let parsed;
+            try {
+                parsed = JSON.parse(ta.value || '{}');
+            } catch (e) {
+                alert('格式錯誤，請確認是合法的 JSON，例如 {"rogue_root":1,"warlord_r2c1":5}');
+                return;
+            }
+            const newData = {};
+            Object.keys(parsed).forEach(k => {
+                const v = parseInt(parsed[k], 10);
+                if (!isNaN(v) && v > 0) newData[k] = v;
+            });
+            if (!mode.spData) mode.spData = {};
+            mode.spData[currentAbyssCheckpoint] = newData;
+            updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            refreshExportArea();
         });
 
         function renderAbyssList() {
@@ -3647,16 +3698,14 @@
             select.value = String(ABYSS_SP_CHECKPOINTS[0]);
             currentAbyssCheckpoint = ABYSS_SP_CHECKPOINTS[0];
             updateSkillTreeValues(mode, currentAbyssCheckpoint);
-            const exportOutput = document.getElementById('abyss-export-output');
-            if (exportOutput) exportOutput.style.display = 'none';
+            refreshExportArea();
         }
 
         document.getElementById('abyss-sp-select').addEventListener('change', function () {
             const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
             currentAbyssCheckpoint = parseInt(this.value, 10);
             if (mode) updateSkillTreeValues(mode, currentAbyssCheckpoint);
-            const exportOutput = document.getElementById('abyss-export-output');
-            if (exportOutput) exportOutput.style.display = 'none';
+            refreshExportArea();
         });
 
         function renderAbyssGearPanel(mode) {

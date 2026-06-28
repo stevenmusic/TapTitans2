@@ -1089,9 +1089,10 @@
         .abyss-mode-card .mode-arrow { color: #cdb8ec; font-size: 20px; flex-shrink: 0; }
 
         .abyss-build-subtitle {
-            text-align: center; font-size: 13px; font-weight: 800; color: #6a3fb5;
-            background: #efe6fa; border-radius: 10px; padding: 7px 0; margin-bottom: 14px;
-            width: 100%; max-width: 500px; box-sizing: border-box;
+            display: inline-block;
+            text-align: left; font-size: 12px; font-weight: 800; color: #6a3fb5;
+            background: #efe6fa; border-radius: 8px; padding: 4px 10px;
+            width: auto; box-sizing: border-box;
         }
 
         .abyss-panel { width: 100%; max-width: 500px; box-sizing: border-box; }
@@ -1118,24 +1119,226 @@
         }
 
         .abyss-sp-select {
-            width: 100%;
+            width: auto;
+            min-width: 84px;
             appearance: none;
             -webkit-appearance: none;
             border: none;
-            border-radius: 12px;
+            border-radius: 10px;
             background-color: #6a3fb5;
             color: #fff;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             text-align: center;
             text-align-last: center;
-            padding: 11px 0;
-            margin-bottom: 14px;
+            padding: 6px 12px;
             box-sizing: border-box;
             cursor: pointer;
             box-shadow: 0 2px 6px rgba(106,63,181,0.35);
         }
         .abyss-sp-select:focus { outline: none; }
+
+        .abyss-sp-header {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        /* ── 互動式技能配點樹 ── */
+        :root { --skill-icon-size: 44px; }
+
+        .tree-grid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .tree-pair {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #e3d9f7;
+            width: 100%;
+        }
+        .tree-pair:last-child { border-bottom: none; margin-bottom: 2px; }
+
+        .skill-tree {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .tree-cat-label {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 3px;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+        .tree-row {
+            display: flex;
+            gap: 2px;
+            justify-content: center;
+        }
+        .skill-node {
+            position: relative;
+            flex: 0 0 var(--skill-icon-size);
+            width: var(--skill-icon-size);
+        }
+        .skill-node.empty { visibility: hidden; }
+        .skill-icon-wrap {
+            position: relative;
+            width: var(--skill-icon-size);
+            height: var(--skill-icon-size);
+            border-radius: 5px;
+            border: 1.2px solid #555;
+            overflow: hidden;
+            box-sizing: border-box;
+            background: #1a1a1a;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .skill-icon-wrap img {
+            width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
+            filter: grayscale(0.75) brightness(0.5) contrast(0.9);
+            transition: filter 0.2s ease;
+        }
+        .skill-icon-wrap.lit {
+            border-color: var(--cat-color, #6a3fb5);
+            box-shadow: 0 0 7px var(--cat-color, #6a3fb5);
+        }
+        .skill-icon-wrap.lit img {
+            filter: saturate(1.9) brightness(1.25) contrast(1.1);
+        }
+        .skill-node.expanded .skill-icon-wrap { outline: 2px solid var(--cat-color, #6a3fb5); outline-offset: 1px; }
+
+        .skill-value-badge {
+            position: absolute;
+            bottom: 0; right: 0;
+            background: rgba(0,0,0,0.78);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1;
+            padding: 1px 4px;
+            border-radius: 4px 0 0 0;
+            min-width: 10px;
+            text-align: center;
+            pointer-events: none;
+        }
+        .skill-node.expanded .skill-value-badge { display: none; }
+
+        /* 點方格後彈出的大尺寸控制區，覆蓋在原位置上方，不影響其他方格排列 */
+        .skill-popout {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 270%;
+            height: 380%;
+            min-width: 64px;
+            min-height: 92px;
+            transform: translate(-50%, -50%);
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px;
+            background: #1f1f24;
+            border: 2px solid var(--cat-color, #6a3fb5);
+            border-radius: 14px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.55);
+            z-index: 80;
+            box-sizing: border-box;
+        }
+        .skill-node.expanded .skill-popout { display: flex; }
+        .skill-popout .step-btn {
+            flex: 1;
+            border: none;
+            border-radius: 10px;
+            background: var(--cat-color, #6a3fb5);
+            color: #fff;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            font-family: inherit;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.25);
+        }
+        .skill-popout .step-btn:active { filter: brightness(0.85); transform: scale(0.95); }
+        .skill-value-popout {
+            flex: 0 0 auto;
+            display: block;
+            text-align: center;
+            font-size: 15px;
+            font-weight: 900;
+            color: #fff;
+            background: #000;
+            border-radius: 8px;
+            padding: 5px 0;
+            line-height: 1.2;
+        }
+
+        .tree-connector {
+            display: flex;
+            gap: 2px;
+            justify-content: center;
+            height: 7px;
+            position: relative;
+        }
+        .tree-connector .vline { flex: 0 0 var(--skill-icon-size); width: var(--skill-icon-size); position: relative; display: flex; justify-content: center; }
+        .tree-connector .vline::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            background: var(--cat-color, #6a3fb5);
+        }
+        .tree-connector .vline.full::before { top: 0; bottom: 0; }
+        .tree-connector .vline.half-bottom::before { top: 50%; bottom: 0; }
+        .tree-connector .vline.empty::before { background: transparent; }
+        .tree-connector.fork .hbar {
+            position: absolute;
+            top: 50%;
+            left: 16.6%;
+            right: 16.6%;
+            height: 2px;
+            background: var(--cat-color, #6a3fb5);
+            transform: translateY(-1px);
+        }
+
+        .abyss-sp-export-row { width: 100%; margin-top: 6px; }
+        .abyss-export-btn {
+            width: 100%;
+            border: none;
+            border-radius: 12px;
+            background-color: #6a3fb5;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 10px 0;
+            cursor: pointer;
+            font-family: inherit;
+            box-shadow: 0 2px 6px rgba(106,63,181,0.3);
+        }
+        .abyss-export-output {
+            width: 100%;
+            margin-top: 8px;
+            font-size: 11px;
+            padding: 8px;
+            border: 1px solid #e3d9f7;
+            border-radius: 8px;
+            box-sizing: border-box;
+            resize: vertical;
+            font-family: monospace;
+        }
+
 
         .abyss-sp-card {
             background: #ffffff;
@@ -1512,12 +1715,18 @@
         </div>
 
         <div class="standalone-page" id="page-abyss-detail">
-            <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
             <div class="abyss-swiper-wrapper" id="abyss-swiper-wrapper">
                 <div class="abyss-swiper-container" id="abyss-swiper-container">
                     <div class="abyss-swiper-page" id="abyss-page-sp">
-                        <select class="abyss-sp-select" id="abyss-sp-select"></select>
-                        <div class="abyss-sp-image-wrap" id="abyss-sp-image-wrap"></div>
+                        <div class="abyss-sp-header">
+                            <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
+                            <select class="abyss-sp-select" id="abyss-sp-select"></select>
+                        </div>
+                        <div id="abyss-skill-trees"></div>
+                        <div class="abyss-sp-export-row">
+                            <button type="button" class="abyss-export-btn" id="abyss-export-btn">📋 複製此檢查點配點設定</button>
+                            <textarea class="abyss-export-output" id="abyss-export-output" readonly rows="3" style="display:none;"></textarea>
+                        </div>
                     </div>
                     <div class="abyss-swiper-page" id="abyss-page-gear">
                         <div id="abyss-gear-panel"></div>
@@ -2075,6 +2284,7 @@
             populateStageSelect();
             applyLanguage();
             renderAbyssList();
+            initAbyssSkillTrees();
 
             showView('home');
 
@@ -3144,7 +3354,7 @@
                     { rarity: 'legendary', name: '黑暗騎士',       note: '（+4 跳關量）' },
                     { rarity: 'mythic',    name: '遠古戰士',       note: '（x2 飛船和同伴攻速）' },
                     { rarity: 'mythic',    name: '天使守衛者',     note: '（+8 跳關量）' },
-                    { rarity: 'legendary', name: '被遺忘的巫師',   note: '（+1 法術層數）' },
+                    { rarity: 'legendary', name: '被遺忘的巫師',   note: '（+1 技能層數）' },
                     { rarity: 'legendary', name: '天體幻術師',     note: '（x2 神器附魔效果）' },
                     { rarity: 'legendary', name: '永恆禪師',       note: '（x1.2 跳關量）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
@@ -3158,6 +3368,234 @@
         ];
 
         let currentAbyssModeKey = null;
+        let currentAbyssCheckpoint = ABYSS_SP_CHECKPOINTS[0];
+
+        /* ══════════════════════════════════════════════════════════
+           六大技能分類樹狀圖（盜賊／煉金／督軍／術士／騎士／召喚師）
+           ══════════════════════════════════════════════════════════
+           - 樹狀結構（圖示、分支）對所有模式／所有檢查點都共用，只渲染一次
+           - 每個 (模式, 檢查點) 各自存一份配點數值，存在 mode.spData[checkpoint][skillId]
+           - 方格本身縮小，六分類可在一畫面內看到；數字常駐顯示在方格右下角小角標
+           - 點一下方格會彈出較大的 ▲／數字／▼ 控制區方便點按，5 秒沒有動作會自動收回
+           - 數值預設為 0，目前尚未填入任何資料；之後可透過畫面上的 ▲▼ 設定，
+             再按「複製此檢查點配點設定」貼回來，由我寫進程式碼固定下來給所有訪客看
+        ══════════════════════════════════════════════════════════ */
+        const SKILL_NODE_LAYOUT = {
+            rogue:     { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,1,2] },
+            alchemist: { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,1,2] },
+            warlord:   { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [1] },
+            sorcerer:  { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0] },
+            knight:    { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [1,2] },
+            summoner:  { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,2] }
+        };
+
+        const SKILL_PAIRS = [
+            { left: { key: 'knight',   label: '騎士' },   right: { key: 'summoner',  label: '召喚師' } },
+            { left: { key: 'warlord',  label: '督軍' },   right: { key: 'sorcerer',  label: '術士' } },
+            { left: { key: 'rogue',    label: '盜賊' },   right: { key: 'alchemist', label: '煉金' } }
+        ];
+
+        const SKILL_CAT_COLORS = {
+            rogue: '#4caf50', alchemist: '#9c27b0', warlord: '#c9971f',
+            sorcerer: '#2196f3', knight: '#9e9e9e', summoner: '#ff7043'
+        };
+
+        let abyssExpandedSkillId = null;
+
+        function renderSkillNode(catKey, posId) {
+            const color = SKILL_CAT_COLORS[catKey];
+            const skillId = `${catKey}_${posId}`;
+            return `
+                <div class="skill-node" data-skill="${skillId}" style="--cat-color:${color}">
+                    <div class="skill-icon-wrap">
+                        <img src="images/abyss/skill-icons/${skillId}.jpg" alt="">
+                        <span class="skill-value-badge" data-skill-value="${skillId}">0</span>
+                    </div>
+                    <div class="skill-popout">
+                        <button type="button" class="step-btn up" data-skill="${skillId}" data-dir="1">▲</button>
+                        <span class="skill-value-popout" data-skill-value-popout="${skillId}">0</span>
+                        <button type="button" class="step-btn down" data-skill="${skillId}" data-dir="-1">▼</button>
+                    </div>
+                </div>`;
+        }
+
+        function renderSkillSlot(catKey, present, posId) {
+            return present ? renderSkillNode(catKey, posId) : `<div class="skill-node empty"></div>`;
+        }
+
+        function renderConnectorRow(type, color, presentCols) {
+            let html = `<div class="tree-connector ${type}" style="--cat-color:${color}">`;
+            if (type === 'fork') html += `<span class="hbar"></span>`;
+            [0,1,2].forEach(c => {
+                const has = presentCols.includes(c);
+                let cls = 'vline';
+                if (!has) cls += ' empty';
+                else if (type === 'fork') cls += (c === 1 ? ' full' : ' half-bottom');
+                else cls += ' full';
+                html += `<span class="${cls}"></span>`;
+            });
+            html += `</div>`;
+            return html;
+        }
+
+        function renderCategoryTree(cat) {
+            const layout = SKILL_NODE_LAYOUT[cat.key];
+            const color = SKILL_CAT_COLORS[cat.key];
+            let html = `<div class="skill-tree" data-cat="${cat.key}">`;
+            html += `<div class="tree-cat-label" style="color:${color}">${cat.label}</div>`;
+            html += `<div class="tree-row root-row">
+                        <div class="skill-node empty"></div>
+                        ${renderSkillNode(cat.key, 'root')}
+                        <div class="skill-node empty"></div>
+                      </div>`;
+            html += renderConnectorRow('fork', color, [0,1,2]);
+            ['r2','r3','r4'].forEach((r, idx) => {
+                html += `<div class="tree-row">` + [0,1,2].map(c => renderSkillSlot(cat.key, true, `${r}c${c}`)).join('') + `</div>`;
+                const nextPresent = (idx < 2) ? [0,1,2] : layout.r5;
+                html += renderConnectorRow('straight', color, nextPresent);
+            });
+            html += `<div class="tree-row">` + [0,1,2].map(c =>
+                renderSkillSlot(cat.key, layout.r5.includes(c), `r5c${c}`)
+            ).join('') + `</div>`;
+            html += `</div>`;
+            return html;
+        }
+
+        function initAbyssSkillTrees() {
+            const wrap = document.getElementById('abyss-skill-trees');
+            if (!wrap) return;
+            let html = '<div class="tree-grid">';
+            SKILL_PAIRS.forEach(pair => {
+                html += `<div class="tree-pair">${renderCategoryTree(pair.left)}${renderCategoryTree(pair.right)}</div>`;
+            });
+            html += '</div>';
+            wrap.innerHTML = html;
+        }
+
+        function getSkillValue(mode, checkpoint, skillId) {
+            return (mode.spData && mode.spData[checkpoint] && mode.spData[checkpoint][skillId]) || 0;
+        }
+
+        function setSkillValue(mode, checkpoint, skillId, value) {
+            if (!mode.spData) mode.spData = {};
+            if (!mode.spData[checkpoint]) mode.spData[checkpoint] = {};
+            mode.spData[checkpoint][skillId] = value;
+        }
+
+        function updateSkillNodeDisplay(node, value) {
+            const badge = node.querySelector('.skill-value-badge');
+            const popoutVal = node.querySelector('.skill-value-popout');
+            const iconWrap = node.querySelector('.skill-icon-wrap');
+            if (badge) badge.textContent = value;
+            if (popoutVal) popoutVal.textContent = value;
+            if (iconWrap) iconWrap.classList.toggle('lit', value > 0);
+        }
+
+        function updateSkillTreeValues(mode, checkpoint) {
+            document.querySelectorAll('#abyss-skill-trees .skill-node').forEach(node => {
+                const skillId = node.dataset.skill;
+                if (!skillId) return;
+                updateSkillNodeDisplay(node, getSkillValue(mode, checkpoint, skillId));
+            });
+        }
+
+        function adjustSkillValue(skillId, dir) {
+            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+            if (!mode) return;
+            const cur = getSkillValue(mode, currentAbyssCheckpoint, skillId);
+            const next = Math.max(0, Math.min(9999, cur + dir));
+            setSkillValue(mode, currentAbyssCheckpoint, skillId, next);
+            const node = document.querySelector(`.skill-node[data-skill="${skillId}"]`);
+            if (node) updateSkillNodeDisplay(node, next);
+        }
+
+        /* ── 點方格彈出較大的 ▲▼，點箭頭以外的任何地方就立刻收起 ── */
+        function expandSkillNode(skillId) {
+            if (abyssExpandedSkillId && abyssExpandedSkillId !== skillId) {
+                collapseSkillNode(abyssExpandedSkillId);
+            }
+            abyssExpandedSkillId = skillId;
+            const node = document.querySelector(`.skill-node[data-skill="${skillId}"]`);
+            if (node) node.classList.add('expanded');
+        }
+
+        function collapseSkillNode(skillId) {
+            const node = document.querySelector(`.skill-node[data-skill="${skillId}"]`);
+            if (node) node.classList.remove('expanded');
+            if (abyssExpandedSkillId === skillId) abyssExpandedSkillId = null;
+        }
+
+        function collapseExpandedSkillNodeIfOutside(target) {
+            if (!abyssExpandedSkillId) return;
+            const node = document.querySelector(`.skill-node[data-skill="${abyssExpandedSkillId}"]`);
+            if (node && !node.contains(target)) collapseSkillNode(abyssExpandedSkillId);
+        }
+
+        document.addEventListener('touchstart', (e) => collapseExpandedSkillNodeIfOutside(e.target), { passive: true });
+        document.addEventListener('mousedown', (e) => collapseExpandedSkillNodeIfOutside(e.target));
+
+        (function setupSkillStepperInteraction() {
+            const container = document.getElementById('abyss-skill-trees');
+            if (!container) return;
+            let pressTimer = null, repeatTimer = null;
+
+            function startPress(btn) {
+                const skillId = btn.dataset.skill;
+                const dir = parseInt(btn.dataset.dir, 10);
+                adjustSkillValue(skillId, dir);
+                pressTimer = setTimeout(() => {
+                    repeatTimer = setInterval(() => adjustSkillValue(skillId, dir), 110);
+                }, 420);
+            }
+            function stopPress() {
+                clearTimeout(pressTimer);
+                clearInterval(repeatTimer);
+                pressTimer = null;
+                repeatTimer = null;
+            }
+
+            container.addEventListener('touchstart', (e) => {
+                const btn = e.target.closest('.step-btn');
+                if (btn) { e.preventDefault(); startPress(btn); return; }
+                const iconWrap = e.target.closest('.skill-icon-wrap');
+                if (iconWrap) {
+                    const node = iconWrap.closest('.skill-node');
+                    if (node && node.dataset.skill) expandSkillNode(node.dataset.skill);
+                }
+            }, { passive: false });
+            container.addEventListener('touchend', stopPress);
+            container.addEventListener('touchcancel', stopPress);
+
+            container.addEventListener('mousedown', (e) => {
+                const btn = e.target.closest('.step-btn');
+                if (btn) { startPress(btn); return; }
+                const iconWrap = e.target.closest('.skill-icon-wrap');
+                if (iconWrap) {
+                    const node = iconWrap.closest('.skill-node');
+                    if (node && node.dataset.skill) expandSkillNode(node.dataset.skill);
+                }
+            });
+            container.addEventListener('mouseup', stopPress);
+            container.addEventListener('mouseleave', stopPress);
+        })();
+
+        document.getElementById('abyss-export-btn').addEventListener('click', () => {
+            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+            if (!mode) return;
+            const data = (mode.spData && mode.spData[currentAbyssCheckpoint]) || {};
+            const nonZero = {};
+            let total = 0;
+            Object.keys(data).forEach(k => {
+                if (data[k]) { nonZero[k] = data[k]; total += data[k]; }
+            });
+            const text = `${mode.name}（${mode.key}）／檢查點：${currentAbyssCheckpoint} 點\n實際總配點數：${total}\n配點明細：${JSON.stringify(nonZero)}`;
+            const ta = document.getElementById('abyss-export-output');
+            ta.style.display = 'block';
+            ta.value = text;
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) { /* 部分手機瀏覽器不支援，仍可手動長按複製 */ }
+        });
 
         function renderAbyssList() {
             const wrap = document.getElementById('abyss-mode-list');
@@ -3207,24 +3645,18 @@
                 });
             }
             select.value = String(ABYSS_SP_CHECKPOINTS[0]);
-            updateAbyssSpImage(mode, ABYSS_SP_CHECKPOINTS[0]);
-        }
-
-        function updateAbyssSpImage(mode, sp) {
-            const wrap = document.getElementById('abyss-sp-image-wrap');
-            if (!wrap) return;
-            if (!mode.build) {
-                wrap.innerHTML = `<div class="abyss-sp-placeholder">此模式攻略尚未建立<br>補上資料後會自動顯示</div>`;
-                return;
-            }
-            const imgPath = `images/abyss/${mode.key}/${sp}.jpg`;
-            wrap.innerHTML = `<img src="${imgPath}" alt="${sp} 點配點截圖"
-                 onerror="this.parentNode.innerHTML='&lt;div class=&quot;abyss-sp-placeholder&quot;&gt;技能配點截圖尚未上傳&lt;br&gt;(${sp} 點)&lt;/div&gt;'">`;
+            currentAbyssCheckpoint = ABYSS_SP_CHECKPOINTS[0];
+            updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            const exportOutput = document.getElementById('abyss-export-output');
+            if (exportOutput) exportOutput.style.display = 'none';
         }
 
         document.getElementById('abyss-sp-select').addEventListener('change', function () {
             const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
-            if (mode) updateAbyssSpImage(mode, this.value);
+            currentAbyssCheckpoint = parseInt(this.value, 10);
+            if (mode) updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            const exportOutput = document.getElementById('abyss-export-output');
+            if (exportOutput) exportOutput.style.display = 'none';
         });
 
         function renderAbyssGearPanel(mode) {

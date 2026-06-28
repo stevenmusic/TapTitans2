@@ -171,7 +171,7 @@
         }
         .btn-analysis {
             flex: 1;
-            min-width: 88px;
+            min-width: 76px;
             padding: 8px 8px;
             border: none;
             border-radius: 12px;
@@ -390,19 +390,19 @@
             outline: none;
         }
 
-        /* 可展開折疊多選菜單 */
+        /* 可展開折疊多選菜單（Linear 風格扁平列表 + Mobalytics 卡片層次 + TT2 金色配色） */
         .custom-dropdown {
             position: relative;
             width: 100%;
         }
         .dropdown-trigger {
             width: 100%;
-            color: #fff;
-            background-color: #87CEEB;
-            border: none;
-            border-radius: 4px;
+            color: #5a4a42;
+            background-color: #fff8ec;
+            border: 1px solid #d9c7a1;
+            border-radius: 8px;
             font-size: 12px !important;
-            font-weight: bold;
+            font-weight: 700;
             height: 26px;
             box-sizing: border-box;
             display: flex;
@@ -410,22 +410,27 @@
             justify-content: center;
             cursor: pointer;
             text-align: center;
-            padding: 0;
+            padding: 0 3px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .custom-dropdown.open .dropdown-trigger {
+            border-color: #c9971f;
+            box-shadow: 0 0 0 2px rgba(201,151,31,0.25);
         }
         .dropdown-content {
             display: none;
             position: absolute;
-            top: 100%; left: 0;
-            width: 100%; 
-            background-color: #87CEEB;
-            border: 1px solid #87CEEB;
-            border-radius: 4px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            top: calc(100% + 4px); left: 0;
+            width: 116px; 
+            background-color: #fffaf0;
+            border: 1px solid #d9c7a1;
+            border-radius: 10px;
+            box-shadow: 0 8px 18px rgba(90,74,66,0.3);
             z-index: 100;
-            padding: 4px;
+            padding: 5px;
             box-sizing: border-box;
             flex-direction: column;
-            gap: 5px; 
+            gap: 4px; 
         }
         .custom-dropdown.open .dropdown-content {
             display: flex;
@@ -433,23 +438,29 @@
         .dropdown-content .part-tag {
             width: 100%;
             text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            border-radius: 3px;
+            border: 1px solid #e3d6b8;
+            border-radius: 6px;
             font-size: 12px !important;
             font-weight: 700;
-            padding: 5px 0; 
+            padding: 6px 3px; 
             cursor: pointer;
-            opacity: 1; 
-            background: transparent;
-            color: #fff;
+            background: #ffffff;
+            color: #5a4a42;
             line-height: 1.2;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             box-sizing: border-box;
+            transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+        }
+        .dropdown-content .part-tag:active {
+            transform: scale(0.97);
         }
         .dropdown-content .part-tag.active {
-            opacity: 1; 
-            background-color: #005FCC;
-            border-color: #005FCC;
+            background: linear-gradient(135deg, #f3cd6e 0%, #c9971f 100%);
+            border-color: #b8860b;
+            color: #3d2c1e;
+            box-shadow: 0 0 6px rgba(201,151,31,0.55);
         }
 
         .selected-parts-inline-row {
@@ -680,20 +691,25 @@
         .pill-btn {
             display: inline-block;
             padding: 6px 12px;
-            border-radius: 20px;
-            border: 1px solid #cbd5e1;
-            background-color: #ffffff;
-            color: #64748b;
+            border-radius: 8px;
+            border: 1px solid #d9c7a1;
+            background-color: #fffaf0;
+            color: #5a4a42;
             font-size: 13px;
+            font-weight: 600;
             cursor: pointer;
             user-select: none;
-            transition: all 0.2s ease;
+            transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+        }
+        .pill-btn:active {
+            transform: scale(0.96);
         }
         .pill-btn.active {
-            background-color: #ef4444;
-            color: #ffffff;
-            border-color: #ef4444;
-            font-weight: bold;
+            background: linear-gradient(135deg, #f3cd6e 0%, #c9971f 100%);
+            color: #3d2c1e;
+            border-color: #b8860b;
+            font-weight: 700;
+            box-shadow: 0 0 6px rgba(201,151,31,0.55);
         }
 
         .btn-clear-all {
@@ -875,6 +891,10 @@
         body.lang-en .selected-part-badge {
             font-size: 10px !important;
         }
+        body.lang-en .dropdown-content .part-tag {
+            font-size: 10.5px !important;
+            padding: 6px 2px;
+        }
         body.lang-en .lang-toggle-btn {
             font-size: 11px;
         }
@@ -985,7 +1005,7 @@
                                   style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 8px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;" 
                                   placeholder="請將 CSV 內容直接貼上此處..." data-i18n-placeholder="csvPlaceholder"></textarea>
                         
-                        <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px;">
+                        <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
                             <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
                                 <option value="" data-i18n="tierPlaceholder">Tier</option>
                                 <option value="1">1</option>
@@ -1078,7 +1098,7 @@
         </div>
     </div>
 
-    <!-- 卡片池：固定於底部，預設收合，僅在爆裂/苦痛/支援頁顯示 -->
+    <!-- 卡片池：固定於底部，預設收合，僅在爆裂/苦痛/支援頁面顯示 -->
     <div class="card-pool-drawer" id="card-pool-drawer">
         <div class="card-pool-handle" id="card-pool-handle">
             <span class="card-pool-handle-bar"></span>
@@ -1183,7 +1203,7 @@
                 modalImageReady: '💡 Image generated! Long-press the image below to save it to your photo album.',
                 btnBackToEdit: 'Back to Edit',
                 tierPartTriggerDefault: 'Part ▾',
-                tierPartAll: 'All Zones', tierPartSingle: 'Any Single Zone', tierPartSingleShort: 'Single',
+                tierPartAll: 'All Zones', tierPartSingle: 'Single Zone', tierPartSingleShort: 'Single',
                 tierPartHead: 'Head', tierPartBelly: 'Belly', tierPartHand: 'Hand', tierPartFoot: 'Foot',
                 typeFleshArmor: 'Both', typeFlesh: 'Flesh', typeArmor: 'Armor',
                 generatingDeckImage: 'Generating deck image...',

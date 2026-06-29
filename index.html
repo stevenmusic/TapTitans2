@@ -1147,7 +1147,7 @@
         }
 
         /* ── 互動式技能配點樹 ── */
-        :root { --skill-icon-size: 44px; }
+        :root { --skill-icon-size: 36px; }
 
         .tree-grid {
             display: flex;
@@ -1156,7 +1156,7 @@
         }
         .tree-pair {
             display: flex;
-            gap: 32px;
+            gap: 14px;
             justify-content: center;
             margin-bottom: 8px;
             padding-bottom: 8px;
@@ -3420,9 +3420,16 @@
         };
 
         const SKILL_PAIRS = [
-            { left: { key: 'knight',   label: '騎士' },   right: { key: 'summoner',  label: '召喚師' } },
-            { left: { key: 'warlord',  label: '督軍' },   right: { key: 'sorcerer',  label: '術士' } },
-            { left: { key: 'rogue',    label: '盜賊' },   right: { key: 'alchemist', label: '煉金' } }
+            { groups: [
+                { key: 'knight',   label: '騎士' },
+                { key: 'summoner', label: '召喚師' },
+                { key: 'warlord',  label: '督軍' }
+            ] },
+            { groups: [
+                { key: 'sorcerer',  label: '術士' },
+                { key: 'rogue',     label: '盜賊' },
+                { key: 'alchemist', label: '煉金' }
+            ] }
         ];
 
         const SKILL_CAT_COLORS = {
@@ -3495,8 +3502,8 @@
             const wrap = document.getElementById('abyss-skill-trees');
             if (!wrap) return;
             let html = '<div class="tree-grid">';
-            SKILL_PAIRS.forEach(pair => {
-                html += `<div class="tree-pair">${renderCategoryTree(pair.left)}${renderCategoryTree(pair.right)}</div>`;
+            SKILL_PAIRS.forEach(row => {
+                html += `<div class="tree-pair">${row.groups.map(renderCategoryTree).join('')}</div>`;
             });
             html += '</div>';
             wrap.innerHTML = html;

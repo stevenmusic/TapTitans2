@@ -1358,6 +1358,7 @@
             box-shadow: 0 2px 6px rgba(106,63,181,0.3);
         }
         .abyss-export-btn.apply { background-color: #2e7d32; box-shadow: 0 2px 6px rgba(46,125,50,0.3); }
+        .abyss-export-btn.add { background-color: #c9971f; box-shadow: 0 2px 6px rgba(201,151,31,0.3); font-size: 11px; }
 
 
         .abyss-sp-card {
@@ -1746,6 +1747,7 @@
                             <div class="abyss-export-meta" id="abyss-export-meta"></div>
                             <textarea class="abyss-export-output" id="abyss-export-output" rows="3" placeholder='可在此直接編輯配點 JSON，例如 {"rogue_root":1}，按「套用」更新上面的技能樹'></textarea>
                             <div class="abyss-export-btns">
+                                <button type="button" class="abyss-export-btn add" id="abyss-add-checkpoint-btn">➕ 新增檢查點</button>
                                 <button type="button" class="abyss-export-btn" id="abyss-export-btn">📋 複製</button>
                                 <button type="button" class="abyss-export-btn apply" id="abyss-apply-btn">✅ 套用</button>
                             </div>
@@ -3346,15 +3348,16 @@
         /* ══════════════════════════════════════════════════════════
            深淵錦標賽攻略（流派 / 技能配點 / 出裝順序）
            ══════════════════════════════════════════════════════════
-           - 每個模式的技能配點與出裝順序固定（不同模式互不相同）
-           - 技能配點：12 個檢查點（200/500/750/1000...每次+250 到 3000），
-             每個檢查點對應一張使用者自行上傳的截圖
-             圖片路徑規則：images/abyss/{模式key}/{SP數值}.jpg
-             （圖片放進該資料夾即會自動顯示，不用改程式碼）
+           - 每個模式的流派與出裝順序固定（不同模式互不相同）
+           - 技能配點：不再用預設的 200/500/750... 固定檢查點，
+             而是讓使用者直接在技能樹上點配點，上方選單的選項會
+             依「目前實際配點總數」動態命名（例如 187 點、523 點），
+             按「➕ 新增檢查點」可以複製目前配點當作起點，繼續往下配
+             （累積式：下一個檢查點包含前一個的配點，再加上新配的）
            - 出裝順序：獨立時間軸，跟技能配點檢查點不需要一一對應
              gearSteps 內 rarity 為 'mythic'（神話，橘色）或 'legendary'（傳奇，黃色）
         ══════════════════════════════════════════════════════════ */
-        const ABYSS_SP_CHECKPOINTS = [200, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000];
+        let currentAbyssCheckpoint = null;
 
         const ABYSS_MODE_ICONS = {
             companionFrenzy: '🚀',
@@ -3392,7 +3395,6 @@
         ];
 
         let currentAbyssModeKey = null;
-        let currentAbyssCheckpoint = ABYSS_SP_CHECKPOINTS[0];
 
         /* ══════════════════════════════════════════════════════════
            六大技能分類樹狀圖（盜賊／煉金／督軍／術士／騎士／召喚師）
@@ -3531,6 +3533,7 @@
             setSkillValue(mode, currentAbyssCheckpoint, skillId, next);
             const node = document.querySelector(`.skill-node[data-skill="${skillId}"]`);
             if (node) updateSkillNodeDisplay(node, next);
+            refreshCurrentCheckpointOptionLabel(mode);
             refreshExportArea();
         }
 
@@ -3615,7 +3618,7 @@
             Object.keys(data).forEach(k => {
                 if (data[k]) { nonZero[k] = data[k]; total += data[k]; }
             });
-            meta.textContent = `${mode.name}（${mode.key}）／${currentAbyssCheckpoint} 點檢查點／目前總配點數：${total}`;
+            meta.textContent = `${mode.name}（${mode.key}）／目前總配點數：${total}`;
             ta.value = JSON.stringify(nonZero);
         }
 
@@ -3645,6 +3648,7 @@
             if (!mode.spData) mode.spData = {};
             mode.spData[currentAbyssCheckpoint] = newData;
             updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            refreshCurrentCheckpointOptionLabel(mode);
             refreshExportArea();
         });
 
@@ -3684,27 +3688,73 @@
             updateAbyssSwiperPosition(false);
         }
 
+        function checkpointTotal(mode, checkpointId) {
+            const data = (mode.spData && mode.spData[checkpointId]) || {};
+            return Object.values(data).reduce((s, v) => s + (v || 0), 0);
+        }
+
+        function checkpointLabel(mode, checkpointId) {
+            return `${checkpointTotal(mode, checkpointId)} 點`;
+        }
+
+        function ensureFirstCheckpoint(mode) {
+            if (!mode.spData) mode.spData = {};
+            if (Object.keys(mode.spData).length === 0) {
+                mode.checkpointSeq = 1;
+                mode.spData['cp1'] = {};
+            }
+            if (!mode.checkpointSeq) mode.checkpointSeq = Object.keys(mode.spData).length;
+        }
+
+        function rebuildCheckpointDropdown(mode) {
+            const select = document.getElementById('abyss-sp-select');
+            if (!select) return;
+            select.innerHTML = '';
+            Object.keys(mode.spData).forEach(id => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = checkpointLabel(mode, id);
+                select.appendChild(opt);
+            });
+        }
+
+        function refreshCurrentCheckpointOptionLabel(mode) {
+            const select = document.getElementById('abyss-sp-select');
+            if (!select) return;
+            const opt = Array.from(select.options).find(o => o.value === currentAbyssCheckpoint);
+            if (opt) opt.textContent = checkpointLabel(mode, currentAbyssCheckpoint);
+        }
+
         function renderAbyssSpPanel(mode) {
             const select = document.getElementById('abyss-sp-select');
             if (!select) return;
-            if (select.options.length === 0) {
-                ABYSS_SP_CHECKPOINTS.forEach(sp => {
-                    const opt = document.createElement('option');
-                    opt.value = String(sp);
-                    opt.textContent = `${sp} 點`;
-                    select.appendChild(opt);
-                });
-            }
-            select.value = String(ABYSS_SP_CHECKPOINTS[0]);
-            currentAbyssCheckpoint = ABYSS_SP_CHECKPOINTS[0];
+            ensureFirstCheckpoint(mode);
+            rebuildCheckpointDropdown(mode);
+            const keys = Object.keys(mode.spData);
+            currentAbyssCheckpoint = keys[keys.length - 1];
+            select.value = currentAbyssCheckpoint;
             updateSkillTreeValues(mode, currentAbyssCheckpoint);
             refreshExportArea();
         }
 
         document.getElementById('abyss-sp-select').addEventListener('change', function () {
             const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
-            currentAbyssCheckpoint = parseInt(this.value, 10);
+            currentAbyssCheckpoint = this.value;
             if (mode) updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            refreshExportArea();
+        });
+
+        document.getElementById('abyss-add-checkpoint-btn').addEventListener('click', () => {
+            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+            if (!mode) return;
+            mode.checkpointSeq = (mode.checkpointSeq || 0) + 1;
+            const newId = `cp${mode.checkpointSeq}`;
+            const baseData = (mode.spData && mode.spData[currentAbyssCheckpoint]) || {};
+            mode.spData[newId] = { ...baseData };
+            currentAbyssCheckpoint = newId;
+            rebuildCheckpointDropdown(mode);
+            document.getElementById('abyss-sp-select').value = newId;
+            updateSkillTreeValues(mode, newId);
             refreshExportArea();
         });
 

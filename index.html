@@ -1205,15 +1205,15 @@
         }
         .skill-icon-wrap img {
             width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
-            filter: grayscale(0.4) brightness(1.5) contrast(1);
+            filter: brightness(1.1);
             transition: filter 0.2s ease;
         }
         .skill-icon-wrap.lit {
             border-color: var(--cat-color, #6a3fb5);
-            box-shadow: 0 0 10px 2px var(--cat-color, #6a3fb5), 0 0 4px var(--cat-color, #6a3fb5) inset;
+            box-shadow: 0 0 14px 3px var(--cat-color, #6a3fb5), 0 0 5px 1px rgba(255,255,255,0.75);
         }
         .skill-icon-wrap.lit img {
-            filter: grayscale(0) saturate(2) brightness(1.7) contrast(1.1);
+            filter: brightness(1.1);
         }
         .skill-node.expanded .skill-icon-wrap { outline: 2px solid var(--cat-color, #6a3fb5); outline-offset: 1px; }
 
@@ -1230,7 +1230,9 @@
             min-width: 10px;
             text-align: center;
             pointer-events: none;
+            transition: color 0.2s ease;
         }
+        .skill-node.lit .skill-value-badge { color: var(--cat-color, #6a3fb5); }
         .skill-node.expanded .skill-value-badge { display: none; }
 
         /* 點方格後彈出的大尺寸控制區，覆蓋在原位置上方，不影響其他方格排列 */
@@ -1282,7 +1284,9 @@
             border-radius: 8px;
             padding: 5px 0;
             line-height: 1.2;
+            transition: color 0.2s ease;
         }
+        .skill-node.lit .skill-value-popout { color: var(--cat-color, #6a3fb5); }
 
         .tree-connector {
             display: flex;
@@ -3409,7 +3413,7 @@
         const SKILL_NODE_LAYOUT = {
             rogue:     { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,1,2] },
             alchemist: { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,1,2] },
-            warlord:   { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [1] },
+            warlord:   { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [2] },
             sorcerer:  { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0] },
             knight:    { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [1,2] },
             summoner:  { r2: [0,1,2], r3: [0,1,2], r4: [0,1,2], r5: [0,2] }
@@ -3434,7 +3438,7 @@
             return `
                 <div class="skill-node" data-skill="${skillId}" style="--cat-color:${color}">
                     <div class="skill-icon-wrap">
-                        <img src="images/abyss/skill-icons/${skillId}.jpg" alt="">
+                        <img class="skill-icon-img" data-skill-img="${skillId}" src="images/abyss/skill-icons/${skillId}.jpg" alt="">
                         <span class="skill-value-badge" data-skill-value="${skillId}">0</span>
                     </div>
                     <div class="skill-popout">
@@ -3512,9 +3516,17 @@
             const badge = node.querySelector('.skill-value-badge');
             const popoutVal = node.querySelector('.skill-value-popout');
             const iconWrap = node.querySelector('.skill-icon-wrap');
+            const img = node.querySelector('.skill-icon-img');
             if (badge) badge.textContent = value;
             if (popoutVal) popoutVal.textContent = value;
+            node.classList.toggle('lit', value > 0);
             if (iconWrap) iconWrap.classList.toggle('lit', value > 0);
+            if (img) {
+                const skillId = img.dataset.skillImg;
+                img.src = value > 0
+                    ? `images/abyss/skill-icons/${skillId}_lit.jpg`
+                    : `images/abyss/skill-icons/${skillId}.jpg`;
+            }
         }
 
         function updateSkillTreeValues(mode, checkpoint) {

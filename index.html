@@ -11,9 +11,8 @@
     <style>
         html {
             font-size: 18px;
+            scroll-behavior: smooth;
             height: 100%;
-            background-color: #1c1c1c;
-            overflow: hidden;
         }
         :root {
             --bg-burst: #f4ece1;
@@ -27,44 +26,28 @@
             --card-bg: #ffffff;
             --border-color: #e0d5c1;
             --header-h: 100px;
-            --app-design-width: 420px;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #1c1c1c;
+            background-color: #e0d5c1;
             margin: 0; padding: 0;
-            overflow: hidden;
-            height: 100%;
-            position: relative;
+            overflow-x: hidden;
+            overflow-y: visible;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
+            scroll-behavior: smooth;
+            min-height: 100%;
+            height: auto;
         }
 
-        /* ── 等比縮放容器：整個 App 用固定設計寬度排版，再依裝置螢幕寬度整體等比縮放
-           （縮放倍率有上限，避免平板上字體/按鈕被放大過頭），超出寬度上限時水平置中 ── */
-        #app-scale-wrapper {
-            position: absolute;
-            top: 0; left: 50%;
-            width: var(--app-design-width);
-            transform-origin: top center;
-            background-color: #e0d5c1;
-            overflow: hidden;
-        }
-
-        .view {
-            width: 100%;
-            height: 100%;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            box-sizing: border-box;
-        }
+        .view { width: 100%; }
 
         /* ══════════════════════════════════════════════════════════
            首頁
            ══════════════════════════════════════════════════════════ */
         #view-home {
-            min-height: var(--app-vh, 100vh);
+            min-height: 100vh;
             box-sizing: border-box;
             background-color: #fdf9f2;
             display: flex;
@@ -286,7 +269,7 @@
             margin-top: var(--header-h, 100px);
             margin-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: margin-bottom 0.3s ease;
-            min-height: calc(var(--app-vh, 100vh) - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             padding-bottom: 10px;
         }
         .swiper-container {
@@ -303,7 +286,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: calc(var(--app-vh, 100vh) - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
@@ -813,7 +796,7 @@
             justify-content: center; align-items: center; flex-direction: column;
             padding: 20px; box-sizing: border-box;
         }
-        #result-modal img { max-width: 100%; max-height: calc(var(--app-vh, 100vh) * 0.7); border-radius: 8px; }
+        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
         .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
 
@@ -1002,7 +985,7 @@
             transition: max-height 0.3s ease;
         }
         .card-pool-drawer.expanded .card-pool-content {
-            max-height: calc(var(--app-vh, 100vh) * 0.44);
+            max-height: 44vh;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
@@ -1077,7 +1060,10 @@
         .abyss-tab { background-color: #4a2f85; color: rgba(255,255,255,0.7); }
         .abyss-tab.active { color: #ffffff; }
 
-        #page-abyss-list, #page-abyss-detail { background-color: #f4f0fb; color: #2c1f4a; }
+        #page-abyss-list, #page-abyss-detail {
+            background-color: #f4f0fb; color: #2c1f4a;
+            min-height: calc(100vh - var(--header-h, 64px));
+        }
         #view-abyss-list, #view-abyss-detail { background-color: #f4f0fb; }
 
         .abyss-mode-card {
@@ -1550,7 +1536,6 @@
     </style>
 </head>
 <body>
-    <div id="app-scale-wrapper">
 
     <!-- ══════════════════════════════════════════════════════════
          首頁（導航入口）
@@ -1876,39 +1861,10 @@
         <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
     </div>
 
-    </div>
-
     <script>
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
         }
-
-        /* ══════════════════════════════════════════════════════════
-           等比縮放：依裝置實際螢幕寬度，把整個 App（以 420px 為設計寬度）
-           整體放大或縮小。手機會接近全螢幕；平板因螢幕寬度遠大於手機，
-           縮放倍率設有上限，避免按鈕、文字被放大到不合理的尺寸——
-           超過上限時改為置中顯示，左右留白用深色背景填滿。
-           ══════════════════════════════════════════════════════════ */
-        const APP_DESIGN_WIDTH = 420;
-        const APP_MAX_SCALE = 1.3;
-        let currentAppScale = 1;
-
-        function applyAppScale() {
-            const wrapper = document.getElementById('app-scale-wrapper');
-            if (!wrapper) return;
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-            const scale = Math.min(vw / APP_DESIGN_WIDTH, APP_MAX_SCALE);
-            currentAppScale = scale;
-            wrapper.style.transform = `translateX(-50%) scale(${scale})`;
-            const localHeight = vh / scale;
-            wrapper.style.height = localHeight + 'px';
-            document.documentElement.style.setProperty('--app-vh', localHeight + 'px');
-        }
-
-        applyAppScale();
-        window.addEventListener('resize', applyAppScale);
-        window.addEventListener('orientationchange', applyAppScale);
 
         /* ══════════════════════════════════════════════════════════
            中英文翻譯字典與切換邏輯
@@ -2423,8 +2379,8 @@
                 if (!el) return;
                 el.style.display = (key === view) ? 'block' : 'none';
             });
-            const activeEl = document.getElementById(viewIdMap[view]);
-            if (activeEl) activeEl.scrollTop = 0;
+
+            window.scrollTo(0, 0);
 
             if (view === 'deck') {
                 swiperWidth = getDeckSwiperWidth();
@@ -2434,62 +2390,7 @@
             }
 
             syncHeaderHeight();
-            updateAbyssScrollLock(view);
-        }
-
-        /* ── 深淵錦標賽懶人包：視內容是否超出畫面決定是否鎖定該頁捲動 ── */
-        function setViewScrollLocked(viewId, locked) {
-            const el = document.getElementById(viewId);
-            if (!el) return;
-            el.style.overflowY = locked ? 'hidden' : 'auto';
-        }
-
-        function measureActiveAbyssPageHeight() {
-            const pageEl = document.getElementById(abyssCurrentPage === 1 ? 'abyss-page-gear' : 'abyss-page-sp');
-            if (!pageEl) return 0;
-            const children = Array.from(pageEl.children);
-            if (children.length === 0) return 0;
-            const first = children[0].getBoundingClientRect();
-            const last = children[children.length - 1].getBoundingClientRect();
-            return Math.max(0, last.bottom - first.top);
-        }
-
-        function measureAbyssListContentHeight() {
-            const listEl = document.getElementById('abyss-mode-list');
-            if (!listEl) return 0;
-            const children = Array.from(listEl.children);
-            if (children.length === 0) return 0;
-            const first = children[0].getBoundingClientRect();
-            const last = children[children.length - 1].getBoundingClientRect();
-            return Math.max(0, last.bottom - first.top);
-        }
-
-        function updateAbyssScrollLock(view) {
-            const SAFETY_BUFFER = 24 * (currentAppScale || 1);
-            if (view === 'abyssList') {
-                requestAnimationFrame(() => {
-                    const headerEl = document.getElementById('nav-header-abyss-list');
-                    const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
-                    const pagePadding = 60 * (currentAppScale || 1);
-                    const contentH = measureAbyssListContentHeight();
-                    const totalNeeded = headerH + contentH + pagePadding;
-                    setViewScrollLocked('view-abyss-list', totalNeeded <= window.innerHeight - SAFETY_BUFFER);
-                });
-                return;
-            }
-            if (view === 'abyssDetail') {
-                requestAnimationFrame(() => {
-                    const headerEl = document.getElementById('nav-header-abyss-detail');
-                    const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
-                    const standalonePagePadding = 60 * (currentAppScale || 1); // .standalone-page 上下 padding（含緩衝），換算成螢幕實際像素
-                    const contentH = measureActiveAbyssPageHeight();
-                    const totalNeeded = headerH + contentH + standalonePagePadding;
-                    setViewScrollLocked('view-abyss-detail', totalNeeded <= window.innerHeight - SAFETY_BUFFER);
-                });
-                return;
-            }
-            setViewScrollLocked('view-abyss-list', false);
-            setViewScrollLocked('view-abyss-detail', false);
+            setTimeout(() => window.scrollTo(0, 0), 60);
         }
 
         /* ── DOMContentLoaded ── */
@@ -2519,7 +2420,6 @@
         window.addEventListener('resize', () => {
             syncCardPoolCardSize();
             syncHeaderHeight();
-            updateAbyssScrollLock(currentView);
         });
 
         window.addEventListener('load', () => window.scrollTo(0, 0));
@@ -4181,7 +4081,6 @@
             document.getElementById('abyss-tab-sp').classList.add('active');
             document.getElementById('abyss-tab-gear').classList.remove('active');
             updateAbyssSwiperPosition(false);
-            updateAbyssScrollLock('abyssDetail');
         }
 
         function checkpointTotal(mode, checkpointId) {
@@ -4293,7 +4192,6 @@
                             b.classList.toggle('active', bi === i);
                         });
                         renderAbyssGearStepsList(mode, listWrap);
-                        updateAbyssScrollLock('abyssDetail');
                     });
                     rangeRow.appendChild(btn);
                 }
@@ -4354,7 +4252,6 @@
             tabSp.classList.toggle('active', tab === 'sp');
             tabGear.classList.toggle('active', tab === 'gear');
             updateAbyssSwiperPosition(true);
-            updateAbyssScrollLock('abyssDetail');
         }
 
         const abyssSwiperContainer = document.getElementById('abyss-swiper-container');

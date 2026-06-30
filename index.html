@@ -347,7 +347,7 @@
         .analysis-toolbar {
             display: flex;
             gap: 8px;
-            margin: 5px 0 12px 0;
+            margin: 5px auto 12px auto;
             justify-content: center;
             flex-wrap: wrap;
             width: 100%;
@@ -402,6 +402,8 @@
             padding: 60px 20px;
             line-height: 1.8;
             width: 100%;
+            margin: 0 auto;
+            box-sizing: border-box;
         }
 
         .analysis-summary {
@@ -409,7 +411,7 @@
             gap: 6px;
             flex-wrap: wrap;
             justify-content: center;
-            margin-bottom: 10px;
+            margin: 0 auto 10px auto;
             width: 100%;
             max-width: 500px;
         }
@@ -430,6 +432,8 @@
         .analysis-table-wrap {
             width: 100%;
             max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             border-radius: 14px;
@@ -815,7 +819,10 @@
             border: 1px solid #e2e8f0;
             border-radius: 16px;
             padding: 16px;
-            margin-bottom: 20px;
+            margin: 0 auto 20px auto;
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
             box-shadow: 0 2px 8px rgba(13,71,161,0.05);
         }
         .boss-config-title {
@@ -1118,10 +1125,11 @@
 
         .abyss-panel { width: 100%; max-width: 500px; box-sizing: border-box; }
 
-        /* ── 深淵錦標賽：技能配點／出裝順序 左右滑動 ── */
+        /* ── 深淵錦標賽：技能配點／出裝順序 左右滑動 ──
+           滑動容器本身全寬（整頁一起滑動，不會在中間出現接縫），
+           內容（技能樹／出裝清單）改用 .abyss-page-inner 置中並限制寬度 ── */
         .abyss-swiper-wrapper {
             width: 100%;
-            max-width: 500px;
             overflow: hidden;
             box-sizing: border-box;
         }
@@ -1137,6 +1145,13 @@
             flex-shrink: 0;
             box-sizing: border-box;
             padding: 0 4px;
+            display: flex;
+            justify-content: center;
+        }
+        .abyss-page-inner {
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
         }
 
         .abyss-sp-select {
@@ -1178,7 +1193,7 @@
 
         @media (min-width: 700px) {
             :root { --skill-icon-size: 50px; }
-            .abyss-panel, .abyss-swiper-wrapper { max-width: 680px; }
+            .abyss-panel, .abyss-page-inner { max-width: 680px; }
         }
 
         .tree-grid {
@@ -1919,15 +1934,17 @@
             <div class="abyss-swiper-wrapper" id="abyss-swiper-wrapper">
                 <div class="abyss-swiper-container" id="abyss-swiper-container">
                     <div class="abyss-swiper-page" id="abyss-page-sp">
-                        <div class="abyss-sp-header">
-                            <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
-                            <select class="abyss-sp-select" id="abyss-sp-select"></select>
+                        <div class="abyss-page-inner">
+                            <div class="abyss-sp-header">
+                                <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
+                                <select class="abyss-sp-select" id="abyss-sp-select"></select>
+                            </div>
+                            <div class="abyss-sp-disclaimer">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異<br>（僅供參考，不影響配點本身）</div>
+                            <div id="abyss-skill-trees"></div>
                         </div>
-                        <div class="abyss-sp-disclaimer">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異<br>（僅供參考，不影響配點本身）</div>
-                        <div id="abyss-skill-trees"></div>
                     </div>
                     <div class="abyss-swiper-page" id="abyss-page-gear">
-                        <div id="abyss-gear-panel"></div>
+                        <div id="abyss-gear-panel" class="abyss-page-inner"></div>
                     </div>
                 </div>
             </div>

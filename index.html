@@ -1426,6 +1426,41 @@
             font-size: 11.5px; color: #a796c9; text-align: center; padding: 20px; line-height: 1.7;
         }
 
+        /* ── 出裝順序頁上方：法術橫排（6 張一排）── */
+        .abyss-spell-row {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 16px;
+        }
+        .abyss-spell-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .abyss-spell-icon-wrap {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1.5px solid #e3d9f7;
+            box-shadow: 0 2px 6px rgba(61,37,112,0.10);
+            box-sizing: border-box;
+        }
+        .abyss-spell-icon-wrap img {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .abyss-spell-name {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #3d2570;
+            text-align: center;
+            line-height: 1.3;
+            word-break: break-all;
+        }
+
         .abyss-gear-step {
             display: flex;
             gap: 10px;
@@ -1759,7 +1794,7 @@
             </div>
             <div class="nav-tabs">
                 <button class="tab-btn abyss-tab active" id="abyss-tab-sp" onclick="switchAbyssTab('sp')" data-i18n="tabSkillPoints">技能配點</button>
-                <button class="tab-btn abyss-tab" id="abyss-tab-gear" onclick="switchAbyssTab('gear')" data-i18n="tabGearOrder">出裝順序</button>
+                <button class="tab-btn abyss-tab" id="abyss-tab-gear" onclick="switchAbyssTab('gear')" data-i18n="tabGearOrder">法術丨出裝順序</button>
             </div>
         </div>
 
@@ -1772,14 +1807,6 @@
                             <select class="abyss-sp-select" id="abyss-sp-select"></select>
                         </div>
                         <div class="abyss-sp-disclaimer">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異<br>（僅供參考，不影響配點本身）</div>
-                        <div class="abyss-sp-export-row">
-                            <div class="abyss-export-meta" id="abyss-export-meta"></div>
-                            <textarea class="abyss-export-output" id="abyss-export-output" rows="3" placeholder='可在此直接編輯配點 JSON，例如 {"rogue_root":1}，按「套用」更新上面的技能樹'></textarea>
-                            <div class="abyss-export-btns">
-                                <button type="button" class="abyss-export-btn" id="abyss-export-btn">📋 複製</button>
-                                <button type="button" class="abyss-export-btn apply" id="abyss-apply-btn">✅ 套用</button>
-                            </div>
-                        </div>
                         <div id="abyss-skill-trees"></div>
                     </div>
                     <div class="abyss-swiper-page" id="abyss-page-gear">
@@ -1818,7 +1845,7 @@
                 navAbyssDesc: '各模式推薦流派、技能配點與出裝順序攻略',
                 abyssListPageTitle: '深淵錦標賽',
                 tabSkillPoints: '技能配點',
-                tabGearOrder: '出裝順序',
+                tabGearOrder: '法術丨出裝順序',
                 homeFootnote: 'TT2 TOOLKIT',
                 deckBuilderPageTitle: '牌組建構',
                 analysisPageTitle: '戰報分析',
@@ -1879,7 +1906,7 @@
                 navAbyssDesc: 'Build, skill points & gear order guide for each tournament type',
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
-                tabGearOrder: 'Gear Order',
+                tabGearOrder: 'Spells & Gear',
                 homeFootnote: 'TT2 TOOLKIT',
                 deckBuilderPageTitle: 'Deck Builder',
                 analysisPageTitle: 'Report Analyzer',
@@ -3397,6 +3424,20 @@
             bladeBombardment: '🗡️'
         };
 
+        const SPELL_NAMES = {
+            tiantangsheng: '天堂聖擊',
+            dianshicheng:  '點石成金',
+            huoyanzhi:     '火焰之劍',
+            yingfenshen:   '影分身之術',
+            zhanzheng:     '戰爭狂吼',
+            jindaodan:     '金導彈',
+            zhiming:       '致命爆擊',
+            shuangzhao:    '雙召喚',
+            musexianv:     '暮色之城仙女',
+            leitingchuan:  '雷霆船',
+            daopianliu:    '刀片流'
+        };
+
         const ABYSS_MODES = [
             {
                 key: 'solarEclipse',
@@ -3416,7 +3457,7 @@
                     { rarity: 'legendary', name: '被遺忘的巫師',   note: '（+1 法術層數）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ],
-                spells: { cp1: [] },
+                spells: ['zhanzheng','zhiming','dianshicheng','musexianv','yingfenshen','huoyanzhi'],
                 spData: {
                     cp1: {knight_root:2, knight_r2c0:6, knight_r2c2:1, knight_r3c0:5, knight_r3c2:1, knight_r4c0:3, knight_r4c2:4, knight_r5c2:1, sorcerer_root:2, sorcerer_r2c0:1, sorcerer_r2c1:9, sorcerer_r2c2:1, sorcerer_r3c1:2, sorcerer_r3c2:1, sorcerer_r4c1:1, sorcerer_r4c2:2, rogue_root:1},  // 200 點
                     cp2: {knight_root:2, knight_r2c0:6, knight_r2c2:1, knight_r3c0:5, knight_r3c2:9, knight_r4c0:3, knight_r4c2:4, knight_r5c2:1, summoner_root:2, summoner_r2c0:2, summoner_r2c2:4, summoner_r3c2:5, warlord_root:2, warlord_r2c0:12, warlord_r2c1:1, warlord_r3c1:2, sorcerer_root:2, sorcerer_r2c0:3, sorcerer_r2c1:9, sorcerer_r2c2:6, sorcerer_r3c1:6, sorcerer_r3c2:1, sorcerer_r4c1:1, sorcerer_r4c2:3, rogue_root:1, alchemist_root:2, alchemist_r2c1:4, alchemist_r2c2:2, alchemist_r3c1:9, alchemist_r4c1:2},  // 500 點
@@ -3461,7 +3502,7 @@
                     { rarity: 'legendary', name: '永恆禪師',       note: '（x1.2 傳送跳關量）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ],
-                spells: { cp1: [] },
+                spells: ['leitingchuan','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {knight_root:3, knight_r2c0:1, knight_r2c2:4, knight_r3c0:1, knight_r3c2:9, warlord_root:2, warlord_r2c0:1, warlord_r2c1:1, warlord_r2c2:8, warlord_r3c0:1, warlord_r3c1:2, warlord_r3c2:7, warlord_r4c0:1, warlord_r4c1:1, warlord_r4c2:2, warlord_r5c2:1},  // 200 點
                     cp2: {knight_root:3, knight_r2c0:1, knight_r2c2:4, knight_r3c0:2, knight_r3c2:9, warlord_root:2, warlord_r2c0:1, warlord_r2c1:1, warlord_r2c2:15, warlord_r3c0:1, warlord_r3c1:3, warlord_r3c2:20, warlord_r4c0:2, warlord_r4c1:1, warlord_r4c2:2, warlord_r5c2:1, rogue_root:1},  // 500 點
@@ -3509,7 +3550,7 @@
                     { rarity: 'legendary', name: '戰場天使',       note: '（x0.9 同伴冷卻時間）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ],
-                spells: { cp1: [] },
+                spells: ['shuangzhao','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {summoner_root:2, summoner_r2c0:3, summoner_r2c1:1, summoner_r2c2:3, summoner_r3c0:2, summoner_r3c1:8, summoner_r4c1:4, rogue_r2c1:1},  // 100 點
                     cp2: {knight_root:1, summoner_root:2, summoner_r2c0:3, summoner_r2c1:1, summoner_r2c2:3, summoner_r3c0:2, summoner_r3c1:14, summoner_r3c2:2, summoner_r4c1:7, summoner_r4c2:1, rogue_r2c1:1, alchemist_r2c1:1},  // 250 點
@@ -3544,7 +3585,7 @@
                 name: '刀片轟炸',
                 build: '匕首流',
                 gearSteps: [],
-                spells: { cp1: [] },
+                spells: ['daopianliu','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {knight_root:3, knight_r2c0:4, knight_r2c2:1, knight_r3c0:2, knight_r3c2:9, knight_r4c0:2, warlord_root:1, rogue_root:2, rogue_r2c0:2, rogue_r2c1:18, rogue_r3c0:2, rogue_r3c1:15, rogue_r4c1:6, rogue_r5c1:1, alchemist_root:1},  // 500 點
                     cp2: {knight_root:3, knight_r2c0:4, knight_r2c2:1, knight_r3c0:2, knight_r3c2:9, knight_r4c0:2, warlord_root:2, warlord_r2c0:8, warlord_r2c1:1, warlord_r3c1:1, sorcerer_root:2, sorcerer_r2c0:3, sorcerer_r2c1:1, sorcerer_r2c2:6, sorcerer_r3c1:2, rogue_root:2, rogue_r2c0:2, rogue_r2c1:22, rogue_r3c0:2, rogue_r3c1:17, rogue_r4c0:1, rogue_r4c1:7, rogue_r5c1:1, alchemist_root:1},  // 750 點
@@ -3591,7 +3632,7 @@
                     { rarity: 'legendary', name: '戰場天使',       note: '（x0.9 同伴冷卻時間）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ],
-                spells: { cp1: [] },
+                spells: ['shuangzhao','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {knight_root:12, knight_r2c0:17, knight_r2c2:7, knight_r3c0:16, knight_r3c2:9, knight_r4c0:14, summoner_root:9, summoner_r2c0:17, summoner_r2c1:1, summoner_r2c2:20, summoner_r3c0:30, summoner_r3c1:30, summoner_r3c2:28, summoner_r4c0:3, summoner_r4c1:20, summoner_r4c2:14, summoner_r5c2:3, warlord_root:2, warlord_r2c0:23, warlord_r2c1:3, warlord_r3c1:5, warlord_r4c1:2, sorcerer_root:2, sorcerer_r2c0:15, sorcerer_r2c1:1, sorcerer_r2c2:15, sorcerer_r3c1:22, sorcerer_r3c2:3, rogue_root:2, rogue_r2c0:9, rogue_r2c2:9, rogue_r3c0:16, rogue_r3c2:10, rogue_r4c0:2, rogue_r4c2:11, alchemist_root:3, alchemist_r2c1:6, alchemist_r2c2:2, alchemist_r3c1:9, alchemist_r3c2:2, alchemist_r4c1:20},  // 7500 點
                     cp2: {knight_root:13, knight_r2c0:17, knight_r2c2:8, knight_r3c0:17, knight_r3c2:9, knight_r4c0:15, summoner_root:10, summoner_r2c0:17, summoner_r2c1:1, summoner_r2c2:21, summoner_r3c0:30, summoner_r3c1:30, summoner_r3c2:28, summoner_r4c0:3, summoner_r4c1:20, summoner_r4c2:15, summoner_r5c2:3, warlord_root:2, warlord_r2c0:23, warlord_r2c1:3, warlord_r3c1:5, warlord_r4c1:2, sorcerer_root:2, sorcerer_r2c0:15, sorcerer_r2c1:1, sorcerer_r2c2:15, sorcerer_r3c1:23, sorcerer_r3c2:3, rogue_root:2, rogue_r2c0:10, rogue_r2c2:9, rogue_r3c0:17, rogue_r3c2:10, rogue_r4c0:2, rogue_r4c2:11, alchemist_root:3, alchemist_r2c1:7, alchemist_r2c2:2, alchemist_r3c1:9, alchemist_r3c2:2, alchemist_r4c1:20},  // 7750 點
@@ -3635,7 +3676,7 @@
                     { rarity: 'legendary', name: '天體幻術師',     note: '（x2 神器附魔效果）' },
                     { rarity: 'mythic',    name: '墮落天使',       note: '（+5 法術等級上限）' }
                 ],
-                spells: { cp1: [] },
+                spells: ['tiantangsheng','musexianv','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {knight_root:2, knight_r2c0:4, knight_r2c1:5, knight_r2c2:1, knight_r3c0:4, knight_r3c2:1, knight_r4c0:4, knight_r4c2:3, knight_r5c2:2, warlord_root:2, warlord_r2c0:10, warlord_r2c1:1, warlord_r3c1:2, sorcerer_root:2, sorcerer_r2c0:3, sorcerer_r2c1:1, sorcerer_r2c2:4, sorcerer_r3c1:4, rogue_root:1},  // 300 點
                     cp2: {knight_root:2, knight_r2c0:4, knight_r2c1:6, knight_r2c2:1, knight_r3c0:4, knight_r3c2:1, knight_r4c0:4, knight_r4c2:5, knight_r5c2:2, summoner_root:2, summoner_r2c0:5, summoner_r2c2:1, summoner_r3c2:7, warlord_root:2, warlord_r2c0:15, warlord_r2c1:1, warlord_r3c1:2, sorcerer_root:2, sorcerer_r2c0:3, sorcerer_r2c1:1, sorcerer_r2c2:4, sorcerer_r3c1:8, rogue_root:1, alchemist_root:2, alchemist_r2c1:2, alchemist_r2c2:1},  // 500 點
@@ -3670,7 +3711,7 @@
                 name: '波光粼粼的鐵匠',
                 build: '寵物流',
                 gearSteps: [],
-                spells: { cp1: [] },
+                spells: ['shuangzhao','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {summoner_root:2, summoner_r2c0:3, summoner_r2c1:1, summoner_r2c2:3, summoner_r3c0:2, summoner_r3c1:14, summoner_r3c2:2, summoner_r4c1:5, summoner_r4c2:1, rogue_r2c1:1},  // 200 點
                     cp2: {knight_root:3, knight_r2c0:4, knight_r2c2:1, knight_r3c0:1, knight_r3c2:9, knight_r4c0:2, summoner_root:2, summoner_r2c0:3, summoner_r2c1:1, summoner_r2c2:3, summoner_r3c0:2, summoner_r3c1:20, summoner_r3c2:2, summoner_r4c0:1, summoner_r4c1:9, summoner_r4c2:2, summoner_r5c2:1, rogue_r2c1:1, alchemist_r2c1:1},  // 500 點
@@ -3888,36 +3929,6 @@
             ta.value = JSON.stringify(nonZero);
         }
 
-        document.getElementById('abyss-export-btn').addEventListener('click', () => {
-            const ta = document.getElementById('abyss-export-output');
-            ta.focus();
-            ta.select();
-            try { document.execCommand('copy'); } catch (e) { /* 部分手機瀏覽器不支援，仍可手動長按複製 */ }
-        });
-
-        document.getElementById('abyss-apply-btn').addEventListener('click', () => {
-            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
-            if (!mode) return;
-            const ta = document.getElementById('abyss-export-output');
-            let parsed;
-            try {
-                parsed = JSON.parse(ta.value || '{}');
-            } catch (e) {
-                alert('格式錯誤，請確認是合法的 JSON，例如 {"rogue_root":1,"warlord_r2c1":5}');
-                return;
-            }
-            const newData = {};
-            Object.keys(parsed).forEach(k => {
-                const v = parseInt(parsed[k], 10);
-                if (!isNaN(v) && v > 0) newData[k] = v;
-            });
-            if (!mode.spData) mode.spData = {};
-            mode.spData[currentAbyssCheckpoint] = newData;
-            updateSkillTreeValues(mode, currentAbyssCheckpoint);
-            refreshCurrentCheckpointOptionLabel(mode);
-            refreshExportArea();
-        });
-
         function renderAbyssList() {
             const wrap = document.getElementById('abyss-mode-list');
             if (!wrap) return;
@@ -4017,8 +4028,28 @@
             const panel = document.getElementById('abyss-gear-panel');
             if (!panel) return;
             panel.innerHTML = '';
+
+            if (mode.spells && mode.spells.length > 0) {
+                const spellRow = document.createElement('div');
+                spellRow.className = 'abyss-spell-row';
+                mode.spells.forEach(spellKey => {
+                    const item = document.createElement('div');
+                    item.className = 'abyss-spell-item';
+                    item.innerHTML = `
+                        <div class="abyss-spell-icon-wrap">
+                            <img src="images/spells/${spellKey}.png" alt="${escapeHtml(SPELL_NAMES[spellKey] || spellKey)}">
+                        </div>
+                        <div class="abyss-spell-name">${escapeHtml(SPELL_NAMES[spellKey] || spellKey)}</div>`;
+                    spellRow.appendChild(item);
+                });
+                panel.appendChild(spellRow);
+            }
+
             if (!mode.build || mode.gearSteps.length === 0) {
-                panel.innerHTML = `<div class="abyss-empty-state">出裝順序尚未建立<br>補上資料後會自動顯示</div>`;
+                const empty = document.createElement('div');
+                empty.className = 'abyss-empty-state';
+                empty.innerHTML = '出裝順序尚未建立<br>補上資料後會自動顯示';
+                panel.appendChild(empty);
                 return;
             }
             mode.gearSteps.forEach((step, idx) => {

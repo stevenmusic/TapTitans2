@@ -2381,7 +2381,53 @@
             }
 
             syncHeaderHeight();
+            updateAbyssScrollLock(view);
             setTimeout(() => window.scrollTo(0, 0), 60);
+        }
+
+        /* ── 深淵錦標賽懶人包：背景延伸到底部 + 視內容是否超出畫面決定是否鎖定捲動 ── */
+        function setBodyScrollLocked(locked) {
+            if (locked) {
+                document.documentElement.style.overflow = 'hidden';
+                document.body.style.overflow = 'hidden';
+                document.body.style.height = '100vh';
+            } else {
+                document.documentElement.style.overflow = '';
+                document.body.style.overflow = '';
+                document.body.style.height = '';
+            }
+        }
+
+        function measureActiveAbyssPageHeight() {
+            const pageEl = document.getElementById(abyssCurrentPage === 1 ? 'abyss-page-gear' : 'abyss-page-sp');
+            if (!pageEl) return 0;
+            const children = Array.from(pageEl.children);
+            if (children.length === 0) return 0;
+            const first = children[0].getBoundingClientRect();
+            const last = children[children.length - 1].getBoundingClientRect();
+            return Math.max(0, last.bottom - first.top);
+        }
+
+        function updateAbyssScrollLock(view) {
+            if (view === 'abyssList') {
+                document.body.style.backgroundColor = '#f4f0fb';
+                setBodyScrollLocked(true);
+                return;
+            }
+            if (view === 'abyssDetail') {
+                document.body.style.backgroundColor = '#f4f0fb';
+                requestAnimationFrame(() => {
+                    const headerEl = document.getElementById('nav-header-abyss-detail');
+                    const headerH = headerEl ? headerEl.offsetHeight : 0;
+                    const standalonePagePadding = 60; // .standalone-page 的上下 padding（含緩衝）
+                    const contentH = measureActiveAbyssPageHeight();
+                    const totalNeeded = headerH + contentH + standalonePagePadding;
+                    setBodyScrollLocked(totalNeeded <= window.innerHeight + 4);
+                });
+                return;
+            }
+            document.body.style.backgroundColor = '';
+            setBodyScrollLocked(false);
         }
 
         /* ── DOMContentLoaded ── */
@@ -2411,6 +2457,7 @@
         window.addEventListener('resize', () => {
             syncCardPoolCardSize();
             syncHeaderHeight();
+            updateAbyssScrollLock(currentView);
         });
 
         window.addEventListener('load', () => window.scrollTo(0, 0));
@@ -4056,6 +4103,7 @@
             document.getElementById('abyss-tab-sp').classList.add('active');
             document.getElementById('abyss-tab-gear').classList.remove('active');
             updateAbyssSwiperPosition(false);
+            updateAbyssScrollLock('abyssDetail');
         }
 
         function checkpointTotal(mode, checkpointId) {
@@ -4167,6 +4215,7 @@
                             b.classList.toggle('active', bi === i);
                         });
                         renderAbyssGearStepsList(mode, listWrap);
+                        updateAbyssScrollLock('abyssDetail');
                     });
                     rangeRow.appendChild(btn);
                 }
@@ -4227,6 +4276,7 @@
             tabSp.classList.toggle('active', tab === 'sp');
             tabGear.classList.toggle('active', tab === 'gear');
             updateAbyssSwiperPosition(true);
+            updateAbyssScrollLock('abyssDetail');
         }
 
         const abyssSwiperContainer = document.getElementById('abyss-swiper-container');

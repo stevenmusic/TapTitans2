@@ -1064,6 +1064,11 @@
         .home-nav-card.abyss .home-nav-title { color: #3d2570; }
         .home-nav-card.abyss .home-nav-arrow { color: #cdb8ec; }
 
+        .home-nav-card.players { border-left: 5px solid #b8860b; }
+        .home-nav-card.players .home-nav-icon { background: #faf2de; }
+        .home-nav-card.players .home-nav-title { color: #6b4e10; }
+        .home-nav-card.players .home-nav-arrow { color: #e3cb8f; }
+
         #nav-header-abyss-list, #nav-header-abyss-detail {
             background: linear-gradient(135deg, #3d2570 0%, #221340 100%);
         }
@@ -1561,6 +1566,148 @@
         }
 
         /* ══════════════════════════════════════════════════════════
+           玩家資料庫
+           ══════════════════════════════════════════════════════════ */
+        #page-players { background-color: #fdf6ec; color: #4a3728; }
+        #view-players { background-color: #fdf6ec; }
+
+        .player-add-card {
+            width: 100%;
+            max-width: 500px;
+            background: #ffffff;
+            border: 1px solid #ece3d4;
+            border-radius: 16px;
+            padding: 14px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 14px rgba(90,74,66,0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 4px auto 16px auto;
+        }
+        .player-name-input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #e2d7c5;
+            background: #faf8f5;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+        }
+        .player-data-input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #e2d7c5;
+            background: #faf8f5;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 11px;
+            font-family: monospace;
+            resize: vertical;
+            outline: none;
+        }
+        .btn-player-add {
+            border: none;
+            background: #b8860b;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 10px 0;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            box-shadow: 0 2px 6px rgba(184,134,11,0.3);
+        }
+        .btn-player-add:active { transform: translateY(1px); filter: brightness(0.95); }
+
+        .player-list-empty {
+            text-align: center;
+            color: #b3a48c;
+            font-size: 13px;
+            padding: 30px 20px;
+            line-height: 1.8;
+            width: 100%;
+        }
+
+        .player-list {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .player-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #ffffff;
+            border: 1px solid #ece3d4;
+            border-radius: 14px;
+            padding: 12px 14px;
+            box-shadow: 0 2px 8px rgba(90,74,66,0.07);
+            box-sizing: border-box;
+        }
+        .player-card-name-btn {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+            font-family: inherit;
+            padding: 4px 0;
+        }
+        .player-card-name-icon { font-size: 18px; flex-shrink: 0; }
+        .player-card-name-text {
+            font-size: 14.5px;
+            font-weight: 800;
+            color: #4a3728;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .player-card-meta {
+            font-size: 10.5px;
+            color: #b3a48c;
+            margin-top: 2px;
+        }
+        .player-card-delete {
+            flex-shrink: 0;
+            border: none;
+            background: #f1e4e4;
+            color: #b04848;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .player-card-delete:active { transform: scale(0.92); }
+
+        .player-copy-toast {
+            position: fixed;
+            top: calc(var(--header-h, 64px) + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.78);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12.5px;
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .player-copy-toast.show { opacity: 1; }
+
+        /* ══════════════════════════════════════════════════════════
            平板尺寸（寬度 ≥ 700px）：統一放大文字／圖示／按鈕／選單，
            容器寬度上限同步放寬，但仍有上限不會超出畫面。
            ══════════════════════════════════════════════════════════ */
@@ -1657,6 +1804,18 @@
 
             /* 卡片池抽屜手把文字 */
             .card-pool-handle { height: 48px; font-size: 14px; }
+
+            /* 玩家資料庫 */
+            .player-add-card { max-width: 600px; padding: 18px; gap: 12px; }
+            .player-name-input { font-size: 15px; padding: 12px 14px; }
+            .player-data-input { font-size: 13px; padding: 12px 14px; }
+            .btn-player-add { font-size: 15px; padding: 12px 0; }
+            .player-list { max-width: 600px; }
+            .player-card { padding: 14px 16px; }
+            .player-card-name-icon { font-size: 21px; }
+            .player-card-name-text { font-size: 16px; }
+            .player-card-meta { font-size: 12px; }
+            .player-card-delete { width: 36px; height: 36px; font-size: 15px; }
         }
     </style>
 </head>
@@ -1689,6 +1848,14 @@
                     <div class="home-nav-text">
                         <div class="home-nav-title" data-i18n="navAnalysisTitle">戰報分析</div>
                         <div class="home-nav-desc" data-i18n="navAnalysisDesc">貼上突襲 CSV，自動算出誤傷率與傷害排名</div>
+                    </div>
+                    <div class="home-nav-arrow">›</div>
+                </button>
+                <button class="home-nav-card players" onclick="showView('players')">
+                    <div class="home-nav-icon">🗂️</div>
+                    <div class="home-nav-text">
+                        <div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div>
+                        <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
                     </div>
                     <div class="home-nav-arrow">›</div>
                 </button>
@@ -1982,6 +2149,38 @@
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════
+         玩家資料庫
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-players" style="display:none;">
+
+        <div class="nav-header" id="nav-header-players">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
+                <div class="nav-title" data-i18n="playersPageTitle">玩家資料庫</div>
+                <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+            </div>
+        </div>
+
+        <div class="standalone-page" id="page-players">
+            <div class="export-area" id="export-players">
+
+                <div class="player-add-card">
+                    <input type="text" id="player-name-input" class="player-name-input" data-i18n-placeholder="playerNamePlaceholder" placeholder="玩家名稱（例如：小明）">
+                    <textarea id="player-data-input" class="player-data-input" rows="5" data-i18n-placeholder="playerDataPlaceholder" placeholder="貼上該玩家的存檔資料（JSON 文字）"></textarea>
+                    <button class="btn-player-add" onclick="addPlayerEntry()" data-i18n="btnAddPlayer">➕ 新增玩家</button>
+                </div>
+
+                <div class="player-list-empty" id="player-list-empty" data-i18n="noPlayersYet">尚未新增任何玩家資料</div>
+
+                <div class="player-list" id="player-list"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="player-copy-toast" id="player-copy-toast" data-i18n="playerCopiedToast">✓ 已複製到剪貼簿</div>
+
     <div id="result-modal">
         <p data-i18n="modalImageReady">💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
@@ -2008,6 +2207,19 @@
                 navAnalysisDesc: '貼上突襲 CSV，自動算出誤傷率與傷害排名',
                 navAbyssTitle: '深淵錦標賽懶人包',
                 navAbyssDesc: '各模式推薦流派、技能配點與出裝順序攻略',
+                navPlayersTitle: '玩家資料庫',
+                navPlayersDesc: '儲存其他玩家的存檔資料，點名字一鍵複製',
+                playersPageTitle: '玩家資料庫',
+                playerNamePlaceholder: '玩家名稱（例如：小明）',
+                playerDataPlaceholder: '貼上該玩家的存檔資料（JSON 文字）',
+                btnAddPlayer: '➕ 新增玩家',
+                noPlayersYet: '尚未新增任何玩家資料',
+                playerCopiedToast: '✓ 已複製到剪貼簿',
+                playerNameMissing: '請先輸入玩家名稱',
+                playerDataMissing: '請貼上該玩家的存檔資料',
+                playerNameExistsConfirm: '已經有同名玩家，要覆蓋原本的資料嗎？',
+                playerDeleteConfirm: '確定要刪除這位玩家的資料嗎？',
+                playerSavedAt: '更新於',
                 abyssListPageTitle: '深淵錦標賽懶人包',
                 tabSkillPoints: '技能配點',
                 tabGearOrder: '法術丨出裝順序',
@@ -2069,6 +2281,19 @@
                 navAnalysisDesc: 'Paste your raid CSV to get miss rates and damage rankings',
                 navAbyssTitle: 'Abyssal Tournament',
                 navAbyssDesc: 'Build, skill points & gear order guide for each tournament type',
+                navPlayersTitle: 'Player Database',
+                navPlayersDesc: 'Save other players\' save data, tap a name to copy it instantly',
+                playersPageTitle: 'Player Database',
+                playerNamePlaceholder: 'Player name (e.g. John)',
+                playerDataPlaceholder: 'Paste this player\'s save data (JSON text)',
+                btnAddPlayer: '➕ Add Player',
+                noPlayersYet: 'No players saved yet',
+                playerCopiedToast: '✓ Copied to clipboard',
+                playerNameMissing: 'Please enter a player name first',
+                playerDataMissing: 'Please paste this player\'s save data',
+                playerNameExistsConfirm: 'A player with this name already exists. Overwrite it?',
+                playerDeleteConfirm: 'Delete this player\'s data?',
+                playerSavedAt: 'Updated',
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
                 tabGearOrder: 'Spells & Gear',
@@ -2158,6 +2383,7 @@
             });
             if (typeof renderCardPool === 'function') renderCardPool();
             if (typeof renderAnalysisTable === 'function' && analysisData && analysisData.length) renderAnalysisTable();
+            if (typeof renderPlayersList === 'function') renderPlayersList();
             const stageSel = document.getElementById('analysis-stage-select');
             if (stageSel && stageSel.options.length > 0) stageSel.options[0].textContent = t('stagePlaceholder');
             if (typeof getBossSlotValue === 'function' && typeof setBossSlotValue === 'function') {
@@ -2493,6 +2719,7 @@
             else if (currentView === 'analysis') headerEl = document.getElementById('nav-header-analysis');
             else if (currentView === 'abyssList') headerEl = document.getElementById('nav-header-abyss-list');
             else if (currentView === 'abyssDetail') headerEl = document.getElementById('nav-header-abyss-detail');
+            else if (currentView === 'players') headerEl = document.getElementById('nav-header-players');
             if (headerEl) {
                 document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
             }
@@ -2500,7 +2727,7 @@
 
         function showView(view) {
             currentView = view;
-            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail' };
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -2532,6 +2759,7 @@
             applyLanguage();
             renderAbyssList();
             initAbyssSkillTrees();
+            renderPlayersList();
 
             showView('home');
 
@@ -3280,6 +3508,137 @@
                 }
             } catch (e) {
                 console.error('恢復分析資料失敗:', e);
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           玩家資料庫：儲存其他玩家的存檔資料文字，點名字一鍵複製
+           ══════════════════════════════════════════════════════════ */
+        const PLAYERS_STORAGE_KEY = 'tt2_player_database_v1';
+
+        function loadPlayersData() {
+            try {
+                const raw = localStorage.getItem(PLAYERS_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch (e) {
+                console.error('讀取玩家資料失敗:', e);
+                return {};
+            }
+        }
+
+        function savePlayersData(data) {
+            try {
+                localStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.error('儲存玩家資料失敗:', e);
+            }
+        }
+
+        function formatPlayerSavedTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        function renderPlayersList() {
+            const players = loadPlayersData();
+            const names = Object.keys(players).sort((a, b) => (players[b].updatedAt || 0) - (players[a].updatedAt || 0));
+            const listEl = document.getElementById('player-list');
+            const emptyEl = document.getElementById('player-list-empty');
+            if (!listEl || !emptyEl) return;
+
+            if (names.length === 0) {
+                listEl.innerHTML = '';
+                emptyEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
+
+            listEl.innerHTML = '';
+            names.forEach(name => {
+                const entry = players[name];
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <button type="button" class="player-card-name-btn" data-player-name="${escapeHtml(name)}">
+                        <span class="player-card-name-icon">👤</span>
+                        <span style="min-width:0;">
+                            <span class="player-card-name-text">${escapeHtml(name)}</span>
+                            <div class="player-card-meta">${t('playerSavedAt')} ${formatPlayerSavedTime(entry.updatedAt)}</div>
+                        </span>
+                    </button>
+                    <button type="button" class="player-card-delete" data-player-name="${escapeHtml(name)}" title="刪除">✕</button>
+                `;
+                listEl.appendChild(card);
+            });
+
+            listEl.querySelectorAll('.player-card-name-btn').forEach(btn => {
+                btn.addEventListener('click', () => copyPlayerData(btn.dataset.playerName));
+            });
+            listEl.querySelectorAll('.player-card-delete').forEach(btn => {
+                btn.addEventListener('click', () => deletePlayerEntry(btn.dataset.playerName));
+            });
+        }
+
+        function addPlayerEntry() {
+            const nameInput = document.getElementById('player-name-input');
+            const dataInput = document.getElementById('player-data-input');
+            const name = nameInput.value.trim();
+            const data = dataInput.value.trim();
+
+            if (!name) { alert(t('playerNameMissing')); return; }
+            if (!data) { alert(t('playerDataMissing')); return; }
+
+            const players = loadPlayersData();
+            if (players[name] && !confirm(t('playerNameExistsConfirm'))) return;
+
+            players[name] = { data: data, updatedAt: Date.now() };
+            savePlayersData(players);
+            nameInput.value = '';
+            dataInput.value = '';
+            renderPlayersList();
+        }
+
+        function deletePlayerEntry(name) {
+            if (!confirm(t('playerDeleteConfirm'))) return;
+            const players = loadPlayersData();
+            delete players[name];
+            savePlayersData(players);
+            renderPlayersList();
+        }
+
+        function showPlayerCopyToast() {
+            const toast = document.getElementById('player-copy-toast');
+            if (!toast) return;
+            toast.classList.add('show');
+            clearTimeout(showPlayerCopyToast._t);
+            showPlayerCopyToast._t = setTimeout(() => toast.classList.remove('show'), 1600);
+        }
+
+        function copyPlayerData(name) {
+            const players = loadPlayersData();
+            const entry = players[name];
+            if (!entry) return;
+            const text = entry.data;
+
+            const fallbackCopy = () => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try { document.execCommand('copy'); } catch (e) { /* 部分瀏覽器不支援 */ }
+                document.body.removeChild(ta);
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(showPlayerCopyToast).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+                showPlayerCopyToast();
             }
         }
 

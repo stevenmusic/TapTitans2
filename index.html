@@ -11,9 +11,9 @@
     <style>
         html {
             font-size: 18px;
-            scroll-behavior: smooth;
             height: 100%;
-            background-color: #c9bb9c;
+            background-color: #1c1c1c;
+            overflow: hidden;
         }
         :root {
             --bg-burst: #f4ece1;
@@ -27,32 +27,42 @@
             --card-bg: #ffffff;
             --border-color: #e0d5c1;
             --header-h: 100px;
-            --app-max-width: 520px;
+            --app-design-width: 420px;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #e0d5c1;
-            margin: 0 auto; padding: 0;
-            max-width: var(--app-max-width);
-            position: relative;
-            overflow-x: hidden;
-            overflow-y: visible;
+            background-color: #1c1c1c;
+            margin: 0; padding: 0;
+            overflow: hidden;
+            height: 100%;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
-            scroll-behavior: smooth;
-            min-height: 100%;
-            height: auto;
-            box-shadow: 0 0 24px rgba(0,0,0,0.18);
         }
 
-        .view { width: 100%; }
+        /* ── 等比縮放容器：整個 App 用固定設計寬度排版，再依裝置實際螢幕尺寸整體等比縮放，
+           讓手機與平板都能全螢幕顯示，比例維持一致，不會出現中間窄窄一條的版面 ── */
+        #app-scale-wrapper {
+            position: relative;
+            width: var(--app-design-width);
+            transform-origin: top left;
+            background-color: #e0d5c1;
+            overflow: hidden;
+        }
+
+        .view {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            box-sizing: border-box;
+        }
 
         /* ══════════════════════════════════════════════════════════
            首頁
            ══════════════════════════════════════════════════════════ */
         #view-home {
-            min-height: 100vh;
+            min-height: var(--app-vh, 100vh);
             box-sizing: border-box;
             background-color: #fdf9f2;
             display: flex;
@@ -186,8 +196,8 @@
            共用導覽 header（牌組建構 / 戰報分析）
            ══════════════════════════════════════════════════════════ */
         .nav-header {
-            position: fixed; top: 0; left: 50%; transform: translateX(-50%);
-            width: 100%; max-width: var(--app-max-width);
+            position: fixed; top: 0; left: 0;
+            width: 100%;
             background: linear-gradient(135deg, #6b5544 0%, #524338 100%);
             z-index: 1000;
             box-shadow: 0 2px 10px rgba(0,0,0,0.18);
@@ -274,7 +284,7 @@
             margin-top: var(--header-h, 100px);
             margin-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
             transition: margin-bottom 0.3s ease;
-            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(var(--app-vh, 100vh) - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             padding-bottom: 10px;
         }
         .swiper-container {
@@ -291,7 +301,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: calc(100vh - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
+            min-height: calc(var(--app-vh, 100vh) - var(--header-h, 100px) - 92px - env(safe-area-inset-bottom, 0px));
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
@@ -779,7 +789,7 @@
         .save-indicator {
             position: fixed;
             top: calc(var(--header-h, 100px) + 10px);
-            right: max(10px, calc((100vw - var(--app-max-width)) / 2 + 10px));
+            right: 10px;
             background: rgba(0,0,0,0.7);
             color: #fff;
             padding: 6px 12px;
@@ -795,13 +805,13 @@
         }
 
         #result-modal {
-            display: none; position: fixed; top: 0; left: 50%; transform: translateX(-50%);
-            width: 100%; max-width: var(--app-max-width); height: 100%;
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 10000;
             justify-content: center; align-items: center; flex-direction: column;
             padding: 20px; box-sizing: border-box;
         }
-        #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+        #result-modal img { max-width: 100%; max-height: calc(var(--app-vh, 100vh) * 0.7); border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
         .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
 
@@ -950,8 +960,7 @@
         }
         .card-pool-drawer {
             position: fixed;
-            left: 50%; transform: translateX(-50%);
-            width: 100%; max-width: var(--app-max-width);
+            left: 0; right: 0;
             bottom: 0;
             z-index: 950;
             background: #ffffff;
@@ -991,7 +1000,7 @@
             transition: max-height 0.3s ease;
         }
         .card-pool-drawer.expanded .card-pool-content {
-            max-height: 44vh;
+            max-height: calc(var(--app-vh, 100vh) * 0.44);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
@@ -1067,6 +1076,7 @@
         .abyss-tab.active { color: #ffffff; }
 
         #page-abyss-list, #page-abyss-detail { background-color: #f4f0fb; color: #2c1f4a; }
+        #view-abyss-list, #view-abyss-detail { background-color: #f4f0fb; }
 
         .abyss-mode-card {
             display: flex;
@@ -1538,6 +1548,7 @@
     </style>
 </head>
 <body>
+    <div id="app-scale-wrapper">
 
     <!-- ══════════════════════════════════════════════════════════
          首頁（導航入口）
@@ -1863,10 +1874,37 @@
         <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
     </div>
 
+    </div>
+
     <script>
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
         }
+
+        /* ══════════════════════════════════════════════════════════
+           等比縮放：依裝置實際螢幕寬高，把整個 App（以 420px 為設計寬度）
+           整體放大或縮小，讓手機與平板都能「全螢幕」顯示，且所有按鈕、
+           文字、圖示的比例完全一致，不會出現中間窄窄一條的版面。
+           ══════════════════════════════════════════════════════════ */
+        const APP_DESIGN_WIDTH = 420;
+        let currentAppScale = 1;
+
+        function applyAppScale() {
+            const wrapper = document.getElementById('app-scale-wrapper');
+            if (!wrapper) return;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const scale = vw / APP_DESIGN_WIDTH;
+            currentAppScale = scale;
+            wrapper.style.transform = `scale(${scale})`;
+            const localHeight = vh / scale;
+            wrapper.style.height = localHeight + 'px';
+            document.documentElement.style.setProperty('--app-vh', localHeight + 'px');
+        }
+
+        applyAppScale();
+        window.addEventListener('resize', applyAppScale);
+        window.addEventListener('orientationchange', applyAppScale);
 
         /* ══════════════════════════════════════════════════════════
            中英文翻譯字典與切換邏輯
@@ -2375,13 +2413,14 @@
 
         function showView(view) {
             currentView = view;
-            document.getElementById('view-home').style.display = (view === 'home') ? 'block' : 'none';
-            document.getElementById('view-deck').style.display = (view === 'deck') ? 'block' : 'none';
-            document.getElementById('view-analysis').style.display = (view === 'analysis') ? 'block' : 'none';
-            document.getElementById('view-abyss-list').style.display = (view === 'abyssList') ? 'block' : 'none';
-            document.getElementById('view-abyss-detail').style.display = (view === 'abyssDetail') ? 'block' : 'none';
-
-            window.scrollTo(0, 0);
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail' };
+            Object.entries(viewIdMap).forEach(([key, id]) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.display = (key === view) ? 'block' : 'none';
+            });
+            const activeEl = document.getElementById(viewIdMap[view]);
+            if (activeEl) activeEl.scrollTop = 0;
 
             if (view === 'deck') {
                 swiperWidth = getDeckSwiperWidth();
@@ -2392,20 +2431,13 @@
 
             syncHeaderHeight();
             updateAbyssScrollLock(view);
-            setTimeout(() => window.scrollTo(0, 0), 60);
         }
 
-        /* ── 深淵錦標賽懶人包：背景延伸到底部 + 視內容是否超出畫面決定是否鎖定捲動 ── */
-        function setBodyScrollLocked(locked) {
-            if (locked) {
-                document.documentElement.style.overflow = 'hidden';
-                document.body.style.overflow = 'hidden';
-                document.body.style.height = '100vh';
-            } else {
-                document.documentElement.style.overflow = '';
-                document.body.style.overflow = '';
-                document.body.style.height = '';
-            }
+        /* ── 深淵錦標賽懶人包：視內容是否超出畫面決定是否鎖定該頁捲動 ── */
+        function setViewScrollLocked(viewId, locked) {
+            const el = document.getElementById(viewId);
+            if (!el) return;
+            el.style.overflowY = locked ? 'hidden' : 'auto';
         }
 
         function measureActiveAbyssPageHeight() {
@@ -2420,24 +2452,22 @@
 
         function updateAbyssScrollLock(view) {
             if (view === 'abyssList') {
-                document.body.style.backgroundColor = '#f4f0fb';
-                setBodyScrollLocked(true);
+                setViewScrollLocked('view-abyss-list', true);
                 return;
             }
             if (view === 'abyssDetail') {
-                document.body.style.backgroundColor = '#f4f0fb';
                 requestAnimationFrame(() => {
                     const headerEl = document.getElementById('nav-header-abyss-detail');
-                    const headerH = headerEl ? headerEl.offsetHeight : 0;
-                    const standalonePagePadding = 60; // .standalone-page 的上下 padding（含緩衝）
+                    const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
+                    const standalonePagePadding = 60 * (currentAppScale || 1); // .standalone-page 上下 padding（含緩衝），換算成螢幕實際像素
                     const contentH = measureActiveAbyssPageHeight();
                     const totalNeeded = headerH + contentH + standalonePagePadding;
-                    setBodyScrollLocked(totalNeeded <= window.innerHeight + 4);
+                    setViewScrollLocked('view-abyss-detail', totalNeeded <= window.innerHeight + 4);
                 });
                 return;
             }
-            document.body.style.backgroundColor = '';
-            setBodyScrollLocked(false);
+            setViewScrollLocked('view-abyss-list', false);
+            setViewScrollLocked('view-abyss-detail', false);
         }
 
         /* ── DOMContentLoaded ── */
@@ -3354,6 +3384,11 @@
         let currentTouchX = 0, currentTouchY = 0, longPressTimer = null;
         let cloneHalfSize = 25;
 
+        function getActivePageViewEl() {
+            const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
+            return activePageId ? document.getElementById(activePageId) : null;
+        }
+
         function cancelDrag() {
             clearTimeout(longPressTimer);
             longPressTimer = null;
@@ -3362,7 +3397,8 @@
             document.body.style.overflowY = '';
             document.body.style.overscrollBehavior = '';
             document.body.classList.remove('drag-active');
-            if (window._dragScrollY !== undefined) window.scrollTo(0, window._dragScrollY);
+            const activeScrollEl = getActivePageViewEl();
+            if (activeScrollEl && window._dragScrollY !== undefined) activeScrollEl.scrollTop = window._dragScrollY;
             document.querySelectorAll('.drag-clone').forEach(el => el.remove());
             clone = null;
             if (lastHoveredZone) { lastHoveredZone.classList.remove('drag-hover'); lastHoveredZone = null; }
@@ -3393,10 +3429,12 @@
             if (scrollTimer) return;
             scrollTimer = setInterval(() => {
                 if (gestureMode !== "drag" || scrollSpeed === 0) return;
-                const maxY = document.documentElement.scrollHeight - window.innerHeight;
-                if (scrollSpeed < 0 && window.scrollY <= 0) return;
-                if (scrollSpeed > 0 && window.scrollY >= maxY) return;
-                window.scrollBy(0, scrollSpeed);
+                const scrollEl = getActivePageViewEl();
+                if (!scrollEl) return;
+                const maxY = scrollEl.scrollHeight - scrollEl.clientHeight;
+                if (scrollSpeed < 0 && scrollEl.scrollTop <= 0) return;
+                if (scrollSpeed > 0 && scrollEl.scrollTop >= maxY) return;
+                scrollEl.scrollTop += scrollSpeed;
                 updateZonesCache();
                 const target = findZone(currentTouchX, currentTouchY);
                 if (target !== lastHoveredZone) {
@@ -3415,7 +3453,8 @@
             gestureMode = 'drag';
             currentTouchX = x;
             currentTouchY = y;
-            window._dragScrollY = window.scrollY;
+            const dragStartScrollEl = getActivePageViewEl();
+            window._dragScrollY = dragStartScrollEl ? dragStartScrollEl.scrollTop : 0;
             document.body.classList.add('drag-active');
 
             const zoneEl = document.querySelector('.drop-zone');

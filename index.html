@@ -351,7 +351,7 @@
             justify-content: center;
             flex-wrap: wrap;
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
         }
         .btn-analysis {
             flex: 1;
@@ -413,7 +413,7 @@
             justify-content: center;
             margin: 0 auto 10px auto;
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
         }
         .summary-card {
             background: #ffffff;
@@ -431,7 +431,7 @@
 
         .analysis-table-wrap {
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
             margin-left: auto;
             margin-right: auto;
             overflow-x: auto;
@@ -510,6 +510,7 @@
             display: flex;
             flex-direction: column;
         }
+        #page-analysis .export-area { max-width: 600px; }
         .page-header-row {
             display: flex; align-items: center; justify-content: center;
             gap: 8px; flex-wrap: wrap; margin-bottom: 5px;
@@ -821,7 +822,7 @@
             padding: 16px;
             margin: 0 auto 20px auto;
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
             box-sizing: border-box;
             box-shadow: 0 2px 8px rgba(13,71,161,0.05);
         }
@@ -1192,7 +1193,7 @@
         :root { --skill-icon-size: 36px; }
 
         @media (min-width: 700px) {
-            :root { --skill-icon-size: 50px; }
+            :root { --skill-icon-size: 56px; }
             .abyss-panel, .abyss-page-inner { max-width: 680px; }
         }
 
@@ -1565,18 +1566,42 @@
         @media (min-width: 700px) {
             /* 容器寬度上限（原本 500px／460px 系列，統一放寬到 680px） */
             .home-content,
-            .export-area,
+            #page-analysis .export-area,
+            .analysis-toolbar,
+            .analysis-summary,
             .analysis-table-wrap,
             .boss-config-container {
                 max-width: 680px;
             }
+            /* 牌組建構（爆裂/苦痛/支援）只小幅放寬，避免卡片池的卡片被撐太大
+               （限定這三個頁面，不影響戰報分析頁的 .export-area） */
+            #page-burst .export-area,
+            #page-torment .export-area,
+            #page-support .export-area {
+                max-width: 520px;
+            }
             #page-burst .page-header-row + div,
             #page-torment .page-header-row + div,
             #page-support .page-header-row + div {
-                max-width: 680px !important;
+                max-width: 520px !important;
             }
             .home-tagline { max-width: 440px; }
             .abyss-sp-disclaimer, .abyss-sp-export-row { max-width: 500px; }
+
+            /* 牌組建構：Boss 選單／部位選單／肉甲選單／增減格按鈕 */
+            .boss-select-burst, .boss-select-torment, .boss-select-support {
+                font-size: 14px; width: 190px; min-width: 170px; padding: 6px 32px 6px 12px;
+            }
+            .selects-col { width: 90px; gap: 4px; }
+            .dropdown-trigger { font-size: 13px !important; height: 32px; }
+            .dropdown-content { width: 138px; }
+            .dropdown-content .part-tag { font-size: 13px !important; padding: 8px 2px; }
+            .check-select { font-size: 13px !important; height: 32px; }
+            .btn-action { font-size: 15px; padding: 6px 0; }
+            .tier-num { font-size: 16px; }
+            .label-custom-input { font-size: 13px; }
+            .tier-memo-col { width: 84px; }
+            .tier-control-col { width: 54px; }
 
             /* 首頁 */
             .home-eyebrow { font-size: 14px; padding: 7px 18px; }
@@ -1613,16 +1638,20 @@
             /* 深淵錦標賽懶人包 */
             .abyss-mode-card { padding: 20px; gap: 18px; border-radius: 20px; }
             .abyss-mode-card .mode-icon { width: 60px; height: 60px; font-size: 30px; border-radius: 16px; }
-            .abyss-mode-card .mode-name { font-size: 18px; }
-            .abyss-mode-card .mode-build { font-size: 14px; }
-            .abyss-build-subtitle { font-size: 15px; padding: 6px 14px; }
-            .abyss-sp-disclaimer { font-size: 13px; }
-            .tree-cat-label { font-size: 15px; }
-            .abyss-spell-name { font-size: 12px; }
-            .abyss-gear-num { width: 30px; height: 30px; font-size: 13px; }
-            .abyss-gear-text { font-size: 16px; }
-            .abyss-gear-note { font-size: 14px; }
-            .abyss-gear-range-btn { font-size: 14px; padding: 9px 2px; }
+            .abyss-mode-card .mode-name { font-size: 20px; }
+            .abyss-mode-card .mode-build { font-size: 15px; }
+            .abyss-tab { font-size: 17px; padding: 14px 0 20px 0; }
+            .abyss-build-subtitle { font-size: 16px; padding: 7px 16px; }
+            .abyss-sp-disclaimer { font-size: 14px; }
+            .abyss-sp-select { font-size: 16px; padding: 9px 18px; min-width: 110px; border-radius: 12px; }
+            .tree-cat-label { font-size: 18px; margin-bottom: 8px; }
+            .tree-cat-total { font-size: 13px; padding: 1px 6px; border-radius: 8px; }
+            .skill-value-badge { font-size: 17px; padding: 2px 6px; }
+            .abyss-spell-name { font-size: 13px; }
+            .abyss-gear-num { width: 32px; height: 32px; font-size: 14px; }
+            .abyss-gear-text { font-size: 17px; }
+            .abyss-gear-note { font-size: 15px; }
+            .abyss-gear-range-btn { font-size: 15px; padding: 10px 2px; }
 
             /* 卡片池抽屜手把文字 */
             .card-pool-handle { height: 48px; font-size: 14px; }

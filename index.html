@@ -337,7 +337,10 @@
         #page-support .drop-zone.drag-hover { border-color: #2e7d32; background-color: #c8e6c9; }
 
         /* ── 突襲分析 ── */
-        #page-analysis { background-color: var(--bg-analysis); color: #16314f; }
+        #page-analysis {
+            background-color: var(--bg-analysis); color: #16314f;
+            min-height: calc(100vh - var(--header-h, 64px));
+        }
         #page-analysis h1 { color: var(--text-analysis); font-size: 15px; margin: 2px 0; text-align: center; }
         #page-analysis .export-area { background-color: var(--bg-analysis); }
 
@@ -1065,6 +1068,7 @@
             min-height: calc(100vh - var(--header-h, 64px));
         }
         #view-abyss-list, #view-abyss-detail { background-color: #f4f0fb; }
+        #view-analysis { background-color: var(--bg-analysis); }
 
         .abyss-mode-card {
             display: flex;
@@ -1171,6 +1175,11 @@
 
         /* ── 互動式技能配點樹 ── */
         :root { --skill-icon-size: 36px; }
+
+        @media (min-width: 700px) {
+            :root { --skill-icon-size: 50px; }
+            .abyss-panel, .abyss-swiper-wrapper { max-width: 680px; }
+        }
 
         .tree-grid {
             display: flex;
@@ -4255,17 +4264,32 @@
         }
 
         const abyssSwiperContainer = document.getElementById('abyss-swiper-container');
+        const abyssTouchTargetEl = document.getElementById('page-abyss-detail');
+        let abyssGestureDirection = null;
+        let abyssStartY = 0;
 
-        abyssSwiperContainer.addEventListener('touchstart', (e) => {
+        abyssTouchTargetEl.addEventListener('touchstart', (e) => {
             abyssStartX = e.touches[0].clientX;
+            abyssStartY = e.touches[0].clientY;
             abyssSwipeStartTime = Date.now();
             abyssIsSwiping = true;
+            abyssGestureDirection = null;
             abyssSwiperContainer.style.transition = 'none';
         }, { passive: true });
 
-        abyssSwiperContainer.addEventListener('touchmove', (e) => {
+        abyssTouchTargetEl.addEventListener('touchmove', (e) => {
             if (!abyssIsSwiping) return;
             const deltaX = e.touches[0].clientX - abyssStartX;
+            const deltaY = e.touches[0].clientY - abyssStartY;
+
+            if (abyssGestureDirection === null) {
+                if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+                abyssGestureDirection = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+                if (abyssGestureDirection === 'vertical') { abyssIsSwiping = false; return; }
+            }
+            if (abyssGestureDirection !== 'horizontal') return;
+
+            e.preventDefault();
             let base = -abyssCurrentPage * abyssSwiperWidth;
             let target = base + deltaX;
             const maxOffset = -(ABYSS_TOTAL_PAGES - 1) * abyssSwiperWidth;
@@ -4273,11 +4297,12 @@
             else if (target < maxOffset) { const ov = target - maxOffset; target = maxOffset + ov / (1 + Math.abs(ov) / (abyssSwiperWidth * 0.6)); }
             abyssTranslateX = target;
             requestAnimationFrame(() => { if (abyssIsSwiping) abyssSwiperContainer.style.transform = `translate3d(${abyssTranslateX}px, 0px, 0px)`; });
-        }, { passive: true });
+        }, { passive: false });
 
-        abyssSwiperContainer.addEventListener('touchend', (e) => {
-            if (!abyssIsSwiping) return;
+        abyssTouchTargetEl.addEventListener('touchend', (e) => {
+            if (!abyssIsSwiping || abyssGestureDirection !== 'horizontal') { abyssIsSwiping = false; abyssGestureDirection = null; return; }
             abyssIsSwiping = false;
+            abyssGestureDirection = null;
             const deltaX = e.changedTouches[0].clientX - abyssStartX;
             const velocity = Math.abs(deltaX) / (Date.now() - abyssSwipeStartTime);
             if (velocity > 0.4 || Math.abs(deltaX) > abyssSwiperWidth / 2) {

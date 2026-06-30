@@ -1460,6 +1460,37 @@
             word-break: break-all;
         }
 
+        /* ── 出裝順序分段膠囊按鈕（裝備數量多時，例如 1-10 / 11-20...）── */
+        .abyss-gear-range-row {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 14px;
+        }
+        .abyss-gear-range-btn {
+            border: 1.5px solid #cdb8ec;
+            background: #ffffff;
+            color: #6a3fb5;
+            font-size: 12px;
+            font-weight: 800;
+            border-radius: 20px;
+            padding: 7px 2px;
+            cursor: pointer;
+            font-family: inherit;
+            text-align: center;
+            white-space: nowrap;
+            box-sizing: border-box;
+            transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .abyss-gear-range-btn:active { transform: scale(0.96); }
+        .abyss-gear-range-btn.active {
+            background: #6a3fb5;
+            color: #ffffff;
+            border-color: #6a3fb5;
+            box-shadow: 0 2px 6px rgba(106,63,181,0.35);
+        }
+
         .abyss-gear-step {
             display: flex;
             gap: 10px;
@@ -3719,7 +3750,57 @@
                 key: 'shimmeringBlacksmith',
                 name: '波光粼粼的鐵匠',
                 build: '寵物流',
-                gearSteps: [],
+                gearSteps: [
+                    { rarity: 'mythic',    name: '淘金海賊',           note: '（如果沒有要衝排名，可以跳過）' },
+                    { rarity: 'legendary', name: '完美無瑕的仲裁者' },
+                    { rarity: 'mythic',    name: '遠古戰士' },
+                    { rarity: 'legendary', name: '黑暗騎士' },
+                    { rarity: 'legendary', name: '屠龍高手' },
+                    { rarity: 'mythic',    name: '天使守衛者' },
+                    { rarity: 'legendary', name: '泰坦調查團' },
+                    { rarity: 'legendary', name: '狂妄吟咒師' },
+                    { rarity: 'legendary', name: '被遺忘的巫師' },
+                    { rarity: 'legendary', name: '蔚藍騎士' },
+                    { rarity: 'legendary', name: '紀念白金' },
+                    { rarity: 'legendary', name: '永恆禪師' },
+                    { rarity: 'legendary', name: '森林希夫' },
+                    { rarity: 'legendary', name: '貴族鬥劍士' },
+                    { rarity: 'legendary', name: '上升的監護人' },
+                    { rarity: 'legendary', name: '神奇的鍛造師' },
+                    { rarity: 'mythic',    name: '伊格尼斯·浴火鳳凰' },
+                    { rarity: 'mythic',    name: '墮落天使' },
+                    { rarity: 'legendary', name: '天體幻術師' },
+                    { rarity: 'legendary', name: '熟練的騙子' },
+                    { rarity: 'legendary', name: '幸運狐狸聖人' },
+                    { rarity: 'legendary', name: '紀念鑽石' },
+                    { rarity: 'legendary', name: '輝煌領主' },
+                    { rarity: 'legendary', name: '鼓舞人心的隊長' },
+                    { rarity: 'legendary', name: '野蠻烈焰' },
+                    { rarity: 'legendary', name: 'Elysian騎士' },
+                    { rarity: 'legendary', name: '米達斯的冠軍' },
+                    { rarity: 'legendary', name: '幸運的武器師' },
+                    { rarity: 'legendary', name: '塗鴉惡魔' },
+                    { rarity: 'legendary', name: '多龍毀滅戰士' },
+                    { rarity: 'mythic',    name: '戰爭機械' },
+                    { rarity: 'mythic',    name: '絕命武士' },
+                    { rarity: 'legendary', name: '跳傘小衝突者' },
+                    { rarity: 'legendary', name: '泰坦破碎機' },
+                    { rarity: 'legendary', name: '激發了中尉' },
+                    { rarity: 'legendary', name: '天界牧羊人' },
+                    { rarity: 'mythic',    name: '化石共生' },
+                    { rarity: 'mythic',    name: '黑暗捕食者' },
+                    { rarity: 'legendary', name: '群獸飼育家' },
+                    { rarity: 'legendary', name: '狂躁火力' },
+                    { rarity: 'legendary', name: '潛藏毒蛇' },
+                    { rarity: 'legendary', name: '迅敏獵人' },
+                    { rarity: 'legendary', name: '冰霜看守者' },
+                    { rarity: 'legendary', name: '泰坦隊長' },
+                    { rarity: 'legendary', name: '亞馬遜公主' },
+                    { rarity: 'legendary', name: '狡猾野狼' },
+                    { rarity: 'legendary', name: '腐化翡翠騎士' },
+                    { rarity: 'legendary', name: '紀念黃金' },
+                    { rarity: 'legendary', name: '仙女王' }
+                ],
                 spells: ['shuangzhao','zhiming','dianshicheng','huoyanzhi','zhanzheng','yingfenshen'],
                 spData: {
                     cp1: {summoner_root:2, summoner_r2c0:3, summoner_r2c1:1, summoner_r2c2:3, summoner_r3c0:2, summoner_r3c1:14, summoner_r3c2:2, summoner_r4c1:5, summoner_r4c2:1, rogue_r2c1:1},  // 200 點
@@ -3959,10 +4040,13 @@
             });
         }
 
+        let currentAbyssGearRangeIndex = 0;
+
         function openAbyssMode(modeKey) {
             const mode = ABYSS_MODES.find(m => m.key === modeKey);
             if (!mode) return;
             currentAbyssModeKey = modeKey;
+            currentAbyssGearRangeIndex = 0;
             showView('abyssDetail');
             document.getElementById('abyss-detail-title').textContent = mode.name;
             document.getElementById('abyss-build-subtitle').textContent = mode.build ? `${mode.build}丨妖精金` : '此模式攻略尚未建立';
@@ -4033,6 +4117,9 @@
         });
 
 
+        const ABYSS_GEAR_CHUNK_SIZE = 10;
+        const ABYSS_GEAR_RANGE_THRESHOLD = 20;
+
         function renderAbyssGearPanel(mode) {
             const panel = document.getElementById('abyss-gear-panel');
             if (!panel) return;
@@ -4061,7 +4148,46 @@
                 panel.appendChild(empty);
                 return;
             }
-            mode.gearSteps.forEach((step, idx) => {
+
+            if (mode.gearSteps.length > ABYSS_GEAR_RANGE_THRESHOLD) {
+                const rangeRow = document.createElement('div');
+                rangeRow.className = 'abyss-gear-range-row';
+                const totalChunks = Math.ceil(mode.gearSteps.length / ABYSS_GEAR_CHUNK_SIZE);
+                if (currentAbyssGearRangeIndex >= totalChunks) currentAbyssGearRangeIndex = 0;
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * ABYSS_GEAR_CHUNK_SIZE;
+                    const end = Math.min(start + ABYSS_GEAR_CHUNK_SIZE, mode.gearSteps.length);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'abyss-gear-range-btn' + (i === currentAbyssGearRangeIndex ? ' active' : '');
+                    btn.textContent = `${start + 1}-${end}`;
+                    btn.addEventListener('click', () => {
+                        currentAbyssGearRangeIndex = i;
+                        rangeRow.querySelectorAll('.abyss-gear-range-btn').forEach((b, bi) => {
+                            b.classList.toggle('active', bi === i);
+                        });
+                        renderAbyssGearStepsList(mode, listWrap);
+                    });
+                    rangeRow.appendChild(btn);
+                }
+                panel.appendChild(rangeRow);
+            } else {
+                currentAbyssGearRangeIndex = 0;
+            }
+
+            const listWrap = document.createElement('div');
+            listWrap.className = 'abyss-gear-steps-list';
+            panel.appendChild(listWrap);
+            renderAbyssGearStepsList(mode, listWrap);
+        }
+
+        function renderAbyssGearStepsList(mode, listWrap) {
+            listWrap.innerHTML = '';
+            const useChunks = mode.gearSteps.length > ABYSS_GEAR_RANGE_THRESHOLD;
+            const start = useChunks ? currentAbyssGearRangeIndex * ABYSS_GEAR_CHUNK_SIZE : 0;
+            const end = useChunks ? Math.min(start + ABYSS_GEAR_CHUNK_SIZE, mode.gearSteps.length) : mode.gearSteps.length;
+            for (let idx = start; idx < end; idx++) {
+                const step = mode.gearSteps[idx];
                 const row = document.createElement('div');
                 row.className = 'abyss-gear-step';
                 row.innerHTML = `
@@ -4071,8 +4197,8 @@
                         <span class="abyss-gear-note">${escapeHtml(step.note || '')}</span>
                         ${step.extra ? `<span class="abyss-gear-extra">${escapeHtml(step.extra)}</span>` : ''}
                     </div>`;
-                panel.appendChild(row);
-            });
+                listWrap.appendChild(row);
+            }
         }
 
         /* ── 技能配點／出裝順序 左右滑動 ── */

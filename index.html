@@ -3043,12 +3043,15 @@
             const avgCount = totalPlayers > 0 ? totalCount / totalPlayers : 0;
             const avgDamagePerHit = totalCount > 0 ? (totalDamage - totalAccident) / totalCount : 0;
             const overallAccidentRate = totalDamage > 0 ? (totalAccident / totalDamage) * 100 : 0;
+            const maxCount = analysisData.reduce((m, p) => Math.max(m, p.count), 0);
+            const lowCountThreshold = maxCount / 2;
 
             const rateCellClass = (rate) => 'rate-cell' + (rate > 5 ? ' rate-warning' : '');
+            const countCellClass = (count) => count < lowCountThreshold ? ' rate-warning' : '';
 
             summary.innerHTML = `
                 <div class="summary-card"><div class="num">${totalPlayers}</div><div class="label">${t('statPlayers')}</div></div>
-                <div class="summary-card"><div class="num">${Math.round(avgCount)}</div><div class="label">${t('statAvgHits')}</div></div>
+                <div class="summary-card"><div class="num">${avgCount.toFixed(1)}</div><div class="label">${t('statAvgHits')}</div></div>
                 <div class="summary-card ${overallAccidentRate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(overallAccidentRate)}</div><div class="label">${t('statOverallMissRate')}</div></div>
                 <div class="summary-card"><div class="num">${formatNum(totalDamage)}</div><div class="label">${t('statTotalDmg')}</div></div>
                 <div class="summary-card"><div class="num">${formatNum(avgDamagePerHit)}</div><div class="label">${t('statAvgDmg')}</div></div>
@@ -3060,9 +3063,9 @@
                 const rateDisplay = formatRate(p.accidentRate);
                 tr.innerHTML = `
                     <td class="player-name">${index + 1}. ${escapeHtml(p.player)}</td>
-                    <td>${p.count}</td>
+                    <td class="${countCellClass(p.count)}">${p.count}</td>
                     <td class="${rateCellClass(p.accidentRate)}" style="color: #d32f2f; font-weight: bold;">${rateDisplay}</td>
-                    <td>${formatNum(p.total)}</td>
+                    <td>${formatNum(p.total - p.accident)}</td>
                     <td>${formatNum(p.avg)}</td>
                 `;
                 tbody.appendChild(tr);
@@ -3072,7 +3075,7 @@
             summaryTr.className = 'summary-row';
             summaryTr.innerHTML = `
                 <td class="player-name">${t('playerNumSummaryRow')}</td>
-                <td>${Math.round(avgCount)}</td>
+                <td>${avgCount.toFixed(1)}</td>
                 <td class="${rateCellClass(overallAccidentRate)}" style="color: #d32f2f; font-weight: bold;">${formatRate(overallAccidentRate)}</td>
                 <td>${formatNum(totalDamage)}</td>
                 <td>${formatNum(avgDamagePerHit)}</td>

@@ -4154,6 +4154,8 @@
         let raidLastBossName = null;
         let raidLastSkillReminder = null; // null | 'frenzy' | 'march' | 'none'
         let raidLastSkillReminderNotifiedAt = 0; // 上次針對目前這個狀態發出通知的時間
+        let raidBossChangedAt = 0; // 最近一次換王的時間
+        const RAID_SKILL_REMINDER_GRACE_MS = 5000; // 換王後這段時間內，先不發瘋狂無效／凱旋行軍通知，避免跟換王通知混在一起
         const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
         let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
         const RAID_RECENT_MAX = 8;
@@ -4238,6 +4240,7 @@
             raidLastSkillReminder = null;
             raidLastSkillReminderNotifiedAt = 0;
             raidRecentAttacks = [];
+            raidBossChangedAt = Date.now();
         }
 
         /* 最近攻擊：記錄「誰打了哪個部位的哪一層、造成多少傷害」，最多保留 RAID_RECENT_MAX 筆，
@@ -4422,9 +4425,10 @@
 
             if (skillReminder !== 'none') {
                 const now = Date.now();
+                const justChangedBoss = (now - raidBossChangedAt) < RAID_SKILL_REMINDER_GRACE_MS;
                 const isNewState = skillReminder !== raidLastSkillReminder;
                 const dueForRepeat = !isNewState && (now - raidLastSkillReminderNotifiedAt >= RAID_SKILL_REMINDER_REPEAT_MS);
-                if (isNewState || dueForRepeat) {
+                if (!justChangedBoss && (isNewState || dueForRepeat)) {
                     sendRaidNotification(skillReminder === 'frenzy' ? t('raidReminderFrenzy') : t('raidReminderMarch'));
                     raidLastSkillReminderNotifiedAt = now;
                 }

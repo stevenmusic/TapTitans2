@@ -1576,7 +1576,10 @@
         /* ══════════════════════════════════════════════════════════
            玩家資料庫
            ══════════════════════════════════════════════════════════ */
-        #page-players { background-color: #fdf6ec; color: #4a3728; }
+        #page-players {
+            background-color: #fdf6ec; color: #4a3728;
+            min-height: calc(100vh - var(--header-h, 64px));
+        }
         #view-players { background-color: #fdf6ec; }
 
         .player-add-card {
@@ -3202,6 +3205,28 @@
             }
         }
 
+        /* 每個頁面／分頁對應的底色，用來同步 <body> 背景，
+           確保手機滑動到底部的「回彈」空白區域也是該頁面的顏色，不會看到米色 */
+        const RAID_BODY_BG_MAP = {
+            home: '#fdf9f2',
+            analysis: '#e3f2fd',
+            abyssList: '#f4f0fb',
+            abyssDetail: '#f4f0fb',
+            players: '#fdf6ec',
+            raidStatus: '#fdf1ef'
+        };
+        const DECK_TAB_BG_MAP = ['#f4ece1', '#ede7f6', '#e8f5e9']; // 爆裂／苦痛／支援
+
+        function syncBodyBackground() {
+            if (currentView === 'deck') {
+                document.body.style.backgroundColor = DECK_TAB_BG_MAP[currentPage] || '#e0d5c1';
+            } else if (RAID_BODY_BG_MAP[currentView]) {
+                document.body.style.backgroundColor = RAID_BODY_BG_MAP[currentView];
+            } else {
+                document.body.style.backgroundColor = '#e0d5c1';
+            }
+        }
+
         function showView(view) {
             currentView = view;
             const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus' };
@@ -3221,6 +3246,7 @@
             }
 
             syncHeaderHeight();
+            syncBodyBackground();
             setTimeout(() => window.scrollTo(0, 0), 60);
         }
 
@@ -3321,6 +3347,7 @@
             [tabBurst, tabTorment, tabSupport].forEach(tabEl => tabEl.classList.remove('active'));
             [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
             updateSwiperPosition(true);
+            syncBodyBackground();
         }
 
         window.addEventListener('resize', () => { swiperWidth = getDeckSwiperWidth(); if (currentView === 'deck') updateSwiperPosition(false); });

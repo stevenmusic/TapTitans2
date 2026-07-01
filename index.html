@@ -1852,11 +1852,11 @@
             box-shadow: 0 2px 8px rgba(140,40,40,0.06);
         }
         .raid-boss-icon {
-            font-size: 26px;
-            width: 44px; height: 44px;
+            font-size: 34px;
+            width: 62px; height: 62px;
             flex-shrink: 0;
             background: #fbe6e6;
-            border-radius: 12px;
+            border-radius: 16px;
             display: flex; align-items: center; justify-content: center;
             overflow: hidden;
         }
@@ -1970,6 +1970,46 @@
             color: #c49a9a;
         }
 
+        .raid-recent-title {
+            width: 100%;
+            max-width: 500px;
+            margin: 10px auto 4px auto;
+            font-size: 11.5px;
+            font-weight: 800;
+            color: #8e1c1c;
+        }
+        .raid-recent-list {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+        .raid-recent-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #ffffff;
+            border: 1px solid #f0dcd8;
+            border-radius: 8px;
+            padding: 5px 8px;
+            font-size: 10.5px;
+            box-sizing: border-box;
+            animation: raidRecentFadeIn 0.3s ease;
+        }
+        @keyframes raidRecentFadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .raid-recent-player { font-weight: 800; color: #4a2020; flex-shrink: 0; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raid-recent-part { flex: 1; color: #757575; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raid-recent-part.layer-body { color: #00838f; }
+        .raid-recent-dmg { flex-shrink: 0; font-weight: 700; color: #c62828; white-space: nowrap; }
+        .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
+
         /* ══════════════════════════════════════════════════════════
            平板尺寸（寬度 ≥ 700px）：統一放大文字／圖示／按鈕／選單，
            容器寬度上限同步放寬，但仍有上限不會超出畫面。
@@ -2081,10 +2121,11 @@
             .player-card-delete { width: 36px; height: 36px; font-size: 15px; }
 
             /* 突襲狀態 */
-            .raid-settings-card, .btn-raid-pip-float, .raid-boss-card, .raid-target-banner, .raid-parts-grid, .raid-updated-at {
+            .raid-settings-card, .btn-raid-pip-float, .raid-boss-card, .raid-target-banner, .raid-parts-grid, .raid-updated-at, .raid-recent-title, .raid-recent-list {
                 max-width: 620px;
             }
-            .raid-boss-icon { width: 56px; height: 56px; font-size: 32px; }
+            .raid-recent-item { font-size: 13px; padding: 7px 10px; }
+            .raid-boss-icon { width: 76px; height: 76px; font-size: 42px; }
             .raid-boss-name { font-size: 16px; }
             .raid-part-name { font-size: 11px; }
             .raid-part-hp { font-size: 12px; }
@@ -2535,6 +2576,9 @@
 
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
+                    <div class="raid-recent-title" data-i18n="raidRecentAttacksTitle">⚔️ 最近攻擊</div>
+                    <div class="raid-recent-list" id="raid-recent-list"></div>
+
                     <div class="raid-updated-at" id="raid-updated-at"></div>
 
                 </div>
@@ -2615,6 +2659,8 @@
                 raidNotifyDenied: '通知權限被拒絕，請至瀏覽器設定手動開啟',
                 raidBossChangedNotify: '換王了！目前為',
                 raidNotifyNeedHomeScreen: '📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）',
+                raidRecentAttacksTitle: '⚔️ 最近攻擊',
+                raidNoRecentAttacks: '尚無攻擊紀錄',
                 abyssListPageTitle: '深淵錦標賽懶人包',
                 tabSkillPoints: '技能配點',
                 tabGearOrder: '法術丨出裝順序',
@@ -2722,6 +2768,8 @@
                 raidNotifyDenied: 'Notification permission denied — enable it in browser settings',
                 raidBossChangedNotify: 'Boss changed! Now fighting',
                 raidNotifyNeedHomeScreen: '📱 On iOS, add this page to your Home Screen first, then open it from the Home Screen icon to enable notifications (works in Safari, Chrome, and Edge)',
+                raidRecentAttacksTitle: '⚔️ Recent Attacks',
+                raidNoRecentAttacks: 'No attacks yet',
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
                 tabGearOrder: 'Spells & Gear',
@@ -4105,6 +4153,9 @@
         let raidPipWindow = null;
         let raidLastBossName = null;
         let raidLastSkillReminder = null; // null | 'frenzy' | 'march' | 'none'
+        let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
+        const RAID_RECENT_MAX = 8;
+        const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
         function loadRaidTokens() {
             const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || '';
@@ -4183,6 +4234,33 @@
                 updatedAt: Date.now()
             };
             raidLastSkillReminder = null;
+            raidRecentAttacks = [];
+        }
+
+        /* 最近攻擊：記錄「誰打了哪個部位的哪一層、造成多少傷害」，最多保留 RAID_RECENT_MAX 筆，
+           真實 API 接上後，attack 事件的 player.name + damage_log 會取代這裡的示範資料來源 */
+        function pushRaidRecentAttack(playerName, partKey, layer, dmg) {
+            raidRecentAttacks.unshift({ player: playerName, part: partKey, layer: layer, dmg: dmg, ts: Date.now() });
+            if (raidRecentAttacks.length > RAID_RECENT_MAX) raidRecentAttacks.length = RAID_RECENT_MAX;
+        }
+
+        function renderRaidRecentAttacks() {
+            const listEl = document.getElementById('raid-recent-list');
+            if (!listEl) return;
+            if (raidRecentAttacks.length === 0) {
+                listEl.innerHTML = `<div class="raid-recent-empty">${t('raidNoRecentAttacks')}</div>`;
+                return;
+            }
+            listEl.innerHTML = raidRecentAttacks.map(a => {
+                const layerLabel = a.layer === 'armor' ? t('raidLayerArmor') : t('raidLayerBody');
+                const layerCls = a.layer === 'armor' ? 'layer-armor' : 'layer-body';
+                return `
+                    <div class="raid-recent-item">
+                        <span class="raid-recent-player">${escapeHtml(a.player)}</span>
+                        <span class="raid-recent-part ${layerCls}">${raidPartLabel(a.part)} · ${layerLabel}</span>
+                        <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
+                    </div>`;
+            }).join('');
         }
 
         function simulateRaidAttack() {
@@ -4206,10 +4284,18 @@
             const dmg = 80 + Math.floor(Math.random() * 220);
 
             // 傷害依序作用：盔甲先破，盔甲破了才會打到肉體
+            let hitLayer = null;
             if (part.armor > 0) {
                 part.armor = Math.max(0, part.armor - dmg);
+                hitLayer = 'armor';
             } else if (part.body > 0) {
                 part.body = Math.max(0, part.body - dmg);
+                hitLayer = 'body';
+            }
+
+            if (hitLayer) {
+                const demoPlayer = RAID_DEMO_PLAYER_NAMES[Math.floor(Math.random() * RAID_DEMO_PLAYER_NAMES.length)];
+                pushRaidRecentAttack(demoPlayer, targetKey, hitLayer, dmg);
             }
 
             raidState.currentHp = Object.values(raidState.parts).reduce((s, p) => s + p.armor + p.body, 0);
@@ -4371,6 +4457,7 @@
             document.getElementById('raid-updated-at').textContent =
                 `${t('raidUpdatedAt')} ${formatPlayerSavedTime(raidState.updatedAt)}`;
 
+            renderRaidRecentAttacks();
             updateRaidPipContent();
         }
 

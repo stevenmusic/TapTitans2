@@ -1913,6 +1913,7 @@
             font-size: 11.5px;
             line-height: 1.5;
             box-sizing: border-box;
+            text-align: center;
         }
         .raid-target-banner.armor {
             background: #eeeef2;
@@ -1925,6 +1926,7 @@
             color: #00565f;
         }
         .raid-target-banner b { font-weight: 800; }
+        .raid-target-parts { margin-top: 3px; font-size: 12.5px; }
 
         .raid-parts-grid {
             width: 100%;
@@ -2649,9 +2651,9 @@
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
                 raidReminderMarch: '🟤 上線用凱旋行軍',
-                raidPartHead: '頭部', raidPartChest: '身體',
-                raidPartArmR: '右臂', raidPartArmL: '左臂',
-                raidPartLegR: '右腿', raidPartLegL: '左腿',
+                raidPartHead: '頭部', raidPartChest: '肚子',
+                raidPartArmR: '右肩', raidPartArmL: '左肩',
+                raidPartLegR: '右腳', raidPartLegL: '左腳',
                 raidPartHandR: '右手', raidPartHandL: '左手',
                 raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊',
@@ -2758,9 +2760,9 @@
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
                 raidReminderMarch: '🟤 Use Triumphant March now',
-                raidPartHead: 'Head', raidPartChest: 'Chest',
-                raidPartArmR: 'R. Arm', raidPartArmL: 'L. Arm',
-                raidPartLegR: 'R. Leg', raidPartLegL: 'L. Leg',
+                raidPartHead: 'Head', raidPartChest: 'Belly',
+                raidPartArmR: 'R. Shoulder', raidPartArmL: 'L. Shoulder',
+                raidPartLegR: 'R. Foot', raidPartLegL: 'L. Foot',
                 raidPartHandR: 'R. Hand', raidPartHandL: 'L. Hand',
                 raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked',
@@ -4166,12 +4168,12 @@
         const RAID_PARTS = [
             { key: 'Head',          label: 'raidPartHead' },
             { key: 'ChestUpper',    label: 'raidPartChest' },
-            { key: 'ArmUpperRight', label: 'raidPartArmR' },
             { key: 'ArmUpperLeft',  label: 'raidPartArmL' },
-            { key: 'LegUpperRight', label: 'raidPartLegR' },
-            { key: 'LegUpperLeft',  label: 'raidPartLegL' },
+            { key: 'ArmUpperRight', label: 'raidPartArmR' },
+            { key: 'HandLeft',      label: 'raidPartHandL' },
             { key: 'HandRight',     label: 'raidPartHandR' },
-            { key: 'HandLeft',      label: 'raidPartHandL' }
+            { key: 'LegUpperLeft',  label: 'raidPartLegL' },
+            { key: 'LegUpperRight', label: 'raidPartLegR' }
         ];
         const RAID_BOSS_NAMES = ['Jukk', 'Klonk', 'Lojak', 'Mohaca', 'Priker', 'Sterl', 'Takedar', 'Terro'];
 
@@ -4430,13 +4432,13 @@
             const bannerEl = document.getElementById('raid-target-banner');
             if (target.armoredParts.length > 0) {
                 bannerEl.className = 'raid-target-banner armor';
-                bannerEl.innerHTML = `${t('raidTargetArmorLabel')} <b>${target.armoredParts.map(raidPartLabel).join('、')}</b>`;
+                bannerEl.innerHTML = `<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
             } else if (!target.allBodyDepleted) {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `${t('raidTargetFocusLabel')} <b>${raidPartLabel(target.maxBodyPart)}</b>`;
+                bannerEl.innerHTML = `<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
             } else {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = t('raidTargetSkeletonLabel');
+                bannerEl.innerHTML = `<div>${t('raidTargetSkeletonLabel')}</div>`;
             }
 
             /* 瘋狂無效（紫球）：肉體暴露部位（盔甲已破、肉體尚存）≥6 個時通知

@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Tap Titans 2 - Toolkit</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TT2 Toolkit">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
@@ -1069,6 +1072,11 @@
         .home-nav-card.players .home-nav-title { color: #6b4e10; }
         .home-nav-card.players .home-nav-arrow { color: #e3cb8f; }
 
+        .home-nav-card.raidstatus { border-left: 5px solid #c62828; }
+        .home-nav-card.raidstatus .home-nav-icon { background: #fbe6e6; }
+        .home-nav-card.raidstatus .home-nav-title { color: #8e1c1c; }
+        .home-nav-card.raidstatus .home-nav-arrow { color: #e8b3b3; }
+
         #nav-header-abyss-list, #nav-header-abyss-detail {
             background: linear-gradient(135deg, #3d2570 0%, #221340 100%);
         }
@@ -1708,6 +1716,261 @@
         .player-copy-toast.show { opacity: 1; }
 
         /* ══════════════════════════════════════════════════════════
+           突襲狀態（即時王血量／盔甲狀態）
+           ══════════════════════════════════════════════════════════ */
+        #page-raidstatus { background-color: #fdf1ef; color: #4a2020; padding-top: 6px; padding-bottom: 16px; }
+        #view-raidstatus { background-color: #fdf1ef; }
+
+        .raid-settings-card {
+            width: 100%;
+            max-width: 500px;
+            background: #ffffff;
+            border: 1px solid #f0dcd8;
+            border-radius: 14px;
+            box-sizing: border-box;
+            box-shadow: 0 2px 8px rgba(140,40,40,0.06);
+            margin: 4px auto 8px auto;
+            overflow: hidden;
+        }
+        .raid-settings-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+            background: transparent;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #8e1c1c;
+            cursor: pointer;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .raid-settings-status-mini {
+            flex: 1;
+            text-align: right;
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #a37a7a;
+        }
+        .raid-settings-status-mini.ok { color: #2e7d32; }
+        .raid-settings-status-mini.demo { color: #b8860b; }
+        .raid-settings-arrow { font-size: 11px; color: #c49a9a; transition: transform 0.2s ease; }
+        .raid-settings-card.expanded .raid-settings-arrow { transform: rotate(180deg); }
+        .raid-settings-body {
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+            padding: 0 12px 12px 12px;
+            box-sizing: border-box;
+        }
+        .raid-settings-card.expanded .raid-settings-body { display: flex; }
+        .raid-connect-btns { display: flex; gap: 8px; }
+        .btn-raid-connect, .btn-raid-demo {
+            flex: 1;
+            border: none;
+            border-radius: 10px;
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 9px 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-raid-connect { background: #c62828; color: #fff; box-shadow: 0 2px 6px rgba(198,40,40,0.3); }
+        .btn-raid-demo { background: #eef2f9; color: #3a4a63; border: 1px solid #d3dced; }
+        .btn-raid-connect:active, .btn-raid-demo:active { transform: translateY(1px); filter: brightness(0.96); }
+        .btn-raid-demo.active { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+
+        .btn-raid-tool {
+            border: 1px solid #f0dcd8;
+            background: #fdf8f7;
+            color: #8e1c1c;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 9px 4px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-raid-tool:active { transform: translateY(1px); filter: brightness(0.96); }
+        .btn-raid-tool.active { background: #c62828; color: #fff; border-color: #c62828; }
+
+        .btn-raid-pip-float {
+            display: block;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto 8px auto;
+            border: 1px solid #f0dcd8;
+            background: #ffffff;
+            color: #8e1c1c;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 8px 4px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .btn-raid-pip-float:active { transform: translateY(1px); filter: brightness(0.96); }
+
+        .raid-ios-hint {
+            width: 100%;
+            max-width: 500px;
+            margin: 6px auto 0 auto;
+            background: #fff8e1;
+            border: 1px solid #ffe08a;
+            border-radius: 12px;
+            padding: 10px 12px;
+            font-size: 11.5px;
+            line-height: 1.7;
+            color: #8a6d10;
+            box-sizing: border-box;
+        }
+
+        .raid-empty-state {
+            text-align: center;
+            color: #c49a9a;
+            font-size: 12px;
+            padding: 20px 20px;
+            line-height: 1.7;
+            width: 100%;
+        }
+
+        .raid-boss-card {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto 8px auto;
+            background: #ffffff;
+            border: 1px solid #f0dcd8;
+            border-radius: 14px;
+            padding: 10px 12px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(140,40,40,0.06);
+        }
+        .raid-boss-icon {
+            font-size: 26px;
+            width: 44px; height: 44px;
+            flex-shrink: 0;
+            background: #fbe6e6;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        .raid-boss-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .raid-boss-info { flex: 1; min-width: 0; }
+        .raid-boss-name { font-size: 14px; font-weight: 800; color: #4a2020; margin-bottom: 4px; }
+        .raid-boss-hp-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        .raid-boss-hp-row:last-child { margin-bottom: 0; }
+        .raid-boss-hp-label {
+            font-size: 9.5px;
+            font-weight: 800;
+            flex-shrink: 0;
+            width: 26px;
+        }
+        .raid-boss-hp-label.armor { color: #757575; }
+        .raid-boss-hp-label.body { color: #00838f; }
+        .raid-boss-hpbar-wrap {
+            flex: 1;
+            min-width: 0;
+            height: 7px;
+            background: #f1e2e2;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .raid-boss-hpbar-fill {
+            height: 100%;
+            width: 100%;
+            border-radius: 6px;
+            transition: width 0.4s ease;
+        }
+        .raid-boss-hpbar-fill.armor { background: linear-gradient(90deg, #b0b0b8, #d8d8e0); }
+        .raid-boss-hpbar-fill.body { background: linear-gradient(90deg, #00acc1, #4dd0e1); }
+        .raid-boss-hp-text {
+            font-size: 9.5px;
+            color: #a37a7a;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .raid-target-banner {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto 8px auto;
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-size: 11.5px;
+            line-height: 1.5;
+            box-sizing: border-box;
+        }
+        .raid-target-banner.armor {
+            background: #eeeef2;
+            border: 1px solid #c8c8d2;
+            color: #4a4a52;
+        }
+        .raid-target-banner.focus {
+            background: #e0f7fa;
+            border: 1px solid #80deea;
+            color: #00565f;
+        }
+        .raid-target-banner b { font-weight: 800; }
+
+        .raid-parts-grid {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 5px;
+        }
+        .raid-part-cell {
+            background: #ffffff;
+            border: 1.5px solid #f0dcd8;
+            border-radius: 10px;
+            padding: 6px 5px;
+            box-sizing: border-box;
+            box-shadow: 0 1px 4px rgba(140,40,40,0.05);
+        }
+        .raid-part-cell.is-target { border-color: #26c6da; background: #f0fbfd; box-shadow: 0 0 0 2px rgba(38,198,218,0.35); }
+        .raid-part-cell.is-destroyed { opacity: 0.55; }
+        .raid-part-name { font-size: 9.5px; font-weight: 800; color: #4a2020; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .raid-part-layer-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+        .raid-part-layer-row:last-child { margin-bottom: 0; }
+        .raid-part-layer-row.is-depleted { opacity: 0.45; }
+        .raid-part-layer { font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 6px; display: inline-block; flex-shrink: 0; }
+        .raid-part-layer.armor { background: #e2e2e8; color: #616168; }
+        .raid-part-layer.body { background: #d0f2f7; color: #00707d; }
+        .raid-part-skeleton-note {
+            font-size: 9px;
+            font-weight: 700;
+            color: #8a7a63;
+            line-height: 1.4;
+        }
+        .raid-part-hp { font-size: 10px; font-weight: 800; color: #4a2020; white-space: nowrap; }
+
+        .raid-updated-at {
+            width: 100%;
+            max-width: 500px;
+            margin: 8px auto 0 auto;
+            text-align: center;
+            font-size: 10px;
+            color: #c49a9a;
+        }
+
+        /* ══════════════════════════════════════════════════════════
            平板尺寸（寬度 ≥ 700px）：統一放大文字／圖示／按鈕／選單，
            容器寬度上限同步放寬，但仍有上限不會超出畫面。
            ══════════════════════════════════════════════════════════ */
@@ -1816,6 +2079,17 @@
             .player-card-name-text { font-size: 16px; }
             .player-card-meta { font-size: 12px; }
             .player-card-delete { width: 36px; height: 36px; font-size: 15px; }
+
+            /* 突襲狀態 */
+            .raid-settings-card, .btn-raid-pip-float, .raid-boss-card, .raid-target-banner, .raid-parts-grid, .raid-updated-at {
+                max-width: 620px;
+            }
+            .raid-boss-icon { width: 56px; height: 56px; font-size: 32px; }
+            .raid-boss-name { font-size: 16px; }
+            .raid-part-name { font-size: 11px; }
+            .raid-part-hp { font-size: 12px; }
+            .raid-part-layer { font-size: 9px; }
+            .btn-raid-connect, .btn-raid-demo, .btn-raid-tool { font-size: 14px; padding: 12px 4px; }
         }
     </style>
 </head>
@@ -1851,11 +2125,11 @@
                     </div>
                     <div class="home-nav-arrow">›</div>
                 </button>
-                <button class="home-nav-card players" onclick="showView('players')">
-                    <div class="home-nav-icon">🗂️</div>
+                <button class="home-nav-card raidstatus" onclick="showView('raidStatus')">
+                    <div class="home-nav-icon">🩸</div>
                     <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div>
-                        <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
+                        <div class="home-nav-title" data-i18n="navRaidStatusTitle">突襲狀態</div>
+                        <div class="home-nav-desc" data-i18n="navRaidStatusDesc">即時顯示當前王、部位盔甲與血量，換王自動通知</div>
                     </div>
                     <div class="home-nav-arrow">›</div>
                 </button>
@@ -1864,6 +2138,14 @@
                     <div class="home-nav-text">
                         <div class="home-nav-title" data-i18n="navAbyssTitle">深淵錦標賽懶人包</div>
                         <div class="home-nav-desc" data-i18n="navAbyssDesc">各模式推薦流派、技能配點與出裝順序攻略</div>
+                    </div>
+                    <div class="home-nav-arrow">›</div>
+                </button>
+                <button class="home-nav-card players" onclick="showView('players')">
+                    <div class="home-nav-icon">🗂️</div>
+                    <div class="home-nav-text">
+                        <div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div>
+                        <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
                     </div>
                     <div class="home-nav-arrow">›</div>
                 </button>
@@ -2181,6 +2463,86 @@
 
     <div class="player-copy-toast" id="player-copy-toast" data-i18n="playerCopiedToast">✓ 已複製到剪貼簿</div>
 
+    <!-- ══════════════════════════════════════════════════════════
+         突襲狀態（即時王血量／盔甲狀態）
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-raidstatus" style="display:none;">
+
+        <div class="nav-header" id="nav-header-raidstatus">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
+                <div class="nav-title" data-i18n="raidStatusPageTitle">突襲狀態</div>
+                <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+            </div>
+        </div>
+
+        <div class="standalone-page" id="page-raidstatus">
+            <div class="export-area" id="export-raidstatus">
+
+                <div class="raid-settings-card" id="raid-connect-card">
+                    <button type="button" class="raid-settings-toggle" onclick="toggleRaidSettingsPanel()">
+                        <span data-i18n="raidConnectTitle">連線設定</span>
+                        <span class="raid-settings-status-mini" id="raid-connect-status">尚未連線</span>
+                        <span class="raid-settings-arrow" id="raid-settings-arrow">▾</span>
+                    </button>
+                    <div class="raid-settings-body" id="raid-settings-body">
+                        <input type="text" id="raid-app-token-input" class="player-name-input" data-i18n-placeholder="raidAppTokenPlaceholder" placeholder="Application Token（申請中）">
+                        <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token">
+                        <div class="raid-connect-btns">
+                            <button class="btn-raid-connect" onclick="connectRaidAPI()" data-i18n="btnRaidConnect">🔌 連線</button>
+                            <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" data-i18n="btnRaidDemo">🎬 示範模式</button>
+                        </div>
+                        <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%;">🔔 開啟通知</button>
+                        <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
+                            📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-raid-pip-float" onclick="openRaidPip()" id="raid-pip-btn" data-i18n="btnRaidPip">🗗 浮動小工具</button>
+
+                <div class="raid-empty-state" id="raid-empty-state" data-i18n="raidEmptyState">
+                    尚未有任何突襲資料，請先連線或使用示範模式
+                </div>
+
+                <div id="raid-live-wrap" style="display:none; width:100%;">
+
+                    <div class="raid-boss-card">
+                        <div class="raid-boss-icon" id="raid-boss-icon">
+                            <img id="raid-boss-icon-img" src="" alt="" style="display:none;">
+                            <span id="raid-boss-icon-fallback">👹</span>
+                        </div>
+                        <div class="raid-boss-info">
+                            <div class="raid-boss-name" id="raid-boss-name">—</div>
+                            <div class="raid-boss-hp-row">
+                                <span class="raid-boss-hp-label armor" data-i18n="raidLayerArmor">盔甲</span>
+                                <div class="raid-boss-hpbar-wrap armor">
+                                    <div class="raid-boss-hpbar-fill armor" id="raid-boss-armor-hpbar-fill"></div>
+                                </div>
+                                <span class="raid-boss-hp-text" id="raid-boss-armor-hp-text">—</span>
+                            </div>
+                            <div class="raid-boss-hp-row">
+                                <span class="raid-boss-hp-label body" data-i18n="raidLayerBody">肉體</span>
+                                <div class="raid-boss-hpbar-wrap body">
+                                    <div class="raid-boss-hpbar-fill body" id="raid-boss-body-hpbar-fill"></div>
+                                </div>
+                                <span class="raid-boss-hp-text" id="raid-boss-body-hp-text">—</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="raid-target-banner" id="raid-target-banner"></div>
+
+                    <div class="raid-parts-grid" id="raid-parts-grid"></div>
+
+                    <div class="raid-updated-at" id="raid-updated-at"></div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <div id="result-modal">
         <p data-i18n="modalImageReady">💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
@@ -2220,6 +2582,39 @@
                 playerNameExistsConfirm: '已經有同名玩家，要覆蓋原本的資料嗎？',
                 playerDeleteConfirm: '確定要刪除這位玩家的資料嗎？',
                 playerSavedAt: '更新於',
+                navRaidStatusTitle: '突襲狀態',
+                navRaidStatusDesc: '即時顯示當前王、部位盔甲與血量，換王自動通知',
+                raidStatusPageTitle: '突襲狀態',
+                raidConnectTitle: '連線設定',
+                raidAppTokenPlaceholder: 'Application Token（申請中）',
+                raidPlayerTokenPlaceholder: 'Player Token',
+                btnRaidConnect: '🔌 連線',
+                btnRaidDemo: '🎬 示範模式',
+                btnRaidDemoStop: '⏹ 停止示範',
+                btnRaidNotify: '🔔 開啟通知',
+                btnRaidPip: '🗗 浮動小工具',
+                raidStatusNotConnected: '尚未連線',
+                raidStatusNoAppToken: 'Application Token 尚未核發，暫時無法連線真實資料',
+                raidStatusDemoRunning: '🎬 示範模式中（假資料）',
+                raidEmptyState: '尚未有任何突襲資料，請先連線或使用示範模式',
+                raidTargetArmorLabel: '🛡️ 優先拆除盔甲，先打這些部位（其他部位的肉體先不要打）：',
+                raidTargetFocusLabel: '💧 盔甲已全破，目前肉體血量最多、建議集火：',
+                raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
+                raidReminderFrenzy: '🟣 上線用瘋狂無效',
+                raidReminderMarch: '🟤 上線用凱旋行軍',
+                raidPartHead: '頭部', raidPartChest: '身體',
+                raidPartArmR: '右臂', raidPartArmL: '左臂',
+                raidPartLegR: '右腿', raidPartLegL: '左腿',
+                raidPartHandR: '右手', raidPartHandL: '左手',
+                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
+                raidPartCannotAttack: '無法攻擊',
+                raidTargetSkeletonLabel: '🦴 全身部位已無盔甲與肉體，即將擊殺',
+                raidUpdatedAt: '最後更新',
+                raidPipUnsupported: '此瀏覽器不支援浮動小工具（建議使用 Android Chrome）',
+                raidNotifyGranted: '✓ 已開啟通知',
+                raidNotifyDenied: '通知權限被拒絕，請至瀏覽器設定手動開啟',
+                raidBossChangedNotify: '換王了！目前為',
+                raidNotifyNeedHomeScreen: '📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）',
                 abyssListPageTitle: '深淵錦標賽懶人包',
                 tabSkillPoints: '技能配點',
                 tabGearOrder: '法術丨出裝順序',
@@ -2294,6 +2689,39 @@
                 playerNameExistsConfirm: 'A player with this name already exists. Overwrite it?',
                 playerDeleteConfirm: 'Delete this player\'s data?',
                 playerSavedAt: 'Updated',
+                navRaidStatusTitle: 'Raid Status',
+                navRaidStatusDesc: 'Live boss HP, armored parts & notifications on boss change',
+                raidStatusPageTitle: 'Raid Status',
+                raidConnectTitle: 'Connection Settings',
+                raidAppTokenPlaceholder: 'Application Token (pending approval)',
+                raidPlayerTokenPlaceholder: 'Player Token',
+                btnRaidConnect: '🔌 Connect',
+                btnRaidDemo: '🎬 Demo Mode',
+                btnRaidDemoStop: '⏹ Stop Demo',
+                btnRaidNotify: '🔔 Enable Notifications',
+                btnRaidPip: '🗗 Floating Widget',
+                raidStatusNotConnected: 'Not connected',
+                raidStatusNoAppToken: 'Application Token not issued yet — live data unavailable for now',
+                raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
+                raidEmptyState: 'No raid data yet. Connect or use Demo Mode to preview.',
+                raidTargetArmorLabel: '🛡️ Break armor first on these parts (avoid hitting body on other parts for now):',
+                raidTargetFocusLabel: '💧 All armor destroyed — focus this part (highest body HP):',
+                raidNoBannedParts: 'No priority parts detected right now',
+                raidReminderFrenzy: '🟣 Use Frenzy now',
+                raidReminderMarch: '🟤 Use Triumphant March now',
+                raidPartHead: 'Head', raidPartChest: 'Chest',
+                raidPartArmR: 'R. Arm', raidPartArmL: 'L. Arm',
+                raidPartLegR: 'R. Leg', raidPartLegL: 'L. Leg',
+                raidPartHandR: 'R. Hand', raidPartHandL: 'L. Hand',
+                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
+                raidPartCannotAttack: 'cannot be attacked',
+                raidTargetSkeletonLabel: '🦴 All parts have no armor or body left — boss is about to die',
+                raidUpdatedAt: 'Last updated',
+                raidPipUnsupported: 'Floating widget not supported in this browser (try Android Chrome)',
+                raidNotifyGranted: '✓ Notifications enabled',
+                raidNotifyDenied: 'Notification permission denied — enable it in browser settings',
+                raidBossChangedNotify: 'Boss changed! Now fighting',
+                raidNotifyNeedHomeScreen: '📱 On iOS, add this page to your Home Screen first, then open it from the Home Screen icon to enable notifications (works in Safari, Chrome, and Edge)',
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
                 tabGearOrder: 'Spells & Gear',
@@ -2720,6 +3148,7 @@
             else if (currentView === 'abyssList') headerEl = document.getElementById('nav-header-abyss-list');
             else if (currentView === 'abyssDetail') headerEl = document.getElementById('nav-header-abyss-detail');
             else if (currentView === 'players') headerEl = document.getElementById('nav-header-players');
+            else if (currentView === 'raidStatus') headerEl = document.getElementById('nav-header-raidstatus');
             if (headerEl) {
                 document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
             }
@@ -2727,7 +3156,7 @@
 
         function showView(view) {
             currentView = view;
-            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players' };
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -2760,6 +3189,8 @@
             renderAbyssList();
             initAbyssSkillTrees();
             renderPlayersList();
+            loadRaidTokens();
+            updateRaidIosHint();
 
             showView('home');
 
@@ -3640,6 +4071,415 @@
                 fallbackCopy();
                 showPlayerCopyToast();
             }
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           突襲狀態：即時顯示當前王、部位盔甲／血量，換王通知
+           ══════════════════════════════════════════════════════════
+           - 目前 Application Token 尚未核發，connectRaidAPI() 僅檢查欄位並
+             顯示狀態文字；等 Token 核發後，這裡要改成：
+             1) 用 Application Token 呼叫 REST /subscribe（帶入 Player Token）
+                取得 clan_code
+             2) 用 Application Token 連線 Socket.IO（tt2-public.gamehivegames.com/api）
+                訂閱 /raid namespace，監聽 start / attack / end 等事件
+             3) 每次收到 attack 事件時，從 raid_state.current 更新 raidState
+                並呼叫 renderRaidStatus()
+           ══════════════════════════════════════════════════════════ */
+        const RAID_APP_TOKEN_KEY = 'tt2_raid_app_token';
+        const RAID_PLAYER_TOKEN_KEY = 'tt2_raid_player_token';
+
+        const RAID_PARTS = [
+            { key: 'Head',          label: 'raidPartHead' },
+            { key: 'ChestUpper',    label: 'raidPartChest' },
+            { key: 'ArmUpperRight', label: 'raidPartArmR' },
+            { key: 'ArmUpperLeft',  label: 'raidPartArmL' },
+            { key: 'LegUpperRight', label: 'raidPartLegR' },
+            { key: 'LegUpperLeft',  label: 'raidPartLegL' },
+            { key: 'HandRight',     label: 'raidPartHandR' },
+            { key: 'HandLeft',      label: 'raidPartHandL' }
+        ];
+        const RAID_BOSS_NAMES = ['Jukk', 'Klonk', 'Lojak', 'Mohaca', 'Priker', 'Sterl', 'Takedar', 'Terro'];
+
+        let raidState = null;
+        let raidDemoTimer = null;
+        let raidPipWindow = null;
+        let raidLastBossName = null;
+        let raidLastSkillReminder = null; // null | 'frenzy' | 'march' | 'none'
+
+        function loadRaidTokens() {
+            const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || '';
+            const playerToken = localStorage.getItem(RAID_PLAYER_TOKEN_KEY) || '';
+            document.getElementById('raid-app-token-input').value = appToken;
+            document.getElementById('raid-player-token-input').value = playerToken;
+            // 已經填過 Token 就預設收合，避免每次打開都要先看到一堆輸入框
+            toggleRaidSettingsPanel(!(appToken && playerToken));
+        }
+
+        function saveRaidTokens() {
+            localStorage.setItem(RAID_APP_TOKEN_KEY, document.getElementById('raid-app-token-input').value.trim());
+            localStorage.setItem(RAID_PLAYER_TOKEN_KEY, document.getElementById('raid-player-token-input').value.trim());
+        }
+
+        function setRaidConnectStatus(text, cls) {
+            const el = document.getElementById('raid-connect-status');
+            if (!el) return;
+            el.textContent = text;
+            el.className = 'raid-settings-status-mini' + (cls ? ' ' + cls : '');
+            el.removeAttribute('data-i18n');
+        }
+
+        function toggleRaidSettingsPanel(forceExpanded) {
+            const card = document.getElementById('raid-connect-card');
+            if (!card) return;
+            const shouldExpand = (typeof forceExpanded === 'boolean') ? forceExpanded : !card.classList.contains('expanded');
+            card.classList.toggle('expanded', shouldExpand);
+        }
+
+        function connectRaidAPI() {
+            saveRaidTokens();
+            const appToken = document.getElementById('raid-app-token-input').value.trim();
+            const playerToken = document.getElementById('raid-player-token-input').value.trim();
+
+            if (!appToken) {
+                setRaidConnectStatus(t('raidStatusNoAppToken'), '');
+                return;
+            }
+            if (!playerToken) {
+                setRaidConnectStatus(t('playerDataMissing'), '');
+                return;
+            }
+            // TODO：Application Token 核發後，這裡改成真正呼叫 REST /subscribe + 連線 Socket.IO
+            setRaidConnectStatus(t('raidStatusNoAppToken'), '');
+        }
+
+        function generateRandomRaidParts() {
+            const parts = {};
+            RAID_PARTS.forEach(p => {
+                const armorMax = 400 + Math.floor(Math.random() * 400);
+                const bodyMax = 800 + Math.floor(Math.random() * 1200);
+                parts[p.key] = { armor: armorMax, armorMax, body: bodyMax, bodyMax };
+            });
+            return parts;
+        }
+
+        function pickNewRaidBoss(prevIndex) {
+            let idx = Math.floor(Math.random() * RAID_BOSS_NAMES.length);
+            if (RAID_BOSS_NAMES.length > 1 && idx === prevIndex) {
+                idx = (idx + 1) % RAID_BOSS_NAMES.length;
+            }
+            return idx;
+        }
+
+        function startNewRaidBoss(prevIndex) {
+            const idx = pickNewRaidBoss(prevIndex);
+            const parts = generateRandomRaidParts();
+            const maxHp = Object.values(parts).reduce((s, p) => s + p.armorMax + p.bodyMax, 0);
+            raidState = {
+                bossIndex: idx,
+                bossName: RAID_BOSS_NAMES[idx],
+                parts: parts,
+                maxHp: maxHp,
+                currentHp: maxHp,
+                updatedAt: Date.now()
+            };
+            raidLastSkillReminder = null;
+        }
+
+        function simulateRaidAttack() {
+            if (!raidState) return;
+            // 骨架（盔甲、肉體都已破壞）的部位已無法造成傷害，攻擊只會打在還有盔甲或肉體的部位
+            const attackableKeys = Object.keys(raidState.parts).filter(k => {
+                const p = raidState.parts[k];
+                return p.armor > 0 || p.body > 0;
+            });
+            if (attackableKeys.length === 0) {
+                startNewRaidBoss(raidState.bossIndex);
+                renderRaidStatus();
+                return;
+            }
+            // 示範模式優先集中打「還有盔甲」的部位，模擬戰隊會優先拆盔甲的打法，
+            // 這樣比較容易在短時間內看到「多部位同時露出肉體」的情境
+            const armoredKeys = attackableKeys.filter(k => raidState.parts[k].armor > 0);
+            const pool = armoredKeys.length > 0 ? armoredKeys : attackableKeys;
+            const targetKey = pool[Math.floor(Math.random() * pool.length)];
+            const part = raidState.parts[targetKey];
+            const dmg = 80 + Math.floor(Math.random() * 220);
+
+            // 傷害依序作用：盔甲先破，盔甲破了才會打到肉體
+            if (part.armor > 0) {
+                part.armor = Math.max(0, part.armor - dmg);
+            } else if (part.body > 0) {
+                part.body = Math.max(0, part.body - dmg);
+            }
+
+            raidState.currentHp = Object.values(raidState.parts).reduce((s, p) => s + p.armor + p.body, 0);
+            raidState.updatedAt = Date.now();
+
+            if (raidState.currentHp <= 0) {
+                startNewRaidBoss(raidState.bossIndex);
+            }
+            renderRaidStatus();
+        }
+
+        function toggleRaidDemoMode() {
+            const btn = document.getElementById('raid-demo-btn');
+            if (raidDemoTimer) {
+                clearInterval(raidDemoTimer);
+                raidDemoTimer = null;
+                btn.classList.remove('active');
+                btn.textContent = t('btnRaidDemo');
+                return;
+            }
+            if (!raidState) startNewRaidBoss(-1);
+            renderRaidStatus();
+            setRaidConnectStatus(t('raidStatusDemoRunning'), 'demo');
+            btn.classList.add('active');
+            btn.textContent = t('btnRaidDemoStop');
+            raidDemoTimer = setInterval(simulateRaidAttack, 900);
+            toggleRaidSettingsPanel(false);
+        }
+
+        function raidPartLabel(key) {
+            const def = RAID_PARTS.find(p => p.key === key);
+            return def ? t(def.label) : key;
+        }
+
+        /* Boss 圖示：圖片放在 images/raid-bosses/{王名}.png（例如 Lojak.png），
+           圖片還沒放上去之前，或載入失敗時，會自動顯示 👹 表情符號代替 */
+        function updateRaidBossIcon(bossName) {
+            const img = document.getElementById('raid-boss-icon-img');
+            const fallback = document.getElementById('raid-boss-icon-fallback');
+            if (!img || !fallback) return;
+            img.onerror = () => {
+                img.style.display = 'none';
+                fallback.style.display = 'inline';
+            };
+            img.onload = () => {
+                img.style.display = 'block';
+                fallback.style.display = 'none';
+            };
+            img.src = `images/raid-bosses/${bossName}.png`;
+        }
+
+        function computeRaidTarget() {
+            const armoredParts = [];
+            let maxBodyPart = null;
+            let maxBodyVal = -1;
+            let allBodyDepleted = true;
+            Object.keys(raidState.parts).forEach(key => {
+                const p = raidState.parts[key];
+                if (p.armor > 0) armoredParts.push(key);
+                // 集火目標只考慮「盔甲已破、肉體尚存」的部位，已進入骨架階段的部位不算
+                if (p.armor <= 0 && p.body > 0) {
+                    allBodyDepleted = false;
+                    if (p.body > maxBodyVal) { maxBodyVal = p.body; maxBodyPart = key; }
+                }
+            });
+            return { armoredParts, maxBodyPart, maxBodyVal, allBodyDepleted };
+        }
+
+        function renderRaidStatus() {
+            if (!raidState) return;
+
+            document.getElementById('raid-empty-state').style.display = 'none';
+            document.getElementById('raid-live-wrap').style.display = 'block';
+
+            if (raidLastBossName !== null && raidLastBossName !== raidState.bossName) {
+                sendRaidNotification(`${t('raidBossChangedNotify')} ${raidState.bossName}`);
+            }
+            raidLastBossName = raidState.bossName;
+
+            document.getElementById('raid-boss-name').textContent = raidState.bossName;
+            updateRaidBossIcon(raidState.bossName);
+
+            const parts = Object.values(raidState.parts);
+            const armorSum = parts.reduce((s, p) => s + p.armor, 0);
+            const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
+            const bodySum = parts.reduce((s, p) => s + p.body, 0);
+            const bodyMaxSum = parts.reduce((s, p) => s + p.bodyMax, 0);
+            const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
+            const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
+
+            document.getElementById('raid-boss-armor-hpbar-fill').style.width = armorPct.toFixed(1) + '%';
+            document.getElementById('raid-boss-armor-hp-text').textContent =
+                `${formatNum(armorSum)} / ${formatNum(armorMaxSum)} (${armorPct.toFixed(1)}%)`;
+            document.getElementById('raid-boss-body-hpbar-fill').style.width = bodyPct.toFixed(1) + '%';
+            document.getElementById('raid-boss-body-hp-text').textContent =
+                `${formatNum(bodySum)} / ${formatNum(bodyMaxSum)} (${bodyPct.toFixed(1)}%)`;
+
+            const target = computeRaidTarget();
+            const bannerEl = document.getElementById('raid-target-banner');
+            if (target.armoredParts.length > 0) {
+                bannerEl.className = 'raid-target-banner armor';
+                bannerEl.innerHTML = `${t('raidTargetArmorLabel')} <b>${target.armoredParts.map(raidPartLabel).join('、')}</b>`;
+            } else if (!target.allBodyDepleted) {
+                bannerEl.className = 'raid-target-banner focus';
+                bannerEl.innerHTML = `${t('raidTargetFocusLabel')} <b>${raidPartLabel(target.maxBodyPart)}</b>`;
+            } else {
+                bannerEl.className = 'raid-target-banner focus';
+                bannerEl.innerHTML = t('raidTargetSkeletonLabel');
+            }
+
+            /* 肉體暴露部位數量：只算「盔甲已破、肉體尚存」的部位（已進入骨架階段的不算）
+               ≥6 個 → 通知上線使用瘋狂無效（紫球）；≤2 個 → 通知上線使用凱旋行軍（土）
+               這兩個提醒只發手機通知，不在畫面上顯示 */
+            const exposedBodyCount = parts.filter(p => p.armor <= 0 && p.body > 0).length;
+            let skillReminder = 'none';
+            if (exposedBodyCount >= 6) skillReminder = 'frenzy';
+            else if (exposedBodyCount <= 2) skillReminder = 'march';
+
+            if (skillReminder !== raidLastSkillReminder && skillReminder !== 'none') {
+                sendRaidNotification(skillReminder === 'frenzy' ? t('raidReminderFrenzy') : t('raidReminderMarch'));
+            }
+            raidLastSkillReminder = skillReminder;
+
+            const gridEl = document.getElementById('raid-parts-grid');
+            gridEl.innerHTML = '';
+            RAID_PARTS.forEach(def => {
+                const p = raidState.parts[def.key];
+                const isSkeleton = p.armor <= 0 && p.body <= 0;
+                const isPriorityArmor = target.armoredParts.includes(def.key);
+                const isFocusBody = (def.key === target.maxBodyPart && target.armoredParts.length === 0 && p.armor <= 0 && p.body > 0);
+                let cellCls = '';
+                if (isPriorityArmor || isFocusBody) cellCls = 'is-target';
+                else if (isSkeleton) cellCls = 'is-destroyed';
+
+                const cell = document.createElement('div');
+                cell.className = 'raid-part-cell ' + cellCls;
+                if (isSkeleton) {
+                    // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害
+                    cell.innerHTML = `
+                        <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                        <div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>
+                    `;
+                } else {
+                    cell.innerHTML = `
+                        <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                        <div class="raid-part-layer-row ${p.armor <= 0 ? 'is-depleted' : ''}">
+                            <span class="raid-part-layer armor">${t('raidLayerArmor')}</span>
+                            <span class="raid-part-hp">${formatNum(p.armor)}</span>
+                        </div>
+                        <div class="raid-part-layer-row ${p.body <= 0 ? 'is-depleted' : ''}">
+                            <span class="raid-part-layer body">${t('raidLayerBody')}</span>
+                            <span class="raid-part-hp">${formatNum(p.body)}</span>
+                        </div>
+                    `;
+                }
+                gridEl.appendChild(cell);
+            });
+
+            document.getElementById('raid-updated-at').textContent =
+                `${t('raidUpdatedAt')} ${formatPlayerSavedTime(raidState.updatedAt)}`;
+
+            updateRaidPipContent();
+        }
+
+        function isIOSDevice() {
+            const ua = navigator.userAgent || '';
+            const isAppleTouch = /iPad|iPhone|iPod/.test(ua) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 偽裝成 Mac
+            return isAppleTouch;
+        }
+
+        function isStandalonePwa() {
+            return window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
+        }
+
+        function updateRaidIosHint() {
+            const hintEl = document.getElementById('raid-ios-hint');
+            if (!hintEl) return;
+            hintEl.style.display = (isIOSDevice() && !isStandalonePwa()) ? 'block' : 'none';
+        }
+
+        function requestRaidNotifyPermission() {
+            if (!('Notification' in window)) {
+                alert(t('raidPipUnsupported'));
+                return;
+            }
+            if (isIOSDevice() && !isStandalonePwa()) {
+                alert(t('raidNotifyNeedHomeScreen'));
+                return;
+            }
+            Notification.requestPermission().then(perm => {
+                if (perm === 'granted') {
+                    showPlayerCopyToastLike(t('raidNotifyGranted'));
+                } else {
+                    alert(t('raidNotifyDenied'));
+                }
+            });
+        }
+
+        function showPlayerCopyToastLike(msg) {
+            const toast = document.getElementById('player-copy-toast');
+            if (!toast) return;
+            const original = toast.textContent;
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => { toast.textContent = original; }, 300);
+            }, 1800);
+        }
+
+        function sendRaidNotification(msg) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                try { new Notification('TT2 Toolkit', { body: msg, icon: '' }); } catch (e) { /* 部分瀏覽器限制 */ }
+            }
+        }
+
+        function openRaidPip() {
+            if (!('documentPictureInPicture' in window)) {
+                alert(t('raidPipUnsupported'));
+                return;
+            }
+            documentPictureInPicture.requestWindow({ width: 220, height: 220 }).then(pipWin => {
+                raidPipWindow = pipWin;
+                pipWin.document.body.style.margin = '0';
+                pipWin.document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
+                pipWin.document.body.style.background = '#4a2020';
+                pipWin.document.body.innerHTML = '<div id="raid-pip-content" style="color:#fff; padding:10px; font-size:12px; line-height:1.6; box-sizing:border-box; height:100%;"></div>';
+                updateRaidPipContent();
+                pipWin.addEventListener('pagehide', () => { raidPipWindow = null; });
+            }).catch(() => { alert(t('raidPipUnsupported')); });
+        }
+
+        function updateRaidPipContent() {
+            if (!raidPipWindow || !raidState) return;
+            const doc = raidPipWindow.document;
+            const contentEl = doc.getElementById('raid-pip-content');
+            if (!contentEl) return;
+            const target = computeRaidTarget();
+            const targetHtml = target.armoredParts.length > 0
+                ? `🛡️ ${target.armoredParts.map(raidPartLabel).join('、')}`
+                : (!target.allBodyDepleted ? `💧 ${raidPartLabel(target.maxBodyPart)}` : `🦴 ${t('raidLayerSkeleton')}`);
+
+            const parts = Object.values(raidState.parts);
+            const armorSum = parts.reduce((s, p) => s + p.armor, 0);
+            const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
+            const bodySum = parts.reduce((s, p) => s + p.body, 0);
+            const bodyMaxSum = parts.reduce((s, p) => s + p.bodyMax, 0);
+            const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
+            const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
+
+            const exposedBodyCount = parts.filter(p => p.armor <= 0 && p.body > 0).length;
+            let skillIconHtml = '';
+            if (exposedBodyCount >= 6) skillIconHtml = '<div style="font-size:16px; margin-top:6px;">🟣 Frenzy</div>';
+            else if (exposedBodyCount <= 2) skillIconHtml = '<div style="font-size:16px; margin-top:6px;">🟤 March</div>';
+
+            contentEl.innerHTML = `
+                <div style="font-size:15px; font-weight:800; margin-bottom:8px;">${raidState.bossName}</div>
+                <div style="font-size:10px; opacity:0.8; margin-bottom:2px;">${t('raidLayerArmor')} ${armorPct.toFixed(0)}%</div>
+                <div style="background:rgba(255,255,255,0.2); border-radius:6px; height:7px; overflow:hidden; margin-bottom:6px;">
+                    <div style="background:#c8c8d2; height:100%; width:${armorPct.toFixed(1)}%;"></div>
+                </div>
+                <div style="font-size:10px; opacity:0.8; margin-bottom:2px;">${t('raidLayerBody')} ${bodyPct.toFixed(0)}%</div>
+                <div style="background:rgba(255,255,255,0.2); border-radius:6px; height:7px; overflow:hidden; margin-bottom:10px;">
+                    <div style="background:#4dd0e1; height:100%; width:${bodyPct.toFixed(1)}%;"></div>
+                </div>
+                <div style="font-size:12px; font-weight:700;">${targetHtml}</div>
+                ${skillIconHtml}
+            `;
         }
 
         /* ══════════════════════════════════════════════════════════

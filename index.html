@@ -56,9 +56,12 @@
             display: flex;
             flex-direction: column;
         }
+        /* 以 iPhone 17 Pro（402×874 CSS px）／iPhone 17 Pro Max（440×956 CSS px）
+           為主要基準：扣除網址列、動態島、底部手勢區後，可用高度約 690~700px，
+           以下尺寸抓在較小的 iPhone 17 Pro 情境下試算，確保 5 個按鈕都能塞進一個畫面 */
         .home-header {
             position: relative;
-            padding: 56px 24px 34px 24px;
+            padding: calc(32px + env(safe-area-inset-top, 0px)) 20px 18px 20px;
             text-align: center;
             background: linear-gradient(160deg, #fff7e6 0%, #f4ece1 55%, #ecd9b3 100%);
             border-bottom: 1px solid #e6d8b8;
@@ -67,7 +70,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 800;
             letter-spacing: 3px;
             text-transform: uppercase;
@@ -75,33 +78,38 @@
             background: rgba(201,151,31,0.12);
             border: 1px solid rgba(201,151,31,0.35);
             border-radius: 20px;
-            padding: 5px 14px;
-            margin-bottom: 16px;
+            padding: 5px 13px;
+            margin-bottom: 10px;
         }
         .home-title {
-            font-size: 32px;
+            font-size: 27px;
             font-weight: 900;
             color: #4a3728;
             letter-spacing: 1px;
             margin: 0;
-            line-height: 1.2;
+            line-height: 1.15;
         }
         .home-subtitle {
-            margin-top: 6px;
-            font-size: 13.5px;
+            margin-top: 5px;
+            font-size: 12.5px;
             font-weight: 700;
             color: #9c7b3f;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            line-height: 1.4;
+            min-height: calc(1.4em * 1);
+            box-sizing: border-box;
         }
         .home-tagline {
-            margin: 18px auto 0 auto;
+            margin: 10px auto 0 auto;
             max-width: 320px;
-            font-size: 12.5px;
+            font-size: 11.5px;
             color: #8a7a68;
-            line-height: 1.8;
+            line-height: 1.5;
+            min-height: calc(1.5em * 2);
+            box-sizing: border-box;
         }
         .home-content {
-            padding: 24px 18px 22px 18px;
+            padding: 12px 16px 12px 16px;
             max-width: 460px;
             margin: 0 auto;
             box-sizing: border-box;
@@ -112,32 +120,32 @@
             min-height: 0;
         }
         .home-section-label {
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 800;
             letter-spacing: 2px;
             text-transform: uppercase;
             color: #b3a48c;
-            margin: 0 4px 12px 4px;
+            margin: 0 4px 7px 4px;
         }
         .home-nav-cards {
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 9px;
             flex: 1;
             min-height: 0;
         }
         .home-nav-card {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 13px;
             width: 100%;
             flex: 1;
-            min-height: 96px;
+            min-height: 66px;
             background: #ffffff;
             border: 1px solid #ece3d4;
-            border-radius: 18px;
-            padding: 18px 16px;
-            box-shadow: 0 6px 18px rgba(90,74,66,0.10);
+            border-radius: 15px;
+            padding: 11px 15px;
+            box-shadow: 0 4px 12px rgba(90,74,66,0.10);
             cursor: pointer;
             text-align: left;
             -webkit-tap-highlight-color: transparent;
@@ -149,33 +157,39 @@
             transform: scale(0.97);
             box-shadow: 0 2px 8px rgba(90,74,66,0.12);
         }
-        .home-nav-card.deck { border-left: 5px solid #8b263e; }
-        .home-nav-card.analysis { border-left: 5px solid #0d47a1; }
+        .home-nav-card.deck { border-left: 4px solid #8b263e; }
+        .home-nav-card.analysis { border-left: 4px solid #0d47a1; }
         .home-nav-icon {
-            font-size: 30px;
+            font-size: 24px;
             flex-shrink: 0;
-            width: 58px; height: 58px;
-            border-radius: 16px;
+            width: 46px; height: 46px;
+            border-radius: 13px;
             display: flex; align-items: center; justify-content: center;
         }
         .home-nav-card.deck .home-nav-icon { background: #faeaea; }
         .home-nav-card.analysis .home-nav-icon { background: #e7eff9; }
         .home-nav-text { flex: 1; min-width: 0; }
         .home-nav-title {
-            font-size: 14.5px; font-weight: 800; color: #3d2c1e; margin-bottom: 4px;
+            font-size: 13.5px; font-weight: 800; color: #3d2c1e; margin-bottom: 2px;
         }
         .home-nav-card.analysis .home-nav-title { color: #16314f; }
         .home-nav-desc {
-            font-size: 12px; color: #8a7a68; line-height: 1.6;
+            font-size: 11px; color: #8a7a68; line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .home-nav-arrow {
-            font-size: 22px; color: #d8c8a8; flex-shrink: 0;
+            font-size: 21px; color: #d8c8a8; flex-shrink: 0;
         }
         .home-nav-card.analysis .home-nav-arrow { color: #c4d2e6; }
         .home-footnote {
-            margin-top: 14px;
+            margin-top: 10px;
             text-align: center;
-            font-size: 10.5px;
+            font-size: 10px;
             color: #c2b59a;
             letter-spacing: 0.5px;
         }
@@ -2153,6 +2167,52 @@
             .raid-part-layer { font-size: 9px; }
             .btn-raid-connect, .btn-raid-demo, .btn-raid-tool { font-size: 14px; padding: 12px 4px; }
         }
+
+        /* ══════════════════════════════════════════════════════════
+           大手機尺寸（寬度 420px～699px，涵蓋 iPhone 17 Pro Max 等大螢幕手機）：
+           iPhone 17 Pro（402 CSS px）維持原本基準尺寸不放大；
+           iPhone 17 Pro Max（440 CSS px）會落在這個區間，自動套用較大一點的
+           字級與間距，讓畫面比例更舒適，但不像平板斷點放大那麼多。
+           ══════════════════════════════════════════════════════════ */
+        @media (min-width: 420px) and (max-width: 699px) {
+            .home-title { font-size: 29px; }
+            .home-subtitle { font-size: 13.5px; }
+            .home-tagline { font-size: 12.5px; }
+            .home-nav-card { min-height: 72px; padding: 12px 16px; gap: 14px; }
+            .home-nav-icon { width: 50px; height: 50px; font-size: 26px; }
+            .home-nav-title { font-size: 14.5px; }
+            .home-nav-desc { font-size: 12px; }
+
+            .nav-title-row .nav-title { font-size: 16px; }
+            .tab-btn { font-size: 14px; }
+            .abyss-tab { font-size: 14px; }
+
+            .btn-analysis { font-size: 12.5px; }
+            .tier-stage-select { font-size: 12.5px; }
+            .summary-card .num { font-size: 17px; }
+            .summary-card .label { font-size: 10.5px; }
+            .analysis-table { font-size: 13px; }
+            .analysis-table th { font-size: 12px; }
+            .boss-config-title { font-size: 17px; }
+            .pill-btn { font-size: 11.5px; }
+            .btn-clear-all, .btn-download { font-size: 12.5px; }
+
+            .abyss-mode-card .mode-name { font-size: 16px; }
+            .abyss-mode-card .mode-build { font-size: 12.5px; }
+            .abyss-build-subtitle { font-size: 13.5px; }
+            .tree-cat-label { font-size: 16px; }
+            .abyss-spell-name { font-size: 11.5px; }
+            .abyss-gear-text { font-size: 15px; }
+            .abyss-gear-range-btn { font-size: 13px; }
+
+            .player-card-name-text { font-size: 15px; }
+            .player-card-meta { font-size: 11px; }
+
+            .raid-boss-icon { width: 68px; height: 68px; font-size: 38px; }
+            .raid-boss-name { font-size: 14.5px; }
+            .raid-part-name { font-size: 10.5px; }
+            .raid-part-hp { font-size: 11.5px; }
+        }
     </style>
 </head>
 <body>
@@ -2744,7 +2804,7 @@
             en: {
                 homeEyebrow: 'TT2 TOOLKIT',
                 appSubtitle: 'Deck Builder, Report Analyzer & Tournament Guides',
-                homeTagline: 'Build your decks before the raid, then paste your report afterward to analyze miss rates and damage rankings. Also includes Abyssal Tournament build guides for every mode.',
+                homeTagline: 'Build decks before raids, analyze reports afterward for miss rates & rankings, plus Abyssal Tournament guides.',
                 homeSectionLabel: 'Choose a tool',
                 navDeckTitle: 'Deck Builder',
                 navDeckDesc: 'Set up Burst / Affliction / Support decks — auto-saved as you go',

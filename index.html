@@ -1731,6 +1731,44 @@
         }
         .player-card-delete:active { transform: scale(0.92); }
 
+        .backup-section {
+            width: 100%;
+            max-width: 500px;
+            margin: 20px auto 0 auto;
+            padding-top: 16px;
+            border-top: 1px dashed #ece3d4;
+            box-sizing: border-box;
+        }
+        .backup-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #4a3728;
+            margin-bottom: 4px;
+        }
+        .backup-desc {
+            font-size: 11px;
+            color: #b3a48c;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        .backup-btns {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-backup {
+            flex: 1;
+            border: none;
+            border-radius: 10px;
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 10px 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-backup.export { background: #b8860b; color: #fff; box-shadow: 0 2px 6px rgba(184,134,11,0.3); }
+        .btn-backup.import { background: #eef2f9; color: #3a4a63; border: 1px solid #d3dced; }
+        .btn-backup:active { transform: translateY(1px); filter: brightness(0.96); }
+
         .player-copy-toast {
             position: fixed;
             top: calc(var(--header-h, 64px) + 10px);
@@ -2579,6 +2617,16 @@
 
                 <div class="player-list" id="player-list"></div>
 
+                <div class="backup-section">
+                    <div class="backup-title" data-i18n="backupSectionTitle">💾 全站資料備份</div>
+                    <div class="backup-desc" data-i18n="backupSectionDesc">包含牌組設定、戰報分析、玩家資料庫、突襲 API Token，換手機或清瀏覽器資料前建議先匯出備份</div>
+                    <div class="backup-btns">
+                        <button class="btn-backup export" onclick="exportAllAppData()" data-i18n="btnExportBackup">📤 匯出備份檔</button>
+                        <button class="btn-backup import" onclick="document.getElementById('backup-file-input').click()" data-i18n="btnImportBackup">📥 匯入備份檔</button>
+                    </div>
+                    <input type="file" id="backup-file-input" accept="application/json" style="display:none;" onchange="importAllAppData(this.files[0])">
+                </div>
+
             </div>
         </div>
     </div>
@@ -2709,6 +2757,14 @@
                 playerDataMissing: '請貼上該玩家的存檔資料',
                 playerNameExistsConfirm: '已經有同名玩家，要覆蓋原本的資料嗎？',
                 playerDeleteConfirm: '確定要刪除這位玩家的資料嗎？',
+                backupSectionTitle: '💾 全站資料備份',
+                backupSectionDesc: '包含牌組設定、戰報分析、玩家資料庫、突襲 API Token，換手機或清瀏覽器資料前建議先匯出備份',
+                btnExportBackup: '📤 匯出備份檔',
+                btnImportBackup: '📥 匯入備份檔',
+                backupExportedToast: '✓ 備份檔已下載',
+                backupInvalidFile: '這個檔案格式不正確，請確認選對備份檔',
+                backupImportConfirm: '匯入後會覆蓋目前裝置上的所有資料（牌組、戰報、玩家資料庫等），確定要繼續嗎？',
+                backupImportedToast: '✓ 資料已還原，頁面即將重新整理',
                 playerSavedAt: '更新於',
                 navRaidStatusTitle: '突襲狀態',
                 navRaidStatusDesc: '即時顯示當前王、部位盔甲與血量，換王自動通知',
@@ -2824,6 +2880,14 @@
                 playerDataMissing: 'Please paste this player\'s save data',
                 playerNameExistsConfirm: 'A player with this name already exists. Overwrite it?',
                 playerDeleteConfirm: 'Delete this player\'s data?',
+                backupSectionTitle: '💾 Full Backup',
+                backupSectionDesc: 'Includes deck settings, raid analysis, player database, and raid API tokens. Export a backup before switching phones or clearing browser data.',
+                btnExportBackup: '📤 Export Backup',
+                btnImportBackup: '📥 Import Backup',
+                backupExportedToast: '✓ Backup downloaded',
+                backupInvalidFile: 'This file format is invalid. Please select a valid backup file.',
+                backupImportConfirm: 'Importing will overwrite all current data on this device (decks, reports, player database, etc). Continue?',
+                backupImportedToast: '✓ Data restored. The page will now reload.',
                 playerSavedAt: 'Updated',
                 navRaidStatusTitle: 'Raid Status',
                 navRaidStatusDesc: 'Live boss HP, armored parts & notifications on boss change',
@@ -4290,6 +4354,79 @@
                 fallbackCopy();
                 showPlayerCopyToast();
             }
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           全站資料備份：把所有 localStorage 資料打包成一個 JSON 檔案下載，
+           換手機或清瀏覽器資料前可以先匯出，之後再匯入還原
+           ══════════════════════════════════════════════════════════ */
+        function getBackupKeys() {
+            return [
+                STORAGE_KEY,            // 牌組建構設定
+                ANALYSIS_STORAGE_KEY,   // 戰報分析最近結果
+                PLAYERS_STORAGE_KEY,    // 玩家資料庫
+                RAID_APP_TOKEN_KEY,     // 突襲 Application Token
+                RAID_PLAYER_TOKEN_KEY,  // 突襲 Player Token
+                'tt2_lang'              // 語言偏好
+            ];
+        }
+
+        function exportAllAppData() {
+            const backup = { _meta: { app: 'TT2 Toolkit', exportedAt: new Date().toISOString(), version: 1 }, data: {} };
+            getBackupKeys().forEach(key => {
+                const val = localStorage.getItem(key);
+                if (val !== null) backup.data[key] = val;
+            });
+
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const filename = `tt2-toolkit-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+            showPlayerCopyToastLike(t('backupExportedToast'));
+        }
+
+        function importAllAppData(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                let parsed;
+                try {
+                    parsed = JSON.parse(e.target.result);
+                } catch (err) {
+                    alert(t('backupInvalidFile'));
+                    return;
+                }
+                const data = parsed && parsed.data;
+                if (!data || typeof data !== 'object') {
+                    alert(t('backupInvalidFile'));
+                    return;
+                }
+                const foundKeys = getBackupKeys().filter(k => data[k] !== undefined);
+                if (foundKeys.length === 0) {
+                    alert(t('backupInvalidFile'));
+                    return;
+                }
+                if (!confirm(t('backupImportConfirm'))) return;
+
+                foundKeys.forEach(key => {
+                    localStorage.setItem(key, data[key]);
+                });
+
+                alert(t('backupImportedToast'));
+                location.reload();
+            };
+            reader.onerror = () => alert(t('backupInvalidFile'));
+            reader.readAsText(file);
         }
 
         /* ══════════════════════════════════════════════════════════

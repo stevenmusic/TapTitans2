@@ -4153,6 +4153,8 @@
         let raidPipWindow = null;
         let raidLastBossName = null;
         let raidLastSkillReminder = null; // null | 'frenzy' | 'march' | 'none'
+        let raidLastSkillReminderNotifiedAt = 0; // 上次針對目前這個狀態發出通知的時間
+        const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
         let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
         const RAID_RECENT_MAX = 8;
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
@@ -4234,6 +4236,7 @@
                 updatedAt: Date.now()
             };
             raidLastSkillReminder = null;
+            raidLastSkillReminderNotifiedAt = 0;
             raidRecentAttacks = [];
         }
 
@@ -4406,16 +4409,25 @@
                 bannerEl.innerHTML = t('raidTargetSkeletonLabel');
             }
 
-            /* 肉體暴露部位數量：只算「盔甲已破、肉體尚存」的部位（已進入骨架階段的不算）
-               ≥6 個 → 通知上線使用瘋狂無效（紫球）；≤2 個 → 通知上線使用凱旋行軍（土）
-               這兩個提醒只發手機通知，不在畫面上顯示 */
+            /* 瘋狂無效（紫球）：肉體暴露部位（盔甲已破、肉體尚存）≥6 個時通知
+               凱旋行軍（土）：骨架部位（盔甲與肉體都已破壞）≥6 個時通知
+               這兩個提醒只發手機通知，不在畫面上顯示。
+               通知規則：狀態剛出現時通知一次；如果同一個狀態（例如一直維持凱旋行軍）
+               持續超過 30 分鐘沒有改變，就再重新發送一次通知，避免長時間洗版但也不會被遺忘 */
             const exposedBodyCount = parts.filter(p => p.armor <= 0 && p.body > 0).length;
+            const skeletonCount = parts.filter(p => p.armor <= 0 && p.body <= 0).length;
             let skillReminder = 'none';
             if (exposedBodyCount >= 6) skillReminder = 'frenzy';
-            else if (exposedBodyCount <= 2) skillReminder = 'march';
+            else if (skeletonCount >= 6) skillReminder = 'march';
 
-            if (skillReminder !== raidLastSkillReminder && skillReminder !== 'none') {
-                sendRaidNotification(skillReminder === 'frenzy' ? t('raidReminderFrenzy') : t('raidReminderMarch'));
+            if (skillReminder !== 'none') {
+                const now = Date.now();
+                const isNewState = skillReminder !== raidLastSkillReminder;
+                const dueForRepeat = !isNewState && (now - raidLastSkillReminderNotifiedAt >= RAID_SKILL_REMINDER_REPEAT_MS);
+                if (isNewState || dueForRepeat) {
+                    sendRaidNotification(skillReminder === 'frenzy' ? t('raidReminderFrenzy') : t('raidReminderMarch'));
+                    raidLastSkillReminderNotifiedAt = now;
+                }
             }
             raidLastSkillReminder = skillReminder;
 
@@ -4550,9 +4562,10 @@
             const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
 
             const exposedBodyCount = parts.filter(p => p.armor <= 0 && p.body > 0).length;
+            const skeletonCount = parts.filter(p => p.armor <= 0 && p.body <= 0).length;
             let skillIconHtml = '';
             if (exposedBodyCount >= 6) skillIconHtml = '<div style="font-size:16px; margin-top:6px;">🟣 Frenzy</div>';
-            else if (exposedBodyCount <= 2) skillIconHtml = '<div style="font-size:16px; margin-top:6px;">🟤 March</div>';
+            else if (skeletonCount >= 6) skillIconHtml = '<div style="font-size:16px; margin-top:6px;">🟤 March</div>';
 
             contentEl.innerHTML = `
                 <div style="font-size:15px; font-weight:800; margin-bottom:8px;">${raidState.bossName}</div>

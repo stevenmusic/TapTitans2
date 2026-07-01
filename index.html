@@ -809,7 +809,26 @@
         }
         #result-modal img { max-width: 100%; max-height: 70vh; border-radius: 8px; }
         #result-modal p { margin-top: 10px; font-size: 13px; color: #f4ece1; text-align: center; }
-        .btn-close { margin-top: 15px; background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
+        .modal-btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn-share {
+            background: #06c755;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .btn-share:active { filter: brightness(0.92); }
+        .btn-close { background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
 
         body.drag-active {
             overflow: hidden !important;
@@ -1122,19 +1141,21 @@
 
         .abyss-build-subtitle {
             display: inline-block;
-            text-align: left; font-size: 12px; font-weight: 800; color: #6a3fb5;
+            text-align: center; font-size: 12px; font-weight: 800; color: #6a3fb5;
             background: #efe6fa; border-radius: 8px; padding: 4px 10px;
-            width: auto; box-sizing: border-box;
+            width: auto; max-width: 100%; box-sizing: border-box;
         }
 
         .abyss-sp-disclaimer {
             width: 100%;
-            max-width: 360px;
+            max-width: 380px;
             margin: -4px auto 12px auto;
             text-align: center;
             font-size: 10.5px;
-            color: #a796c9;
             line-height: 1.6;
+            min-height: calc(1.6em * 2);
+            color: #a796c9;
+            box-sizing: border-box;
         }
 
         .abyss-panel { width: 100%; max-width: 500px; box-sizing: border-box; }
@@ -1190,17 +1211,12 @@
 
         .abyss-sp-header {
             display: flex;
+            flex-direction: column;
             align-items: center;
             width: 100%;
-            position: relative;
-            min-height: 28px;
+            gap: 8px;
             margin-top: 16px;
             margin-bottom: 10px;
-        }
-        .abyss-sp-header .abyss-sp-select {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
         }
 
         /* ── 互動式技能配點樹 ── */
@@ -2465,7 +2481,7 @@
                                 <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
                                 <select class="abyss-sp-select" id="abyss-sp-select"></select>
                             </div>
-                            <div class="abyss-sp-disclaimer">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異<br>（僅供參考，不影響配點本身）</div>
+                            <div class="abyss-sp-disclaimer"><span data-i18n="abyssSpDisclaimerLine1">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異</span><br><span data-i18n="abyssSpDisclaimerLine2">（僅供參考，不影響配點本身）</span></div>
                             <div id="abyss-skill-trees"></div>
                         </div>
                     </div>
@@ -2595,7 +2611,10 @@
     <div id="result-modal">
         <p data-i18n="modalImageReady">💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿</p>
         <div id="image-container"></div>
-        <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
+        <div class="modal-btn-row">
+            <button class="btn-share" id="btn-share-image" onclick="shareCurrentImage()" data-i18n="btnShareImage">📤 分享到 LINE／Discord</button>
+            <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
+        </div>
     </div>
 
     <script>
@@ -2651,6 +2670,10 @@
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
                 raidReminderMarch: '🟤 上線用凱旋行軍',
+                abyssGuideNotReady: '此模式攻略尚未建立',
+                fairyGoldLabel: '妖精金',
+                abyssSpDisclaimerLine1: '⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異',
+                abyssSpDisclaimerLine2: '（僅供參考，不影響配點本身）',
                 raidPartHead: '頭部', raidPartChest: '肚子',
                 raidPartArmR: '右肩', raidPartArmL: '左肩',
                 raidPartLegR: '右腳', raidPartLegL: '左腳',
@@ -2703,6 +2726,8 @@
                 cardPoolNotLoadedDetail: '卡片池資料尚未載入（找不到 cards.js 的 PRESET_CARDS 陣列）。',
                 modalImageReady: '💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿',
                 btnBackToEdit: '返回修改',
+                btnShareImage: '📤 分享到 LINE／Discord',
+                shareFailed: '此瀏覽器不支援直接分享圖片，請長按上方圖片儲存後手動傳送',
                 tierPartTriggerDefault: '部位 ▾',
                 tierPartAll: '全部位', tierPartSingle: '任一單部位', tierPartSingleShort: '單部位',
                 tierPartHead: '頭', tierPartBelly: '肚', tierPartHand: '手', tierPartFoot: '腳',
@@ -2760,10 +2785,14 @@
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
                 raidReminderMarch: '🟤 Use Triumphant March now',
+                abyssGuideNotReady: 'Guide for this mode not ready yet',
+                fairyGoldLabel: 'Fairy Gold',
+                abyssSpDisclaimerLine1: '⚠️ Category totals may differ slightly from dropdown total',
+                abyssSpDisclaimerLine2: '(Reference only, doesn\'t affect the allocation)',
                 raidPartHead: 'Head', raidPartChest: 'Belly',
-                raidPartArmR: 'R. Shoulder', raidPartArmL: 'L. Shoulder',
-                raidPartLegR: 'R. Foot', raidPartLegL: 'L. Foot',
-                raidPartHandR: 'R. Hand', raidPartHandL: 'L. Hand',
+                raidPartArmR: 'R.Arm', raidPartArmL: 'L.Arm',
+                raidPartLegR: 'R.Foot', raidPartLegL: 'L.Foot',
+                raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
                 raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked',
                 raidTargetSkeletonLabel: '🦴 All parts have no armor or body left — boss is about to die',
@@ -2812,6 +2841,8 @@
                 cardPoolNotLoadedDetail: 'Card pool data not loaded yet (could not find the PRESET_CARDS array in cards.js).',
                 modalImageReady: '💡 Image generated! Long-press the image below to save it to your photo album.',
                 btnBackToEdit: 'Back to Edit',
+                btnShareImage: '📤 Share to LINE/Discord',
+                shareFailed: 'This browser can\'t share images directly. Long-press the image above to save it and share manually.',
                 tierPartTriggerDefault: 'Part ▾',
                 tierPartAll: 'All Zones', tierPartSingle: 'Single Zone', tierPartSingleShort: 'Single',
                 tierPartHead: 'Head', tierPartBelly: 'Belly', tierPartHand: 'Hand', tierPartFoot: 'Foot',
@@ -2865,6 +2896,20 @@
             if (typeof renderCardPool === 'function') renderCardPool();
             if (typeof renderAnalysisTable === 'function' && analysisData && analysisData.length) renderAnalysisTable();
             if (typeof renderPlayersList === 'function') renderPlayersList();
+            if (typeof renderAbyssList === 'function') renderAbyssList();
+            if (typeof updateSkillCategoryLabels === 'function') updateSkillCategoryLabels();
+            if (currentView === 'abyssDetail' && typeof ABYSS_MODES !== 'undefined') {
+                const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
+                if (mode) {
+                    document.getElementById('abyss-detail-title').textContent = modeDisplayName(mode);
+                    document.getElementById('abyss-build-subtitle').textContent = mode.build ? `${modeBuildDisplayName(mode)}丨${t('fairyGoldLabel')}` : t('abyssGuideNotReady');
+                    const keepCheckpoint = currentAbyssCheckpoint;
+                    rebuildCheckpointDropdown(mode);
+                    const select = document.getElementById('abyss-sp-select');
+                    if (select && keepCheckpoint) select.value = keepCheckpoint;
+                    renderAbyssGearPanel(mode);
+                }
+            }
             const stageSel = document.getElementById('analysis-stage-select');
             if (stageSel && stageSel.options.length > 0) stageSel.options[0].textContent = t('stagePlaceholder');
             if (typeof getBossSlotValue === 'function' && typeof setBossSlotValue === 'function') {
@@ -3355,6 +3400,34 @@
         window.addEventListener('resize', () => { swiperWidth = getDeckSwiperWidth(); if (currentView === 'deck') updateSwiperPosition(false); });
 
         /* ── 圖片產出（直接截圖牌組，不做雙欄拆分）── */
+        /* ── 分享圖片（Web Share API，跳出系統分享選單，LINE/Discord 等 App 排序由手機系統決定）── */
+        let currentShareableCanvas = null;
+
+        function updateShareButtonVisibility() {
+            const btn = document.getElementById('btn-share-image');
+            if (!btn) return;
+            const supported = !!(navigator.canShare && navigator.share);
+            btn.style.display = supported ? 'inline-block' : 'none';
+        }
+
+        function shareCurrentImage() {
+            if (!currentShareableCanvas) return;
+            currentShareableCanvas.toBlob(async (blob) => {
+                if (!blob) { alert(t('shareFailed')); return; }
+                const file = new File([blob], 'tt2-toolkit.png', { type: 'image/png' });
+                const shareData = { files: [file], title: 'TT2 Toolkit' };
+                if (navigator.canShare && navigator.canShare(shareData)) {
+                    try {
+                        await navigator.share(shareData);
+                    } catch (e) {
+                        // 使用者取消分享或系統拒絕，不用特別提示
+                    }
+                } else {
+                    alert(t('shareFailed'));
+                }
+            }, 'image/png');
+        }
+
         function generateImage(type) {
             isSwiping = false;
             updateSwiperPosition(false);
@@ -3372,6 +3445,7 @@
 
             imgContainer.innerHTML = t('generatingDeckImage');
             modal.style.display = "flex";
+            document.getElementById('btn-share-image').style.display = 'none';
 
             html2canvas(exportArea, {
                 useCORS: true,
@@ -3424,6 +3498,8 @@
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
+                currentShareableCanvas = canvas;
+                updateShareButtonVisibility();
             }).catch(() => {
                 alert(t('generateFailed'));
                 closeModal();
@@ -3433,6 +3509,7 @@
         function closeModal() {
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
+            currentShareableCanvas = null;
 
             if (currentView === 'deck') {
                 isSwiping = false;
@@ -3893,6 +3970,7 @@
             const imgContainer = document.getElementById('image-container');
             imgContainer.innerHTML = t('generatingAnalysisImage');
             modal.style.display = "flex";
+            document.getElementById('btn-share-image').style.display = 'none';
 
             const SPLIT_AT = 25;
 
@@ -3916,6 +3994,8 @@
                     const img = document.createElement('img');
                     img.src = canvas.toDataURL('image/png');
                     imgContainer.appendChild(img);
+                    currentShareableCanvas = canvas;
+                    updateShareButtonVisibility();
                 }).catch(() => {
                     alert(t('generateFailed'));
                     closeModal();
@@ -3933,6 +4013,8 @@
                     const img = document.createElement('img');
                     img.src = canvas.toDataURL('image/png');
                     imgContainer.appendChild(img);
+                    currentShareableCanvas = canvas;
+                    updateShareButtonVisibility();
                 })
                 .catch(() => {
                     offscreen.remove();
@@ -4484,15 +4566,14 @@
                         <div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>
                     `;
                 } else {
+                    // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體
+                    const activeLayer = p.armor > 0 ? 'armor' : 'body';
+                    const activeValue = p.armor > 0 ? p.armor : p.body;
                     cell.innerHTML = `
                         <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                        <div class="raid-part-layer-row ${p.armor <= 0 ? 'is-depleted' : ''}">
-                            <span class="raid-part-layer armor">${t('raidLayerArmor')}</span>
-                            <span class="raid-part-hp">${formatNum(p.armor)}</span>
-                        </div>
-                        <div class="raid-part-layer-row ${p.body <= 0 ? 'is-depleted' : ''}">
-                            <span class="raid-part-layer body">${t('raidLayerBody')}</span>
-                            <span class="raid-part-hp">${formatNum(p.body)}</span>
+                        <div class="raid-part-layer-row">
+                            <span class="raid-part-layer ${activeLayer}">${t(activeLayer === 'armor' ? 'raidLayerArmor' : 'raidLayerBody')}</span>
+                            <span class="raid-part-hp">${formatNum(activeValue)}</span>
                         </div>
                     `;
                 }
@@ -4939,24 +5020,33 @@
         };
 
         const SPELL_NAMES = {
-            tiantangsheng: '天堂聖擊',
-            dianshicheng:  '點石成金',
-            huoyanzhi:     '火焰之劍',
-            yingfenshen:   '影分身之術',
-            zhanzheng:     '戰爭狂吼',
-            jindaodan:     '金導彈',
-            zhiming:       '致命爆擊',
-            shuangzhao:    '雙召喚',
-            musexianv:     '暮色之城仙女',
-            leitingchuan:  '雷霆船',
-            daopianliu:    '刀片流'
+            tiantangsheng: { zh: '天堂聖擊', en: 'Heavenly Strike' },
+            dianshicheng:  { zh: '點石成金', en: 'Hand of Midas' },
+            huoyanzhi:     { zh: '火焰之劍', en: 'Fire Sword' },
+            yingfenshen:   { zh: '影分身之術', en: 'Shadow Clone' },
+            zhanzheng:     { zh: '戰爭狂吼', en: 'War Cry' },
+            jindaodan:     { zh: '金導彈', en: 'Golden Missile' },
+            zhiming:       { zh: '致命爆擊', en: 'Deadly Strike' },
+            shuangzhao:    { zh: '雙重召喚', en: 'Dual Summon' },
+            musexianv:     { zh: '暮色之城仙女', en: 'Twilight Fairies' },
+            leitingchuan:  { zh: '雷霆船', en: 'Thunder Ship' },
+            daopianliu:    { zh: '刀片流', en: 'Stream of Blades' }
         };
+
+        function spellDisplayName(spellKey) {
+            const entry = SPELL_NAMES[spellKey];
+            if (!entry) return spellKey;
+            if (currentLang === 'en' && entry.en) return entry.en;
+            return entry.zh;
+        }
 
         const ABYSS_MODES = [
             {
                 key: 'solarEclipse',
                 name: '日蝕',
+                nameEn: 'Solar Eclipse',
                 build: '影分身流',
+                buildEn: 'Shadow Clone',
                 gearSteps: [
                     { rarity: 'mythic',    name: '無情死靈',       note: '（+10% 影分身跳關率）' },
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
@@ -5004,7 +5094,9 @@
             {
                 key: 'companionFrenzy',
                 name: '同伴狂潮',
+                nameEn: 'Companion Frenzy',
                 build: '飛船流',
+                buildEn: 'Clan Ship',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者', note: '（x1.5 聖物量）' },
@@ -5051,7 +5143,9 @@
             {
                 key: 'timeStorm',
                 name: '時間風暴',
+                nameEn: 'Time Storm',
                 build: '寵物流',
+                buildEn: 'Pet',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者', note: '（x1.5 聖物量）' },
@@ -5097,7 +5191,9 @@
             {
                 key: 'bladeBombardment',
                 name: '刀片轟炸',
+                nameEn: 'Blade Bombardment',
                 build: '匕首流',
+                buildEn: 'Dagger',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者', note: '（x1.5 聖物量）' },
@@ -5142,7 +5238,9 @@
             {
                 key: 'enchantedMind',
                 name: '魔法的心',
+                nameEn: 'Enchanted Mind',
                 build: '寵物流',
+                buildEn: 'Pet',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者', note: '（x1.5 聖物量）' },
@@ -5189,7 +5287,9 @@
             {
                 key: 'metabolicGrowth',
                 name: '代謝繁殖',
+                nameEn: 'Metabolic Growth',
                 build: '天堂流',
+                buildEn: 'Heavenly Strike',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',       note: '（x1.5 稀有裝備掉落率）', extra: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者', note: '（x1.5 聖物量）' },
@@ -5233,7 +5333,9 @@
             {
                 key: 'shimmeringBlacksmith',
                 name: '波光粼粼的鐵匠',
+                nameEn: 'Shimmering Blacksmith',
                 build: '寵物流',
+                buildEn: 'Pet',
                 gearSteps: [
                     { rarity: 'mythic',    name: '淘金海賊',           note: '（如果沒有要衝排名，可以跳過）' },
                     { rarity: 'legendary', name: '完美無瑕的仲裁者' },
@@ -5340,14 +5442,14 @@
 
         const SKILL_PAIRS = [
             { groups: [
-                { key: 'knight',   label: '騎士' },
-                { key: 'summoner', label: '召喚師' },
-                { key: 'warlord',  label: '督軍' }
+                { key: 'knight',   label: '騎士', labelEn: 'Knight' },
+                { key: 'summoner', label: '召喚師', labelEn: 'Summoner' },
+                { key: 'warlord',  label: '督軍', labelEn: 'Warlord' }
             ] },
             { groups: [
-                { key: 'sorcerer',  label: '術士' },
-                { key: 'rogue',     label: '盜賊' },
-                { key: 'alchemist', label: '煉金' }
+                { key: 'sorcerer',  label: '術士', labelEn: 'Sorcerer' },
+                { key: 'rogue',     label: '盜賊', labelEn: 'Rogue' },
+                { key: 'alchemist', label: '煉金', labelEn: 'Alchemist' }
             ] }
         ];
 
@@ -5393,7 +5495,7 @@
             const layout = SKILL_NODE_LAYOUT[cat.key];
             const color = SKILL_CAT_COLORS[cat.key];
             let html = `<div class="skill-tree" data-cat="${cat.key}">`;
-            html += `<div class="tree-cat-label" style="color:${color}">${cat.label} <span class="tree-cat-total" data-cat-total="${cat.key}">0</span></div>`;
+            html += `<div class="tree-cat-label" style="color:${color}">${currentLang === 'en' && cat.labelEn ? cat.labelEn : cat.label} <span class="tree-cat-total" data-cat-total="${cat.key}">0</span></div>`;
             html += `<div class="tree-row root-row">
                         <div class="skill-node empty"></div>
                         ${renderSkillNode(cat.key, 'root')}
@@ -5468,6 +5570,19 @@
             });
         }
 
+        function updateSkillCategoryLabels() {
+            const allCats = SKILL_PAIRS.flatMap(p => p.groups);
+            document.querySelectorAll('.tree-cat-label').forEach(el => {
+                const totalSpan = el.querySelector('.tree-cat-total');
+                if (!totalSpan) return;
+                const catKey = totalSpan.dataset.catTotal;
+                const catDef = allCats.find(g => g.key === catKey);
+                if (!catDef) return;
+                const label = (currentLang === 'en' && catDef.labelEn) ? catDef.labelEn : catDef.label;
+                el.firstChild.textContent = label + ' ';
+            });
+        }
+
         function updateSkillTreeValues(mode, checkpoint) {
             document.querySelectorAll('#abyss-skill-trees .skill-node').forEach(node => {
                 const skillId = node.dataset.skill;
@@ -5503,6 +5618,13 @@
             ta.value = JSON.stringify(nonZero);
         }
 
+        function modeDisplayName(mode) {
+            return (currentLang === 'en' && mode.nameEn) ? mode.nameEn : mode.name;
+        }
+        function modeBuildDisplayName(mode) {
+            return (currentLang === 'en' && mode.buildEn) ? mode.buildEn : mode.build;
+        }
+
         function renderAbyssList() {
             const wrap = document.getElementById('abyss-mode-list');
             if (!wrap) return;
@@ -5516,8 +5638,8 @@
                 card.innerHTML = `
                     <div class="mode-icon">${ABYSS_MODE_ICONS[mode.key] || '🌀'}</div>
                     <div class="mode-text">
-                        <div class="mode-name">${mode.name}</div>
-                        <div class="mode-build${hasBuild ? '' : ' pending'}">${hasBuild ? mode.build : '尚未建立攻略'}</div>
+                        <div class="mode-name">${modeDisplayName(mode)}</div>
+                        <div class="mode-build${hasBuild ? '' : ' pending'}">${hasBuild ? modeBuildDisplayName(mode) : t('abyssGuideNotReady')}</div>
                     </div>
                     <div class="mode-arrow">›</div>`;
                 wrap.appendChild(card);
@@ -5532,8 +5654,8 @@
             currentAbyssModeKey = modeKey;
             currentAbyssGearRangeIndex = 0;
             showView('abyssDetail');
-            document.getElementById('abyss-detail-title').textContent = mode.name;
-            document.getElementById('abyss-build-subtitle').textContent = mode.build ? `${mode.build}丨妖精金` : '此模式攻略尚未建立';
+            document.getElementById('abyss-detail-title').textContent = modeDisplayName(mode);
+            document.getElementById('abyss-build-subtitle').textContent = mode.build ? `${modeBuildDisplayName(mode)}丨${t('fairyGoldLabel')}` : t('abyssGuideNotReady');
             renderAbyssSpPanel(mode);
             renderAbyssGearPanel(mode);
             abyssCurrentPage = 0;
@@ -5550,7 +5672,8 @@
         }
 
         function checkpointLabel(mode, checkpointId) {
-            return `${checkpointTotal(mode, checkpointId)} 點`;
+            const total = checkpointTotal(mode, checkpointId);
+            return currentLang === 'en' ? `${total} pts` : `${total} 點`;
         }
 
         function ensureFirstCheckpoint(mode) {
@@ -5617,9 +5740,9 @@
                     item.className = 'abyss-spell-item';
                     item.innerHTML = `
                         <div class="abyss-spell-icon-wrap">
-                            <img src="images/spells/${spellKey}.png" alt="${escapeHtml(SPELL_NAMES[spellKey] || spellKey)}">
+                            <img src="images/spells/${spellKey}.png" alt="${escapeHtml(spellDisplayName(spellKey))}">
                         </div>
-                        <div class="abyss-spell-name">${escapeHtml(SPELL_NAMES[spellKey] || spellKey)}</div>`;
+                        <div class="abyss-spell-name">${escapeHtml(spellDisplayName(spellKey))}</div>`;
                     spellRow.appendChild(item);
                 });
                 panel.appendChild(spellRow);

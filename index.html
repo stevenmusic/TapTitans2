@@ -1933,7 +1933,10 @@
         }
         .raid-boss-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .raid-boss-info { flex: 1; min-width: 0; }
-        .raid-boss-name { font-size: 14px; font-weight: 800; color: #4a2020; margin-bottom: 4px; }
+        .raid-boss-name-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+        .raid-boss-name { font-size: 14px; font-weight: 800; color: #4a2020; }
+        .raid-boss-ordinal { font-size: 11px; font-weight: 700; color: #a37a7a; }
+        .raid-boss-ordinal.is-last { color: #c62828; }
         .raid-boss-hp-row {
             display: flex;
             align-items: center;
@@ -2683,7 +2686,10 @@
                             <span id="raid-boss-icon-fallback">👹</span>
                         </div>
                         <div class="raid-boss-info">
-                            <div class="raid-boss-name" id="raid-boss-name">—</div>
+                            <div class="raid-boss-name-row">
+                                <span class="raid-boss-name" id="raid-boss-name">—</span>
+                                <span class="raid-boss-ordinal" id="raid-boss-ordinal"></span>
+                            </div>
                             <div class="raid-boss-hp-row">
                                 <span class="raid-boss-hp-label armor" data-i18n="raidLayerArmor">盔甲</span>
                                 <div class="raid-boss-hpbar-wrap armor">
@@ -2786,6 +2792,7 @@
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
                 raidReminderMarch: '🟤 上線用凱旋行軍',
+                raidReminderLastBossLow: '⏰ 最後一隻王剩餘血量不多了，突襲即將結束，把握機會！',
                 abyssGuideNotReady: '此模式攻略尚未建立',
                 fairyGoldLabel: '妖精金',
                 abyssSpDisclaimerLine1: '⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異',
@@ -2909,6 +2916,7 @@
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
                 raidReminderMarch: '🟤 Use Triumphant March now',
+                raidReminderLastBossLow: '⏰ Last boss is almost dead — raid ending soon, seize the moment!',
                 abyssGuideNotReady: 'Guide for this mode not ready yet',
                 fairyGoldLabel: 'Fairy Gold',
                 abyssSpDisclaimerLine1: '⚠️ Category totals may differ slightly from dropdown total',
@@ -3820,7 +3828,7 @@
         }
 
         function formatNum(n) {
-            if (n >= 10000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+            if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/\.?0+$/, '') + 'B';
             if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
             return Math.round(n).toLocaleString('en-US');
         }
@@ -4181,10 +4189,12 @@
                 const colWrap = document.createElement('div');
                 colWrap.className = 'analysis-table-wrap';
                 colWrap.style.margin = '0';
-                colWrap.style.width = '380px';
+                colWrap.style.width = '430px';
                 colWrap.style.maxWidth = 'none';
+                colWrap.style.overflow = 'visible';
                 const table = document.createElement('table');
                 table.className = 'analysis-table';
+                table.style.minWidth = '430px';
                 table.innerHTML = theadHTML;
                 const tbody = document.createElement('tbody');
                 rowsSubset.forEach(tr => tbody.appendChild(tr.cloneNode(true)));
@@ -4463,6 +4473,9 @@
         let raidLastSkillReminder = null; // null | 'frenzy' | 'march' | 'none'
         let raidLastSkillReminderNotifiedAt = 0; // 上次針對目前這個狀態發出通知的時間
         let raidBossChangedAt = 0; // 最近一次換王的時間
+        let raidLastBossLowNotifiedAt = 0; // 上次發送「最後一隻王快死了」通知的時間
+        const RAID_LAST_BOSS_HP_THRESHOLD = 3e9; // 3B
+        const RAID_LAST_BOSS_REPEAT_MS = 5 * 60 * 1000; // 條件持續成立時，每 5 分鐘重新提醒一次（比技能提醒更急迫）
         const RAID_SKILL_REMINDER_GRACE_MS = 5000; // 換王後這段時間內，先不發瘋狂無效／凱旋行軍通知，避免跟換王通知混在一起
         const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
         let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
@@ -4518,12 +4531,14 @@
         function generateRandomRaidParts() {
             const parts = {};
             RAID_PARTS.forEach(p => {
-                const armorMax = 400 + Math.floor(Math.random() * 400);
-                const bodyMax = 800 + Math.floor(Math.random() * 1200);
+                const armorMax = (400 + Math.floor(Math.random() * 400)) * 1e6; // 0.4B ~ 0.8B
+                const bodyMax = (800 + Math.floor(Math.random() * 1200)) * 1e6; // 0.8B ~ 2B
                 parts[p.key] = { armor: armorMax, armorMax, body: bodyMax, bodyMax };
             });
             return parts;
         }
+
+        let raidBossOrdinal = 0; // 目前是這場突襲的第幾隻王（1~6），用來判斷是不是最後一隻
 
         function pickNewRaidBoss(prevIndex) {
             let idx = Math.floor(Math.random() * RAID_BOSS_NAMES.length);
@@ -4537,9 +4552,11 @@
             const idx = pickNewRaidBoss(prevIndex);
             const parts = generateRandomRaidParts();
             const maxHp = Object.values(parts).reduce((s, p) => s + p.armorMax + p.bodyMax, 0);
+            raidBossOrdinal = raidBossOrdinal >= 6 ? 1 : raidBossOrdinal + 1;
             raidState = {
                 bossIndex: idx,
                 bossName: RAID_BOSS_NAMES[idx],
+                bossOrdinal: raidBossOrdinal,
                 parts: parts,
                 maxHp: maxHp,
                 currentHp: maxHp,
@@ -4549,6 +4566,7 @@
             raidLastSkillReminderNotifiedAt = 0;
             raidRecentAttacks = [];
             raidBossChangedAt = Date.now();
+            raidLastBossLowNotifiedAt = 0; // 每隻新王出現都重新計算「是否最後一隻且血量偏低」
         }
 
         /* 最近攻擊：記錄「誰打了哪個部位的哪一層、造成多少傷害」，最多保留 RAID_RECENT_MAX 筆，
@@ -4595,7 +4613,7 @@
             const pool = armoredKeys.length > 0 ? armoredKeys : attackableKeys;
             const targetKey = pool[Math.floor(Math.random() * pool.length)];
             const part = raidState.parts[targetKey];
-            const dmg = 80 + Math.floor(Math.random() * 220);
+            const dmg = (80 + Math.floor(Math.random() * 220)) * 1e6;
 
             // 傷害依序作用：盔甲先破，盔甲破了才會打到肉體
             let hitLayer = null;
@@ -4690,6 +4708,11 @@
             raidLastBossName = raidState.bossName;
 
             document.getElementById('raid-boss-name').textContent = raidState.bossName;
+            const ordinalEl = document.getElementById('raid-boss-ordinal');
+            if (ordinalEl && raidState.bossOrdinal) {
+                ordinalEl.textContent = `${raidState.bossOrdinal} / 6`;
+                ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === 6 ? ' is-last' : '');
+            }
             updateRaidBossIcon(raidState.bossName);
 
             const parts = Object.values(raidState.parts);
@@ -4742,6 +4765,22 @@
                 }
             }
             raidLastSkillReminder = skillReminder;
+
+            /* 最後一隻王（6/6）且剩餘血量 ≤ 3B：提醒大家突襲即將結束，把握機會
+               這個提醒比較急迫，條件持續成立時每 5 分鐘（而不是 30 分鐘）重新通知一次 */
+            const isLastBoss = raidState.bossOrdinal === 6;
+            const isLowHp = raidState.currentHp <= RAID_LAST_BOSS_HP_THRESHOLD;
+            if (isLastBoss && isLowHp) {
+                const now = Date.now();
+                const justChangedBoss = (now - raidBossChangedAt) < RAID_SKILL_REMINDER_GRACE_MS;
+                const dueForRepeat = (now - raidLastBossLowNotifiedAt >= RAID_LAST_BOSS_REPEAT_MS);
+                if (!justChangedBoss && (raidLastBossLowNotifiedAt === 0 || dueForRepeat)) {
+                    sendRaidNotification(t('raidReminderLastBossLow'));
+                    raidLastBossLowNotifiedAt = now;
+                }
+            } else {
+                raidLastBossLowNotifiedAt = 0;
+            }
 
             const gridEl = document.getElementById('raid-parts-grid');
             gridEl.innerHTML = '';

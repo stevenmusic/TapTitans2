@@ -172,6 +172,7 @@
         .home-nav-title {
             font-size: 13.5px; font-weight: 800; color: #3d2c1e; margin-bottom: 2px;
         }
+        .home-nav-card.deck .home-nav-title { color: #6b1d30; }
         .home-nav-card.analysis .home-nav-title { color: #16314f; }
         .home-nav-desc {
             font-size: 11px; color: #8a7a68; line-height: 1.35;
@@ -185,6 +186,7 @@
         .home-nav-arrow {
             font-size: 21px; color: #d8c8a8; flex-shrink: 0;
         }
+        .home-nav-card.deck .home-nav-arrow { color: #e3b8c2; }
         .home-nav-card.analysis .home-nav-arrow { color: #c4d2e6; }
         .home-footnote {
             margin-top: 10px;
@@ -488,6 +490,15 @@
             font-weight: 900;
             color: #0d47a1;
             border-top: 2px solid #0d47a1;
+        }
+
+        /* 數字欄位加粗加大，畫面上跟截圖匯出都會套用，方便閱讀 */
+        .analysis-table td {
+            font-weight: 700;
+            font-size: 13.5px;
+        }
+        .analysis-table .summary-row td {
+            font-weight: 900;
         }
 
         /* ── Boss select ── */
@@ -842,7 +853,8 @@
             font-size: 13px;
         }
         .btn-share:active { filter: brightness(0.92); }
-        .btn-close { background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; }
+        .btn-close { background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; transition: filter 0.15s ease, transform 0.15s ease; }
+        .btn-close:active { filter: brightness(0.9); transform: translateY(1px); }
 
         body.drag-active {
             overflow: hidden !important;
@@ -1091,21 +1103,24 @@
             background-color: #ffcdd2 !important;
             border-radius: 5px;
         }
+        .summary-card.rate-warning { border: 1px solid #ef9a9a !important; }
+        .rate-warning .num { color: #d32f2f !important; }
+        .rate-warning .label { color: #d32f2f !important; }
 
         /* ══════════════════════════════════════════════════════════
            深淵錦標賽攻略
            ══════════════════════════════════════════════════════════ */
-        .home-nav-card.abyss { border-left: 5px solid #6a3fb5; }
+        .home-nav-card.abyss { border-left: 4px solid #6a3fb5; }
         .home-nav-card.abyss .home-nav-icon { background: #efe6fa; }
         .home-nav-card.abyss .home-nav-title { color: #3d2570; }
         .home-nav-card.abyss .home-nav-arrow { color: #cdb8ec; }
 
-        .home-nav-card.players { border-left: 5px solid #b8860b; }
+        .home-nav-card.players { border-left: 4px solid #b8860b; }
         .home-nav-card.players .home-nav-icon { background: #faf2de; }
         .home-nav-card.players .home-nav-title { color: #6b4e10; }
         .home-nav-card.players .home-nav-arrow { color: #e3cb8f; }
 
-        .home-nav-card.raidstatus { border-left: 5px solid #c62828; }
+        .home-nav-card.raidstatus { border-left: 4px solid #c62828; }
         .home-nav-card.raidstatus .home-nav-icon { background: #fbe6e6; }
         .home-nav-card.raidstatus .home-nav-title { color: #8e1c1c; }
         .home-nav-card.raidstatus .home-nav-arrow { color: #e8b3b3; }
@@ -2682,8 +2697,7 @@
 
                     <div class="raid-boss-card">
                         <div class="raid-boss-icon" id="raid-boss-icon">
-                            <img id="raid-boss-icon-img" src="" alt="" style="display:none;">
-                            <span id="raid-boss-icon-fallback">👹</span>
+                            <img id="raid-boss-icon-img" src="" alt="">
                         </div>
                         <div class="raid-boss-info">
                             <div class="raid-boss-name-row">
@@ -3395,10 +3409,13 @@
             raidStatus: '#fdf1ef'
         };
         const DECK_TAB_BG_MAP = ['#f4ece1', '#ede7f6', '#e8f5e9']; // 爆裂／苦痛／支援
+        const DECK_TAB_HANDLE_COLOR_MAP = ['#8b263e', '#4a148c', '#2e7d32']; // 卡片池手把跟著分頁主題色走
 
         function syncBodyBackground() {
             if (currentView === 'deck') {
                 document.body.style.backgroundColor = DECK_TAB_BG_MAP[currentPage] || '#e0d5c1';
+                const handle = document.getElementById('card-pool-handle');
+                if (handle) handle.style.backgroundColor = DECK_TAB_HANDLE_COLOR_MAP[currentPage] || '#5a4a42';
             } else if (RAID_BODY_BG_MAP[currentView]) {
                 document.body.style.backgroundColor = RAID_BODY_BG_MAP[currentView];
             } else {
@@ -3828,7 +3845,7 @@
         }
 
         function formatNum(n) {
-            if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/\.?0+$/, '') + 'B';
+            if (n >= 1000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
             if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
             return Math.round(n).toLocaleString('en-US');
         }
@@ -4189,12 +4206,12 @@
                 const colWrap = document.createElement('div');
                 colWrap.className = 'analysis-table-wrap';
                 colWrap.style.margin = '0';
-                colWrap.style.width = '430px';
+                colWrap.style.width = '470px';
                 colWrap.style.maxWidth = 'none';
                 colWrap.style.overflow = 'visible';
                 const table = document.createElement('table');
                 table.className = 'analysis-table';
-                table.style.minWidth = '430px';
+                table.style.minWidth = '470px';
                 table.innerHTML = theadHTML;
                 const tbody = document.createElement('tbody');
                 rowsSubset.forEach(tr => tbody.appendChild(tr.cloneNode(true)));
@@ -4666,16 +4683,7 @@
            圖片還沒放上去之前，或載入失敗時，會自動顯示 👹 表情符號代替 */
         function updateRaidBossIcon(bossName) {
             const img = document.getElementById('raid-boss-icon-img');
-            const fallback = document.getElementById('raid-boss-icon-fallback');
-            if (!img || !fallback) return;
-            img.onerror = () => {
-                img.style.display = 'none';
-                fallback.style.display = 'inline';
-            };
-            img.onload = () => {
-                img.style.display = 'block';
-                fallback.style.display = 'none';
-            };
+            if (!img) return;
             img.src = `images/raid-bosses/${bossName}.png`;
         }
 

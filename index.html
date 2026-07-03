@@ -507,16 +507,18 @@
             appearance: none;
             -webkit-appearance: none;
             border: none;
-            border-radius: 8px;
-            padding: 4px 28px 4px 10px;
-            font-size: 11px;
+            border-radius: 10px;
+            padding: 6px 14px;
+            font-size: 13px;
             font-weight: bold;
             cursor: pointer;
             background-repeat: no-repeat;
-            background-position: right 8px center;
-            background-size: 10px 7px;
-            width: 160px;
-            min-width: 140px;
+            background-position: right 9px center;
+            background-size: 11px 8px;
+            width: 172px;
+            min-width: 150px;
+            min-height: 38px;
+            box-sizing: border-box;
             text-align: center;
             text-align-last: center;
         }
@@ -544,6 +546,20 @@
             display: flex; align-items: center; justify-content: center;
             gap: 8px; flex-wrap: wrap; margin-bottom: 5px;
         }
+        .page-name-label {
+            font-size: 13px;
+            font-weight: 900;
+            padding: 6px 14px;
+            border-radius: 10px;
+            box-sizing: border-box;
+            min-height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .page-name-label.burst { background: #f4e3e7; color: #8b263e; }
+        .page-name-label.torment { background: #e9e0f5; color: #4a148c; }
+        .page-name-label.support { background: #dcf0dd; color: #2e7d32; }
         .pyramid-container {
             display: flex;
             flex-direction: column;
@@ -2133,8 +2149,9 @@
 
             /* 牌組建構：Boss 選單／部位選單／肉甲選單／增減格按鈕 */
             .boss-select-burst, .boss-select-torment, .boss-select-support {
-                font-size: 14px; width: 190px; min-width: 170px; padding: 6px 32px 6px 12px;
+                font-size: 14px; width: 190px; min-width: 170px; padding: 8px 16px; min-height: 42px;
             }
+            .page-name-label { font-size: 14px; min-height: 42px; }
             .selects-col { width: 90px; gap: 4px; }
             .dropdown-trigger { font-size: 13px !important; height: 32px; }
             .dropdown-content { width: 138px; }
@@ -2253,6 +2270,8 @@
             .boss-config-title { font-size: 17px; }
             .pill-btn { font-size: 11.5px; }
             .btn-clear-all, .btn-download { font-size: 12.5px; }
+            .boss-select-burst, .boss-select-torment, .boss-select-support { font-size: 12.5px; width: 180px; min-width: 158px; }
+            .page-name-label { font-size: 12.5px; }
 
             .abyss-mode-card .mode-name { font-size: 16px; }
             .abyss-mode-card .mode-build { font-size: 12.5px; }
@@ -2360,6 +2379,7 @@
                 <div class="page-view" id="page-burst">
                     <div class="export-area" id="export-burst">
                         <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <div class="page-name-label burst" data-i18n="tabBurst">爆裂</div>
                             <select class="boss-select-burst" id="boss-select-burst">
                                 <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                                 <option value="Jukk">Jukk</option>
@@ -2384,6 +2404,7 @@
                 <div class="page-view" id="page-torment">
                     <div class="export-area" id="export-torment">
                         <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <div class="page-name-label torment" data-i18n="tabTorment">苦痛</div>
                             <select class="boss-select-torment" id="boss-select-torment">
                                 <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                                 <option value="Jukk">Jukk</option>
@@ -2408,6 +2429,7 @@
                 <div class="page-view" id="page-support">
                     <div class="export-area" id="export-support">
                         <div class="page-header-row" style="gap: 8px; flex-wrap: wrap; justify-content: center;">
+                            <div class="page-name-label support" data-i18n="tabSupport">支援</div>
                             <select class="boss-select-support" id="boss-select-support">
                                 <option value="" data-i18n="selectBossOption">選擇 Boss</option>
                                 <option value="Jukk">Jukk</option>
@@ -3635,6 +3657,11 @@
 
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
                     if (lastTierRow) lastTierRow.style.marginBottom = '0px';
+
+                    // 截圖不顯示「一鍵清除所有牌組」跟「儲存圖片」按鈕，只保留頁面名稱、Boss、8個牌組
+                    const btnClear = clonedDoc.querySelector(`#${idMap[type]} .btn-clear-all`);
+                    if (btnClear && btnClear.parentElement) btnClear.parentElement.style.display = 'none';
+
                     const clonedExportArea = clonedDoc.getElementById(idMap[type]);
                     if (clonedExportArea) {
                         clonedExportArea.style.paddingBottom = '4px';

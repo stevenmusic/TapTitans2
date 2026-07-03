@@ -1235,25 +1235,34 @@
             box-sizing: border-box;
         }
 
-        .abyss-sp-select {
-            width: auto;
-            min-width: 84px;
-            appearance: none;
-            -webkit-appearance: none;
-            border: none;
-            border-radius: 10px;
-            background-color: #6a3fb5;
-            color: #fff;
-            font-size: 12px;
+        .abyss-checkpoint-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 6px;
+            width: 100%;
+        }
+        .abyss-checkpoint-btn {
+            border: 1.5px solid #cdb8ec;
+            border-radius: 8px;
+            background-color: #f1ebfb;
+            color: #6a3fb5;
+            font-size: 10.5px;
             font-weight: 800;
             text-align: center;
-            text-align-last: center;
-            padding: 6px 12px;
+            padding: 7px 2px;
             box-sizing: border-box;
             cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+        }
+        .abyss-checkpoint-btn:active { transform: scale(0.95); background-color: #e3d5f7; }
+        .abyss-checkpoint-btn.active {
+            background-color: #6a3fb5;
+            color: #fff;
+            border-color: #6a3fb5;
             box-shadow: 0 2px 6px rgba(106,63,181,0.35);
         }
-        .abyss-sp-select:focus { outline: none; }
 
         .abyss-sp-header {
             display: flex;
@@ -1280,7 +1289,7 @@
         }
         .tree-pair {
             display: flex;
-            gap: 22px;
+            gap: 14px;
             justify-content: center;
             margin-bottom: 18px;
             padding-bottom: 18px;
@@ -1668,6 +1677,12 @@
             font-size: 13px;
             font-family: inherit;
             outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .player-name-input:focus {
+            border-color: #b8860b;
+            box-shadow: 0 0 0 2px rgba(184,134,11,0.18);
+            background: #ffffff;
         }
         .player-data-input {
             width: 100%;
@@ -1680,6 +1695,12 @@
             font-family: monospace;
             resize: vertical;
             outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .player-data-input:focus {
+            border-color: #b8860b;
+            box-shadow: 0 0 0 2px rgba(184,134,11,0.18);
+            background: #ffffff;
         }
         .btn-player-add {
             border: none;
@@ -1849,7 +1870,9 @@
             cursor: pointer;
             font-family: inherit;
             box-sizing: border-box;
+            transition: background 0.15s ease;
         }
+        .raid-settings-toggle:active { background: rgba(198,40,40,0.06); }
         .raid-settings-status-mini {
             flex: 1;
             text-align: right;
@@ -2203,7 +2226,7 @@
             .abyss-tab { font-size: 17px; padding: 14px 0 20px 0; }
             .abyss-build-subtitle { font-size: 16px; padding: 7px 16px; }
             .abyss-sp-disclaimer { font-size: 14px; }
-            .abyss-sp-select { font-size: 16px; padding: 9px 18px; min-width: 110px; border-radius: 12px; }
+            .abyss-checkpoint-btn { font-size: 13px; padding: 9px 2px; border-radius: 10px; }
             .abyss-sp-header { margin-top: 24px; }
             .tree-cat-label { font-size: 18px; margin-bottom: 8px; }
             .tree-cat-total { font-size: 13px; padding: 1px 6px; border-radius: 8px; }
@@ -2618,7 +2641,7 @@
                         <div class="abyss-page-inner">
                             <div class="abyss-sp-header">
                                 <div class="abyss-build-subtitle" id="abyss-build-subtitle"></div>
-                                <select class="abyss-sp-select" id="abyss-sp-select"></select>
+                                <div class="abyss-checkpoint-grid" id="abyss-checkpoint-grid"></div>
                             </div>
                             <div class="abyss-sp-disclaimer"><span data-i18n="abyssSpDisclaimerLine1">⚠️ 各分類技能點數加總與選單顯示的總點數可能會有些微差異</span><br><span data-i18n="abyssSpDisclaimerLine2">（僅供參考，不影響配點本身）</span></div>
                             <div id="abyss-skill-trees"></div>
@@ -3072,10 +3095,7 @@
                 if (mode) {
                     document.getElementById('abyss-detail-title').textContent = modeDisplayName(mode);
                     document.getElementById('abyss-build-subtitle').textContent = mode.build ? `${modeBuildDisplayName(mode)}丨${t('fairyGoldLabel')}` : t('abyssGuideNotReady');
-                    const keepCheckpoint = currentAbyssCheckpoint;
                     rebuildCheckpointDropdown(mode);
-                    const select = document.getElementById('abyss-sp-select');
-                    if (select && keepCheckpoint) select.value = keepCheckpoint;
                     renderAbyssGearPanel(mode);
                 }
             }
@@ -5957,44 +5977,47 @@
             if (!mode.checkpointSeq) mode.checkpointSeq = Object.keys(mode.spData).length;
         }
 
-        function rebuildCheckpointDropdown(mode) {
-            const select = document.getElementById('abyss-sp-select');
-            if (!select) return;
-            select.innerHTML = '';
-            Object.keys(mode.spData).forEach(id => {
-                const opt = document.createElement('option');
-                opt.value = id;
-                opt.textContent = checkpointLabel(mode, id);
-                select.appendChild(opt);
+        function selectAbyssCheckpoint(mode, checkpointId) {
+            currentAbyssCheckpoint = checkpointId;
+            document.querySelectorAll('#abyss-checkpoint-grid .abyss-checkpoint-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.checkpoint === checkpointId);
             });
-        }
-
-        function refreshCurrentCheckpointOptionLabel(mode) {
-            const select = document.getElementById('abyss-sp-select');
-            if (!select) return;
-            const opt = Array.from(select.options).find(o => o.value === currentAbyssCheckpoint);
-            if (opt) opt.textContent = checkpointLabel(mode, currentAbyssCheckpoint);
-        }
-
-        function renderAbyssSpPanel(mode) {
-            const select = document.getElementById('abyss-sp-select');
-            if (!select) return;
-            ensureFirstCheckpoint(mode);
-            rebuildCheckpointDropdown(mode);
-            const keys = Object.keys(mode.spData);
-            currentAbyssCheckpoint = keys[0];
-            select.value = currentAbyssCheckpoint;
             updateSkillTreeValues(mode, currentAbyssCheckpoint);
             refreshExportArea();
         }
 
-        document.getElementById('abyss-sp-select').addEventListener('change', function () {
-            const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
-            currentAbyssCheckpoint = this.value;
-            if (mode) updateSkillTreeValues(mode, currentAbyssCheckpoint);
-            refreshExportArea();
-        });
+        function rebuildCheckpointDropdown(mode) {
+            const grid = document.getElementById('abyss-checkpoint-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            Object.keys(mode.spData).forEach(id => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'abyss-checkpoint-btn' + (id === currentAbyssCheckpoint ? ' active' : '');
+                btn.dataset.checkpoint = id;
+                btn.textContent = checkpointLabel(mode, id);
+                btn.addEventListener('click', () => selectAbyssCheckpoint(mode, id));
+                grid.appendChild(btn);
+            });
+        }
 
+        function refreshCurrentCheckpointOptionLabel(mode) {
+            const grid = document.getElementById('abyss-checkpoint-grid');
+            if (!grid) return;
+            const btn = grid.querySelector(`.abyss-checkpoint-btn[data-checkpoint="${currentAbyssCheckpoint}"]`);
+            if (btn) btn.textContent = checkpointLabel(mode, currentAbyssCheckpoint);
+        }
+
+        function renderAbyssSpPanel(mode) {
+            const grid = document.getElementById('abyss-checkpoint-grid');
+            if (!grid) return;
+            ensureFirstCheckpoint(mode);
+            const keys = Object.keys(mode.spData);
+            currentAbyssCheckpoint = keys[0];
+            rebuildCheckpointDropdown(mode);
+            updateSkillTreeValues(mode, currentAbyssCheckpoint);
+            refreshExportArea();
+        }
 
         const ABYSS_GEAR_CHUNK_SIZE = 10;
         const ABYSS_GEAR_RANGE_THRESHOLD = 20;

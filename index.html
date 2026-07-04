@@ -3525,6 +3525,7 @@
             renderPlayersList();
             loadRaidTokens();
             updateRaidIosHint();
+            autoConnectRaidOnLoad();
 
             showView('home');
 
@@ -4586,6 +4587,23 @@
             localStorage.setItem(RAID_RELAY_URL_KEY, document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, ''));
         }
 
+        function autoConnectRaidOnLoad() {
+            const relayUrl = document.getElementById('raid-relay-url-input').value.trim();
+            const appToken = document.getElementById('raid-app-token-input').value.trim();
+            const playerToken = document.getElementById('raid-player-token-input').value.trim();
+            if (relayUrl && appToken && playerToken) {
+                connectRaidAPI(true);
+            }
+        }
+
+        // App從背景切回前景，或分頁重新顯示時，如果偵測到目前是斷線狀態，自動重連一次，不用手動按
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && raidConnState === 'disconnected') {
+                autoConnectRaidOnLoad();
+            }
+        });
+
+
         function setRaidConnectStatus(text, cls) {
             const el = document.getElementById('raid-connect-status');
             if (!el) return;
@@ -4618,6 +4636,16 @@
         let raidSocket = null;
         let apiRaidTitans = [];
         let apiCurrentTitanIndex = -1;
+        let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
+        let raidAutoReconnectTimer = null;
+        const RAID_AUTO_RECONNECT_DELAY = 6000; // 斷線後幾秒自動重連
+
+        function scheduleRaidAutoReconnect() {
+            clearTimeout(raidAutoReconnectTimer);
+            raidAutoReconnectTimer = setTimeout(() => {
+                if (raidConnState === 'disconnected') connectRaidAPI(true);
+            }, RAID_AUTO_RECONNECT_DELAY);
+        }
 
         function apiSplitPartId(partId) {
             for (const prefix of ['Armor', 'Body', 'Skeleton']) {
@@ -4707,22 +4735,30 @@
             }
         }
 
-        async function connectRaidAPI() {
+        async function connectRaidAPI(silent) {
+            if (raidConnState === 'connected' || raidConnState === 'connecting') {
+                if (!silent) showPlayerCopyToastLike('已經連線中，不用再按一次');
+                return;
+            }
+            raidConnState = 'connecting';
             saveRaidTokens();
             const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
             const appToken = document.getElementById('raid-app-token-input').value.trim();
             const playerToken = document.getElementById('raid-player-token-input').value.trim();
 
             if (!relayUrl) {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('請先填入中繼伺服器網址', '');
-                alert('請先填入中繼伺服器網址（例如部署在 Render 上的網址）');
+                if (!silent) alert('請先填入中繼伺服器網址（例如部署在 Render 上的網址）');
                 return;
             }
             if (!appToken) {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus(t('raidStatusNoAppToken'), '');
                 return;
             }
             if (!playerToken) {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus(t('playerDataMissing'), '');
                 return;
             }
@@ -4738,8 +4774,10 @@
                 });
             } catch (e) {
                 const msg = '連不到中繼伺服器，請確認網址是否正確、伺服器是否已啟動：\n' + (e && e.message ? e.message : String(e));
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('訂閱失敗（點我看詳情）', '');
-                alert(msg);
+                if (!silent) alert(msg);
+                scheduleRaidAutoReconnect();
                 return;
             }
 
@@ -4748,8 +4786,10 @@
 
             if (!resp.ok) {
                 const msg = `中繼伺服器回應失敗\nHTTP 狀態碼：${resp.status} ${resp.statusText}\n回應內容：${bodyText.slice(0, 300)}`;
+                raidConnState = 'disconnected';
                 setRaidConnectStatus(`訂閱失敗（HTTP ${resp.status}）`, '');
-                alert(msg);
+                if (!silent) alert(msg);
+                scheduleRaidAutoReconnect();
                 return;
             }
 
@@ -4757,12 +4797,14 @@
             try {
                 subscribeData = JSON.parse(bodyText);
             } catch (e3) {
-                alert('伺服器回應了，但不是合法的 JSON：\n' + bodyText.slice(0, 300));
+                raidConnState = 'disconnected';
+                if (!silent) alert('伺服器回應了，但不是合法的 JSON：\n' + bodyText.slice(0, 300));
                 setRaidConnectStatus('訂閱失敗（回應格式錯誤）', '');
                 return;
             }
 
             if (subscribeData && subscribeData.refused && subscribeData.refused.length > 0) {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('訂閱被拒絕：' + (subscribeData.refused[0].reason || '未知原因'), '');
                 return;
             }
@@ -4770,6 +4812,7 @@
             disconnectRaidAPI();
 
             if (typeof io === 'undefined') {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('Socket.IO 函式庫載入失敗', '');
                 return;
             }
@@ -4787,17 +4830,30 @@
                 raidSocket.emit('connect-raid', { appToken });
             });
             raidSocket.on('connect_error', (err) => {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('中繼伺服器連線錯誤：' + (err && err.message ? err.message : err), '');
                 console.error('TT2 relay socket connect_error:', err);
+                scheduleRaidAutoReconnect();
             });
             raidSocket.on('disconnect', () => {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus(t('raidStatusNotConnected'), '');
+                scheduleRaidAutoReconnect();
             });
-            raidSocket.on('raid:connect', () => setRaidConnectStatus('✓ 已連線', 'ok'));
+            raidSocket.on('raid:connect', () => {
+                raidConnState = 'connected';
+                setRaidConnectStatus('✓ 已連線', 'ok');
+            });
             raidSocket.on('raid:connect_error', (err) => {
+                raidConnState = 'disconnected';
                 setRaidConnectStatus('GameHive 連線錯誤：' + (err && err.message ? err.message : err), '');
+                scheduleRaidAutoReconnect();
             });
-            raidSocket.on('raid:disconnect', () => setRaidConnectStatus(t('raidStatusNotConnected'), ''));
+            raidSocket.on('raid:disconnect', () => {
+                raidConnState = 'disconnected';
+                setRaidConnectStatus(t('raidStatusNotConnected'), '');
+                scheduleRaidAutoReconnect();
+            });
             raidSocket.on('raid:sub_start', handleApiRaidStart);
             raidSocket.on('raid:start', handleApiRaidStart);
             raidSocket.on('raid:sub_cycle', handleApiRaidStart);

@@ -2740,6 +2740,7 @@
                         <span class="raid-settings-arrow" id="raid-settings-arrow">▾</span>
                     </button>
                     <div class="raid-settings-body" id="raid-settings-body">
+                        <input type="text" id="raid-relay-url-input" class="player-name-input" placeholder="中繼伺服器網址（例如 https://tt2-raid-relay.onrender.com）">
                         <input type="text" id="raid-app-token-input" class="player-name-input" data-i18n-placeholder="raidAppTokenPlaceholder" placeholder="Application Token（申請中）">
                         <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token">
                         <div class="raid-connect-btns">
@@ -4538,6 +4539,7 @@
            ══════════════════════════════════════════════════════════ */
         const RAID_APP_TOKEN_KEY = 'tt2_raid_app_token';
         const RAID_PLAYER_TOKEN_KEY = 'tt2_raid_player_token';
+        const RAID_RELAY_URL_KEY = 'tt2_raid_relay_url';
 
         const RAID_PARTS = [
             { key: 'Head',          label: 'raidPartHead' },
@@ -4570,8 +4572,10 @@
         function loadRaidTokens() {
             const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || '';
             const playerToken = localStorage.getItem(RAID_PLAYER_TOKEN_KEY) || '';
+            const relayUrl = localStorage.getItem(RAID_RELAY_URL_KEY) || '';
             document.getElementById('raid-app-token-input').value = appToken;
             document.getElementById('raid-player-token-input').value = playerToken;
+            document.getElementById('raid-relay-url-input').value = relayUrl;
             // 已經填過 Token 就預設收合，避免每次打開都要先看到一堆輸入框
             toggleRaidSettingsPanel(!(appToken && playerToken));
         }
@@ -4579,6 +4583,7 @@
         function saveRaidTokens() {
             localStorage.setItem(RAID_APP_TOKEN_KEY, document.getElementById('raid-app-token-input').value.trim());
             localStorage.setItem(RAID_PLAYER_TOKEN_KEY, document.getElementById('raid-player-token-input').value.trim());
+            localStorage.setItem(RAID_RELAY_URL_KEY, document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, ''));
         }
 
         function setRaidConnectStatus(text, cls) {
@@ -4704,9 +4709,15 @@
 
         async function connectRaidAPI() {
             saveRaidTokens();
+            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
             const appToken = document.getElementById('raid-app-token-input').value.trim();
             const playerToken = document.getElementById('raid-player-token-input').value.trim();
 
+            if (!relayUrl) {
+                setRaidConnectStatus('請先填入中繼伺服器網址', '');
+                alert('請先填入中繼伺服器網址（例如部署在 Render 上的網址）');
+                return;
+            }
             if (!appToken) {
                 setRaidConnectStatus(t('raidStatusNoAppToken'), '');
                 return;
@@ -4720,13 +4731,13 @@
 
             let resp;
             try {
-                resp = await fetch(`${RAID_API_BASE}/subscribe`, {
+                resp = await fetch(`${relayUrl}/subscribe`, {
                     method: 'POST',
-                    headers: { 'API-Authenticate': appToken, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ player_tokens: [playerToken] })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appToken, playerToken })
                 });
             } catch (e) {
-                const msg = '網路層級失敗（很可能是 CORS 被擋，或網址打不通）：\n' + (e && e.message ? e.message : String(e));
+                const msg = '連不到中繼伺服器，請確認網址是否正確、伺服器是否已啟動：\n' + (e && e.message ? e.message : String(e));
                 setRaidConnectStatus('訂閱失敗（點我看詳情）', '');
                 alert(msg);
                 return;
@@ -4736,7 +4747,7 @@
             try { bodyText = await resp.text(); } catch (e2) { bodyText = '(無法讀取回應內容)'; }
 
             if (!resp.ok) {
-                const msg = `伺服器回應失敗\nHTTP 狀態碼：${resp.status} ${resp.statusText}\n回應內容：${bodyText.slice(0, 300)}`;
+                const msg = `中繼伺服器回應失敗\nHTTP 狀態碼：${resp.status} ${resp.statusText}\n回應內容：${bodyText.slice(0, 300)}`;
                 setRaidConnectStatus(`訂閱失敗（HTTP ${resp.status}）`, '');
                 alert(msg);
                 return;
@@ -4763,31 +4774,38 @@
                 return;
             }
 
-            raidSocket = io(`${RAID_API_BASE}/raid`, {
+            // 連到自己的中繼伺服器（一般連線，沒有header限制），
+            // 再請中繼伺服器代為連線GameHive並轉發事件（事件名稱前面會加上 raid: 前綴）
+            raidSocket = io(relayUrl, {
                 transports: ['websocket'],
-                extraHeaders: { 'API-Authenticate': appToken },
                 reconnectionAttempts: 10,
                 autoConnect: true
             });
 
             raidSocket.on('connect', () => {
-                setRaidConnectStatus('✓ 已連線', 'ok');
+                setRaidConnectStatus('已連上中繼伺服器，訂閱突襲資料中...', '');
+                raidSocket.emit('connect-raid', { appToken });
             });
             raidSocket.on('connect_error', (err) => {
-                setRaidConnectStatus('連線錯誤：' + (err && err.message ? err.message : err), '');
-                console.error('TT2 raid socket connect_error:', err);
+                setRaidConnectStatus('中繼伺服器連線錯誤：' + (err && err.message ? err.message : err), '');
+                console.error('TT2 relay socket connect_error:', err);
             });
             raidSocket.on('disconnect', () => {
                 setRaidConnectStatus(t('raidStatusNotConnected'), '');
             });
-            raidSocket.on('sub_start', handleApiRaidStart);
-            raidSocket.on('start', handleApiRaidStart);
-            raidSocket.on('sub_cycle', handleApiRaidStart);
-            raidSocket.on('cycle_reset', handleApiRaidStart);
-            raidSocket.on('attack', handleApiAttack);
-            raidSocket.on('end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
-            raidSocket.on('retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
-            raidSocket.on('unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));
+            raidSocket.on('raid:connect', () => setRaidConnectStatus('✓ 已連線', 'ok'));
+            raidSocket.on('raid:connect_error', (err) => {
+                setRaidConnectStatus('GameHive 連線錯誤：' + (err && err.message ? err.message : err), '');
+            });
+            raidSocket.on('raid:disconnect', () => setRaidConnectStatus(t('raidStatusNotConnected'), ''));
+            raidSocket.on('raid:sub_start', handleApiRaidStart);
+            raidSocket.on('raid:start', handleApiRaidStart);
+            raidSocket.on('raid:sub_cycle', handleApiRaidStart);
+            raidSocket.on('raid:cycle_reset', handleApiRaidStart);
+            raidSocket.on('raid:attack', handleApiAttack);
+            raidSocket.on('raid:end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
+            raidSocket.on('raid:retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
+            raidSocket.on('raid:unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));
         }
 
         function generateRandomRaidParts() {

@@ -4718,17 +4718,36 @@
 
             setRaidConnectStatus('訂閱中...', '');
 
-            let subscribeData;
+            let resp;
             try {
-                const resp = await fetch(`${RAID_API_BASE}/subscribe`, {
+                resp = await fetch(`${RAID_API_BASE}/subscribe`, {
                     method: 'POST',
                     headers: { 'API-Authenticate': appToken, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ player_tokens: [playerToken] })
                 });
-                subscribeData = await resp.json();
             } catch (e) {
-                setRaidConnectStatus('訂閱失敗，可能是網路或瀏覽器 CORS 限制（請查看主控台錯誤）', '');
-                console.error('TT2 raid subscribe error:', e);
+                const msg = '網路層級失敗（很可能是 CORS 被擋，或網址打不通）：\n' + (e && e.message ? e.message : String(e));
+                setRaidConnectStatus('訂閱失敗（點我看詳情）', '');
+                alert(msg);
+                return;
+            }
+
+            let bodyText = '';
+            try { bodyText = await resp.text(); } catch (e2) { bodyText = '(無法讀取回應內容)'; }
+
+            if (!resp.ok) {
+                const msg = `伺服器回應失敗\nHTTP 狀態碼：${resp.status} ${resp.statusText}\n回應內容：${bodyText.slice(0, 300)}`;
+                setRaidConnectStatus(`訂閱失敗（HTTP ${resp.status}）`, '');
+                alert(msg);
+                return;
+            }
+
+            let subscribeData;
+            try {
+                subscribeData = JSON.parse(bodyText);
+            } catch (e3) {
+                alert('伺服器回應了，但不是合法的 JSON：\n' + bodyText.slice(0, 300));
+                setRaidConnectStatus('訂閱失敗（回應格式錯誤）', '');
                 return;
             }
 

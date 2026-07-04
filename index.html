@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TT2 Toolkit">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
 
@@ -4595,7 +4596,113 @@
             card.classList.toggle('expanded', shouldExpand);
         }
 
-        function connectRaidAPI() {
+        /* ══════════════════════════════════════════════════════════
+           真實突襲 API 連線（GameHive TT2 API 1.0.0）
+           REST: POST https://tt2-public.gamehivegames.com/api/subscribe
+                 header: API-Authenticate: <Application Token>
+                 body:   { player_tokens: [<Player Token>] }
+           Socket: namespace /raid，連線時同樣帶 API-Authenticate header
+           事件對照官方文件：sub_start/start/sub_cycle/cycle_reset 給整場突襲的
+           titan 清單（含每個部位盔甲/肉體/骨架各自的血量上限）；attack 給
+           單次攻擊後的目前狀態快照（raid_state.current）
+           注意：這是瀏覽器端直接呼叫，實際部署時若遇到 CORS 錯誤，
+           需要一個小型後端代理轉發請求（GameHive 這組 API 主要設計給
+           24小時運行的伺服器程式使用）
+        ══════════════════════════════════════════════════════════ */
+        const RAID_API_BASE = 'https://tt2-public.gamehivegames.com/api';
+        let raidSocket = null;
+        let apiRaidTitans = [];
+        let apiCurrentTitanIndex = -1;
+
+        function apiSplitPartId(partId) {
+            for (const prefix of ['Armor', 'Body', 'Skeleton']) {
+                if (partId.startsWith(prefix)) return { layer: prefix.toLowerCase(), loc: partId.slice(prefix.length) };
+            }
+            return { layer: null, loc: null };
+        }
+
+        function apiBuildPartsFromTitan(titan) {
+            const parts = {};
+            RAID_PARTS.forEach(def => { parts[def.key] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 }; });
+            (titan.parts || []).forEach(p => {
+                const { layer, loc } = apiSplitPartId(p.part_id);
+                if (!parts[loc]) return;
+                if (layer === 'armor') { parts[loc].armorMax = p.total_hp; parts[loc].armor = p.total_hp; }
+                else if (layer === 'body') { parts[loc].bodyMax = p.total_hp; parts[loc].body = p.total_hp; }
+            });
+            return parts;
+        }
+
+        function apiSetRaidFromTitanIndex(index) {
+            const titan = apiRaidTitans[index];
+            if (!titan) return;
+            apiCurrentTitanIndex = index;
+            raidBossOrdinal = index + 1;
+            raidState = {
+                bossIndex: RAID_BOSS_NAMES.indexOf(titan.enemy_name),
+                bossName: titan.enemy_name || '—',
+                bossOrdinal: index + 1,
+                parts: apiBuildPartsFromTitan(titan),
+                maxHp: titan.total_hp,
+                currentHp: titan.total_hp,
+                updatedAt: Date.now()
+            };
+            raidRecentAttacks = [];
+            raidBossChangedAt = Date.now();
+            raidLastSkillReminder = null;
+            raidLastSkillReminderNotifiedAt = 0;
+            raidLastBossLowNotifiedAt = 0;
+        }
+
+        /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
+        function handleApiRaidStart(payload) {
+            const titans = payload && payload.raid && payload.raid.titans;
+            if (!titans || titans.length === 0) return;
+            apiRaidTitans = titans;
+            apiSetRaidFromTitanIndex(0);
+            renderRaidStatus();
+        }
+
+        function handleApiAttack(payload) {
+            const rs = payload && payload.raid_state;
+            if (!rs) return;
+            if (rs.titan_index !== apiCurrentTitanIndex) {
+                apiSetRaidFromTitanIndex(rs.titan_index);
+            }
+            if (!raidState) return;
+            const cur = rs.current || {};
+            (cur.parts || []).forEach(p => {
+                const { layer, loc } = apiSplitPartId(p.part_id);
+                if (!raidState.parts[loc]) return;
+                if (layer === 'armor') raidState.parts[loc].armor = p.current_hp;
+                else if (layer === 'body') raidState.parts[loc].body = p.current_hp;
+            });
+            if (typeof cur.current_hp === 'number') raidState.currentHp = cur.current_hp;
+            raidState.updatedAt = Date.now();
+
+            const dmgEntries = [];
+            ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
+                (cd.damage_log || []).forEach(d => dmgEntries.push(d));
+            });
+            if (dmgEntries.length > 0) {
+                const top = dmgEntries.reduce((a, b) => (b.value > a.value ? b : a));
+                const { layer, loc } = apiSplitPartId(top.id);
+                const totalDmg = dmgEntries.reduce((s, d) => s + d.value, 0);
+                const playerName = (payload.player && payload.player.name) || '?';
+                pushRaidRecentAttack(playerName, loc, layer === 'body' ? 'body' : 'armor', totalDmg);
+            }
+
+            renderRaidStatus();
+        }
+
+        function disconnectRaidAPI() {
+            if (raidSocket) {
+                raidSocket.disconnect();
+                raidSocket = null;
+            }
+        }
+
+        async function connectRaidAPI() {
             saveRaidTokens();
             const appToken = document.getElementById('raid-app-token-input').value.trim();
             const playerToken = document.getElementById('raid-player-token-input').value.trim();
@@ -4608,8 +4715,60 @@
                 setRaidConnectStatus(t('playerDataMissing'), '');
                 return;
             }
-            // TODO：Application Token 核發後，這裡改成真正呼叫 REST /subscribe + 連線 Socket.IO
-            setRaidConnectStatus(t('raidStatusNoAppToken'), '');
+
+            setRaidConnectStatus('訂閱中...', '');
+
+            let subscribeData;
+            try {
+                const resp = await fetch(`${RAID_API_BASE}/subscribe`, {
+                    method: 'POST',
+                    headers: { 'API-Authenticate': appToken, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ player_tokens: [playerToken] })
+                });
+                subscribeData = await resp.json();
+            } catch (e) {
+                setRaidConnectStatus('訂閱失敗，可能是網路或瀏覽器 CORS 限制（請查看主控台錯誤）', '');
+                console.error('TT2 raid subscribe error:', e);
+                return;
+            }
+
+            if (subscribeData && subscribeData.refused && subscribeData.refused.length > 0) {
+                setRaidConnectStatus('訂閱被拒絕：' + (subscribeData.refused[0].reason || '未知原因'), '');
+                return;
+            }
+
+            disconnectRaidAPI();
+
+            if (typeof io === 'undefined') {
+                setRaidConnectStatus('Socket.IO 函式庫載入失敗', '');
+                return;
+            }
+
+            raidSocket = io(`${RAID_API_BASE}/raid`, {
+                transports: ['websocket'],
+                extraHeaders: { 'API-Authenticate': appToken },
+                reconnectionAttempts: 10,
+                autoConnect: true
+            });
+
+            raidSocket.on('connect', () => {
+                setRaidConnectStatus('✓ 已連線', 'ok');
+            });
+            raidSocket.on('connect_error', (err) => {
+                setRaidConnectStatus('連線錯誤：' + (err && err.message ? err.message : err), '');
+                console.error('TT2 raid socket connect_error:', err);
+            });
+            raidSocket.on('disconnect', () => {
+                setRaidConnectStatus(t('raidStatusNotConnected'), '');
+            });
+            raidSocket.on('sub_start', handleApiRaidStart);
+            raidSocket.on('start', handleApiRaidStart);
+            raidSocket.on('sub_cycle', handleApiRaidStart);
+            raidSocket.on('cycle_reset', handleApiRaidStart);
+            raidSocket.on('attack', handleApiAttack);
+            raidSocket.on('end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
+            raidSocket.on('retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
+            raidSocket.on('unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));
         }
 
         function generateRandomRaidParts() {

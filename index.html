@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -4745,36 +4745,9 @@
             }
         }
 
-        async function connectRaidAPI(silent) {
-            if (raidConnState === 'connected' || raidConnState === 'connecting') {
-                if (!silent) showPlayerCopyToastLike('已經連線中，不用再按一次');
-                return;
-            }
-            raidConnState = 'connecting';
-            saveRaidTokens();
-            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
-            const appToken = document.getElementById('raid-app-token-input').value.trim();
-            const playerToken = document.getElementById('raid-player-token-input').value.trim();
-
-            if (!relayUrl) {
-                raidConnState = 'disconnected';
-                setRaidConnectStatus('請先填入中繼伺服器網址', '');
-                if (!silent) alert('請先填入中繼伺服器網址（例如部署在 Render 上的網址）');
-                return;
-            }
-            if (!appToken) {
-                raidConnState = 'disconnected';
-                setRaidConnectStatus(t('raidStatusNoAppToken'), '');
-                return;
-            }
-            if (!playerToken) {
-                raidConnState = 'disconnected';
-                setRaidConnectStatus(t('playerDataMissing'), '');
-                return;
-            }
-
-            setRaidConnectStatus('訂閱中...', '');
-
+        // 在 GameHive Socket 確認連線成功之後才呼叫這個函式，
+        // 確保 sub_start / sub_cycle 這類「訂閱當下發送」的事件不會被錯過
+        async function callRaidSubscribeApi(relayUrl, appToken, playerToken, silent) {
             let resp;
             try {
                 resp = await fetch(`${relayUrl}/subscribe`, {
@@ -4824,13 +4797,51 @@
                 return;
             }
 
-            disconnectRaidAPI();
+            raidConnState = 'connected';
+            setRaidConnectStatus('✓ 已連線', 'ok');
+        }
+
+        async function connectRaidAPI(silent) {
+            if (raidConnState === 'connected' || raidConnState === 'connecting') {
+                if (!silent) showPlayerCopyToastLike('已經連線中，不用再按一次');
+                return;
+            }
+            raidConnState = 'connecting';
+            saveRaidTokens();
+            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
+            const appToken = document.getElementById('raid-app-token-input').value.trim();
+            const playerToken = document.getElementById('raid-player-token-input').value.trim();
+
+            if (!relayUrl) {
+                raidConnState = 'disconnected';
+                setRaidConnectStatus('請先填入中繼伺服器網址', '');
+                if (!silent) alert('請先填入中繼伺服器網址（例如部署在 Render 上的網址）');
+                return;
+            }
+            if (!appToken) {
+                raidConnState = 'disconnected';
+                setRaidConnectStatus(t('raidStatusNoAppToken'), '');
+                return;
+            }
+            if (!playerToken) {
+                raidConnState = 'disconnected';
+                setRaidConnectStatus(t('playerDataMissing'), '');
+                return;
+            }
 
             if (typeof io === 'undefined') {
                 raidConnState = 'disconnected';
                 setRaidConnectStatus('Socket.IO 函式庫載入失敗', '');
                 return;
             }
+
+            disconnectRaidAPI();
+
+            // 官方文件說明 sub_start / sub_cycle 這類「訂閱當下才發送」的事件，
+            // 必須在 Socket 已經連上 GameHive 之後才呼叫訂閱 REST API，
+            // 不然訂閱當下發出的事件會因為 Socket 還沒連上而遺失、之後也不會補送。
+            // 所以這裡改成：先連 Socket → 等 GameHive 連線確認成功 → 才呼叫 /subscribe。
+            setRaidConnectStatus('連線中繼伺服器中...', '');
 
             // 連到自己的中繼伺服器（一般連線，沒有header限制），
             // 再請中繼伺服器代為連線GameHive並轉發事件（事件名稱前面會加上 raid: 前綴）
@@ -4841,7 +4852,7 @@
             });
 
             raidSocket.on('connect', () => {
-                setRaidConnectStatus('已連上中繼伺服器，訂閱突襲資料中...', '');
+                setRaidConnectStatus('已連上中繼伺服器，連線 GameHive 中...', '');
                 raidSocket.emit('connect-raid', { appToken, playerToken });
             });
             raidSocket.on('connect_error', (err) => {
@@ -4855,9 +4866,11 @@
                 setRaidConnectStatus(t('raidStatusNotConnected'), '');
                 scheduleRaidAutoReconnect();
             });
-            raidSocket.on('raid:connect', () => {
-                raidConnState = 'connected';
-                setRaidConnectStatus('✓ 已連線', 'ok');
+            raidSocket.on('raid:connect', async () => {
+                // GameHive Socket 已經連上了，這時候才呼叫訂閱 REST API，
+                // 確保 sub_start / sub_cycle 這類訂閱當下發送的事件不會被錯過
+                setRaidConnectStatus('已連上 GameHive，訂閱中...', '');
+                await callRaidSubscribeApi(relayUrl, appToken, playerToken, silent);
             });
             raidSocket.on('raid:connect_error', (err) => {
                 raidConnState = 'disconnected';
@@ -4877,6 +4890,11 @@
             raidSocket.on('raid:end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
             raidSocket.on('raid:retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
             raidSocket.on('raid:unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));
+            raidSocket.on('raid:debug_any', ({ eventName, payload }) => {
+                // 保險機制：這裡會收到「所有」從 GameHive 傳來的原始事件，
+                // 不管名稱跟我們預期的清單符不符合，都會先記錄下來方便除錯
+                captureRaidDebugPayload('any:' + eventName, payload);
+            });
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -6516,4 +6534,4 @@
     </script>
 
 </body>
-</html> 
+</html>

@@ -4723,6 +4723,18 @@
             const titans = payload && payload.raid && payload.raid.titans;
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
+
+            // sub_cycle 會定期重複發送同一份「輪次開始時」的靜態快照，不是即時資料。
+            // 如果已經有 attack 事件確立了目前正在打的王，這裡就不能再拿 sub_cycle 蓋回去，
+            // 只需要更新 apiRaidTitans 這個參照（讓之後 attack 事件的 titan_index 查得到正確資料）即可。
+            if (raidState && apiCurrentEnemyId) {
+                const stillExists = titans.some(t => t.enemy_id === apiCurrentEnemyId);
+                if (stillExists) {
+                    renderRaidStatus();
+                    return;
+                }
+            }
+
             apiSetRaidFromTitanIndex(apiFindActiveTitanIndex(titans));
             renderRaidStatus();
         }

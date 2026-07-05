@@ -2779,6 +2779,9 @@
                                 <span class="raid-boss-name" id="raid-boss-name">—</span>
                                 <span class="raid-boss-ordinal" id="raid-boss-ordinal"></span>
                             </div>
+                            <div id="raid-unconfirmed-hint" style="display:none; font-size:11px; color:#a37a7a; margin-bottom:4px;">
+                                ⏳ 尚未收到真實攻擊資料，以下可能不是目前正在打的王
+                            </div>
                             <div class="raid-boss-hp-row">
                                 <span class="raid-boss-hp-label armor" data-i18n="raidLayerArmor">盔甲</span>
                                 <div class="raid-boss-hpbar-wrap armor">
@@ -4646,6 +4649,7 @@
         let raidSocket = null;
         let apiRaidTitans = [];
         let apiCurrentTitanIndex = -1;
+        let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
         const RAID_AUTO_RECONNECT_DELAY = 6000; // 斷線後幾秒自動重連
@@ -4685,6 +4689,16 @@
 
         let apiCurrentEnemyId = null; // 記錄目前追蹤的王的 enemy_id，用來判斷 sub_cycle 重複來的是不是同一隻王
 
+        // 王名字旁邊官方顯示的「血量」其實是內部的擊殺門檻，跟畫面上「肉體」加總的血量是兩個不同數字
+        // （擊殺門檻通常比肉體血量加總小，因為不用真的打光每個部位才會死）。
+        // 這裡改成一律用「肉體血量加總」來代表王的血量，跟畫面上顯示的一致，通知的時機才會準。
+        function sumBodyHp(parts) {
+            return Object.values(parts).reduce((s, p) => s + p.body, 0);
+        }
+        function sumBodyMaxHp(parts) {
+            return Object.values(parts).reduce((s, p) => s + p.bodyMax, 0);
+        }
+
         function apiSetRaidFromTitanIndex(index) {
             const titan = apiRaidTitans[index];
             if (!titan) return;
@@ -4697,18 +4711,22 @@
                 // 同一隻王的資料重複送來（例如 sub_cycle 定期重推），只更新血量，
                 // 不要清掉「最近攻擊」清單，也不要誤判成換了新王
                 raidState.parts = apiBuildPartsFromTitan(titan);
-                raidState.currentHp = titan.current_hp;
+                raidState.currentHp = sumBodyHp(raidState.parts);
+                raidState.maxHp = sumBodyMaxHp(raidState.parts);
+                raidState.killMaxHp = titan.total_hp; // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
                 raidState.updatedAt = Date.now();
                 return;
             }
 
+            const builtParts = apiBuildPartsFromTitan(titan);
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(titan.enemy_name),
                 bossName: titan.enemy_name || '—',
                 bossOrdinal: index + 1,
-                parts: apiBuildPartsFromTitan(titan),
-                maxHp: titan.total_hp,
-                currentHp: titan.current_hp,
+                parts: builtParts,
+                maxHp: sumBodyMaxHp(builtParts),
+                currentHp: sumBodyHp(builtParts),
+                killMaxHp: titan.total_hp, // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
                 updatedAt: Date.now()
             };
             raidRecentAttacks = [];
@@ -4742,6 +4760,7 @@
         function handleApiAttack(payload) {
             const rs = payload && payload.raid_state;
             if (!rs) return;
+            apiHasReceivedAttack = true;
             if (rs.titan_index !== apiCurrentTitanIndex) {
                 apiSetRaidFromTitanIndex(rs.titan_index);
             }
@@ -4753,7 +4772,8 @@
                 if (layer === 'armor') raidState.parts[loc].armor = p.current_hp;
                 else if (layer === 'body') raidState.parts[loc].body = p.current_hp;
             });
-            if (typeof cur.current_hp === 'number') raidState.currentHp = cur.current_hp;
+            // 用肉體血量加總代表王的血量（跟畫面上顯示的一致），不用 API 回傳的擊殺門檻數字
+            raidState.currentHp = sumBodyHp(raidState.parts);
             raidState.updatedAt = Date.now();
 
             const dmgEntries = [];
@@ -4776,6 +4796,7 @@
                 raidSocket.disconnect();
                 raidSocket = null;
             }
+            apiHasReceivedAttack = false;
         }
 
         // 在 GameHive Socket 確認連線成功之後才呼叫這個函式，
@@ -5145,6 +5166,11 @@
             raidLastBossName = raidState.bossName;
 
             document.getElementById('raid-boss-name').textContent = raidState.bossName;
+            const unconfirmedHintEl = document.getElementById('raid-unconfirmed-hint');
+            if (unconfirmedHintEl) {
+                const showHint = !raidDemoTimer && !apiHasReceivedAttack;
+                unconfirmedHintEl.style.display = showHint ? 'block' : 'none';
+            }
             const ordinalEl = document.getElementById('raid-boss-ordinal');
             if (ordinalEl && raidState.bossOrdinal) {
                 ordinalEl.textContent = `${raidState.bossOrdinal} / 6`;
@@ -5156,7 +5182,7 @@
             const armorSum = parts.reduce((s, p) => s + p.armor, 0);
             const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
             const bodySum = parts.reduce((s, p) => s + p.body, 0);
-            const bodyMaxSum = parts.reduce((s, p) => s + p.bodyMax, 0);
+            const bodyMaxSum = raidState.killMaxHp || parts.reduce((s, p) => s + p.bodyMax, 0);
             const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
             const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
 
@@ -5344,7 +5370,7 @@
             const armorSum = parts.reduce((s, p) => s + p.armor, 0);
             const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
             const bodySum = parts.reduce((s, p) => s + p.body, 0);
-            const bodyMaxSum = parts.reduce((s, p) => s + p.bodyMax, 0);
+            const bodyMaxSum = raidState.killMaxHp || parts.reduce((s, p) => s + p.bodyMax, 0);
             const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
             const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
 

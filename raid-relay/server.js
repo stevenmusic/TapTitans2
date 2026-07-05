@@ -141,6 +141,9 @@ let watcherCurrentTitanIndex = -1;
 let watcherCurrentEnemyId = null;
 let watcherBossName = null;
 let watcherBossOrdinal = 0;
+let watcherParts = {}; // loc -> { armor, armorMax, body, bodyMax }
+let watcherKillMaxHp = 0; // API 原本的擊殺門檻（total_hp）
+let watcherHasReceivedAttack = false; // 是否已經有真實 attack 事件確認過目前王
 let recentAttacks = loadRecentAttacks();
 
 function loadRecentAttacks() {
@@ -167,9 +170,19 @@ function pushRecentAttack(entry) {
   saveRecentAttacks();
 }
 
-// 前端一打開網頁就呼叫這個端點，拿到「網頁開啟之前」的最近攻擊紀錄
+// 前端一打開網頁就呼叫這個端點，拿到「網頁開啟之前」的最新王血量狀態＋最近攻擊紀錄
 app.get('/recent-attacks', (req, res) => {
-  res.json({ attacks: recentAttacks, currentBoss: { name: watcherBossName, ordinal: watcherBossOrdinal } });
+  res.json({
+    attacks: recentAttacks,
+    currentBoss: {
+      name: watcherBossName,
+      ordinal: watcherBossOrdinal,
+      enemyId: watcherCurrentEnemyId,
+      parts: watcherParts,
+      killMaxHp: watcherKillMaxHp,
+      hasReceivedAttack: watcherHasReceivedAttack
+    }
+  });
 });
 
 function splitPartId(partId) {
@@ -179,6 +192,18 @@ function splitPartId(partId) {
   return { layer: null, loc: null };
 }
 
+function buildPartsFromTitan(titan) {
+  const parts = {};
+  (titan.parts || []).forEach((p) => {
+    const { layer, loc } = splitPartId(p.part_id);
+    if (!loc) return;
+    if (!parts[loc]) parts[loc] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 };
+    if (layer === 'armor') { parts[loc].armorMax = p.total_hp; parts[loc].armor = p.current_hp; }
+    else if (layer === 'body') { parts[loc].bodyMax = p.total_hp; parts[loc].body = p.current_hp; }
+  });
+  return parts;
+}
+
 function setWatcherTitan(index, titans) {
   const titan = titans[index];
   if (!titan) return;
@@ -186,6 +211,8 @@ function setWatcherTitan(index, titans) {
   watcherCurrentEnemyId = titan.enemy_id;
   watcherBossName = titan.enemy_name || '—';
   watcherBossOrdinal = index + 1;
+  watcherParts = buildPartsFromTitan(titan);
+  watcherKillMaxHp = titan.total_hp;
 }
 
 function handleWatcherRaidSnapshot(payload) {
@@ -204,9 +231,18 @@ function handleWatcherRaidSnapshot(payload) {
 function handleWatcherAttack(payload) {
   const rs = payload && payload.raid_state;
   if (!rs) return;
+  watcherHasReceivedAttack = true;
   if (rs.titan_index !== watcherCurrentTitanIndex) {
     setWatcherTitan(rs.titan_index, watcherTitans);
   }
+
+  const cur = rs.current || {};
+  (cur.parts || []).forEach((p) => {
+    const { layer, loc } = splitPartId(p.part_id);
+    if (!loc || !watcherParts[loc]) return;
+    if (layer === 'armor') watcherParts[loc].armor = p.current_hp;
+    else if (layer === 'body') watcherParts[loc].body = p.current_hp;
+  });
 
   const dmgEntries = [];
   ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach((cd) => {

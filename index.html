@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -4580,7 +4580,7 @@
         const RAID_SKILL_REMINDER_GRACE_MS = 5000; // 換王後這段時間內，先不發瘋狂無效／凱旋行軍通知，避免跟換王通知混在一起
         const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
         let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
-        const RAID_RECENT_MAX = 8;
+        const RAID_RECENT_MAX = 10;
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
         function loadRaidTokens() {
@@ -4853,6 +4853,25 @@
 
             raidConnState = 'connected';
             setRaidConnectStatus('✓ 已連線', 'ok');
+            fetchRecentAttackHistory(relayUrl);
+        }
+
+        // 網頁一連線就跟 relay 要「網頁開啟之前」的最近攻擊紀錄，
+        // 這樣即使目前沒人在攻擊，畫面也不會是空的
+        async function fetchRecentAttackHistory(relayUrl) {
+            try {
+                const resp = await fetch(`${relayUrl}/recent-attacks`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (Array.isArray(data.attacks) && data.attacks.length > 0 && raidRecentAttacks.length === 0) {
+                    raidRecentAttacks = data.attacks.map(a => ({
+                        player: a.player, part: a.part, layer: a.layer, dmg: a.dmg, ts: a.ts
+                    })).slice(0, RAID_RECENT_MAX);
+                    renderRaidRecentAttacks();
+                }
+            } catch (e) {
+                console.error('取得歷史攻擊紀錄失敗:', e);
+            }
         }
 
         async function connectRaidAPI(silent) {

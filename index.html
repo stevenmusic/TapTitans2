@@ -2751,17 +2751,6 @@
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
                         </div>
-                        <div style="border-top:1px solid #e5dcd2; margin-top:8px; padding-top:10px;">
-                            <div style="font-size:12px; color:#8a7a6a; margin-bottom:8px;">🗂️ 攻擊側錄資料（開發用，反推傷害公式）</div>
-                            <div class="raid-connect-btns">
-                                <button class="btn-raid-tool" onclick="checkAttackLogStats()" style="width:100%;">📊 查看筆數</button>
-                            </div>
-                            <div class="raid-connect-btns">
-                                <button class="btn-raid-connect" onclick="downloadAttackLog()" style="width:100%;">📥 下載</button>
-                                <button class="btn-raid-demo" onclick="clearAttackLogInApp()" style="width:100%;">🗑️ 清空</button>
-                            </div>
-                            <div id="attack-log-status-text" style="font-size:12px; color:#8a7a6a; margin-top:6px;"></div>
-                        </div>
                     </div>
                 </div>
 
@@ -4745,82 +4734,6 @@
             if (raidSocket) {
                 raidSocket.disconnect();
                 raidSocket = null;
-            }
-        }
-
-        /* ══════════════════════════════════════════════════════════
-           攻擊側錄資料管理：呼叫 relay server 的 /attack-log/* 端點，
-           不用再手動打開瀏覽器輸入網址，直接在 App 裡按按鈕就能操作
-           ══════════════════════════════════════════════════════════ */
-        function getRaidRelayBaseUrl() {
-            const url = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
-            if (!url) {
-                alert('請先在上方填入中繼伺服器網址');
-                return null;
-            }
-            return url;
-        }
-
-        function setAttackLogStatusText(msg) {
-            const el = document.getElementById('attack-log-status-text');
-            if (el) el.textContent = msg;
-        }
-
-        async function checkAttackLogStats() {
-            const base = getRaidRelayBaseUrl();
-            if (!base) return;
-            setAttackLogStatusText('查詢中…');
-            try {
-                const resp = await fetch(`${base}/attack-log/stats`);
-                const data = await resp.json();
-                if (!data.exists) {
-                    setAttackLogStatusText('目前尚未收集到任何側錄資料');
-                } else {
-                    setAttackLogStatusText(`目前已累積 ${data.lineCount} 筆攻擊紀錄`);
-                }
-            } catch (e) {
-                setAttackLogStatusText('查詢失敗，請確認中繼伺服器網址是否正確、伺服器是否在線');
-                console.error('查詢 attack log 筆數失敗:', e);
-            }
-        }
-
-        async function downloadAttackLog() {
-            const base = getRaidRelayBaseUrl();
-            if (!base) return;
-            setAttackLogStatusText('下載中…');
-            try {
-                const resp = await fetch(`${base}/attack-log/download`);
-                if (resp.status === 404) {
-                    setAttackLogStatusText('尚未收集到任何側錄資料，無法下載');
-                    return;
-                }
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const blob = await resp.blob();
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'attack_log.jsonl';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                setAttackLogStatusText('✓ 已下載');
-            } catch (e) {
-                setAttackLogStatusText('下載失敗，請確認中繼伺服器網址是否正確、伺服器是否在線');
-                console.error('下載 attack log 失敗:', e);
-            }
-        }
-
-        async function clearAttackLogInApp() {
-            const base = getRaidRelayBaseUrl();
-            if (!base) return;
-            if (!confirm('確定要清空側錄資料嗎？請先確認已經下載備份過了。')) return;
-            setAttackLogStatusText('清空中…');
-            try {
-                const resp = await fetch(`${base}/attack-log/clear?confirm=yes`);
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                setAttackLogStatusText('✓ 已清空');
-            } catch (e) {
-                setAttackLogStatusText('清空失敗，請確認中繼伺服器網址是否正確、伺服器是否在線');
-                console.error('清空 attack log 失敗:', e);
             }
         }
 

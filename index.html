@@ -2751,6 +2751,14 @@
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
                         </div>
+                        <div style="border-top:1px solid #e5dcd2; margin-top:8px; padding-top:10px;">
+                            <button class="btn-raid-tool" onclick="toggleRaidDebugPanel()" style="width:100%;">🐛 除錯：顯示原始收到的資料</button>
+                            <div id="raid-debug-panel" style="display:none; margin-top:8px;">
+                                <div style="font-size:12px; color:#8a7a6a; margin-bottom:6px;">突襲期間會即時記錄最近 5 筆事件，畫面卡住時可以截圖或複製這裡的內容回報</div>
+                                <pre id="raid-debug-output" style="white-space:pre-wrap; word-break:break-all; font-size:10px; background:#f7f1e8; border:1px solid #e5dcd2; border-radius:8px; padding:8px; max-height:260px; overflow-y:auto; margin:0;">（尚未收到任何突襲事件資料）</pre>
+                                <button class="btn-backup import" style="margin-top:8px;" onclick="copyRaidDebugOutput()">📋 複製除錯資料</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -4856,14 +4864,58 @@
                 setRaidConnectStatus(t('raidStatusNotConnected'), '');
                 scheduleRaidAutoReconnect();
             });
-            raidSocket.on('raid:sub_start', handleApiRaidStart);
-            raidSocket.on('raid:start', handleApiRaidStart);
-            raidSocket.on('raid:sub_cycle', handleApiRaidStart);
-            raidSocket.on('raid:cycle_reset', handleApiRaidStart);
-            raidSocket.on('raid:attack', handleApiAttack);
+            raidSocket.on('raid:sub_start', (p) => { captureRaidDebugPayload('sub_start', p); handleApiRaidStart(p); });
+            raidSocket.on('raid:start', (p) => { captureRaidDebugPayload('start', p); handleApiRaidStart(p); });
+            raidSocket.on('raid:sub_cycle', (p) => { captureRaidDebugPayload('sub_cycle', p); handleApiRaidStart(p); });
+            raidSocket.on('raid:cycle_reset', (p) => { captureRaidDebugPayload('cycle_reset', p); handleApiRaidStart(p); });
+            raidSocket.on('raid:attack', (p) => { captureRaidDebugPayload('attack', p); handleApiAttack(p); });
             raidSocket.on('raid:end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
             raidSocket.on('raid:retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
             raidSocket.on('raid:unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           除錯模式：因為手機沒有瀏覽器主控台可以看，
+           把伺服器實際傳來的原始資料存起來，直接顯示在畫面上方便截圖回報
+           ══════════════════════════════════════════════════════════ */
+        const RAID_DEBUG_MAX = 5;
+        let raidDebugLog = [];
+
+        function captureRaidDebugPayload(eventName, payload) {
+            raidDebugLog.unshift({ eventName, payload, ts: Date.now() });
+            if (raidDebugLog.length > RAID_DEBUG_MAX) raidDebugLog.length = RAID_DEBUG_MAX;
+            renderRaidDebugPanel();
+        }
+
+        function renderRaidDebugPanel() {
+            const box = document.getElementById('raid-debug-output');
+            if (!box) return;
+            if (raidDebugLog.length === 0) {
+                box.textContent = '（尚未收到任何突襲事件資料）';
+                return;
+            }
+            box.textContent = raidDebugLog.map(entry => {
+                const time = new Date(entry.ts).toLocaleTimeString();
+                return `[${time}] raid:${entry.eventName}\n${JSON.stringify(entry.payload, null, 2)}`;
+            }).join('\n\n──────────\n\n');
+        }
+
+        function toggleRaidDebugPanel() {
+            const panel = document.getElementById('raid-debug-panel');
+            if (!panel) return;
+            const show = panel.style.display === 'none';
+            panel.style.display = show ? 'block' : 'none';
+            if (show) renderRaidDebugPanel();
+        }
+
+        function copyRaidDebugOutput() {
+            const box = document.getElementById('raid-debug-output');
+            if (!box || !box.textContent) return;
+            navigator.clipboard.writeText(box.textContent).then(() => {
+                showPlayerCopyToastLike('已複製除錯資料，貼給開發者看');
+            }).catch(() => {
+                alert('複製失敗，請手動長按選取文字複製');
+            });
         }
 
         function generateRandomRaidParts() {

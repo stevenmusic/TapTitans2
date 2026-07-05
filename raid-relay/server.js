@@ -143,6 +143,13 @@ io.on('connection', (browserSocket) => {
           browserSocket.emit(`raid:${evt}`, payload);
         });
       });
+
+      // 保險機制：把「所有」從 GameHive 收到的事件都轉發一份到除錯頻道，
+      // 避免因為事件名稱跟預期的不一樣而完全看不到任何資料
+      gameSocket.onAny((eventName, payload) => {
+        console.log('GameHive 原始事件:', eventName);
+        browserSocket.emit('raid:debug_any', { eventName, payload });
+      });
     } finally {
       connectingLock = false;
     }

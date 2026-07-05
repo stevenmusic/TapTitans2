@@ -4863,11 +4863,32 @@
                 const resp = await fetch(`${relayUrl}/recent-attacks`);
                 if (!resp.ok) return;
                 const data = await resp.json();
+
                 if (Array.isArray(data.attacks) && data.attacks.length > 0 && raidRecentAttacks.length === 0) {
                     raidRecentAttacks = data.attacks.map(a => ({
                         player: a.player, part: a.part, layer: a.layer, dmg: a.dmg, ts: a.ts
                     })).slice(0, RAID_RECENT_MAX);
                     renderRaidRecentAttacks();
+                }
+
+                // relay server 背景側錄已經確認過的王血量狀態，直接拿來用，
+                // 不用等這次連線之後剛好有人攻擊才能顯示正確資料
+                const cb = data.currentBoss;
+                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0 && !raidState) {
+                    apiHasReceivedAttack = true;
+                    raidState = {
+                        bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
+                        bossName: cb.name || '—',
+                        bossOrdinal: cb.ordinal || 1,
+                        parts: cb.parts,
+                        maxHp: sumBodyMaxHp(cb.parts),
+                        currentHp: sumBodyHp(cb.parts),
+                        killMaxHp: cb.killMaxHp,
+                        updatedAt: Date.now()
+                    };
+                    apiCurrentEnemyId = cb.enemyId || null;
+                    raidBossOrdinal = cb.ordinal || 1;
+                    renderRaidStatus();
                 }
             } catch (e) {
                 console.error('取得歷史攻擊紀錄失敗:', e);

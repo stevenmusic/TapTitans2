@@ -59,44 +59,93 @@ const FORWARD_EVENTS = [
   'unsub_clan', 'target', 'join', 'leave', 'kick', 'morale', 'clan_sync'
 ];
 
+// ══════════════════════════════════════════════════════════
+// 全域記錄「每個 Player Token 上一次跟 GameHive 斷線的時間」。
+// 這是跨瀏覽器連線共用的，不是綁在單一 browserSocket 上——
+// 因為前端斷線重連時，會整個建立一條全新的 browserSocket 連線，
+// 如果沒有這個全域記錄，新連線完全不知道「這個 Token 剛剛才斷線過」，
+// 馬上又去跟 GameHive 要求連線，就會撞到 GameHive 判定為重複連線
+// 而回傳「Connection already exist」的錯誤，導致連線一直循環失敗。
+// ══════════════════════════════════════════════════════════
+const RECONNECT_MIN_GAP_MS = 2500; // 同一個 Token 斷線後至少要等這麼久才能再連
+const lastDisconnectAtByToken = new Map(); // playerToken -> timestamp
+const activeGameSocketByToken = new Map(); // playerToken -> gameSocket（避免同一個 Token 同時存在兩條連線）
+
+function waitForTokenReady(playerToken) {
+  const last = lastDisconnectAtByToken.get(playerToken);
+  if (!last) return Promise.resolve();
+  const elapsed = Date.now() - last;
+  const remaining = RECONNECT_MIN_GAP_MS - elapsed;
+  if (remaining <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, remaining));
+}
+
 io.on('connection', (browserSocket) => {
   console.log('前端連線進來:', browserSocket.id);
   let gameSocket = null;
+  let currentPlayerToken = null;
+  let connectingLock = false; // 避免同一條 browserSocket 短時間內重複觸發連線流程
 
-  browserSocket.on('connect-raid', ({ appToken }) => {
+  browserSocket.on('connect-raid', async ({ appToken, playerToken }) => {
     if (!appToken) {
       browserSocket.emit('raid:connect_error', { message: '缺少 Application Token' });
       return;
     }
-    if (gameSocket) {
-      gameSocket.disconnect();
-      gameSocket = null;
+    if (!playerToken) {
+      browserSocket.emit('raid:connect_error', { message: '缺少 Player Token' });
+      return;
     }
+    if (connectingLock) {
+      console.log('連線流程進行中，忽略這次重複請求');
+      return;
+    }
+    connectingLock = true;
+    currentPlayerToken = playerToken;
 
-    gameSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
-      path: '/api/socket.io',
-      transports: ['websocket'],
-      extraHeaders: { 'API-Authenticate': appToken },
-      reconnectionAttempts: 10
-    });
+    try {
+      // 如果同一個 Token 在別的地方（例如上一條已經失效的 browserSocket）還留著連線，先關掉它
+      const existing = activeGameSocketByToken.get(playerToken);
+      if (existing && existing.connected) {
+        existing.disconnect();
+      }
+      activeGameSocketByToken.delete(playerToken);
 
-    gameSocket.on('connect', () => {
-      console.log('已連上 GameHive raid socket');
-      browserSocket.emit('raid:connect', {});
-    });
-    gameSocket.on('connect_error', (err) => {
-      console.error('GameHive socket連線錯誤:', err && err.message);
-      browserSocket.emit('raid:connect_error', { message: err && err.message ? err.message : String(err) });
-    });
-    gameSocket.on('disconnect', () => {
-      browserSocket.emit('raid:disconnect', {});
-    });
+      // 等到「這個 Token 距離上次斷線已經過了足夠時間」才建立新連線，
+      // 避免 GameHive 判定為重複連線
+      await waitForTokenReady(playerToken);
 
-    FORWARD_EVENTS.forEach((evt) => {
-      gameSocket.on(evt, (payload) => {
-        browserSocket.emit(`raid:${evt}`, payload);
+      gameSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
+        path: '/api/socket.io',
+        transports: ['websocket'],
+        extraHeaders: { 'API-Authenticate': appToken },
+        reconnectionAttempts: 10
       });
-    });
+      activeGameSocketByToken.set(playerToken, gameSocket);
+
+      gameSocket.on('connect', () => {
+        console.log('已連上 GameHive raid socket');
+        browserSocket.emit('raid:connect', {});
+      });
+      gameSocket.on('connect_error', (err) => {
+        console.error('GameHive socket連線錯誤:', err && err.message);
+        browserSocket.emit('raid:connect_error', { message: err && err.message ? err.message : String(err) });
+      });
+      gameSocket.on('disconnect', () => {
+        lastDisconnectAtByToken.set(playerToken, Date.now());
+        if (activeGameSocketByToken.get(playerToken) === gameSocket) {
+          activeGameSocketByToken.delete(playerToken);
+        }
+        browserSocket.emit('raid:disconnect', {});
+      });
+
+      FORWARD_EVENTS.forEach((evt) => {
+        gameSocket.on(evt, (payload) => {
+          browserSocket.emit(`raid:${evt}`, payload);
+        });
+      });
+    } finally {
+      connectingLock = false;
+    }
   });
 
   browserSocket.on('disconnect', () => {

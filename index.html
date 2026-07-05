@@ -4813,6 +4813,11 @@
                 return;
             }
 
+            // 把 /subscribe 的實際回應存進除錯面板，方便確認 GameHive 到底有沒有真的接受這次訂閱
+            if (typeof captureRaidDebugPayload === 'function') {
+                captureRaidDebugPayload('subscribe_response', subscribeData);
+            }
+
             if (subscribeData && subscribeData.refused && subscribeData.refused.length > 0) {
                 raidConnState = 'disconnected';
                 setRaidConnectStatus('訂閱被拒絕：' + (subscribeData.refused[0].reason || '未知原因'), '');

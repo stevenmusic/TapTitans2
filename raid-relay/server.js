@@ -36,7 +36,8 @@ const FORWARD_EVENTS = [
 
 // 前端呼叫這個端點來訂閱，relay 代為帶正確header呼叫GameHive
 app.post('/subscribe', async (req, res) => {
-  const { appToken, playerToken } = req.body || {};
+  const appToken = sanitizeToken((req.body || {}).appToken);
+  const playerToken = sanitizeToken((req.body || {}).playerToken);
   if (!appToken || !playerToken) {
     return res.status(400).json({ error: 'missing appToken or playerToken' });
   }
@@ -76,7 +77,9 @@ io.on('connection', (browserSocket) => {
   let gameSocket = null;
   let connectingLock = false;
 
-  browserSocket.on('connect-raid', async ({ appToken, playerToken }) => {
+  browserSocket.on('connect-raid', async (data) => {
+    const appToken = sanitizeToken(data && data.appToken);
+    const playerToken = sanitizeToken(data && data.playerToken);
     if (!appToken || !playerToken) {
       browserSocket.emit('raid:connect_error', { message: '缺少 Application Token 或 Player Token' });
       return;
@@ -130,8 +133,14 @@ io.on('connection', (browserSocket) => {
 // 需要在 Render 環境變數設定 WATCHER_APP_TOKEN 和 WATCHER_PLAYER_TOKEN
 // （用公會裡任何一位成員的 Player Token 即可，這條連線只是用來「看」數據，不影響遊戲本身）
 // ══════════════════════════════════════════════════════════
-const WATCHER_APP_TOKEN = process.env.WATCHER_APP_TOKEN || '';
-const WATCHER_PLAYER_TOKEN = process.env.WATCHER_PLAYER_TOKEN || '';
+// .trim() 只會清掉頭尾空白，如果貼上時中間夾雜了換行符號（例如從筆記App複製時
+// 把自動換行也一起複製進來），會讓 Token 變成無效的 HTTP header 值，所以這裡把
+// 所有空白字元（包含換行）都清掉，避免因為複製貼上習慣不同而炸掉
+function sanitizeToken(raw) {
+  return (raw || '').replace(/\s+/g, '');
+}
+const WATCHER_APP_TOKEN = sanitizeToken(process.env.WATCHER_APP_TOKEN);
+const WATCHER_PLAYER_TOKEN = sanitizeToken(process.env.WATCHER_PLAYER_TOKEN);
 const WATCHER_RECONNECT_DELAY_MS = 8000;
 const RECENT_ATTACKS_MAX = 10;
 const RECENT_ATTACKS_PATH = path.join(__dirname, 'recent_attacks.json');
@@ -266,6 +275,7 @@ function handleWatcherAttack(payload) {
 }
 
 let watcherSocket = null;
+let watcherReconnectTimer = null;
 
 function startWatcher() {
   if (!WATCHER_APP_TOKEN || !WATCHER_PLAYER_TOKEN) {
@@ -274,27 +284,43 @@ function startWatcher() {
     return;
   }
 
+  clearTimeout(watcherReconnectTimer);
+  if (watcherSocket) {
+    watcherSocket.removeAllListeners();
+    watcherSocket.disconnect();
+    watcherSocket = null;
+  }
+
   fetch(`${RAID_REST_BASE}/raid/subscribe`, {
     method: 'POST',
     headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
-  }).catch((e) => console.error('watcher 訂閱失敗:', e));
+  }).then(async (resp) => {
+    const text = await resp.text();
+    if (!resp.ok) {
+      console.error(`[watcher] 訂閱失敗，HTTP ${resp.status}：${text}`);
+    } else {
+      console.log(`[watcher] 訂閱成功：${text}`);
+    }
+  }).catch((e) => console.error('[watcher] 訂閱請求失敗（網路層級）:', e));
 
+  // reconnection 交給我們自己手動控制（見下方 connect_error / disconnect），
+  // 不要同時開 Socket.IO 內建的自動重連，不然兩套機制會打架，瘋狂連環重試
   watcherSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
     path: '/api/socket.io',
     transports: ['websocket'],
     extraHeaders: { 'API-Authenticate': WATCHER_APP_TOKEN },
-    reconnectionAttempts: Infinity
+    reconnection: false
   });
 
   watcherSocket.on('connect', () => console.log('[watcher] 已連上 GameHive'));
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);
-    setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
   });
   watcherSocket.on('disconnect', () => {
     console.log('[watcher] 斷線，準備重連');
-    setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
   });
 
   ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => {

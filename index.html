@@ -4670,24 +4670,45 @@
             (titan.parts || []).forEach(p => {
                 const { layer, loc } = apiSplitPartId(p.part_id);
                 if (!parts[loc]) return;
-                if (layer === 'armor') { parts[loc].armorMax = p.total_hp; parts[loc].armor = p.total_hp; }
-                else if (layer === 'body') { parts[loc].bodyMax = p.total_hp; parts[loc].body = p.total_hp; }
+                if (layer === 'armor') { parts[loc].armorMax = p.total_hp; parts[loc].armor = p.current_hp; }
+                else if (layer === 'body') { parts[loc].bodyMax = p.total_hp; parts[loc].body = p.current_hp; }
             });
             return parts;
         }
 
+        // 目前正在打的王，就是陣列的第一筆（titans[0]）。
+        // 這裡不能用「血量不是滿的」來判斷，因為詛咒（cursed）效果本身就會讓未被攻擊的王
+        // 血量出現些微差異，用血量差判斷會誤判成別隻王正在被打。
+        function apiFindActiveTitanIndex(titans) {
+            return 0;
+        }
+
+        let apiCurrentEnemyId = null; // 記錄目前追蹤的王的 enemy_id，用來判斷 sub_cycle 重複來的是不是同一隻王
+
         function apiSetRaidFromTitanIndex(index) {
             const titan = apiRaidTitans[index];
             if (!titan) return;
+            const isSameTitan = raidState && apiCurrentEnemyId === titan.enemy_id;
             apiCurrentTitanIndex = index;
+            apiCurrentEnemyId = titan.enemy_id;
             raidBossOrdinal = index + 1;
+
+            if (isSameTitan) {
+                // 同一隻王的資料重複送來（例如 sub_cycle 定期重推），只更新血量，
+                // 不要清掉「最近攻擊」清單，也不要誤判成換了新王
+                raidState.parts = apiBuildPartsFromTitan(titan);
+                raidState.currentHp = titan.current_hp;
+                raidState.updatedAt = Date.now();
+                return;
+            }
+
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(titan.enemy_name),
                 bossName: titan.enemy_name || '—',
                 bossOrdinal: index + 1,
                 parts: apiBuildPartsFromTitan(titan),
                 maxHp: titan.total_hp,
-                currentHp: titan.total_hp,
+                currentHp: titan.current_hp,
                 updatedAt: Date.now()
             };
             raidRecentAttacks = [];
@@ -4702,7 +4723,7 @@
             const titans = payload && payload.raid && payload.raid.titans;
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
-            apiSetRaidFromTitanIndex(0);
+            apiSetRaidFromTitanIndex(apiFindActiveTitanIndex(titans));
             renderRaidStatus();
         }
 

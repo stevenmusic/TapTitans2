@@ -2748,6 +2748,8 @@
                             <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" data-i18n="btnRaidDemo">🎬 示範模式</button>
                         </div>
                         <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%;">🔔 開啟通知</button>
+                        <button class="btn-raid-tool" onclick="subscribeBackgroundPush()" style="width:100%; margin-top:6px;">📡 開啟背景推播（不用開網頁）</button>
+                        <div id="push-subscribe-status" style="font-size:11px; color:#8a7a6a; margin-top:4px;"></div>
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
                         </div>
@@ -5378,23 +5380,36 @@
             toggleRaidSettingsPanel(false);
         }
 
-        // 卡片英文代號 → 中文名稱對照表，跟遊戲內「突擊技能」畫面逐一核對過
+        // 卡片英文代號 → 中文名稱對照表
+        // 標示 [已驗證] 的是用遊戲內真實攻擊紀錄核對過的，其餘是依圖示/機制推測，之後有真實資料會逐步校正
         const RAID_CARD_NAME_ZH = {
             // 暴擊 Burst
             MoonBeam: '皎月光束', Fragmentize: '撼地破甲', SkullBash: '碎顱打擊', RazorWind: '撕裂風刃',
-            WhipOfLightning: '雷霆之鞭', BurstCount: '船舷砲雨', Purify: '淨化爆裂', LimbBurst: '靈魂鎖鏈',
-            FlakShot: '防空高砲', Haymaker: '宇宙激光', ChainLightning: '復仇鍊子', MirrorForce: '鏡子力',
+            WhipOfLightning: '雷霆之鞭',
+            BurstCount: '船舷砲雨',    // [已驗證]
+            Purify: '淨化爆裂', LimbBurst: '靈魂鎖鏈',
+            FlakShot: '防空高砲',      // [已驗證]
+            Haymaker: '宇宙激光', ChainLightning: '復仇鍊子', MirrorForce: '鏡子力',
             CelestialStatic: '天體靜態', ExecutionersAxe: '破碎的爆炸',
             // 苦痛 Affliction
-            BurningAttack: '炎燒地獄', PoisonAttack: '強酸侵蝕', DecayingAttack: '腐敗突擊', Fuse: '核融炸彈',
+            BurningAttack: '炎燒地獄', // [已驗證]
+            PoisonAttack: '強酸侵蝕', DecayingAttack: '腐敗突擊', Fuse: '核融炸彈',
             Shadow: '冷酷之影', PlagueAttack: '肆虐瘟疫', Disease: '放射毒素', Swarm: '暴食蜂擁',
-            RuinousRust: '毀了雨', PowerBubble: '腐蝕性氣泡', RuneAttack: '電擊', MagicPotion: '放大',
-            SandsOfTime: '時間之沙', CosmicBarb: '漩渦',
+            RuinousRust: '毀了雨', PowerBubble: '腐蝕性氣泡',
+            RuneAttack: '漩渦',        // [已驗證，原本誤標為「電擊」]
+            MagicPotion: '放大',
+            // CosmicBarb 原本誤標「漩渦」，已釋出，正確名稱待驗證
+            SandsOfTime: '時間之沙',
             // 支援 Support
-            CrushingVoid: '瘋狂無效', MentalFocus: '靈魂之火', ImpactAttack: '破碎本能', InnerTruth: '振奮士氣',
-            FinisherAttack: '凱旋行軍', SuperheatMetal: '輻射萬花筒', BurstBoost: '先祖加護', LimbSupport: '繁藤蝕骨',
-            TotemFairySkill: '圖騰之力', TeamTactics: '團隊戰術', SpinalTap: '骨骼粉碎', AstralEcho: '星體迴聲',
-            TriangleSupport: '變質氣體', Weaken: '稜角裂痕'
+            CrushingVoid: '瘋狂無效', // 顯示名稱 Insanity Void 已用截圖核對，但代碼對應仍待真實攻擊資料驗證
+            MentalFocus: '變質氣體',  // [已驗證，原本誤標為「靈魂之火」]
+            ImpactAttack: '破碎本能', InnerTruth: '振奮士氣', FinisherAttack: '凱旋行軍',
+            SuperheatMetal: '輻射萬花筒',
+            BurstBoost: '先祖加護',   // [已驗證]
+            LimbSupport: '繁藤蝕骨', TotemFairySkill: '圖騰之力', TeamTactics: '團隊戰術',
+            SpinalTap: '骨骼粉碎', AstralEcho: '星體迴聲',
+            // TriangleSupport 原本誤標「變質氣體」，已釋出，正確名稱待驗證
+            Weaken: '稜角裂痕'
         };
         function raidCardLabel(name) {
             return RAID_CARD_NAME_ZH[name] || name;
@@ -5610,6 +5625,80 @@
                 toast.classList.remove('show');
                 setTimeout(() => { toast.textContent = original; }, 300);
             }, 1800);
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           背景推播：伺服器主動推送，就算網頁在背景被系統暫停也收得到
+           ══════════════════════════════════════════════════════════ */
+        function setPushStatusText(msg) {
+            const el = document.getElementById('push-subscribe-status');
+            if (el) el.textContent = msg;
+        }
+
+        // VAPID公鑰是 base64url 格式，瀏覽器的 PushManager 需要轉成 Uint8Array 才能用
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+            return outputArray;
+        }
+
+        async function subscribeBackgroundPush() {
+            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
+            if (!relayUrl) {
+                alert('請先在上方填入中繼伺服器網址');
+                return;
+            }
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                alert('這個瀏覽器不支援背景推播通知');
+                return;
+            }
+            if (isIOSDevice() && !isStandalonePwa()) {
+                alert(t('raidNotifyNeedHomeScreen'));
+                return;
+            }
+
+            try {
+                setPushStatusText('設定中…');
+
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') {
+                    setPushStatusText('已拒絕通知權限，無法開啟背景推播');
+                    return;
+                }
+
+                const swReg = await navigator.serviceWorker.register('sw.js');
+                await navigator.serviceWorker.ready;
+
+                const keyResp = await fetch(`${relayUrl}/push/vapid-public-key`);
+                const keyData = await keyResp.json();
+                if (!keyData.enabled || !keyData.publicKey) {
+                    setPushStatusText('中繼伺服器尚未設定推播金鑰，請聯絡開發者');
+                    return;
+                }
+
+                let subscription = await swReg.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await swReg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+                    });
+                }
+
+                const saveResp = await fetch(`${relayUrl}/push/subscribe`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+                if (!saveResp.ok) throw new Error('HTTP ' + saveResp.status);
+
+                setPushStatusText('✓ 已開啟背景推播，關掉網頁也會收到通知');
+            } catch (e) {
+                console.error('訂閱背景推播失敗:', e);
+                setPushStatusText('設定失敗：' + (e && e.message ? e.message : String(e)));
+            }
         }
 
         function sendRaidNotification(msg) {

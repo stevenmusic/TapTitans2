@@ -4982,8 +4982,17 @@
                     </div>
                     ${r.attacks.map(a => `
                         <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
-                            <div style="font-size:12.5px; color:#6b5a4a; line-height:1.5; margin-bottom:6px;">
-                                ${a.cards.map(c => escapeHtml(`${raidCardLabel(c.name)} Lv.${c.level}`)).join('丨')}
+                            <div style="display:flex; gap:10px; margin-bottom:8px;">
+                                ${a.cards.map(c => {
+                                    const img = raidCardImage(c.name);
+                                    return `<div style="display:flex; flex-direction:column; align-items:center; gap:2px; width:52px;">
+                                        ${img
+                                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; border:1px solid #e5dcd2;">`
+                                            : `<div style="width:44px; height:44px; border-radius:8px; background:#f0e8dc; display:flex; align-items:center; justify-content:center; font-size:9px; color:#8a7a6a; text-align:center; padding:2px;">${escapeHtml(raidCardLabel(c.name))}</div>`
+                                        }
+                                        <span style="font-size:10px; color:#8a7a6a;">Lv.${escapeHtml(String(c.level))}</span>
+                                    </div>`;
+                                }).join('')}
                             </div>
                             <div style="font-size:11px; color:#a89a8a; margin-bottom:6px;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
                             <div style="display:flex; flex-direction:column; gap:3px;">
@@ -5415,7 +5424,7 @@
             FlakShot: '防空高砲',      // [已驗證]
             Haymaker: '宇宙激光', // [已驗證]
             ChainLightning: '復仇鍊子', // [已驗證]
-            MirrorForce: '鏡子力',
+            MirrorForce: '鏡子力', // [已驗證]
             CelestialStatic: '天體靜態',
             ExecutionersAxe: '破碎本能', // [已驗證，原本誤標為「破碎的爆炸」]
             LimbBurst: '靈魂鎖鏈',        // [已驗證，移到這裡跟其他Burst卡放一起]
@@ -5450,6 +5459,55 @@
             SuperheatMetal: '稜角裂痕', // [已驗證，補上 Weaken 修正後釋出的名稱]
             Weaken: '破碎的爆炸' // [已驗證，原本誤標為「稜角裂痕」]
         };
+        // 卡片英文代號 → 圖片檔名對照表
+        const RAID_CARD_IMAGE = {
+            MoonBeam: 'images/IMG_0063.jpeg',
+            SkullBash: 'images/IMG_0064.jpeg',
+            LimbSupport: 'images/IMG_0065.jpeg',
+            Haymaker: 'images/IMG_0066.jpeg',
+            BurstCount: 'images/IMG_0067.jpeg',
+            Weaken: 'images/IMG_0068.jpeg',
+            MirrorForce: 'images/IMG_0069.jpeg',
+            LimbBurst: 'images/IMG_0070.jpeg',
+            RazorWind: 'images/IMG_0071.jpeg',
+            WhipOfLightning: 'images/IMG_0072.jpeg',
+            Fragmentize: 'images/IMG_0073.jpeg',
+            ChainLightning: 'images/IMG_0074.jpeg',
+            FlakShot: 'images/IMG_0075.jpeg',
+            CelestialStatic: 'images/IMG_0076.jpeg',
+            PlagueAttack: 'images/IMG_0077.jpeg',
+            MagicPotion: 'images/IMG_0078.jpeg',
+            Disease: 'images/IMG_0081.jpeg',
+            Swarm: 'images/IMG_0083.jpeg',
+            Shadow: 'images/IMG_0084.jpeg',
+            Fuse: 'images/IMG_0085.jpeg',
+            DecayingAttack: 'images/IMG_0086.jpeg',
+            PoisonAttack: 'images/IMG_0087.jpeg',
+            BurningAttack: 'images/IMG_0088.jpeg',
+            PowerBubble: 'images/IMG_0089.jpeg',
+            RuinousRust: 'images/IMG_0090.jpeg',
+            SandsOfTime: 'images/IMG_0091.jpeg',
+            TriangleSupport: 'images/IMG_0092.jpeg',
+            CrushingVoid: 'images/IMG_0093.jpeg',
+            BurstBoost: 'images/IMG_0094.jpeg',
+            MentalFocus: 'images/IMG_0095.jpeg',
+            ExecutionersAxe: 'images/IMG_0096.jpeg',
+            AstralEcho: 'images/IMG_0097.jpeg',
+            ImpactAttack: 'images/IMG_0098.jpeg',
+            InnerTruth: 'images/IMG_0099.jpeg',
+            FinisherAttack: 'images/IMG_0100.jpeg',
+            SuperheatMetal: 'images/IMG_0101.jpeg',
+            TeamTactics: 'images/IMG_0102.jpeg',
+            SpinalTap: 'images/IMG_0103.jpeg',
+            Purify: 'images/IMG_0104.jpeg',
+            CosmicBarb: 'images/IMG_0105.jpeg',
+            TotemFairySkill: 'images/IMG_0106.jpeg',
+            RuneAttack: 'images/IMG_0226.jpeg'
+        };
+        function raidCardImage(name) {
+            return RAID_CARD_IMAGE[name] || '';
+        }
+
         function raidCardLabel(name) {
             return RAID_CARD_NAME_ZH[name] || name;
         }

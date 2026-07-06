@@ -4981,7 +4981,7 @@
                     ${r.attacks.map(a => `
                         <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
                             <div style="font-size:12.5px; color:#6b5a4a; line-height:1.5; margin-bottom:6px;">
-                                ${a.cards.map(c => escapeHtml(`${c.name} Lv.${c.level}`)).join('<br>')}
+                                ${a.cards.map(c => escapeHtml(`${raidCardLabel(c.name)} Lv.${c.level}`)).join('<br>')}
                             </div>
                             <div style="font-size:11px; color:#a89a8a; margin-bottom:6px;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
                             <div style="display:flex; flex-direction:column; gap:3px;">
@@ -5376,6 +5376,28 @@
             btn.textContent = t('btnRaidDemoStop');
             raidDemoTimer = setInterval(simulateRaidAttack, 900);
             toggleRaidSettingsPanel(false);
+        }
+
+        // 卡片英文代號 → 中文名稱對照表，跟遊戲內「突擊技能」畫面逐一核對過
+        const RAID_CARD_NAME_ZH = {
+            // 暴擊 Burst
+            MoonBeam: '皎月光束', Fragmentize: '撼地破甲', SkullBash: '碎顱打擊', RazorWind: '撕裂風刃',
+            WhipOfLightning: '雷霆之鞭', BurstCount: '船舷砲雨', Purify: '淨化爆裂', LimbBurst: '靈魂鎖鏈',
+            FlakShot: '防空高砲', Haymaker: '宇宙激光', ChainLightning: '復仇鍊子', MirrorForce: '鏡子力',
+            CelestialStatic: '天體靜態', ExecutionersAxe: '破碎的爆炸',
+            // 苦痛 Affliction
+            BurningAttack: '炎燒地獄', PoisonAttack: '強酸侵蝕', DecayingAttack: '腐敗突擊', Fuse: '核融炸彈',
+            Shadow: '冷酷之影', PlagueAttack: '肆虐瘟疫', Disease: '放射毒素', Swarm: '暴食蜂擁',
+            RuinousRust: '毀了雨', PowerBubble: '腐蝕性氣泡', RuneAttack: '電擊', MagicPotion: '放大',
+            SandsOfTime: '時間之沙', CosmicBarb: '漩渦',
+            // 支援 Support
+            CrushingVoid: '瘋狂無效', MentalFocus: '靈魂之火', ImpactAttack: '破碎本能', InnerTruth: '振奮士氣',
+            FinisherAttack: '凱旋行軍', SuperheatMetal: '輻射萬花筒', BurstBoost: '先祖加護', LimbSupport: '繁藤蝕骨',
+            TotemFairySkill: '圖騰之力', TeamTactics: '團隊戰術', SpinalTap: '骨骼粉碎', AstralEcho: '星體迴聲',
+            TriangleSupport: '變質氣體', Weaken: '稜角裂痕'
+        };
+        function raidCardLabel(name) {
+            return RAID_CARD_NAME_ZH[name] || name;
         }
 
         function raidPartLabel(key) {

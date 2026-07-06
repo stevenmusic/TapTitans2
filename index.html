@@ -2816,13 +2816,8 @@
                     <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="輸入玩家名稱，可以只打部分文字">
                     <button class="btn-backup import" onclick="renderRaidLogQueryResult()">查詢</button>
                     <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
-                        <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:6px;"></div>
-                        <table class="analysis-table" id="raid-log-query-table">
-                            <thead>
-                                <tr><th>卡片</th><th>部位</th><th>傷害</th><th>王</th></tr>
-                            </thead>
-                            <tbody id="raid-log-query-tbody"></tbody>
-                        </table>
+                        <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
+                        <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
                     </div>
                     <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
@@ -4941,7 +4936,8 @@
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
         function queryRaidFullLogByPlayer(keyword) {
             const log = loadRaidFullLog();
-            const matchedPlayers = [...new Set(log.filter(e => e.player.includes(keyword)).map(e => e.player))];
+            const keywordLower = keyword.toLowerCase();
+            const matchedPlayers = [...new Set(log.filter(e => e.player.toLowerCase().includes(keywordLower)).map(e => e.player))];
             if (matchedPlayers.length === 0) return null;
 
             return matchedPlayers.map(playerName => {
@@ -4955,7 +4951,7 @@
             const input = document.getElementById('raid-log-query-input');
             const keyword = input.value.trim();
             const resultWrap = document.getElementById('raid-log-query-result');
-            const tbody = document.getElementById('raid-log-query-tbody');
+            const listEl = document.getElementById('raid-log-query-list');
             const summaryEl = document.getElementById('raid-log-query-summary');
 
             if (!keyword) {
@@ -4967,7 +4963,7 @@
             if (!results) {
                 resultWrap.style.display = 'block';
                 summaryEl.textContent = `找不到名稱包含「${keyword}」的攻擊紀錄`;
-                tbody.innerHTML = '';
+                listEl.innerHTML = '';
                 return;
             }
 
@@ -4976,27 +4972,29 @@
                 ? `符合「${keyword}」的玩家有 ${results.length} 位`
                 : '';
 
-            tbody.innerHTML = results.map(r => `
-                <tr style="background:#f7f1e8;">
-                    <td colspan="2" style="font-weight:700;">${escapeHtml(r.player)}</td>
-                    <td colspan="2" style="font-weight:700; text-align:right;">共 ${r.attackCount} 次・總傷害 ${escapeHtml(formatNum(r.totalDamage))}</td>
-                </tr>
-                ${r.attacks.map(a => `
-                    <tr>
-                        <td colspan="4" style="padding-top:10px; border-top:1px solid #e5dcd2;">
-                            <div style="font-size:12px; color:#6b5a4a; margin-bottom:2px;">
-                                ${escapeHtml(a.cards.map(c => `${c.name} Lv.${c.level}`).join('、'))}
+            listEl.innerHTML = results.map(r => `
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="background:#f7f1e8; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; color:#4a3a2a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                        <span>${escapeHtml(r.player)}</span>
+                        <span style="font-weight:600; font-size:12px; color:#6b5a4a;">共 ${r.attackCount} 次・總傷害 ${escapeHtml(formatNum(r.totalDamage))}</span>
+                    </div>
+                    ${r.attacks.map(a => `
+                        <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
+                            <div style="font-size:12.5px; color:#6b5a4a; line-height:1.5; margin-bottom:6px;">
+                                ${a.cards.map(c => escapeHtml(`${c.name} Lv.${c.level}`)).join('<br>')}
                             </div>
-                            <div style="font-size:11px; color:#a89a8a;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
-                        </td>
-                    </tr>
-                    ${a.parts.map(p => `
-                        <tr>
-                            <td colspan="3" style="padding-left:16px; color:#6b5a4a;">${escapeHtml(raidPartLabel(p.part))}・${p.layer === 'body' ? '肉體' : '盔甲'}</td>
-                            <td style="text-align:right;">${escapeHtml(formatNum(p.damage))}</td>
-                        </tr>
+                            <div style="font-size:11px; color:#a89a8a; margin-bottom:6px;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
+                            <div style="display:flex; flex-direction:column; gap:3px;">
+                                ${a.parts.map(p => `
+                                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#5a4a3a;">
+                                        <span>${escapeHtml(raidPartLabel(p.part))}・${p.layer === 'body' ? '肉體' : '盔甲'}</span>
+                                        <span style="font-weight:700;">${escapeHtml(formatNum(p.damage))}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
                     `).join('')}
-                `).join('')}
+                </div>
             `).join('');
         }
 

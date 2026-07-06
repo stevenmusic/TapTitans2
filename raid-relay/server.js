@@ -145,3 +145,193 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`TT2 Raid Relay listening on port ${PORT}`);
 });
+
+// ══════════════════════════════════════════════════════════
+// 24 小時背景側錄：伺服器自己連著 GameHive，不依賴任何人開著網頁，
+// 持續記錄「每一次攻擊」的完整細節，直到最後一隻王被擊敗。
+// 需要在 Render 環境變數設定 WATCHER_APP_TOKEN 和 WATCHER_PLAYER_TOKEN，
+// 這兩組務必跟網頁上自己用的 Application Token / Player Token 不一樣，
+// 不然會撞到「Connection already exist」的重複連線錯誤。
+// ══════════════════════════════════════════════════════════
+const fs = require('fs');
+const path = require('path');
+
+const WATCHER_APP_TOKEN = sanitizeToken(process.env.WATCHER_APP_TOKEN);
+const WATCHER_PLAYER_TOKEN = sanitizeToken(process.env.WATCHER_PLAYER_TOKEN);
+const WATCHER_RECONNECT_DELAY_MS = 8000;
+const FULL_LOG_PATH = path.join(__dirname, 'full_attack_log.json');
+
+let watcherSocket = null;
+let watcherReconnectTimer = null;
+let watcherRaidTitans = [];
+let watcherSpawnSequence = [];
+let watcherBossTotal = 0;
+let watcherCurrentEnemyId = null;
+let watcherBossName = '—';
+let watcherBossOrdinal = 0;
+let fullAttackLog = loadFullAttackLog();
+
+function loadFullAttackLog() {
+  try {
+    if (!fs.existsSync(FULL_LOG_PATH)) return [];
+    return JSON.parse(fs.readFileSync(FULL_LOG_PATH, 'utf8'));
+  } catch (e) {
+    console.error('讀取完整攻擊紀錄失敗:', e);
+    return [];
+  }
+}
+
+function saveFullAttackLog() {
+  try {
+    fs.writeFileSync(FULL_LOG_PATH, JSON.stringify(fullAttackLog));
+  } catch (e) {
+    console.error('儲存完整攻擊紀錄失敗:', e);
+  }
+}
+
+// 給前端用：拿走目前累積的完整紀錄
+app.get('/full-attack-log', (req, res) => {
+  res.json({ attacks: fullAttackLog });
+});
+
+// 前端可以手動清空（例如確認突襲已結束、資料也備份/查詢完了）
+app.get('/full-attack-log/clear', (req, res) => {
+  if (req.query.confirm !== 'yes') {
+    return res.send(`
+      <html><body style="font-family:sans-serif; padding:24px; text-align:center;">
+        <p style="font-size:18px;">確定要清空完整攻擊紀錄嗎？<br>請先確認已經在網頁上查詢/備份過了。</p>
+        <a href="/full-attack-log/clear?confirm=yes" style="display:inline-block; margin-top:16px; padding:12px 24px; background:#c62828; color:white; border-radius:8px; text-decoration:none;">確定清空</a>
+      </body></html>
+    `);
+  }
+  fullAttackLog = [];
+  saveFullAttackLog();
+  res.send('<html><body style="font-family:sans-serif; padding:24px; text-align:center;">✓ 已清空</body></html>');
+});
+
+function splitPartId(partId) {
+  for (const prefix of ['Armor', 'Body', 'Skeleton']) {
+    if (partId.startsWith(prefix)) return { layer: prefix.toLowerCase(), loc: partId.slice(prefix.length) };
+  }
+  return { layer: null, loc: null };
+}
+
+function watcherHandleRaidSnapshot(payload) {
+  const titans = payload && payload.raid && payload.raid.titans;
+  const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
+  if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
+    watcherSpawnSequence = spawnSeq;
+    watcherBossTotal = spawnSeq.length;
+  }
+  if (Array.isArray(titans) && titans.length > 0) watcherRaidTitans = titans;
+}
+
+function watcherHandleAttack(payload) {
+  const rs = payload && payload.raid_state;
+  if (!rs) return;
+
+  const enemyId = rs.current && rs.current.enemy_id;
+  const ordinal = (typeof rs.titan_index === 'number') ? rs.titan_index + 1 : watcherBossOrdinal;
+
+  if (enemyId && enemyId !== watcherCurrentEnemyId) {
+    watcherCurrentEnemyId = enemyId;
+    watcherBossOrdinal = ordinal;
+    const titan = watcherRaidTitans.find(t => t.enemy_id === enemyId);
+    watcherBossName = (titan && titan.enemy_name) || watcherSpawnSequence[ordinal - 1] || '—';
+  } else {
+    watcherBossOrdinal = ordinal;
+  }
+
+  const playerName = (payload.player && payload.player.name) || '?';
+  const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({
+    name: cl.id,
+    level: cl.value
+  }));
+
+  const partTotals = {};
+  ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach((cd) => {
+    (cd.damage_log || []).forEach((d) => {
+      const { layer, loc } = splitPartId(d.id);
+      const key = `${layer}_${loc}`;
+      if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer === 'body' ? 'body' : 'armor', damage: 0 };
+      partTotals[key].damage += d.value;
+    });
+  });
+  const parts = Object.values(partTotals);
+  if (parts.length === 0) return;
+  const totalDamage = parts.reduce((s, p) => s + p.damage, 0);
+
+  fullAttackLog.push({
+    ts: Date.now(),
+    player: playerName,
+    boss: watcherBossName,
+    bossOrdinal: watcherBossOrdinal,
+    bossTotal: watcherBossTotal || 6,
+    cards,
+    parts,
+    totalDamage
+  });
+  saveFullAttackLog();
+}
+
+function startWatcher() {
+  if (!WATCHER_APP_TOKEN || !WATCHER_PLAYER_TOKEN) {
+    console.warn('尚未設定 WATCHER_APP_TOKEN / WATCHER_PLAYER_TOKEN 環境變數，24小時背景側錄停用。');
+    console.warn('（這不影響一般網頁連線功能，只是無法持續記錄開著網頁以外的攻擊）');
+    return;
+  }
+
+  clearTimeout(watcherReconnectTimer);
+  if (watcherSocket) {
+    watcherSocket.removeAllListeners();
+    watcherSocket.disconnect();
+    watcherSocket = null;
+  }
+
+  fetch(`${RAID_REST_BASE}/raid/subscribe`, {
+    method: 'POST',
+    headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
+  }).then(async (resp) => {
+    const text = await resp.text();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) { /* 不是 JSON 就照原樣印出來 */ }
+    if (!resp.ok || (parsed && parsed._error)) {
+      console.error(`[watcher] 訂閱失敗：${text}`);
+    } else {
+      console.log(`[watcher] 訂閱成功：${text}`);
+    }
+  }).catch((e) => console.error('[watcher] 訂閱請求失敗（網路層級）:', e));
+
+  // reconnection 交給我們自己手動控制，不要同時開 Socket.IO 內建的自動重連，
+  // 不然兩套機制會打架、瘋狂連環重試（之前踩過這個坑）
+  watcherSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
+    path: '/api/socket.io',
+    transports: ['websocket'],
+    extraHeaders: { 'API-Authenticate': WATCHER_APP_TOKEN },
+    reconnection: false
+  });
+
+  watcherSocket.on('connect', () => console.log('[watcher] 已連上 GameHive'));
+  watcherSocket.on('connect_error', (err) => {
+    console.error('[watcher] 連線錯誤:', err && err.message);
+    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+  });
+  watcherSocket.on('disconnect', () => {
+    console.log('[watcher] 斷線，準備重連');
+    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+  });
+
+  ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => {
+    watcherSocket.on(evt, watcherHandleRaidSnapshot);
+  });
+  watcherSocket.on('attack', watcherHandleAttack);
+
+  // 突襲結束（最後一隻王被擊敗）：只記錄一下，紀錄本身繼續保留，
+  // 下一輪突襲開始時新的攻擊會接著往同一份清單累加，直到你手動清空
+  watcherSocket.on('end', () => {
+    console.log('[watcher] 突襲已結束（最後一隻王已被擊敗）');
+  });
+}
+
+startWatcher();

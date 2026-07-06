@@ -4673,6 +4673,7 @@
         let raidSocket = null;
         let apiRaidTitans = [];
         let apiSpawnSequence = []; // spawn_sequence[ordinal-1] 給出王的名字，比對 titans 陣列更可靠、更即時
+        let apiBossTotal = 6; // 這場突襲總共有幾隻王，預設 6（示範模式用），連線後會依 spawn_sequence 的實際長度更新
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
@@ -4772,7 +4773,10 @@
         function handleApiRaidStart(payload) {
             const titans = payload && payload.raid && payload.raid.titans;
             const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
-            if (Array.isArray(spawnSeq) && spawnSeq.length > 0) apiSpawnSequence = spawnSeq;
+            if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
+                apiSpawnSequence = spawnSeq;
+                apiBossTotal = spawnSeq.length; // 王的總數不一定是 6，用真實的 spawn_sequence 長度才準
+            }
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
 
@@ -4897,29 +4901,28 @@
             const playerName = (payload.player && payload.player.name) || '?';
             const bossName = (raidState && raidState.bossName) || '—';
             const bossOrdinal = (raidState && raidState.bossOrdinal) || raidBossOrdinal || 0;
+            const bossTotal = apiBossTotal || 6;
 
-            const cardLevels = {};
-            ((payload.attack_log && payload.attack_log.cards_level) || []).forEach(cl => {
-                cardLevels[cl.id] = cl.value;
-            });
+            // 這次攻擊實際裝備的卡片（不含點擊攻擊），直接從 cards_level 拿，就是畫面上那 3 張卡
+            const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({
+                name: cl.id,
+                level: cl.value
+            }));
 
-            // 每張卡片打中每個部位，都各自記一筆（保留完整細節：卡片、部位、盔甲/肉體、傷害）
-            const hits = [];
+            // 每個部位的傷害，把「點擊攻擊」跟「卡片攻擊」的傷害合併加總成一個數字，不分開列
+            const partTotals = {}; // "肉體_Head" -> { part, layer, damage }
             ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
-                const cardName = cd.id || '點擊攻擊';
-                const level = cardLevels[cd.id] != null ? cardLevels[cd.id] : null;
                 (cd.damage_log || []).forEach(d => {
                     const { layer, loc } = apiSplitPartId(d.id);
-                    hits.push({
-                        card: cardName,
-                        level,
-                        part: loc || d.id,
-                        layer: layer === 'body' ? 'body' : 'armor',
-                        damage: d.value
-                    });
+                    const key = `${layer}_${loc}`;
+                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer === 'body' ? 'body' : 'armor', damage: 0 };
+                    partTotals[key].damage += d.value;
                 });
             });
-            if (hits.length === 0) return;
+            const parts = Object.values(partTotals);
+            if (parts.length === 0) return;
+
+            const totalDamage = parts.reduce((s, p) => s + p.damage, 0);
 
             const log = loadRaidFullLog();
             log.push({
@@ -4927,27 +4930,24 @@
                 player: playerName,
                 boss: bossName,
                 bossOrdinal,
-                hits
+                bossTotal,
+                cards,
+                parts,
+                totalDamage
             });
             saveRaidFullLog(log);
         }
 
-        // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊細節
+        // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
         function queryRaidFullLogByPlayer(keyword) {
             const log = loadRaidFullLog();
             const matchedPlayers = [...new Set(log.filter(e => e.player.includes(keyword)).map(e => e.player))];
             if (matchedPlayers.length === 0) return null;
 
             return matchedPlayers.map(playerName => {
-                const entries = log.filter(e => e.player === playerName);
-                const allHits = [];
-                entries.forEach(entry => {
-                    entry.hits.forEach(h => allHits.push({ ...h, ts: entry.ts, boss: entry.boss, bossOrdinal: entry.bossOrdinal }));
-                });
-                allHits.sort((a, b) => b.ts - a.ts); // 最新的排前面
-
-                const totalDamage = allHits.reduce((s, h) => s + h.damage, 0);
-                return { player: playerName, attackCount: entries.length, totalDamage, hits: allHits };
+                const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
+                const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
+                return { player: playerName, attackCount: attacks.length, totalDamage, attacks };
             });
         }
 
@@ -4978,15 +4978,24 @@
 
             tbody.innerHTML = results.map(r => `
                 <tr style="background:#f7f1e8;">
-                    <td colspan="4" style="font-weight:700;">${escapeHtml(r.player)}　共 ${r.attackCount} 次攻擊，總傷害 ${escapeHtml(formatNum(r.totalDamage))}</td>
+                    <td colspan="2" style="font-weight:700;">${escapeHtml(r.player)}</td>
+                    <td colspan="2" style="font-weight:700; text-align:right;">共 ${r.attackCount} 次・總傷害 ${escapeHtml(formatNum(r.totalDamage))}</td>
                 </tr>
-                ${r.hits.map(h => `
+                ${r.attacks.map(a => `
                     <tr>
-                        <td>${escapeHtml(h.card)}${h.level != null ? ` Lv.${escapeHtml(String(h.level))}` : ''}</td>
-                        <td>${escapeHtml(raidPartLabel(h.part))}・${h.layer === 'body' ? '肉體' : '盔甲'}</td>
-                        <td>${escapeHtml(formatNum(h.damage))}</td>
-                        <td style="font-size:11px; color:#8a7a6a;">${escapeHtml(h.boss)} ${h.bossOrdinal ? h.bossOrdinal + '/6' : ''}</td>
+                        <td colspan="4" style="padding-top:10px; border-top:1px solid #e5dcd2;">
+                            <div style="font-size:12px; color:#6b5a4a; margin-bottom:2px;">
+                                ${escapeHtml(a.cards.map(c => `${c.name} Lv.${c.level}`).join('、'))}
+                            </div>
+                            <div style="font-size:11px; color:#a89a8a;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
+                        </td>
                     </tr>
+                    ${a.parts.map(p => `
+                        <tr>
+                            <td colspan="3" style="padding-left:16px; color:#6b5a4a;">${escapeHtml(raidPartLabel(p.part))}・${p.layer === 'body' ? '肉體' : '盔甲'}</td>
+                            <td style="text-align:right;">${escapeHtml(formatNum(p.damage))}</td>
+                        </tr>
+                    `).join('')}
                 `).join('')}
             `).join('');
         }
@@ -5070,6 +5079,36 @@
 
             raidConnState = 'connected';
             setRaidConnectStatus('✓ 已連線', 'ok');
+            mergeServerFullAttackLog(relayUrl);
+        }
+
+        // 連線成功後，跟 relay server 要它 24 小時側錄下來的完整攻擊紀錄，
+        // 合併進手機本機的紀錄裡，這樣查詢時才看得到「網頁沒開著」那段時間發生的攻擊
+        async function mergeServerFullAttackLog(relayUrl) {
+            try {
+                const resp = await fetch(`${relayUrl}/full-attack-log`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!Array.isArray(data.attacks) || data.attacks.length === 0) return;
+
+                const localLog = loadRaidFullLog();
+                const existingKeys = new Set(localLog.map(e => `${e.ts}_${e.player}`));
+                let addedCount = 0;
+                data.attacks.forEach(entry => {
+                    const key = `${entry.ts}_${entry.player}`;
+                    if (!existingKeys.has(key)) {
+                        localLog.push(entry);
+                        existingKeys.add(key);
+                        addedCount++;
+                    }
+                });
+                if (addedCount > 0) {
+                    localLog.sort((a, b) => a.ts - b.ts);
+                    saveRaidFullLog(localLog);
+                }
+            } catch (e) {
+                console.error('合併伺服器端攻擊紀錄失敗:', e);
+            }
         }
 
         async function connectRaidAPI(silent) {
@@ -5390,8 +5429,9 @@
             }
             const ordinalEl = document.getElementById('raid-boss-ordinal');
             if (ordinalEl && raidState.bossOrdinal) {
-                ordinalEl.textContent = `${raidState.bossOrdinal} / 6`;
-                ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === 6 ? ' is-last' : '');
+                const bossTotal = raidDemoTimer ? 6 : apiBossTotal; // 示範模式固定用 6，真實連線用偵測到的實際總數
+                ordinalEl.textContent = `${raidState.bossOrdinal} / ${bossTotal}`;
+                ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === bossTotal ? ' is-last' : '');
             }
             updateRaidBossIcon(raidState.bossName);
 
@@ -5446,9 +5486,10 @@
             }
             raidLastSkillReminder = skillReminder;
 
-            /* 最後一隻王（6/6）且剩餘血量 ≤ 3B：提醒大家突襲即將結束，把握機會
+            /* 最後一隻王（N/N）且剩餘血量 ≤ 3B：提醒大家突襲即將結束，把握機會
                這個提醒比較急迫，條件持續成立時每 5 分鐘（而不是 30 分鐘）重新通知一次 */
-            const isLastBoss = raidState.bossOrdinal === 6;
+            const currentBossTotal = raidDemoTimer ? 6 : apiBossTotal;
+            const isLastBoss = raidState.bossOrdinal === currentBossTotal;
             const isLowHp = raidState.currentHp <= RAID_LAST_BOSS_HP_THRESHOLD;
             if (isLastBoss && isLowHp) {
                 const now = Date.now();

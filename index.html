@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -4592,6 +4592,13 @@
             document.getElementById('raid-relay-url-input').value = relayUrl;
             // 已經填過 Token 就預設收合，避免每次打開都要先看到一堆輸入框
             toggleRaidSettingsPanel(!(appToken && playerToken));
+
+            // 貼上/輸入的當下就立刻存起來，不用等按下「連線」才存，
+            // 避免貼完 Token 還沒按連線就重新整理頁面導致遺失
+            ['raid-app-token-input', 'raid-player-token-input', 'raid-relay-url-input'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', saveRaidTokens);
+            });
         }
 
         function saveRaidTokens() {
@@ -4648,7 +4655,6 @@
         const RAID_API_BASE = 'https://tt2-public.gamehivegames.com/api';
         let raidSocket = null;
         let apiRaidTitans = [];
-        let apiCurrentTitanIndex = -1;
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
@@ -4680,9 +4686,8 @@
             return parts;
         }
 
-        // 目前正在打的王，就是陣列的第一筆（titans[0]）。
-        // 這裡不能用「血量不是滿的」來判斷，因為詛咒（cursed）效果本身就會讓未被攻擊的王
-        // 血量出現些微差異，用血量差判斷會誤判成別隻王正在被打。
+        // 目前正在打的王，就是陣列的第一筆（titans[0]）——這只用在「還沒收到任何 attack 事件」的預設值，
+        // 之後只要有一筆 attack 事件進來，就會用更可靠的方式（見下方）判斷正確的王。
         function apiFindActiveTitanIndex(titans) {
             return 0;
         }
@@ -4699,13 +4704,21 @@
             return Object.values(parts).reduce((s, p) => s + p.bodyMax, 0);
         }
 
-        function apiSetRaidFromTitanIndex(index) {
-            const titan = apiRaidTitans[index];
+        // 依 enemy_id 在 titans 清單裡找出對應的王資料（拿名字、每個部位的滿血值用）。
+        // 重要：attack 事件裡的 titan_index「不是」titans 陣列的索引，
+        // 它是「這輪突襲累計打過的第幾隻王」的全域計數器（從 0 算起），
+        // 兩者是完全不同的東西，不能拿 titan_index 當陣列下標去查 titans[titan_index]。
+        function apiFindTitanByEnemyId(enemyId) {
+            return apiRaidTitans.find(t => t.enemy_id === enemyId) || null;
+        }
+
+        // ordinal：畫面上「第幾隻／6」的數字，一律用 titan_index + 1 計算，
+        // 這是唯一可靠的來源（陣列本身只是預覽視窗，不能拿位置當作第幾隻）
+        function apiSetRaidFromTitan(titan, ordinal) {
             if (!titan) return;
             const isSameTitan = raidState && apiCurrentEnemyId === titan.enemy_id;
-            apiCurrentTitanIndex = index;
             apiCurrentEnemyId = titan.enemy_id;
-            raidBossOrdinal = index + 1;
+            raidBossOrdinal = ordinal;
 
             if (isSameTitan) {
                 // 同一隻王的資料重複送來（例如 sub_cycle 定期重推），只更新血量，
@@ -4714,6 +4727,7 @@
                 raidState.currentHp = sumBodyHp(raidState.parts);
                 raidState.maxHp = sumBodyMaxHp(raidState.parts);
                 raidState.killMaxHp = titan.total_hp; // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
+                raidState.bossOrdinal = ordinal;
                 raidState.updatedAt = Date.now();
                 return;
             }
@@ -4722,7 +4736,7 @@
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(titan.enemy_name),
                 bossName: titan.enemy_name || '—',
-                bossOrdinal: index + 1,
+                bossOrdinal: ordinal,
                 parts: builtParts,
                 maxHp: sumBodyMaxHp(builtParts),
                 currentHp: sumBodyHp(builtParts),
@@ -4744,7 +4758,7 @@
 
             // sub_cycle 會定期重複發送同一份「輪次開始時」的靜態快照，不是即時資料。
             // 如果已經有 attack 事件確立了目前正在打的王，這裡就不能再拿 sub_cycle 蓋回去，
-            // 只需要更新 apiRaidTitans 這個參照（讓之後 attack 事件的 titan_index 查得到正確資料）即可。
+            // 只需要更新 apiRaidTitans 這個參照（讓之後 attack 事件能依 enemy_id 查得到正確資料）即可。
             if (raidState && apiCurrentEnemyId) {
                 const stillExists = titans.some(t => t.enemy_id === apiCurrentEnemyId);
                 if (stillExists) {
@@ -4753,7 +4767,8 @@
                 }
             }
 
-            apiSetRaidFromTitanIndex(apiFindActiveTitanIndex(titans));
+            const idx = apiFindActiveTitanIndex(titans);
+            apiSetRaidFromTitan(titans[idx], idx + 1);
             renderRaidStatus();
         }
 
@@ -4761,9 +4776,39 @@
             const rs = payload && payload.raid_state;
             if (!rs) return;
             apiHasReceivedAttack = true;
-            if (rs.titan_index !== apiCurrentTitanIndex) {
-                apiSetRaidFromTitanIndex(rs.titan_index);
+
+            const enemyId = rs.current && rs.current.enemy_id;
+            const ordinal = (typeof rs.titan_index === 'number') ? rs.titan_index + 1 : raidBossOrdinal;
+
+            if (enemyId && enemyId !== apiCurrentEnemyId) {
+                // 換了新的王身分：依 enemy_id 在 titans 清單裡找出對應資料（拿名字、滿血值）
+                const titan = apiFindTitanByEnemyId(enemyId);
+                if (titan) {
+                    apiSetRaidFromTitan(titan, ordinal);
+                } else {
+                    // titans 清單裡剛好還沒有這隻王的資料（例如換王換得比 sub_cycle 更新還快），
+                    // 至少先用 attack 事件本身帶的即時資料撐著，滿血值之後 sub_cycle 補上來就會自動修正
+                    apiCurrentEnemyId = enemyId;
+                    raidBossOrdinal = ordinal;
+                    raidState = {
+                        bossIndex: -1,
+                        bossName: '—',
+                        bossOrdinal: ordinal,
+                        parts: apiBuildPartsFromTitan({ parts: [] }),
+                        maxHp: 0,
+                        currentHp: 0,
+                        killMaxHp: 0,
+                        updatedAt: Date.now()
+                    };
+                    raidRecentAttacks = [];
+                    raidBossChangedAt = Date.now();
+                }
+            } else if (raidState) {
+                // 同一隻王，只是 ordinal 有可能是第一次確立（之前用預設值 1），這裡順便校正
+                raidState.bossOrdinal = ordinal;
+                raidBossOrdinal = ordinal;
             }
+
             if (!raidState) return;
             const cur = rs.current || {};
             (cur.parts || []).forEach(p => {

@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -5083,28 +5083,49 @@
         }
 
         // 連線成功後，跟 relay server 要它 24 小時側錄下來的完整攻擊紀錄，
-        // 合併進手機本機的紀錄裡，這樣查詢時才看得到「網頁沒開著」那段時間發生的攻擊
+        // 合併進手機本機的紀錄裡，這樣查詢時才看得到「網頁沒開著」那段時間發生的攻擊；
+        // 同時把伺服器已經確認過的即時王血量狀態直接拿來顯示，不用等這次連線後剛好有人攻擊
         async function mergeServerFullAttackLog(relayUrl) {
             try {
                 const resp = await fetch(`${relayUrl}/full-attack-log`);
                 if (!resp.ok) return;
                 const data = await resp.json();
-                if (!Array.isArray(data.attacks) || data.attacks.length === 0) return;
 
-                const localLog = loadRaidFullLog();
-                const existingKeys = new Set(localLog.map(e => `${e.ts}_${e.player}`));
-                let addedCount = 0;
-                data.attacks.forEach(entry => {
-                    const key = `${entry.ts}_${entry.player}`;
-                    if (!existingKeys.has(key)) {
-                        localLog.push(entry);
-                        existingKeys.add(key);
-                        addedCount++;
+                if (Array.isArray(data.attacks) && data.attacks.length > 0) {
+                    const localLog = loadRaidFullLog();
+                    const existingKeys = new Set(localLog.map(e => `${e.ts}_${e.player}`));
+                    let addedCount = 0;
+                    data.attacks.forEach(entry => {
+                        const key = `${entry.ts}_${entry.player}`;
+                        if (!existingKeys.has(key)) {
+                            localLog.push(entry);
+                            existingKeys.add(key);
+                            addedCount++;
+                        }
+                    });
+                    if (addedCount > 0) {
+                        localLog.sort((a, b) => a.ts - b.ts);
+                        saveRaidFullLog(localLog);
                     }
-                });
-                if (addedCount > 0) {
-                    localLog.sort((a, b) => a.ts - b.ts);
-                    saveRaidFullLog(localLog);
+                }
+
+                const cb = data.currentBoss;
+                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0 && !raidState) {
+                    apiHasReceivedAttack = true;
+                    apiCurrentEnemyId = cb.enemyId || null;
+                    raidBossOrdinal = cb.ordinal || 1;
+                    apiBossTotal = cb.total || 6;
+                    raidState = {
+                        bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
+                        bossName: cb.name || '—',
+                        bossOrdinal: cb.ordinal || 1,
+                        parts: cb.parts,
+                        maxHp: sumBodyMaxHp(cb.parts),
+                        currentHp: sumBodyHp(cb.parts),
+                        killMaxHp: cb.killMaxHp,
+                        updatedAt: Date.now()
+                    };
+                    renderRaidStatus();
                 }
             } catch (e) {
                 console.error('合併伺服器端攻擊紀錄失敗:', e);

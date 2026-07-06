@@ -209,6 +209,126 @@ app.get('/full-attack-log/clear', (req, res) => {
   res.send('<html><body style="font-family:sans-serif; padding:24px; text-align:center;">✓ 已清空</body></html>');
 });
 
+// ══════════════════════════════════════════════════════════
+// Web Push 推播：伺服器主動推送，就算網頁在背景被系統暫停也收得到
+// 需要在 Render 環境變數設定 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
+// （本機執行 `npm run generate-vapid-keys` 產生一組金鑰）
+// ══════════════════════════════════════════════════════════
+const webpush = require('web-push');
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:example@example.com';
+const pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+
+if (pushEnabled) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('尚未設定 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY，推播功能停用（先執行 npm run generate-vapid-keys 產生金鑰）。');
+}
+
+const SUBSCRIPTIONS_PATH = path.join(__dirname, 'push_subscriptions.json');
+
+function loadSubscriptions() {
+  try {
+    if (!fs.existsSync(SUBSCRIPTIONS_PATH)) return [];
+    return JSON.parse(fs.readFileSync(SUBSCRIPTIONS_PATH, 'utf8'));
+  } catch (e) {
+    console.error('讀取推播訂閱清單失敗:', e);
+    return [];
+  }
+}
+function saveSubscriptions(subs) {
+  try {
+    fs.writeFileSync(SUBSCRIPTIONS_PATH, JSON.stringify(subs, null, 2));
+  } catch (e) {
+    console.error('儲存推播訂閱清單失敗:', e);
+  }
+}
+let pushSubscriptions = loadSubscriptions();
+
+app.get('/push/vapid-public-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY, enabled: pushEnabled });
+});
+
+app.post('/push/subscribe', (req, res) => {
+  const subscription = req.body;
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: 'invalid subscription' });
+  }
+  if (!pushSubscriptions.some(s => s.endpoint === subscription.endpoint)) {
+    pushSubscriptions.push(subscription);
+    saveSubscriptions(pushSubscriptions);
+  }
+  res.json({ ok: true, enabled: pushEnabled });
+});
+
+app.post('/push/unsubscribe', (req, res) => {
+  const { endpoint } = req.body || {};
+  pushSubscriptions = pushSubscriptions.filter(s => s.endpoint !== endpoint);
+  saveSubscriptions(pushSubscriptions);
+  res.json({ ok: true });
+});
+
+async function sendPushToAll(title, body, tag) {
+  if (!pushEnabled || pushSubscriptions.length === 0) return;
+  const payload = JSON.stringify({ title, body, tag });
+  const stillValid = [];
+  for (const sub of pushSubscriptions) {
+    try {
+      await webpush.sendNotification(sub, payload);
+      stillValid.push(sub);
+    } catch (err) {
+      if (err.statusCode !== 410 && err.statusCode !== 404) {
+        console.error('推播失敗:', err.statusCode, err.message);
+        stillValid.push(sub); // 暫時性錯誤先保留，避免誤刪還有效的訂閱
+      }
+      // 410/404 代表訂閱已失效（用戶移除通知權限等），不放回清單即可自動清掉
+    }
+  }
+  if (stillValid.length !== pushSubscriptions.length) {
+    pushSubscriptions = stillValid;
+    saveSubscriptions(pushSubscriptions);
+  }
+}
+
+// 王的部位狀態（盔甲/肉體是否還在），用來判斷凱旋行軍／瘋狂無效的觸發條件
+const SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續超過 30 分鐘才重推一次，避免轟炸通知
+const BOSS_CHANGE_GRACE_MS = 5000; // 剛換王的前幾秒，先不要判斷凱旋行軍/瘋狂無效，避免跟換王通知擠在一起
+let watcherPartStatus = {}; // loc -> { armor, body }（current_hp）
+let watcherBossChangedAt = 0;
+let watcherLastSkillReminder = 'none'; // 'none' | 'frenzy' | 'march'
+let watcherLastSkillReminderAt = 0;
+
+function checkSkillConditionsAndNotify() {
+  const locs = Object.values(watcherPartStatus);
+  if (locs.length === 0) return;
+  const exposedBodyCount = locs.filter(p => p.armor <= 0 && p.body > 0).length;
+  const skeletonCount = locs.filter(p => p.armor <= 0 && p.body <= 0).length;
+
+  let condition = 'none';
+  if (exposedBodyCount >= 6) condition = 'frenzy';
+  else if (skeletonCount >= 6) condition = 'march';
+
+  if (condition === 'none') {
+    watcherLastSkillReminder = 'none';
+    return;
+  }
+
+  const now = Date.now();
+  const justChangedBoss = (now - watcherBossChangedAt) < BOSS_CHANGE_GRACE_MS;
+  const isNewState = condition !== watcherLastSkillReminder;
+  const dueForRepeat = !isNewState && (now - watcherLastSkillReminderAt >= SKILL_REMINDER_REPEAT_MS);
+
+  if (!justChangedBoss && (isNewState || dueForRepeat)) {
+    const title = condition === 'frenzy' ? '🟣 瘋狂無效！' : '🟤 凱旋行軍！';
+    const body = condition === 'frenzy' ? '肉體暴露部位已達 6 個以上，建議上瘋狂無效' : '骨架部位已達 6 個以上，建議上凱旋行軍';
+    sendPushToAll(title, body, 'tt2-skill-reminder');
+    watcherLastSkillReminderAt = now;
+  }
+  watcherLastSkillReminder = condition;
+}
+
 function splitPartId(partId) {
   for (const prefix of ['Armor', 'Body', 'Skeleton']) {
     if (partId.startsWith(prefix)) return { layer: prefix.toLowerCase(), loc: partId.slice(prefix.length) };
@@ -234,13 +354,31 @@ function watcherHandleAttack(payload) {
   const ordinal = (typeof rs.titan_index === 'number') ? rs.titan_index + 1 : watcherBossOrdinal;
 
   if (enemyId && enemyId !== watcherCurrentEnemyId) {
+    const isFirstBoss = watcherCurrentEnemyId === null;
     watcherCurrentEnemyId = enemyId;
     watcherBossOrdinal = ordinal;
     const titan = watcherRaidTitans.find(t => t.enemy_id === enemyId);
     watcherBossName = (titan && titan.enemy_name) || watcherSpawnSequence[ordinal - 1] || '—';
+    watcherPartStatus = {}; // 換王了，部位狀態重新累積
+    watcherBossChangedAt = Date.now();
+    watcherLastSkillReminder = 'none';
+    if (!isFirstBoss) {
+      sendPushToAll('⚔️ 換王了！', `目前是：${watcherBossName}（${watcherBossOrdinal}/${watcherBossTotal || 6}）`, 'tt2-boss-change');
+    }
   } else {
     watcherBossOrdinal = ordinal;
   }
+
+  // 更新部位狀態（盔甲/肉體目前血量），用來判斷凱旋行軍／瘋狂無效
+  const curParts = (rs.current && rs.current.parts) || [];
+  curParts.forEach((p) => {
+    const { layer, loc } = splitPartId(p.part_id);
+    if (!loc) return;
+    if (!watcherPartStatus[loc]) watcherPartStatus[loc] = { armor: 0, body: 0 };
+    if (layer === 'armor') watcherPartStatus[loc].armor = p.current_hp;
+    else if (layer === 'body') watcherPartStatus[loc].body = p.current_hp;
+  });
+  checkSkillConditionsAndNotify();
 
   const playerName = (payload.player && payload.player.name) || '?';
   const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({

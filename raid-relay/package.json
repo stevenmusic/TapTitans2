@@ -1,10 +1,11 @@
 {
   "name": "tt2-raid-relay",
   "version": "1.0.0",
-  "description": "Relay server for TT2 Toolkit raid status feature, forwarding GameHive API requests that the browser can't call directly (CORS + custom WebSocket headers), plus a lightweight background watcher that keeps the last 10 attacks so the page can show recent history even before it was opened.",
+  "description": "Relay server for TT2 Toolkit raid status feature: forwards GameHive API requests the browser can't call directly, runs a 24/7 background watcher that records the full attack log, and sends Web Push notifications for boss changes and skill reminders (Victory March / Insanity Void).",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "generate-vapid-keys": "node -e \"console.log(require('web-push').generateVAPIDKeys())\""
   },
   "engines": {
     "node": ">=18"
@@ -13,6 +14,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "socket.io": "^4.7.5",
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.7.5",
+    "web-push": "^3.6.7"
   }
 }

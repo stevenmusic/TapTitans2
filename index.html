@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -2810,6 +2810,23 @@
 
                 </div>
 
+                <div class="backup-section">
+                    <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
+                    <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。突襲結束後，可以查詢某位成員這場用了哪些卡、打中哪個部位（肉體/盔甲）、造成多少傷害。輸入部分文字也能找到（例如打「隨」就能找到「隨便」）。</div>
+                    <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="輸入玩家名稱，可以只打部分文字">
+                    <button class="btn-backup import" onclick="renderRaidLogQueryResult()">查詢</button>
+                    <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
+                        <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:6px;"></div>
+                        <table class="analysis-table" id="raid-log-query-table">
+                            <thead>
+                                <tr><th>卡片</th><th>部位</th><th>傷害</th><th>王</th></tr>
+                            </thead>
+                            <tbody id="raid-log-query-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
+                </div>
+
             </div>
         </div>
     </div>
@@ -4655,6 +4672,7 @@
         const RAID_API_BASE = 'https://tt2-public.gamehivegames.com/api';
         let raidSocket = null;
         let apiRaidTitans = [];
+        let apiSpawnSequence = []; // spawn_sequence[ordinal-1] 給出王的名字，比對 titans 陣列更可靠、更即時
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
@@ -4753,6 +4771,8 @@
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
         function handleApiRaidStart(payload) {
             const titans = payload && payload.raid && payload.raid.titans;
+            const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
+            if (Array.isArray(spawnSeq) && spawnSeq.length > 0) apiSpawnSequence = spawnSeq;
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
 
@@ -4779,24 +4799,37 @@
 
             const enemyId = rs.current && rs.current.enemy_id;
             const ordinal = (typeof rs.titan_index === 'number') ? rs.titan_index + 1 : raidBossOrdinal;
+            const cur = rs.current || {};
 
             if (enemyId && enemyId !== apiCurrentEnemyId) {
-                // 換了新的王身分：依 enemy_id 在 titans 清單裡找出對應資料（拿名字、滿血值）
+                // 換了新的王身分：依 enemy_id 在 titans 清單裡找出對應資料（拿滿血值用）
                 const titan = apiFindTitanByEnemyId(enemyId);
                 if (titan) {
                     apiSetRaidFromTitan(titan, ordinal);
                 } else {
-                    // titans 清單裡剛好還沒有這隻王的資料（例如換王換得比 sub_cycle 更新還快），
-                    // 至少先用 attack 事件本身帶的即時資料撐著，滿血值之後 sub_cycle 補上來就會自動修正
+                    // titans 預覽清單還沒更新到這隻王的資料（换王换得比 sub_cycle 更新還快）。
+                    // 名字改用 spawn_sequence 查（這份清單一開始就有、不會延遲），
+                    // 滿血值目前沒有可靠來源，先用「目前血量」暫時當滿血值，
+                    // 避免畫面出現 0/0 這種明顯錯誤的血條；等下一次 sub_cycle 帶來真正資料，
+                    // 同一隻王會走上面 isSameTitan 分支自動校正回正確的滿血值。
                     apiCurrentEnemyId = enemyId;
                     raidBossOrdinal = ordinal;
+                    const fallbackName = apiSpawnSequence[ordinal - 1] || '—';
+                    const fallbackParts = {};
+                    RAID_PARTS.forEach(def => { fallbackParts[def.key] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 }; });
+                    (cur.parts || []).forEach(p => {
+                        const { layer, loc } = apiSplitPartId(p.part_id);
+                        if (!fallbackParts[loc]) return;
+                        if (layer === 'armor') { fallbackParts[loc].armor = p.current_hp; fallbackParts[loc].armorMax = p.current_hp; }
+                        else if (layer === 'body') { fallbackParts[loc].body = p.current_hp; fallbackParts[loc].bodyMax = p.current_hp; }
+                    });
                     raidState = {
-                        bossIndex: -1,
-                        bossName: '—',
+                        bossIndex: RAID_BOSS_NAMES.indexOf(fallbackName),
+                        bossName: fallbackName,
                         bossOrdinal: ordinal,
-                        parts: apiBuildPartsFromTitan({ parts: [] }),
-                        maxHp: 0,
-                        currentHp: 0,
+                        parts: fallbackParts,
+                        maxHp: sumBodyMaxHp(fallbackParts),
+                        currentHp: sumBodyHp(fallbackParts),
                         killMaxHp: 0,
                         updatedAt: Date.now()
                     };
@@ -4810,7 +4843,6 @@
             }
 
             if (!raidState) return;
-            const cur = rs.current || {};
             (cur.parts || []).forEach(p => {
                 const { layer, loc } = apiSplitPartId(p.part_id);
                 if (!raidState.parts[loc]) return;
@@ -4833,7 +4865,138 @@
                 pushRaidRecentAttack(playerName, loc, layer === 'body' ? 'body' : 'armor', totalDmg);
             }
 
+            recordFullAttackLog(payload);
             renderRaidStatus();
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           完整攻擊紀錄：只要收到 attack 事件就立刻記錄下來（不像「最近攻擊」只留幾筆），
+           突襲結束後可以查詢某個成員這場總共用了哪些卡、各自造成多少傷害
+           ══════════════════════════════════════════════════════════ */
+        const RAID_FULL_LOG_KEY = 'tt2_raid_full_attack_log';
+
+        function loadRaidFullLog() {
+            try {
+                const raw = localStorage.getItem(RAID_FULL_LOG_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                console.error('讀取完整攻擊紀錄失敗:', e);
+                return [];
+            }
+        }
+
+        function saveRaidFullLog(log) {
+            try {
+                localStorage.setItem(RAID_FULL_LOG_KEY, JSON.stringify(log));
+            } catch (e) {
+                console.error('儲存完整攻擊紀錄失敗（可能超過瀏覽器儲存空間上限）:', e);
+            }
+        }
+
+        function recordFullAttackLog(payload) {
+            const playerName = (payload.player && payload.player.name) || '?';
+            const bossName = (raidState && raidState.bossName) || '—';
+            const bossOrdinal = (raidState && raidState.bossOrdinal) || raidBossOrdinal || 0;
+
+            const cardLevels = {};
+            ((payload.attack_log && payload.attack_log.cards_level) || []).forEach(cl => {
+                cardLevels[cl.id] = cl.value;
+            });
+
+            // 每張卡片打中每個部位，都各自記一筆（保留完整細節：卡片、部位、盔甲/肉體、傷害）
+            const hits = [];
+            ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
+                const cardName = cd.id || '點擊攻擊';
+                const level = cardLevels[cd.id] != null ? cardLevels[cd.id] : null;
+                (cd.damage_log || []).forEach(d => {
+                    const { layer, loc } = apiSplitPartId(d.id);
+                    hits.push({
+                        card: cardName,
+                        level,
+                        part: loc || d.id,
+                        layer: layer === 'body' ? 'body' : 'armor',
+                        damage: d.value
+                    });
+                });
+            });
+            if (hits.length === 0) return;
+
+            const log = loadRaidFullLog();
+            log.push({
+                ts: Date.now(),
+                player: playerName,
+                boss: bossName,
+                bossOrdinal,
+                hits
+            });
+            saveRaidFullLog(log);
+        }
+
+        // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊細節
+        function queryRaidFullLogByPlayer(keyword) {
+            const log = loadRaidFullLog();
+            const matchedPlayers = [...new Set(log.filter(e => e.player.includes(keyword)).map(e => e.player))];
+            if (matchedPlayers.length === 0) return null;
+
+            return matchedPlayers.map(playerName => {
+                const entries = log.filter(e => e.player === playerName);
+                const allHits = [];
+                entries.forEach(entry => {
+                    entry.hits.forEach(h => allHits.push({ ...h, ts: entry.ts, boss: entry.boss, bossOrdinal: entry.bossOrdinal }));
+                });
+                allHits.sort((a, b) => b.ts - a.ts); // 最新的排前面
+
+                const totalDamage = allHits.reduce((s, h) => s + h.damage, 0);
+                return { player: playerName, attackCount: entries.length, totalDamage, hits: allHits };
+            });
+        }
+
+        function renderRaidLogQueryResult() {
+            const input = document.getElementById('raid-log-query-input');
+            const keyword = input.value.trim();
+            const resultWrap = document.getElementById('raid-log-query-result');
+            const tbody = document.getElementById('raid-log-query-tbody');
+            const summaryEl = document.getElementById('raid-log-query-summary');
+
+            if (!keyword) {
+                alert('請輸入玩家名稱（可以只打部分文字）');
+                return;
+            }
+
+            const results = queryRaidFullLogByPlayer(keyword);
+            if (!results) {
+                resultWrap.style.display = 'block';
+                summaryEl.textContent = `找不到名稱包含「${keyword}」的攻擊紀錄`;
+                tbody.innerHTML = '';
+                return;
+            }
+
+            resultWrap.style.display = 'block';
+            summaryEl.textContent = results.length > 1
+                ? `符合「${keyword}」的玩家有 ${results.length} 位`
+                : '';
+
+            tbody.innerHTML = results.map(r => `
+                <tr style="background:#f7f1e8;">
+                    <td colspan="4" style="font-weight:700;">${escapeHtml(r.player)}　共 ${r.attackCount} 次攻擊，總傷害 ${escapeHtml(formatNum(r.totalDamage))}</td>
+                </tr>
+                ${r.hits.map(h => `
+                    <tr>
+                        <td>${escapeHtml(h.card)}${h.level != null ? ` Lv.${escapeHtml(String(h.level))}` : ''}</td>
+                        <td>${escapeHtml(raidPartLabel(h.part))}・${h.layer === 'body' ? '肉體' : '盔甲'}</td>
+                        <td>${escapeHtml(formatNum(h.damage))}</td>
+                        <td style="font-size:11px; color:#8a7a6a;">${escapeHtml(h.boss)} ${h.bossOrdinal ? h.bossOrdinal + '/6' : ''}</td>
+                    </tr>
+                `).join('')}
+            `).join('');
+        }
+
+        function clearRaidFullLog() {
+            if (!confirm('確定要清空完整攻擊紀錄嗎？這個動作無法復原。')) return;
+            saveRaidFullLog([]);
+            const resultWrap = document.getElementById('raid-log-query-result');
+            if (resultWrap) resultWrap.style.display = 'none';
+            showPlayerCopyToastLike('已清空攻擊紀錄');
         }
 
         function disconnectRaidAPI() {

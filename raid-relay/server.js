@@ -189,9 +189,20 @@ function saveFullAttackLog() {
   }
 }
 
-// 給前端用：拿走目前累積的完整紀錄
+// 給前端用：拿走目前累積的完整紀錄，以及伺服器目前追蹤到的即時王血量狀態
 app.get('/full-attack-log', (req, res) => {
-  res.json({ attacks: fullAttackLog });
+  res.json({
+    attacks: fullAttackLog,
+    currentBoss: {
+      name: watcherBossName,
+      ordinal: watcherBossOrdinal,
+      total: watcherBossTotal || 6,
+      enemyId: watcherCurrentEnemyId,
+      parts: watcherPartStatus,
+      killMaxHp: watcherKillMaxHp,
+      hasReceivedAttack: watcherHasReceivedAttack
+    }
+  });
 });
 
 // 前端可以手動清空（例如確認突襲已結束、資料也備份/查詢完了）
@@ -259,6 +270,9 @@ app.post('/push/subscribe', (req, res) => {
   if (!pushSubscriptions.some(s => s.endpoint === subscription.endpoint)) {
     pushSubscriptions.push(subscription);
     saveSubscriptions(pushSubscriptions);
+    console.log(`[push] 新增訂閱，目前共 ${pushSubscriptions.length} 筆`);
+  } else {
+    console.log(`[push] 這個訂閱已經存在，目前共 ${pushSubscriptions.length} 筆`);
   }
   res.json({ ok: true, enabled: pushEnabled });
 });
@@ -310,6 +324,8 @@ function checkSkillConditionsAndNotify() {
   if (exposedBodyCount >= 6) condition = 'frenzy';
   else if (skeletonCount >= 6) condition = 'march';
 
+  console.log(`[skill-check] 暴露肉體:${exposedBodyCount} 骨架:${skeletonCount} 判定:${condition} 上次狀態:${watcherLastSkillReminder} 訂閱數:${pushSubscriptions.length} 推播啟用:${pushEnabled}`);
+
   if (condition === 'none') {
     watcherLastSkillReminder = 'none';
     return;
@@ -323,8 +339,11 @@ function checkSkillConditionsAndNotify() {
   if (!justChangedBoss && (isNewState || dueForRepeat)) {
     const title = condition === 'frenzy' ? '🟣 瘋狂無效！' : '🟤 凱旋行軍！';
     const body = condition === 'frenzy' ? '肉體暴露部位已達 6 個以上，建議上瘋狂無效' : '骨架部位已達 6 個以上，建議上凱旋行軍';
+    console.log(`[skill-check] 觸發推播：${title}`);
     sendPushToAll(title, body, 'tt2-skill-reminder');
     watcherLastSkillReminderAt = now;
+  } else {
+    console.log(`[skill-check] 不推播（justChangedBoss:${justChangedBoss} isNewState:${isNewState} dueForRepeat:${dueForRepeat}）`);
   }
   watcherLastSkillReminder = condition;
 }
@@ -346,9 +365,13 @@ function watcherHandleRaidSnapshot(payload) {
   if (Array.isArray(titans) && titans.length > 0) watcherRaidTitans = titans;
 }
 
+let watcherKillMaxHp = 0;
+let watcherHasReceivedAttack = false;
+
 function watcherHandleAttack(payload) {
   const rs = payload && payload.raid_state;
   if (!rs) return;
+  watcherHasReceivedAttack = true;
 
   const enemyId = rs.current && rs.current.enemy_id;
   const ordinal = (typeof rs.titan_index === 'number') ? rs.titan_index + 1 : watcherBossOrdinal;
@@ -359,7 +382,18 @@ function watcherHandleAttack(payload) {
     watcherBossOrdinal = ordinal;
     const titan = watcherRaidTitans.find(t => t.enemy_id === enemyId);
     watcherBossName = (titan && titan.enemy_name) || watcherSpawnSequence[ordinal - 1] || '—';
-    watcherPartStatus = {}; // 換王了，部位狀態重新累積
+    watcherKillMaxHp = (titan && titan.total_hp) || 0;
+    watcherPartStatus = {};
+    // 換王時先用 titans 清單裡的滿血值把每個部位初始化，之後每次攻擊再更新目前血量
+    if (titan) {
+      (titan.parts || []).forEach((p) => {
+        const { layer, loc } = splitPartId(p.part_id);
+        if (!loc) return;
+        if (!watcherPartStatus[loc]) watcherPartStatus[loc] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 };
+        if (layer === 'armor') { watcherPartStatus[loc].armorMax = p.total_hp; watcherPartStatus[loc].armor = p.current_hp; }
+        else if (layer === 'body') { watcherPartStatus[loc].bodyMax = p.total_hp; watcherPartStatus[loc].body = p.current_hp; }
+      });
+    }
     watcherBossChangedAt = Date.now();
     watcherLastSkillReminder = 'none';
     if (!isFirstBoss) {
@@ -369,12 +403,12 @@ function watcherHandleAttack(payload) {
     watcherBossOrdinal = ordinal;
   }
 
-  // 更新部位狀態（盔甲/肉體目前血量），用來判斷凱旋行軍／瘋狂無效
+  // 更新部位狀態（盔甲/肉體目前血量），用來判斷凱旋行軍／瘋狂無效，也給前端顯示血條用
   const curParts = (rs.current && rs.current.parts) || [];
   curParts.forEach((p) => {
     const { layer, loc } = splitPartId(p.part_id);
     if (!loc) return;
-    if (!watcherPartStatus[loc]) watcherPartStatus[loc] = { armor: 0, body: 0 };
+    if (!watcherPartStatus[loc]) watcherPartStatus[loc] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 };
     if (layer === 'armor') watcherPartStatus[loc].armor = p.current_hp;
     else if (layer === 'body') watcherPartStatus[loc].body = p.current_hp;
   });

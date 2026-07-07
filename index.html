@@ -2133,7 +2133,7 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
-            max-height: 140px;
+            max-height: 320px;
             overflow-y: auto;
         }
         .raid-recent-item {
@@ -4594,7 +4594,7 @@
         const RAID_SKILL_REMINDER_GRACE_MS = 5000; // 換王後這段時間內，先不發瘋狂無效／凱旋行軍通知，避免跟換王通知混在一起
         const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
         let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
-        const RAID_RECENT_MAX = 10;
+        const RAID_RECENT_MAX = 15;
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
         function loadRaidTokens() {
@@ -5089,6 +5089,30 @@
             raidConnState = 'connected';
             setRaidConnectStatus('✓ 已連線', 'ok');
             mergeServerFullAttackLog(relayUrl);
+            startRaidLogAutoSync(relayUrl);
+        }
+
+        // 網頁開著的期間，每隔一段時間就去問伺服器有沒有新的攻擊紀錄，
+        // 不用等重新連線才更新——這樣網頁開著就能持續跟真實遊戲進度同步
+        const RAID_LOG_SYNC_INTERVAL_MS = 20000; // 每 20 秒同步一次
+        let raidLogSyncTimer = null;
+
+        function startRaidLogAutoSync(relayUrl) {
+            stopRaidLogAutoSync();
+            raidLogSyncTimer = setInterval(() => {
+                if (raidConnState !== 'connected') {
+                    stopRaidLogAutoSync();
+                    return;
+                }
+                mergeServerFullAttackLog(relayUrl);
+            }, RAID_LOG_SYNC_INTERVAL_MS);
+        }
+
+        function stopRaidLogAutoSync() {
+            if (raidLogSyncTimer) {
+                clearInterval(raidLogSyncTimer);
+                raidLogSyncTimer = null;
+            }
         }
 
         // 連線成功後，跟 relay server 要它 24 小時側錄下來的完整攻擊紀錄，

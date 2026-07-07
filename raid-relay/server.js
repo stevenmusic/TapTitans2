@@ -159,17 +159,57 @@ const path = require('path');
 const WATCHER_APP_TOKEN = sanitizeToken(process.env.WATCHER_APP_TOKEN);
 const WATCHER_PLAYER_TOKEN = sanitizeToken(process.env.WATCHER_PLAYER_TOKEN);
 const WATCHER_RECONNECT_DELAY_MS = 8000;
+const WATCHER_MAX_BACKOFF_MS = 5 * 60 * 1000; // 最長等 5 分鐘再重試，不要一直瘋狂連
+let watcherConsecutiveFailures = 0;
+
+function watcherNextBackoffMs() {
+  // 指數退避：8s → 16s → 32s → 64s ...最長 5 分鐘，避免被 GameHive 判定成異常流量而擋 IP
+  const delay = WATCHER_RECONNECT_DELAY_MS * Math.pow(2, watcherConsecutiveFailures);
+  return Math.min(delay, WATCHER_MAX_BACKOFF_MS);
+}
 const FULL_LOG_PATH = path.join(__dirname, 'full_attack_log.json');
 
 let watcherSocket = null;
 let watcherReconnectTimer = null;
 let watcherRaidTitans = [];
 let watcherSpawnSequence = [];
-let watcherBossTotal = 0;
-let watcherCurrentEnemyId = null;
-let watcherBossName = '—';
-let watcherBossOrdinal = 0;
 let fullAttackLog = loadFullAttackLog();
+
+// 王的即時狀態存到硬碟，這樣伺服器重啟（例如你重新部署新版程式碼）也不會遺失
+// 「最後一次真實攻擊當下」的血量資料，可以在還沒有新攻擊之前先顯示這份舊資料
+const CURRENT_BOSS_STATE_PATH = path.join(__dirname, 'current_boss_state.json');
+
+function loadCurrentBossState() {
+  try {
+    if (!fs.existsSync(CURRENT_BOSS_STATE_PATH)) return null;
+    return JSON.parse(fs.readFileSync(CURRENT_BOSS_STATE_PATH, 'utf8'));
+  } catch (e) {
+    console.error('讀取王血量狀態失敗:', e);
+    return null;
+  }
+}
+
+function saveCurrentBossState() {
+  try {
+    fs.writeFileSync(CURRENT_BOSS_STATE_PATH, JSON.stringify({
+      bossTotal: watcherBossTotal,
+      currentEnemyId: watcherCurrentEnemyId,
+      bossName: watcherBossName,
+      bossOrdinal: watcherBossOrdinal,
+      killMaxHp: watcherKillMaxHp,
+      partStatus: watcherPartStatus,
+      hasReceivedAttack: watcherHasReceivedAttack
+    }));
+  } catch (e) {
+    console.error('儲存王血量狀態失敗:', e);
+  }
+}
+
+const savedBossState = loadCurrentBossState();
+let watcherBossTotal = (savedBossState && savedBossState.bossTotal) || 0;
+let watcherCurrentEnemyId = (savedBossState && savedBossState.currentEnemyId) || null;
+let watcherBossName = (savedBossState && savedBossState.bossName) || '—';
+let watcherBossOrdinal = (savedBossState && savedBossState.bossOrdinal) || 0;
 
 function loadFullAttackLog() {
   try {
@@ -203,6 +243,30 @@ app.get('/full-attack-log', (req, res) => {
       hasReceivedAttack: watcherHasReceivedAttack
     }
   });
+});
+
+// 給人看的簡易統計頁面：打開這個網址直接看到目前累積的總傷害，不用自己算
+app.get('/full-attack-log/summary', (req, res) => {
+  const totalDamage = fullAttackLog.reduce((s, a) => s + (a.totalDamage || 0), 0);
+  const attackCount = fullAttackLog.length;
+  const playerSet = new Set(fullAttackLog.map(a => a.player));
+  const firstTs = fullAttackLog.length > 0 ? fullAttackLog[0].ts : null;
+  const lastTs = fullAttackLog.length > 0 ? fullAttackLog[fullAttackLog.length - 1].ts : null;
+  const fmt = (n) => {
+    if (n >= 1e9) return (n / 1e9).toFixed(3) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(3) + 'M';
+    return String(n);
+  };
+  res.send(`
+    <html><body style="font-family:sans-serif; padding:24px; line-height:1.8;">
+      <h2>攻擊紀錄統計</h2>
+      <p><b>累積總傷害：</b>${fmt(totalDamage)}（精確值：${totalDamage}）</p>
+      <p><b>攻擊筆數：</b>${attackCount}</p>
+      <p><b>參與人數：</b>${playerSet.size}</p>
+      <p><b>最早一筆時間：</b>${firstTs ? new Date(firstTs).toLocaleString('zh-TW') : '無資料'}</p>
+      <p><b>最新一筆時間：</b>${lastTs ? new Date(lastTs).toLocaleString('zh-TW') : '無資料'}</p>
+    </body></html>
+  `);
 });
 
 // 前端可以手動清空（例如確認突襲已結束、資料也備份/查詢完了）
@@ -309,7 +373,7 @@ async function sendPushToAll(title, body, tag) {
 // 王的部位狀態（盔甲/肉體是否還在），用來判斷凱旋行軍／瘋狂無效的觸發條件
 const SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續超過 30 分鐘才重推一次，避免轟炸通知
 const BOSS_CHANGE_GRACE_MS = 5000; // 剛換王的前幾秒，先不要判斷凱旋行軍/瘋狂無效，避免跟換王通知擠在一起
-let watcherPartStatus = {}; // loc -> { armor, body }（current_hp）
+let watcherPartStatus = (savedBossState && savedBossState.partStatus) || {}; // loc -> { armor, armorMax, body, bodyMax }
 let watcherBossChangedAt = 0;
 let watcherLastSkillReminder = 'none'; // 'none' | 'frenzy' | 'march'
 let watcherLastSkillReminderAt = 0;
@@ -365,8 +429,8 @@ function watcherHandleRaidSnapshot(payload) {
   if (Array.isArray(titans) && titans.length > 0) watcherRaidTitans = titans;
 }
 
-let watcherKillMaxHp = 0;
-let watcherHasReceivedAttack = false;
+let watcherKillMaxHp = (savedBossState && savedBossState.killMaxHp) || 0;
+let watcherHasReceivedAttack = (savedBossState && savedBossState.hasReceivedAttack) || false;
 
 function watcherHandleAttack(payload) {
   const rs = payload && payload.raid_state;
@@ -413,6 +477,7 @@ function watcherHandleAttack(payload) {
     else if (layer === 'body') watcherPartStatus[loc].body = p.current_hp;
   });
   checkSkillConditionsAndNotify();
+  saveCurrentBossState();
 
   const playerName = (payload.player && payload.player.name) || '?';
   const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({
@@ -484,14 +549,22 @@ function startWatcher() {
     reconnection: false
   });
 
-  watcherSocket.on('connect', () => console.log('[watcher] 已連上 GameHive'));
+  watcherSocket.on('connect', () => {
+    console.log('[watcher] 已連上 GameHive');
+    watcherConsecutiveFailures = 0; // 連上了就重置退避時間
+  });
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);
-    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+    watcherConsecutiveFailures++;
+    const delay = watcherNextBackoffMs();
+    console.log(`[watcher] 第 ${watcherConsecutiveFailures} 次連續失敗，${Math.round(delay / 1000)} 秒後重試`);
+    watcherReconnectTimer = setTimeout(startWatcher, delay);
   });
   watcherSocket.on('disconnect', () => {
     console.log('[watcher] 斷線，準備重連');
-    watcherReconnectTimer = setTimeout(startWatcher, WATCHER_RECONNECT_DELAY_MS);
+    watcherConsecutiveFailures++;
+    const delay = watcherNextBackoffMs();
+    watcherReconnectTimer = setTimeout(startWatcher, delay);
   });
 
   ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => {

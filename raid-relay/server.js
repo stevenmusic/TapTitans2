@@ -178,6 +178,26 @@ let fullAttackLog = loadFullAttackLog();
 // 王的即時狀態存到硬碟，這樣伺服器重啟（例如你重新部署新版程式碼）也不會遺失
 // 「最後一次真實攻擊當下」的血量資料，可以在還沒有新攻擊之前先顯示這份舊資料
 const CURRENT_BOSS_STATE_PATH = path.join(__dirname, 'current_boss_state.json');
+const CYCLE_SUMMARIES_PATH = path.join(__dirname, 'cycle_summaries.json');
+
+function loadCycleSummaries() {
+  try {
+    if (!fs.existsSync(CYCLE_SUMMARIES_PATH)) return [];
+    return JSON.parse(fs.readFileSync(CYCLE_SUMMARIES_PATH, 'utf8'));
+  } catch (e) {
+    console.error('讀取每輪總結失敗:', e);
+    return [];
+  }
+}
+function saveCycleSummaries(summaries) {
+  try {
+    fs.writeFileSync(CYCLE_SUMMARIES_PATH, JSON.stringify(summaries));
+  } catch (e) {
+    console.error('儲存每輪總結失敗:', e);
+  }
+}
+let cycleSummaries = loadCycleSummaries();
+
 
 function loadCurrentBossState() {
   try {
@@ -265,6 +285,32 @@ app.get('/full-attack-log/summary', (req, res) => {
       <p><b>參與人數：</b>${playerSet.size}</p>
       <p><b>最早一筆時間：</b>${firstTs ? new Date(firstTs).toLocaleString('zh-TW') : '無資料'}</p>
       <p><b>最新一筆時間：</b>${lastTs ? new Date(lastTs).toLocaleString('zh-TW') : '無資料'}</p>
+    </body></html>
+  `);
+});
+
+// 每輪突襲結束時 GameHive 官方給的總結（總傷害、總攻擊次數是官方算好的，不是我們自己加總）
+app.get('/cycle-summaries', (req, res) => {
+  res.json({ summaries: cycleSummaries });
+});
+app.get('/cycle-summaries/view', (req, res) => {
+  const fmt = (n) => {
+    if (n >= 1e9) return (n / 1e9).toFixed(3) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(3) + 'M';
+    return String(n);
+  };
+  const rows = cycleSummaries.slice().reverse().map(s => `
+    <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
+      <p><b>時間：</b>${new Date(s.ts).toLocaleString('zh-TW')}（${s.reason === 'end' ? '正常結束' : '提前結束'}）</p>
+      <p><b>第幾輪(cycle)：</b>${s.cycle != null ? s.cycle : '未知'}</p>
+      <p><b>官方總傷害：</b>${fmt(s.totalDamage)}（精確值：${s.totalDamage}）</p>
+      <p><b>官方總攻擊次數：</b>${s.totalAttacks}</p>
+    </div>
+  `).join('');
+  res.send(`
+    <html><body style="font-family:sans-serif; padding:24px; line-height:1.6;">
+      <h2>每輪突襲總結（官方數字）</h2>
+      ${rows || '<p>目前還沒有任何一輪結束過</p>'}
     </body></html>
   `);
 });
@@ -431,8 +477,10 @@ function watcherHandleRaidSnapshot(payload) {
 
 let watcherKillMaxHp = (savedBossState && savedBossState.killMaxHp) || 0;
 let watcherHasReceivedAttack = (savedBossState && savedBossState.hasReceivedAttack) || false;
+let watcherLastCycle = null;
 
 function watcherHandleAttack(payload) {
+  if (typeof payload.cycle === 'number') watcherLastCycle = payload.cycle;
   const rs = payload && payload.raid_state;
   if (!rs) return;
   watcherHasReceivedAttack = true;
@@ -572,11 +620,32 @@ function startWatcher() {
   });
   watcherSocket.on('attack', watcherHandleAttack);
 
-  // 突襲結束（最後一隻王被擊敗）：只記錄一下，紀錄本身繼續保留，
-  // 下一輪突襲開始時新的攻擊會接著往同一份清單累加，直到你手動清空
-  watcherSocket.on('end', () => {
-    console.log('[watcher] 突襲已結束（最後一隻王已被擊敗）');
-  });
+  // 突襲結束（最後一隻王被擊敗）或提前結束：GameHive 會直接給每個人的總攻擊次數+總傷害，
+  // 不用自己手動加總，直接記下來，之後要算「幾輪能清完」可以拿這個數字用
+  function handleWatcherRaidEnd(reason) {
+    return (payload) => {
+      const summary = (payload && payload.raid_summary) || [];
+      const totalDamage = summary.reduce((s, p) => s + (p.total_damage || 0), 0);
+      const totalAttacks = summary.reduce((s, p) => s + (p.num_attacks || 0), 0);
+      console.log(`[watcher] 突襲${reason}：總傷害 ${totalDamage}，總攻擊次數 ${totalAttacks}`);
+      cycleSummaries.push({
+        ts: Date.now(),
+        reason, // 'end' 正常結束 或 'retire' 提前結束
+        cycle: watcherLastCycle,
+        totalDamage,
+        totalAttacks,
+        players: summary.map(p => ({
+          name: p.name,
+          playerCode: p.player_code,
+          numAttacks: p.num_attacks || 0,
+          totalDamage: p.total_damage || 0
+        }))
+      });
+      saveCycleSummaries(cycleSummaries);
+    };
+  }
+  watcherSocket.on('end', handleWatcherRaidEnd('end'));
+  watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
 
 startWatcher();

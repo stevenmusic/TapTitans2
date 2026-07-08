@@ -555,6 +555,7 @@ function watcherHandleAttack(payload) {
 
   fullAttackLog.push({
     ts: Date.now(),
+    attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來跟前端做去重複判斷
     player: playerName,
     boss: watcherBossName,
     bossOrdinal: watcherBossOrdinal,

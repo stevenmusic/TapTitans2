@@ -4739,6 +4739,7 @@
         function apiSetRaidFromTitan(titan, ordinal) {
             if (!titan) return;
             const isSameTitan = raidState && apiCurrentEnemyId === titan.enemy_id;
+            const hadPreviousState = !!raidState; // 用來判斷這是不是第一次載入（第一次不用清空）
             apiCurrentEnemyId = titan.enemy_id;
             raidBossOrdinal = ordinal;
 
@@ -4770,6 +4771,12 @@
             raidLastSkillReminder = null;
             raidLastSkillReminderNotifiedAt = 0;
             raidLastBossLowNotifiedAt = 0;
+
+            // 回到第一隻王，代表上一輪突襲已經全部清完、新一輪開始了，
+            // 把本機保存的上一輪攻擊紀錄清掉，避免新舊資料混在一起
+            if (hadPreviousState && ordinal === 1) {
+                saveRaidFullLog([]);
+            }
         }
 
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */

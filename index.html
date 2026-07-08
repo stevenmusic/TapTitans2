@@ -4937,6 +4937,7 @@
             const log = loadRaidFullLog();
             log.push({
                 ts: Date.now(),
+                attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來判斷是不是同一筆真實攻擊（不管誰先收到）
                 player: playerName,
                 boss: bossName,
                 bossOrdinal,
@@ -4950,7 +4951,7 @@
 
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
         function queryRaidFullLogByPlayer(keyword) {
-            const log = loadRaidFullLog();
+            const log = dedupRaidFullLog(loadRaidFullLog());
             const keywordLower = keyword.toLowerCase();
             const matchedPlayers = [...new Set(log.filter(e => e.player.toLowerCase().includes(keywordLower)).map(e => e.player))];
             if (matchedPlayers.length === 0) return null;
@@ -4960,6 +4961,21 @@
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
                 return { player: playerName, attackCount: attacks.length, totalDamage, attacks };
             });
+        }
+
+        // 保險機制：清掉可能已經存在的重複紀錄（例如這次修正之前就已經重複存進去的舊資料）
+        function dedupRaidFullLog(log) {
+            const seen = new Set();
+            const deduped = [];
+            log.forEach(entry => {
+                const key = raidLogDedupKey(entry);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    deduped.push(entry);
+                }
+            });
+            if (deduped.length !== log.length) saveRaidFullLog(deduped);
+            return deduped;
         }
 
         function renderRaidLogQueryResult() {
@@ -5131,6 +5147,11 @@
         // 連線成功後，跟 relay server 要它 24 小時側錄下來的完整攻擊紀錄，
         // 合併進手機本機的紀錄裡，這樣查詢時才看得到「網頁沒開著」那段時間發生的攻擊；
         // 同時把伺服器已經確認過的即時王血量狀態直接拿來顯示，不用等這次連線後剛好有人攻擊
+        function raidLogDedupKey(entry) {
+            // 優先用遊戲本身的時間戳記（不管誰先收到都一樣），沒有的話（舊資料）才退回用本機收到時間
+            return entry.attackDatetime ? `${entry.attackDatetime}_${entry.player}` : `${entry.ts}_${entry.player}`;
+        }
+
         async function mergeServerFullAttackLog(relayUrl) {
             try {
                 const resp = await fetch(`${relayUrl}/full-attack-log`);
@@ -5139,10 +5160,10 @@
 
                 if (Array.isArray(data.attacks) && data.attacks.length > 0) {
                     const localLog = loadRaidFullLog();
-                    const existingKeys = new Set(localLog.map(e => `${e.ts}_${e.player}`));
+                    const existingKeys = new Set(localLog.map(raidLogDedupKey));
                     let addedCount = 0;
                     data.attacks.forEach(entry => {
-                        const key = `${entry.ts}_${entry.player}`;
+                        const key = raidLogDedupKey(entry);
                         if (!existingKeys.has(key)) {
                             localLog.push(entry);
                             existingKeys.add(key);

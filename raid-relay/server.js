@@ -580,21 +580,6 @@ function startWatcher() {
     watcherSocket = null;
   }
 
-  fetch(`${RAID_REST_BASE}/raid/subscribe`, {
-    method: 'POST',
-    headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
-  }).then(async (resp) => {
-    const text = await resp.text();
-    let parsed = null;
-    try { parsed = JSON.parse(text); } catch (e) { /* 不是 JSON 就照原樣印出來 */ }
-    if (!resp.ok || (parsed && parsed._error)) {
-      console.error(`[watcher] 訂閱失敗：${text}`);
-    } else {
-      console.log(`[watcher] 訂閱成功：${text}`);
-    }
-  }).catch((e) => console.error('[watcher] 訂閱請求失敗（網路層級）:', e));
-
   // reconnection 交給我們自己手動控制，不要同時開 Socket.IO 內建的自動重連，
   // 不然兩套機制會打架、瘋狂連環重試（之前踩過這個坑）
   watcherSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
@@ -607,6 +592,23 @@ function startWatcher() {
   watcherSocket.on('connect', () => {
     console.log('[watcher] 已連上 GameHive');
     watcherConsecutiveFailures = 0; // 連上了就重置退避時間
+
+    // 一定要等 Socket 真的連上之後才能呼叫訂閱，不然 GameHive 會回
+    // 「Application not connected!」——這點跟網頁自己的連線邏輯要一致
+    fetch(`${RAID_REST_BASE}/raid/subscribe`, {
+      method: 'POST',
+      headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
+    }).then(async (resp) => {
+      const text = await resp.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch (e) { /* 不是 JSON 就照原樣印出來 */ }
+      if (!resp.ok || (parsed && parsed._error)) {
+        console.error(`[watcher] 訂閱失敗：${text}`);
+      } else {
+        console.log(`[watcher] 訂閱成功：${text}`);
+      }
+    }).catch((e) => console.error('[watcher] 訂閱請求失敗（網路層級）:', e));
   });
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);

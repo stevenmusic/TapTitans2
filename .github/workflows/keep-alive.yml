@@ -1,0 +1,15 @@
+name: Keep Render Awake
+
+# 每 14 分鐘戳一次伺服器，避免 Render 免費方案因為 15 分鐘沒有請求就睡眠，
+# 導致背景側錄中斷、漏記攻擊紀錄
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch: {}  # 也可以在 GitHub 網頁上手動點一次來測試
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping relay server
+        run: curl -sS --max-time 30 https://taptitans2.onrender.com/ || echo "Ping 失敗，但不影響下一次排程"

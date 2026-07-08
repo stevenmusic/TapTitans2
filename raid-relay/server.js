@@ -510,6 +510,13 @@ function watcherHandleAttack(payload) {
     watcherLastSkillReminder = 'none';
     if (!isFirstBoss) {
       sendPushToAll('⚔️ 換王了！', `目前是：${watcherBossName}（${watcherBossOrdinal}/${watcherBossTotal || 6}）`, 'tt2-boss-change');
+      // 回到第一隻王，代表上一輪突襲已經全部清完、新一輪開始了，
+      // 把上一輪的攻擊紀錄清掉，避免新舊資料混在一起
+      if (ordinal === 1 && fullAttackLog.length > 0) {
+        console.log(`[watcher] 偵測到新一輪突襲開始（回到 1/${watcherBossTotal || 6}），清空上一輪的攻擊紀錄`);
+        fullAttackLog = [];
+        saveFullAttackLog();
+      }
     }
   } else {
     watcherBossOrdinal = ordinal;

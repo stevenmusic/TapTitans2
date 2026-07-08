@@ -2746,16 +2746,27 @@
                         <span class="raid-settings-arrow" id="raid-settings-arrow">▾</span>
                     </button>
                     <div class="raid-settings-body" id="raid-settings-body">
-                        <input type="text" id="raid-relay-url-input" class="player-name-input" placeholder="中繼伺服器網址">
-                        <input type="text" id="raid-app-token-input" class="player-name-input" data-i18n-placeholder="raidAppTokenPlaceholder" placeholder="Application Token">
-                        <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token">
-                        <div class="raid-connect-btns">
-                            <button class="btn-raid-connect" onclick="connectRaidAPI()" data-i18n="btnRaidConnect">🔌 連線</button>
-                            <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" data-i18n="btnRaidDemo">🎬 示範模式</button>
+                        <div id="raid-guild-buttons" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
+                        <div id="raid-guild-edit-form" style="display:none; flex-direction:column; gap:8px; margin-bottom:10px; background:#f7f1e8; border-radius:10px; padding:10px;">
+                            <input type="text" id="raid-guild-edit-name" class="player-name-input" placeholder="公會名稱（例如《亞瑟斯》）">
+                            <input type="text" id="raid-guild-edit-apptoken" class="player-name-input" placeholder="Application Token">
+                            <input type="text" id="raid-guild-edit-playertoken" class="player-name-input" placeholder="Player Token">
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-raid-connect" style="flex:1;" onclick="saveGuildProfileAndConnect()">💾 儲存並連線</button>
+                                <button class="btn-raid-demo" style="flex:1;" onclick="cancelGuildProfileEdit()">取消</button>
+                            </div>
+                            <button class="btn-raid-tool" style="width:100%; background:#f7e8e8; color:#8e3a3a;" onclick="clearGuildProfileSlot()">🗑️ 清空這個公會欄位</button>
                         </div>
+                        <input type="text" id="raid-relay-url-input" class="player-name-input" placeholder="中繼伺服器網址" style="display:none;">
+                        <input type="text" id="raid-app-token-input" class="player-name-input" data-i18n-placeholder="raidAppTokenPlaceholder" placeholder="Application Token" style="display:none;">
+                        <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token" style="display:none;">
+                        <button class="btn-raid-connect" onclick="connectRaidAPI()" style="display:none;" data-i18n="btnRaidConnect">🔌 連線</button>
+                        <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" style="width:100%; margin-bottom:6px;" data-i18n="btnRaidDemo">🎬 示範模式</button>
                         <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%;">🔔 開啟通知</button>
                         <button class="btn-raid-tool" onclick="subscribeBackgroundPush()" style="width:100%; margin-top:6px;">📡 開啟背景推播（不用開網頁）</button>
                         <div id="push-subscribe-status" style="font-size:11px; color:#8a7a6a; margin-top:4px;"></div>
+                        <button class="btn-raid-tool" onclick="registerBackgroundWatcher()" style="width:100%; margin-top:6px; display:none;">🛰️ 註冊 24 小時背景側錄</button>
+                        <div id="watcher-register-status" style="font-size:11px; color:#8a7a6a; margin-top:4px; display:none;"></div>
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
                         </div>
@@ -4573,6 +4584,10 @@
            ══════════════════════════════════════════════════════════ */
         const RAID_APP_TOKEN_KEY = 'tt2_raid_app_token';
         const RAID_PLAYER_TOKEN_KEY = 'tt2_raid_player_token';
+        const RAID_WATCHER_ID_KEY = 'tt2_raid_watcher_id'; // 自己註冊的背景側錄 id，跟公會綁定，存在本機
+        const RAID_GUILD_PROFILES_KEY = 'tt2_raid_guild_profiles';
+        const RAID_DEFAULT_RELAY_URL = 'https://taptitans2.onrender.com';
+        const RAID_GUILD_PROFILE_SLOTS = 6; // 1 個預設「《亞瑟斯》」+ 5 個空白公會欄位
         const RAID_RELAY_URL_KEY = 'tt2_raid_relay_url';
 
         const RAID_PARTS = [
@@ -4606,10 +4621,11 @@
         function loadRaidTokens() {
             const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || '';
             const playerToken = localStorage.getItem(RAID_PLAYER_TOKEN_KEY) || '';
-            const relayUrl = localStorage.getItem(RAID_RELAY_URL_KEY) || '';
+            const relayUrl = localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL;
             document.getElementById('raid-app-token-input').value = appToken;
             document.getElementById('raid-player-token-input').value = playerToken;
             document.getElementById('raid-relay-url-input').value = relayUrl;
+            localStorage.setItem(RAID_RELAY_URL_KEY, relayUrl); // 補上預設值，之後都固定用這個中繼伺服器
             // 已經填過 Token 就預設收合，避免每次打開都要先看到一堆輸入框
             toggleRaidSettingsPanel(!(appToken && playerToken));
 
@@ -4619,6 +4635,118 @@
                 const el = document.getElementById(id);
                 if (el) el.addEventListener('input', saveRaidTokens);
             });
+
+            initGuildProfiles();
+            renderGuildProfileButtons();
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           公會按鈕：把「中繼伺服器＋兩組 Token」包成一個個公會名稱按鈕，
+           點下去直接連線，不用每次手動填三個欄位。
+           第 1 個固定是「《亞瑟斯》」（你自己的），其餘 5 個是空白欄位，
+           給其他公會填上自己的名稱＋兩組 Token 使用，中繼伺服器一律固定用同一台。
+           ══════════════════════════════════════════════════════════ */
+        function loadGuildProfiles() {
+            try {
+                const raw = localStorage.getItem(RAID_GUILD_PROFILES_KEY);
+                if (raw) return JSON.parse(raw);
+            } catch (e) { /* 壞掉的資料當作沒有，重新初始化 */ }
+            return null;
+        }
+        function saveGuildProfiles(profiles) {
+            localStorage.setItem(RAID_GUILD_PROFILES_KEY, JSON.stringify(profiles));
+        }
+
+        const RAID_ASSERTHUS_PROFILE = { name: '《亞瑟斯》', appToken: '6852d9fd-805e-4b70-8eff-a2ed8250863e', playerToken: '08a8f4ef-965C-4099-9778-39a544a6b490' };
+
+        function initGuildProfiles() {
+            let profiles = loadGuildProfiles();
+            if (!profiles) {
+                profiles = [{ ...RAID_ASSERTHUS_PROFILE }];
+                for (let i = 1; i < RAID_GUILD_PROFILE_SLOTS; i++) profiles.push({ name: '', appToken: '', playerToken: '' });
+            } else {
+                // 不管之前存過什麼，第一個按鈕永遠固定用《亞瑟斯》這組 Token
+                profiles[0] = { ...RAID_ASSERTHUS_PROFILE };
+            }
+            saveGuildProfiles(profiles);
+            return profiles;
+        }
+
+        let raidGuildEditingIndex = null;
+
+        function renderGuildProfileButtons() {
+            const container = document.getElementById('raid-guild-buttons');
+            if (!container) return;
+            const profiles = loadGuildProfiles() || [];
+            const visibleProfiles = profiles.slice(0, 1); // 先只顯示《亞瑟斯》這一個，其他公會欄位暫停顯示
+            container.innerHTML = visibleProfiles.map((p, i) => {
+                const label = escapeHtml(p.name || '（未命名公會）');
+                return `<button class="btn-raid-connect" style="width:100%;" onclick="connectGuildProfile(${i})">${label}</button>`;
+            }).join('');
+        }
+
+        function handleGuildProfileTap(index) {
+            const profiles = loadGuildProfiles() || [];
+            const p = profiles[index];
+            if (p && p.appToken && p.playerToken) {
+                connectGuildProfile(index);
+            } else {
+                openGuildProfileEditor(index);
+            }
+        }
+
+        function connectGuildProfile(index) {
+            const profiles = loadGuildProfiles() || [];
+            const p = profiles[index];
+            if (!p || !p.appToken || !p.playerToken) return;
+            document.getElementById('raid-app-token-input').value = p.appToken;
+            document.getElementById('raid-player-token-input').value = p.playerToken;
+            document.getElementById('raid-relay-url-input').value = RAID_DEFAULT_RELAY_URL;
+            saveRaidTokens();
+            connectRaidAPI();
+        }
+
+        function openGuildProfileEditor(index) {
+            raidGuildEditingIndex = index;
+            const profiles = loadGuildProfiles() || [];
+            const p = profiles[index] || { name: '', appToken: '', playerToken: '' };
+            document.getElementById('raid-guild-edit-name').value = p.name || '';
+            document.getElementById('raid-guild-edit-apptoken').value = p.appToken || '';
+            document.getElementById('raid-guild-edit-playertoken').value = p.playerToken || '';
+            document.getElementById('raid-guild-edit-form').style.display = 'flex';
+        }
+
+        function cancelGuildProfileEdit() {
+            raidGuildEditingIndex = null;
+            document.getElementById('raid-guild-edit-form').style.display = 'none';
+        }
+
+        function saveGuildProfileAndConnect() {
+            if (raidGuildEditingIndex === null) return;
+            const name = document.getElementById('raid-guild-edit-name').value.trim();
+            const appToken = document.getElementById('raid-guild-edit-apptoken').value.trim();
+            const playerToken = document.getElementById('raid-guild-edit-playertoken').value.trim();
+            if (!appToken || !playerToken) {
+                alert('請填入 Application Token 和 Player Token');
+                return;
+            }
+            const profiles = loadGuildProfiles() || [];
+            profiles[raidGuildEditingIndex] = { name: name || '（未命名公會）', appToken, playerToken };
+            saveGuildProfiles(profiles);
+            const idx = raidGuildEditingIndex;
+            cancelGuildProfileEdit();
+            renderGuildProfileButtons();
+            connectGuildProfile(idx);
+        }
+
+        function clearGuildProfileSlot() {
+            if (raidGuildEditingIndex === null) return;
+            if (!confirm('確定要清空這個公會欄位嗎？')) return;
+            const profiles = loadGuildProfiles() || [];
+            profiles[raidGuildEditingIndex] = { name: '', appToken: '', playerToken: '' };
+            saveGuildProfiles(profiles);
+            cancelGuildProfileEdit();
+            renderGuildProfileButtons();
         }
 
         function saveRaidTokens() {
@@ -5152,9 +5280,46 @@
             return entry.attackDatetime ? `${entry.attackDatetime}_${entry.player}` : `${entry.ts}_${entry.player}`;
         }
 
+        // 如果這個瀏覽器有自己註冊過背景側錄，就用 /watchers/{id}/... 這組專屬端點；
+        // 沒有的話（例如你自己這台，用的是環境變數設定的那組），就用舊版相容端點
+        function raidWatcherPathPrefix() {
+            const watcherId = localStorage.getItem(RAID_WATCHER_ID_KEY);
+            return watcherId ? `/watchers/${watcherId}` : '';
+        }
+
+        async function registerBackgroundWatcher() {
+            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
+            const appToken = document.getElementById('raid-app-token-input').value.trim();
+            const playerToken = document.getElementById('raid-player-token-input').value.trim();
+            const statusEl = document.getElementById('watcher-register-status');
+            if (!relayUrl || !appToken || !playerToken) {
+                alert('請先填好中繼伺服器網址、Application Token、Player Token');
+                return;
+            }
+            statusEl.textContent = '註冊中…';
+            try {
+                const resp = await fetch(`${relayUrl}/watchers/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appToken, playerToken })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.watcherId) {
+                    statusEl.textContent = '註冊失敗：' + (data.error || ('HTTP ' + resp.status));
+                    return;
+                }
+                localStorage.setItem(RAID_WATCHER_ID_KEY, data.watcherId);
+                statusEl.textContent = data.alreadyRegistered
+                    ? '✓ 這組 Token 已經註冊過背景側錄了，繼續使用中'
+                    : '✓ 註冊成功！伺服器已經開始 24 小時側錄你的公會';
+            } catch (e) {
+                statusEl.textContent = '註冊失敗：' + (e && e.message ? e.message : String(e));
+            }
+        }
+
         async function mergeServerFullAttackLog(relayUrl) {
             try {
-                const resp = await fetch(`${relayUrl}/full-attack-log`);
+                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
                 if (!resp.ok) return;
                 const data = await resp.json();
 
@@ -5827,7 +5992,7 @@
                 const swReg = await navigator.serviceWorker.register('sw.js');
                 await navigator.serviceWorker.ready;
 
-                const keyResp = await fetch(`${relayUrl}/push/vapid-public-key`);
+                const keyResp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/push/vapid-public-key`);
                 const keyData = await keyResp.json();
                 if (!keyData.enabled || !keyData.publicKey) {
                     setPushStatusText('中繼伺服器尚未設定推播金鑰，請聯絡開發者');
@@ -5842,7 +6007,7 @@
                     });
                 }
 
-                const saveResp = await fetch(`${relayUrl}/push/subscribe`, {
+                const saveResp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/push/subscribe`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(subscription)

@@ -367,7 +367,7 @@ const LINE_FEATURES = [
 ];
 const TT2_TOOLKIT_URL = 'https://stevenmusic.github.io/TapTitans2/';
 
-// 第一層：一句話 + 6 個快速回覆按鈕，只顯示功能名稱
+// 選單按鈕：點了直接連到對應頁面，不會再跳出中間的卡片
 function buildFeatureMenuMessage() {
   return {
     type: 'text',
@@ -375,35 +375,8 @@ function buildFeatureMenuMessage() {
     quickReply: {
       items: LINE_FEATURES.map((f) => ({
         type: 'action',
-        action: { type: 'postback', label: `${f.emoji} ${f.title}`, data: `feature=${f.id}`, displayText: `${f.emoji} ${f.title}` }
+        action: { type: 'uri', label: `${f.emoji} ${f.title}`, uri: f.url || TT2_TOOLKIT_URL }
       }))
-    }
-  };
-}
-
-// 第二層：使用者點了某個按鈕之後，才回覆「那一個」功能的詳細卡片
-function buildFeatureDetailFlex(feature) {
-  return {
-    type: 'flex',
-    altText: feature.title,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box', layout: 'vertical', backgroundColor: feature.color, paddingAll: '16px',
-        contents: [
-          { type: 'text', text: feature.emoji, size: 'xxl', align: 'center' },
-          { type: 'text', text: feature.title, color: '#FFFFFF', weight: 'bold', size: 'lg', align: 'center', margin: 'sm' }
-        ]
-      },
-      body: {
-        type: 'box', layout: 'vertical', spacing: 'sm',
-        contents: [{ type: 'text', text: feature.desc, wrap: true, size: 'sm', color: '#555555' }]
-      },
-      footer: {
-        type: 'box', layout: 'vertical',
-        contents: [{ type: 'button', style: 'primary', color: feature.color, action: { type: 'uri', label: '前往使用', uri: feature.url || TT2_TOOLKIT_URL } }]
-      }
     }
   };
 }
@@ -428,16 +401,9 @@ app.post('/line/webhook', (req, res) => {
     const groupId = evt.source && evt.source.groupId;
     if (groupId) console.log(`[LINE] 收到群組訊息，Group ID 是：${groupId}`);
 
-    // 任何人傳文字訊息給官方帳號（不管內容是什麼），先回選單（只有按鈕，不會太長）
+    // 任何人傳文字訊息給官方帳號（不管內容是什麼），回覆選單按鈕，點了直接跳轉頁面
     if (evt.type === 'message' && evt.message && evt.message.type === 'text' && evt.replyToken) {
       replyLineMessage(evt.replyToken, [buildFeatureMenuMessage()]);
-    }
-
-    // 使用者點了選單裡的某個按鈕，才回覆那一個功能的詳細卡片
-    if (evt.type === 'postback' && evt.replyToken) {
-      const match = /^feature=(.+)$/.exec(evt.postback.data || '');
-      const feature = match && LINE_FEATURES.find((f) => f.id === match[1]);
-      if (feature) replyLineMessage(evt.replyToken, [buildFeatureDetailFlex(feature)]);
     }
   });
   res.sendStatus(200);

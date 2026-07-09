@@ -358,7 +358,57 @@ async function sendLineMessage(text, mentionAll) {
   }
 }
 // 功能選單卡片（Flex Message），任何人傳訊息給官方帳號都會回這個選單
-const LINE_FEATURE_MENU_FLEX = {"type": "flex", "altText": "TT2 Toolkit \u529f\u80fd\u9078\u55ae", "contents": {"type": "carousel", "contents": [{"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#8B5A2B", "paddingAll": "16px", "contents": [{"type": "text", "text": "\ud83c\udccf", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u724c\u7d44\u5efa\u69cb", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "\u7a81\u64ca/\u82e6\u75db/\u652f\u63f4\u914d\u5361\u62d6\u62c9\u4ecb\u9762", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u53ef\u5132\u5b58\u724c\u7d44\u3001\u532f\u51fa\u6210\u5716\u7247\u5206\u4eab", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#8B5A2B", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}, {"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#2E7D32", "paddingAll": "16px", "contents": [{"type": "text", "text": "\ud83d\udcca", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u6230\u5831\u5206\u6790", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "\u8cbc\u4e0a\u7a81\u8972 CSV \u6578\u64da", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u81ea\u52d5\u7b97\u51fa\u653b\u64ca\u6b21\u6578\u3001\u7e3d\u50b7\u3001\u5747\u50b7\u3001\u8aa4\u50b7", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#2E7D32", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}, {"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#6A1B9A", "paddingAll": "16px", "contents": [{"type": "text", "text": "\ud83c\udf00", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u6df1\u6df5\u9326\u6a19\u8cfd\u6307\u5357", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "7 \u7a2e\u6a21\u5f0f\u7684\u6280\u80fd\u9ede\u914d\u7f6e", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u88dd\u5099\u9806\u5e8f\u5efa\u8b70\u3001\u6280\u80fd\u6a39\u6307\u5357", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#6A1B9A", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}, {"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#C62828", "paddingAll": "16px", "contents": [{"type": "text", "text": "\u2694\ufe0f", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u7a81\u8972\u72c0\u614b", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "\u5373\u6642\u986f\u793a\u738b\u7684\u8840\u91cf\u3001\u90e8\u4f4d\u72c0\u614b", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u5269\u9918\u653b\u64ca\u6b21\u6578\u3001\u63db\u738b\u63d0\u9192", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#C62828", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}, {"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#00838F", "paddingAll": "16px", "contents": [{"type": "text", "text": "\ud83d\uddc2\ufe0f", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u653b\u64ca\u7d00\u9304\u67e5\u8a62", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "\u67e5\u8a62\u67d0\u4f4d\u6210\u54e1\u9019\u5834\u7528\u4e86\u54ea\u4e9b\u5361", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u6253\u4e2d\u54ea\u500b\u90e8\u4f4d\u3001\u9020\u6210\u591a\u5c11\u50b7\u5bb3", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#00838F", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}, {"type": "bubble", "size": "kilo", "header": {"type": "box", "layout": "vertical", "backgroundColor": "#F9A825", "paddingAll": "16px", "contents": [{"type": "text", "text": "\ud83d\udd14", "size": "xxl", "align": "center"}, {"type": "text", "text": "\u80cc\u666f\u63a8\u64ad\u901a\u77e5", "color": "#FFFFFF", "weight": "bold", "size": "lg", "align": "center", "margin": "sm"}]}, "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [{"type": "text", "text": "\u63db\u738b\u3001\u760b\u72c2\u7121\u6548\u3001\u51f1\u65cb\u884c\u8ecd", "wrap": true, "size": "sm", "color": "#555555"}, {"type": "text", "text": "\u4e0d\u7528\u958b\u7db2\u9801\u4e5f\u80fd\u6536\u5230\u901a\u77e5", "wrap": true, "size": "sm", "color": "#555555"}]}, "footer": {"type": "box", "layout": "vertical", "contents": [{"type": "button", "style": "primary", "color": "#F9A825", "action": {"type": "uri", "label": "\u524d\u5f80\u4f7f\u7528", "uri": "https://stevenmusic.github.io/TapTitans2/"}}]}}]}};
+// 功能資料：只維護這一份清單，選單按鈕跟詳細卡片都從這裡自動產生
+const LINE_FEATURES = [
+  { id: 'deck',   emoji: '🃏', title: '牌組建構',       desc: '突擊/苦痛/支援配卡拖拉介面，可儲存、匯出成圖片分享', color: '#8B5A2B' },
+  { id: 'report', emoji: '📊', title: '戰報分析',       desc: '貼上突襲CSV數據，自動算出攻擊次數、總傷、均傷、誤傷', color: '#2E7D32' },
+  { id: 'abyss',  emoji: '🌀', title: '深淵錦標賽指南', desc: '7種模式的技能點配置、裝備順序建議', color: '#6A1B9A' },
+  { id: 'raid',   emoji: '⚔️', title: '突襲狀態',       desc: '即時顯示王的血量、部位狀態、剩餘攻擊次數', color: '#C62828' },
+  { id: 'log',    emoji: '🗂️', title: '攻擊紀錄查詢',   desc: '查詢某位成員這場用了哪些卡、打中哪個部位、傷害多少', color: '#00838F' },
+  { id: 'push',   emoji: '🔔', title: '背景推播通知',   desc: '換王、瘋狂無效、凱旋行軍，不用開網頁也能收到', color: '#F9A825' }
+];
+const TT2_TOOLKIT_URL = 'https://stevenmusic.github.io/TapTitans2/';
+
+// 第一層：一句話 + 6 個快速回覆按鈕，只顯示功能名稱
+function buildFeatureMenuMessage() {
+  return {
+    type: 'text',
+    text: '請選擇想了解的功能 👇',
+    quickReply: {
+      items: LINE_FEATURES.map((f) => ({
+        type: 'action',
+        action: { type: 'postback', label: `${f.emoji} ${f.title}`, data: `feature=${f.id}`, displayText: `${f.emoji} ${f.title}` }
+      }))
+    }
+  };
+}
+
+// 第二層：使用者點了某個按鈕之後，才回覆「那一個」功能的詳細卡片
+function buildFeatureDetailFlex(feature) {
+  return {
+    type: 'flex',
+    altText: feature.title,
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: feature.color, paddingAll: '16px',
+        contents: [
+          { type: 'text', text: feature.emoji, size: 'xxl', align: 'center' },
+          { type: 'text', text: feature.title, color: '#FFFFFF', weight: 'bold', size: 'lg', align: 'center', margin: 'sm' }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [{ type: 'text', text: feature.desc, wrap: true, size: 'sm', color: '#555555' }]
+      },
+      footer: {
+        type: 'box', layout: 'vertical',
+        contents: [{ type: 'button', style: 'primary', color: feature.color, action: { type: 'uri', label: '前往使用', uri: TT2_TOOLKIT_URL } }]
+      }
+    }
+  };
+}
 
 // 用 reply token 立即回覆——這種「一問一答」的回覆方式完全免費，不會扣到每月 200 則的推播額度
 async function replyLineMessage(replyToken, messages) {
@@ -380,9 +430,16 @@ app.post('/line/webhook', (req, res) => {
     const groupId = evt.source && evt.source.groupId;
     if (groupId) console.log(`[LINE] 收到群組訊息，Group ID 是：${groupId}`);
 
-    // 任何人傳文字訊息給官方帳號（不管內容是什麼），就回覆功能選單卡片
+    // 任何人傳文字訊息給官方帳號（不管內容是什麼），先回選單（只有按鈕，不會太長）
     if (evt.type === 'message' && evt.message && evt.message.type === 'text' && evt.replyToken) {
-      replyLineMessage(evt.replyToken, [LINE_FEATURE_MENU_FLEX]);
+      replyLineMessage(evt.replyToken, [buildFeatureMenuMessage()]);
+    }
+
+    // 使用者點了選單裡的某個按鈕，才回覆那一個功能的詳細卡片
+    if (evt.type === 'postback' && evt.replyToken) {
+      const match = /^feature=(.+)$/.exec(evt.postback.data || '');
+      const feature = match && LINE_FEATURES.find((f) => f.id === match[1]);
+      if (feature) replyLineMessage(evt.replyToken, [buildFeatureDetailFlex(feature)]);
     }
   });
   res.sendStatus(200);

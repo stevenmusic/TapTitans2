@@ -3571,7 +3571,11 @@
             updateRaidIosHint();
             autoConnectRaidOnLoad();
 
-            showView('home');
+            // 網址後面加 #deck、#analysis、#raid、#players、#abyss，可以直接跳到那個頁面，
+            // 不用先進首頁再手動點——LINE 選單卡片的連結會用到這個
+            const HASH_VIEW_MAP = { deck: 'deck', analysis: 'analysis', raid: 'raidStatus', players: 'players', abyss: 'abyssList' };
+            const targetView = HASH_VIEW_MAP[window.location.hash.replace('#', '')];
+            showView(targetView || 'home');
 
             document.querySelectorAll('.pill-btn').forEach(btn => {
                 btn.addEventListener('click', function() { this.classList.toggle('active'); });
@@ -5774,7 +5778,8 @@
             document.getElementById('raid-live-wrap').style.display = 'block';
 
             if (raidLastBossName !== null && raidLastBossName !== raidState.bossName) {
-                sendRaidNotification(`${t('raidBossChangedNotify')} ${raidState.bossName}`);
+                // 換王通知已經改由伺服器背景推播負責（不管網頁有沒有開都會收到），
+                // 這裡不用再重複發一次前景通知，避免同時收到兩則講同一件事的通知
             }
             raidLastBossName = raidState.bossName;
 
@@ -5837,7 +5842,8 @@
                 const isNewState = skillReminder !== raidLastSkillReminder;
                 const dueForRepeat = !isNewState && (now - raidLastSkillReminderNotifiedAt >= RAID_SKILL_REMINDER_REPEAT_MS);
                 if (!justChangedBoss && (isNewState || dueForRepeat)) {
-                    sendRaidNotification(skillReminder === 'frenzy' ? t('raidReminderFrenzy') : t('raidReminderMarch'));
+                    // 技能提醒已經改由伺服器背景推播負責（同時也會同步到 LINE），
+                    // 這裡不用再重複發一次前景通知，避免同時收到兩則講同一件事的通知
                     raidLastSkillReminderNotifiedAt = now;
                 }
             }

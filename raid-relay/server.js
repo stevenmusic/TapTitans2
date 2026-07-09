@@ -360,12 +360,12 @@ async function sendLineMessage(text, mentionAll) {
 // 功能選單卡片（Flex Message），任何人傳訊息給官方帳號都會回這個選單
 // 功能資料：只維護這一份清單，選單按鈕跟詳細卡片都從這裡自動產生
 const LINE_FEATURES = [
-  { id: 'deck',   emoji: '🃏', title: '牌組建構',       desc: '突擊/苦痛/支援配卡拖拉介面，可儲存、匯出成圖片分享', color: '#8B5A2B' },
-  { id: 'report', emoji: '📊', title: '戰報分析',       desc: '貼上突襲CSV數據，自動算出攻擊次數、總傷、均傷、誤傷', color: '#2E7D32' },
-  { id: 'abyss',  emoji: '🌀', title: '深淵錦標賽指南', desc: '7種模式的技能點配置、裝備順序建議', color: '#6A1B9A' },
-  { id: 'raid',   emoji: '⚔️', title: '突襲狀態',       desc: '即時顯示王的血量、部位狀態、剩餘攻擊次數', color: '#C62828' },
-  { id: 'log',    emoji: '🗂️', title: '攻擊紀錄查詢',   desc: '查詢某位成員這場用了哪些卡、打中哪個部位、傷害多少', color: '#00838F' },
-  { id: 'push',   emoji: '🔔', title: '背景推播通知',   desc: '換王、瘋狂無效、凱旋行軍，不用開網頁也能收到', color: '#F9A825' }
+  { id: 'deck',   emoji: '🃏', title: '牌組建構',       desc: '突擊/苦痛/支援配卡拖拉介面，可儲存、匯出成圖片分享', color: '#8B5A2B', url: 'https://stevenmusic.github.io/TapTitans2/#deck' },
+  { id: 'report', emoji: '📊', title: '戰報分析',       desc: '貼上突襲CSV數據，自動算出攻擊次數、總傷、均傷、誤傷', color: '#2E7D32', url: 'https://stevenmusic.github.io/TapTitans2/#analysis' },
+  { id: 'abyss',  emoji: '🌀', title: '深淵錦標賽指南', desc: '7種模式的技能點配置、裝備順序建議', color: '#6A1B9A', url: 'https://stevenmusic.github.io/TapTitans2/#abyss' },
+  { id: 'raid',   emoji: '⚔️', title: '突襲狀態',       desc: '即時顯示王的血量、部位狀態、剩餘攻擊次數', color: '#C62828', url: 'https://stevenmusic.github.io/TapTitans2/#raid' },
+  { id: 'log',    emoji: '🗂️', title: '攻擊紀錄查詢',   desc: '查詢某位成員這場用了哪些卡、打中哪個部位、傷害多少', color: '#00838F', url: 'https://stevenmusic.github.io/TapTitans2/#raid' },
+  { id: 'push',   emoji: '🔔', title: '背景推播通知',   desc: '換王、瘋狂無效、凱旋行軍，不用開網頁也能收到', color: '#F9A825', url: 'https://stevenmusic.github.io/TapTitans2/#raid' }
 ];
 const TT2_TOOLKIT_URL = 'https://stevenmusic.github.io/TapTitans2/';
 
@@ -404,7 +404,7 @@ function buildFeatureDetailFlex(feature) {
       },
       footer: {
         type: 'box', layout: 'vertical',
-        contents: [{ type: 'button', style: 'primary', color: feature.color, action: { type: 'uri', label: '前往使用', uri: TT2_TOOLKIT_URL } }]
+        contents: [{ type: 'button', style: 'primary', color: feature.color, action: { type: 'uri', label: '前往使用', uri: feature.url || TT2_TOOLKIT_URL } }]
       }
     }
   };

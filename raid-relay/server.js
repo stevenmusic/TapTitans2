@@ -212,6 +212,52 @@ let fullAttackLog = readJsonSafe(FULL_LOG_PATH, []);
 let cycleSummaries = readJsonSafe(CYCLE_SUMMARIES_PATH, []);
 let pushSubscriptions = readJsonSafe(SUBSCRIPTIONS_PATH, []);
 
+// 找回孤兒資料：之前短暫跑過「多公會版」時，資料被寫到 watcher_data/default/ 這個
+// 子資料夾裡，回到單一公會版本之後這裡不會再去讀那份資料，先撿回來合併，避免那段
+// 期間記錄到的攻擊紀錄、每輪總結永遠消失
+function recoverOrphanedMultiTenantData() {
+  const orphanDir = path.join(__dirname, 'watcher_data', 'default');
+  if (!fs.existsSync(orphanDir)) return;
+
+  const orphanLog = readJsonSafe(path.join(orphanDir, 'full_attack_log.json'), []);
+  if (orphanLog.length > 0) {
+    const existingKeys = new Set(fullAttackLog.map(e => `${e.attackDatetime || e.ts}_${e.player}`));
+    let addedCount = 0;
+    orphanLog.forEach((entry) => {
+      const key = `${entry.attackDatetime || entry.ts}_${entry.player}`;
+      if (!existingKeys.has(key)) {
+        fullAttackLog.push(entry);
+        existingKeys.add(key);
+        addedCount++;
+      }
+    });
+    if (addedCount > 0) {
+      fullAttackLog.sort((a, b) => a.ts - b.ts);
+      writeJsonSafe(FULL_LOG_PATH, fullAttackLog);
+      console.log(`[recover] 從多公會版孤兒資料裡撿回 ${addedCount} 筆攻擊紀錄`);
+    }
+  }
+
+  const orphanSummaries = readJsonSafe(path.join(orphanDir, 'cycle_summaries.json'), []);
+  if (orphanSummaries.length > 0) {
+    const existingTs = new Set(cycleSummaries.map(s => s.ts));
+    let addedCount = 0;
+    orphanSummaries.forEach((s) => {
+      if (!existingTs.has(s.ts)) {
+        cycleSummaries.push(s);
+        existingTs.add(s.ts);
+        addedCount++;
+      }
+    });
+    if (addedCount > 0) {
+      cycleSummaries.sort((a, b) => a.ts - b.ts);
+      writeJsonSafe(CYCLE_SUMMARIES_PATH, cycleSummaries);
+      console.log(`[recover] 從多公會版孤兒資料裡撿回 ${addedCount} 筆每輪總結`);
+    }
+  }
+}
+recoverOrphanedMultiTenantData();
+
 const savedBossState = readJsonSafe(CURRENT_BOSS_STATE_PATH, null);
 let watcherBossTotal = (savedBossState && savedBossState.bossTotal) || 0;
 let watcherCurrentEnemyId = (savedBossState && savedBossState.currentEnemyId) || null;
@@ -266,7 +312,7 @@ app.post('/push/unsubscribe', (req, res) => {
 });
 
 async function sendPushToAll(title, body, tag) {
-  if (tag === 'tt2-skill-reminder') sendLineMessage(`${title}\n${body}`);
+  if (tag === 'tt2-skill-reminder') sendLineMessage(`${title}\n${body}`, true); // 技能提醒用 @All 提及全部成員
   if (!pushEnabled || pushSubscriptions.length === 0) return;
   const payload = JSON.stringify({ title, body, tag });
   const stillValid = [];
@@ -293,13 +339,18 @@ const lineEnabled = Boolean(LINE_CHANNEL_ACCESS_TOKEN && LINE_GROUP_ID);
 if (!lineEnabled) {
   console.warn('尚未設定 LINE_CHANNEL_ACCESS_TOKEN / LINE_GROUP_ID，LINE 群組推播停用。');
 }
-async function sendLineMessage(text) {
+async function sendLineMessage(text, mentionAll) {
   if (!lineEnabled) return;
   try {
+    // mentionAll 為 true 時，用 LINE 的 Text Message v2 功能在訊息前面插入 @All，
+    // 提及群組裡所有成員（會讓大家收到 LINE 通知，不只是安靜顯示在聊天室裡）
+    const message = mentionAll
+      ? { type: 'textV2', text: '{everyone} ' + text, substitution: { everyone: { type: 'mention', mentionee: { type: 'all' } } } }
+      : { type: 'text', text };
     const resp = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
-      body: JSON.stringify({ to: LINE_GROUP_ID, messages: [{ type: 'text', text }] })
+      body: JSON.stringify({ to: LINE_GROUP_ID, messages: [message] })
     });
     if (!resp.ok) console.error('[LINE] 推播失敗:', resp.status, await resp.text());
   } catch (e) {

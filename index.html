@@ -835,6 +835,30 @@
             background-color: #e8e0d5;
         }
 
+        /* ── 突襲水晶：簡易卡槽列 ── */
+        .crystal-toolbar { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 4px 8px; }
+        #page-raidcrystal .btn-download {
+            background: linear-gradient(135deg, #a83250 0%, #6b1d30 100%);
+            box-shadow: 0 3px 10px rgba(139,38,62,0.45), 0 0 0 1px rgba(255,214,140,0.3) inset;
+        }
+        .crystal-section-title { display: flex; align-items: baseline; gap: 0; font-size: 15px; font-weight: 700; margin: 16px 4px 8px; color: #5a4a3a; white-space: nowrap; overflow-x: auto; }
+        .crystal-section-desc { font-size: 11px; font-weight: 400; color: #8a7a6a; margin-left: 4px; white-space: nowrap; }
+        .crystal-row { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; padding: 6px 10px 6px 6px; border-radius: 8px; width: 100%; box-sizing: border-box; }
+        .crystal-label { width: 36px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: #6b5a4a; }
+        .crystal-slots { display: flex; flex-wrap: nowrap; gap: 6px; flex: 0 0 auto; width: 228px; overflow-x: auto; overflow-y: hidden; }
+        .crystal-slots .drop-zone { flex: 0 0 33px; width: 33px; }
+        .crystal-controls { display: flex; gap: 4px; flex-shrink: 0; }
+        .crystal-controls .btn-action { width: 26px; height: 26px; padding: 0; font-size: 14px; line-height: 26px; border-radius: 6px; border: none; background: #8b263e; color: #fff; }
+        .crystal-controls .btn-action.del { background: #c97a7a; }
+
+        /* 爆裂／苦痛／支援三個橫排套用跟牌組建構一樣的底色 */
+        .crystal-row.burst   { background: var(--bg-burst); }
+        .crystal-row.burst   .crystal-label { color: var(--text-burst); }
+        .crystal-row.torment { background: var(--bg-torment); }
+        .crystal-row.torment .crystal-label { color: var(--text-torment); }
+        .crystal-row.support { background: var(--bg-support); }
+        .crystal-row.support .crystal-label { color: var(--text-support); }
+
         /* ── 儲存指示器 ── */
         .save-indicator {
             position: fixed;
@@ -1157,6 +1181,11 @@
         .home-nav-card.raidstatus .home-nav-icon { background: #fbe6e6; color: #c62828; }
         .home-nav-card.raidstatus .home-nav-title { color: #8e1c1c; }
         .home-nav-card.raidstatus .home-nav-arrow { color: #e8b3b3; }
+
+        .home-nav-card.raidcrystal { border-left: 4px solid #1565c0; }
+        .home-nav-card.raidcrystal .home-nav-icon { background: #e3edfa; color: #1565c0; }
+        .home-nav-card.raidcrystal .home-nav-title { color: #0d3c73; }
+        .home-nav-card.raidcrystal .home-nav-arrow { color: #a9c6e8; }
 
         #nav-header-abyss-list, #nav-header-abyss-detail {
             background: linear-gradient(135deg, #3d2570 0%, #221340 100%);
@@ -2172,6 +2201,16 @@
             .boss-config-container {
                 max-width: 680px;
             }
+            /* 突襲水晶：平板上卡槽可以放大一些，整個區塊也放寬 */
+            #page-raidcrystal {
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+            .crystal-label { width: 44px; font-size: 13px; }
+            .crystal-slots { width: 390px; }
+            .crystal-slots .drop-zone { flex: 0 0 60px; width: 60px; }
+            .crystal-section-title { font-size: 16.5px; }
             /* 牌組建構（爆裂/苦痛/支援）只小幅放寬，避免卡片池的卡片被撐太大
                （限定這三個頁面，不影響戰報分析頁的 .export-area） */
             #page-burst .export-area,
@@ -2304,6 +2343,11 @@
             .tab-btn { font-size: 14px; }
             .abyss-tab { font-size: 14px; }
 
+            .crystal-label { width: 40px; font-size: 12.5px; }
+            .crystal-slots { width: 282px; }
+            .crystal-slots .drop-zone { flex: 0 0 42px; width: 42px; }
+            .crystal-section-title { font-size: 15.5px; }
+
             .btn-analysis { font-size: 12.5px; }
             .tier-stage-select { font-size: 12.5px; }
             .summary-card .num { font-size: 17px; }
@@ -2388,7 +2432,15 @@
                     </div>
                     <div class="home-nav-arrow">›</div>
                 </button>
-                <button class="home-nav-card players" onclick="showView('players')" style="display:none;">
+                <button class="home-nav-card raidcrystal" onclick="showView('raidCrystal')">
+                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M4 8h16l-8 14L4 8z"/></svg></div>
+                    <div class="home-nav-text">
+                        <div class="home-nav-title">突襲水晶</div>
+                        <div class="home-nav-desc">分類管理要升級、要練、不要練的卡片</div>
+                    </div>
+                    <div class="home-nav-arrow">›</div>
+                </button>
+                <button class="home-nav-card players" onclick="showView('players')">
                     <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6"/><circle cx="17.5" cy="9" r="2.2"/><path d="M15.8 14a4.3 4.3 0 0 1 5.2 4.2"/></svg></div>
                     <div class="home-nav-text">
                         <div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div>
@@ -2510,6 +2562,43 @@
             </div>
             <div class="card-pool-content" id="card-pool-content">
                 <div class="card-pool-empty" data-i18n="cardPoolNotLoaded">卡片池資料尚未載入</div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         突襲水晶
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-raidcrystal" style="display:none;">
+        <div class="nav-header" id="nav-header-raidcrystal">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
+                <div class="nav-title">突襲水晶</div>
+            </div>
+        </div>
+        <div class="standalone-page" id="page-raidcrystal">
+            <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
+                <button class="btn-clear-all" onclick="clearAllCrystalZones()" style="flex: 1; max-width: 48%;">一鍵清除</button>
+                <button class="btn-download" onclick="generateCrystalImage()" style="flex: 1; max-width: 48%;">✨ 儲存圖片 ✨</button>
+            </div>
+            <div class="export-area" id="export-crystal">
+            <div class="crystal-section-title">只升這些<span class="crystal-section-desc">（固定 6 格，優先升級這些卡片）</span></div>
+<div class="crystal-row burst"><div class="crystal-label">爆裂</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div></div><div class="crystal-row torment"><div class="crystal-label">苦痛</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div></div><div class="crystal-row support"><div class="crystal-label">支援</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div></div>
+            <div class="crystal-section-title">突襲水晶<span class="crystal-section-desc">（用突襲水晶升級的卡片）</span></div>
+<div class="crystal-row burst"><div class="crystal-label">爆裂</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div><div class="crystal-controls"><button class="btn-action" onclick="addCrystalSlot(this)">＋</button><button class="btn-action del" onclick="removeCrystalSlot(this)">－</button></div></div><div class="crystal-row torment"><div class="crystal-label">苦痛</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div><div class="crystal-controls"><button class="btn-action" onclick="addCrystalSlot(this)">＋</button><button class="btn-action del" onclick="removeCrystalSlot(this)">－</button></div></div><div class="crystal-row support"><div class="crystal-label">支援</div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div><div class="crystal-controls"><button class="btn-action" onclick="addCrystalSlot(this)">＋</button><button class="btn-action del" onclick="removeCrystalSlot(this)">－</button></div></div>
+            <div class="crystal-section-title">不要練<span class="crystal-section-desc">（不需要花資源升級的卡片）</span></div>
+<div class="crystal-row"><div class="crystal-label"></div><div class="crystal-slots"><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div><div class="drop-zone"><span style="font-size:5px;line-height:1.4;text-align:center;color:#bfa89e;">拖曳卡片至此<br><span style="font-size:4.5px;opacity:0.7;">雙擊清除</span></span></div></div><div class="crystal-controls"><button class="btn-action" onclick="addCrystalSlot(this)">＋</button><button class="btn-action del" onclick="removeCrystalSlot(this)">－</button></div></div>
+            </div>
+        </div>
+
+        <div class="card-pool-drawer" id="card-pool-drawer-crystal">
+            <div class="card-pool-handle" id="card-pool-handle-crystal" onclick="toggleCardPoolCrystal()">
+                <div class="card-pool-handle-bar"></div>
+                <span>卡片池</span>
+            </div>
+            <div class="card-pool-content" id="card-pool-content-crystal">
+                <div class="card-pool-empty">卡片池資料尚未載入</div>
             </div>
         </div>
     </div>
@@ -3453,10 +3542,117 @@
             autoSave();
         }
 
+        /* ── 突襲水晶：簡易卡槽（跟牌組建構的格子邏輯共用同一套拖曳系統，但槽位本身更單純） ── */
+        function createCrystalSlot() {
+            const zone = document.createElement('div');
+            zone.className = 'drop-zone';
+            zone.innerHTML = getDefaultZoneHTML();
+            setupZoneTouchClear(zone);
+            return zone;
+        }
+
+        function addCrystalSlot(button) {
+            const slotsEl = button.closest('.crystal-row').querySelector('.crystal-slots');
+            slotsEl.appendChild(createCrystalSlot());
+            saveCrystalState();
+        }
+
+        function removeCrystalSlot(button) {
+            const slotsEl = button.closest('.crystal-row').querySelector('.crystal-slots');
+            const slots = slotsEl.querySelectorAll('.drop-zone');
+            if (slots.length <= 1) {
+                alert(t('limitMinBlocks')); return;
+            }
+            slotsEl.removeChild(slots[slots.length - 1]);
+            saveCrystalState();
+        }
+
+        const CRYSTAL_STORAGE_KEY = 'tt2_raid_crystal_config';
+
+        function serializeCrystalState() {
+            const rows = [];
+            document.querySelectorAll('#view-raidcrystal .crystal-row').forEach((row) => {
+                const cards = [];
+                row.querySelectorAll('.drop-zone').forEach((zone) => {
+                    const img = zone.querySelector('img');
+                    cards.push(img ? img.src : null);
+                });
+                rows.push(cards);
+            });
+            return rows;
+        }
+
+        function saveCrystalState() {
+            try {
+                localStorage.setItem(CRYSTAL_STORAGE_KEY, JSON.stringify(serializeCrystalState()));
+            } catch (e) {
+                console.error('儲存突襲水晶資料失敗:', e);
+            }
+        }
+
+        function restoreCrystalState() {
+            const saved = localStorage.getItem(CRYSTAL_STORAGE_KEY);
+            if (!saved) return;
+            try {
+                const data = JSON.parse(saved);
+                const rows = document.querySelectorAll('#view-raidcrystal .crystal-row');
+                data.forEach((cardsArr, rowIdx) => {
+                    const row = rows[rowIdx];
+                    if (!row) return;
+                    const slotsEl = row.querySelector('.crystal-slots');
+                    while (slotsEl.querySelectorAll('.drop-zone').length < cardsArr.length) slotsEl.appendChild(createCrystalSlot());
+                    while (slotsEl.querySelectorAll('.drop-zone').length > cardsArr.length) slotsEl.removeChild(slotsEl.lastChild);
+                    const zones = slotsEl.querySelectorAll('.drop-zone');
+                    cardsArr.forEach((src, i) => {
+                        if (zones[i] && src) zones[i].innerHTML = `<img src="${src}">`;
+                    });
+                });
+            } catch (e) {
+                console.error('恢復突襲水晶資料失敗:', e);
+            }
+        }
+
+        // 一鍵清除所有突襲水晶卡槽（照抄牌組建構的 clearAllZones，只是換成清整個突襲水晶頁）
+        function clearAllCrystalZones() {
+            if (!confirm(t('confirmClearZones'))) return;
+            document.querySelectorAll('#view-raidcrystal .drop-zone').forEach(zone => {
+                zone.innerHTML = getDefaultZoneHTML();
+            });
+            saveCrystalState();
+        }
+
+        // 儲存突襲水晶頁面成圖片（照抄牌組建構的 generateImage，拿掉了 Boss 選單／備註欄位那些牌組建構才有的東西）
+        function generateCrystalImage() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const exportArea = document.getElementById('export-crystal');
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+
+            imgContainer.innerHTML = t('generatingDeckImage');
+            modal.style.display = "flex";
+            document.getElementById('btn-share-image').style.display = 'none';
+
+            html2canvas(exportArea, {
+                useCORS: true,
+                scale: 2,
+                backgroundColor: '#faf7f2'
+            }).then(canvas => {
+                imgContainer.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+                currentShareableCanvas = canvas;
+                updateShareButtonVisibility();
+            }).catch(() => {
+                alert(t('generateFailed'));
+                closeModal();
+            });
+        }
+
         function handleZoneClear(zoneEl) {
             if (zoneEl.querySelector('img')) {
                 zoneEl.innerHTML = getDefaultZoneHTML();
-                autoSave();
+                if (zoneEl.closest('#view-raidcrystal')) saveCrystalState(); else autoSave();
             }
         }
 
@@ -3501,6 +3697,7 @@
             else if (currentView === 'abyssDetail') headerEl = document.getElementById('nav-header-abyss-detail');
             else if (currentView === 'players') headerEl = document.getElementById('nav-header-players');
             else if (currentView === 'raidStatus') headerEl = document.getElementById('nav-header-raidstatus');
+            else if (currentView === 'raidCrystal') headerEl = document.getElementById('nav-header-raidcrystal');
             if (headerEl) {
                 document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
             }
@@ -3514,7 +3711,8 @@
             abyssList: '#f4f0fb',
             abyssDetail: '#f4f0fb',
             players: '#fdf6ec',
-            raidStatus: '#fdf1ef'
+            raidStatus: '#fdf1ef',
+            raidCrystal: '#eef4fb'
         };
         const DECK_TAB_BG_MAP = ['#f4ece1', '#ede7f6', '#e8f5e9']; // 爆裂／苦痛／支援
         const DECK_TAB_HANDLE_COLOR_MAP = ['#8b263e', '#4a148c', '#2e7d32']; // 卡片池手把跟著分頁主題色走
@@ -3533,7 +3731,7 @@
 
         function showView(view) {
             currentView = view;
-            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus' };
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -3546,6 +3744,9 @@
                 swiperWidth = getDeckSwiperWidth();
                 isSwiping = false;
                 updateSwiperPosition(false);
+                syncCardPoolCardSize();
+            }
+            if (view === 'raidCrystal') {
                 syncCardPoolCardSize();
             }
 
@@ -3561,6 +3762,9 @@
             restoreAnalysisState();
             renderCardPool();
             setupCardPoolTapHandling();
+            renderCardPool('card-pool-content-crystal');
+            setupCardPoolTapHandling('card-pool-drawer-crystal');
+            restoreCrystalState();
             syncCardPoolCardSize();
             populateStageSelect();
             applyLanguage();
@@ -6093,24 +6297,27 @@
         /* ══════════════════════════════════════════════════════════
            卡片池（固定於底部，預設收合）
            ══════════════════════════════════════════════════════════ */
-        let cardPoolExpanded = false;
+        const cardPoolExpandedMap = {}; // drawerId -> bool，這樣兩個卡片池抽屜（牌組建構、突襲水晶）可以各自獨立展開/收合
         let lastCardDragTime = 0;
         let cardPoolWatcherInterval = null;
 
-        function toggleCardPool() {
-            cardPoolExpanded = !cardPoolExpanded;
-            if (cardPoolExpanded) {
+        function toggleCardPool(drawerId) {
+            drawerId = drawerId || 'card-pool-drawer';
+            cardPoolExpandedMap[drawerId] = !cardPoolExpandedMap[drawerId];
+            if (cardPoolExpandedMap[drawerId]) {
                 lastCardDragTime = Date.now();
                 startCardPoolAutoCollapseWatcher();
             } else {
                 stopCardPoolAutoCollapseWatcher();
             }
-            updateCardPoolUI();
+            updateCardPoolUI(drawerId);
         }
+        function toggleCardPoolCrystal() { toggleCardPool('card-pool-drawer-crystal'); }
 
-        function updateCardPoolUI() {
-            const drawer = document.getElementById('card-pool-drawer');
-            if (drawer) drawer.classList.toggle('expanded', cardPoolExpanded);
+        function updateCardPoolUI(drawerId) {
+            drawerId = drawerId || 'card-pool-drawer';
+            const drawer = document.getElementById(drawerId);
+            if (drawer) drawer.classList.toggle('expanded', !!cardPoolExpandedMap[drawerId]);
         }
 
         const POOL_TAP_MOVE_THRESHOLD = 10;
@@ -6119,8 +6326,9 @@
         let poolTrackedCard = null, poolTrackedSrc = '';
         let poolMaxMoveDist = 0;
 
-        function setupCardPoolTapHandling() {
-            const drawer = document.getElementById('card-pool-drawer');
+        function setupCardPoolTapHandling(drawerId) {
+            drawerId = drawerId || 'card-pool-drawer';
+            const drawer = document.getElementById(drawerId);
             if (!drawer) return;
 
             drawer.addEventListener('touchstart', (e) => {
@@ -6158,7 +6366,7 @@
 
             drawer.addEventListener('touchend', (e) => {
                 if (poolTracking && !poolDragStarted && poolMaxMoveDist < POOL_TAP_MOVE_THRESHOLD) {
-                    toggleCardPool();
+                    toggleCardPool(drawerId);
                 }
                 poolTracking = false;
                 poolDragStarted = false;
@@ -6191,8 +6399,10 @@
                     lastCardDragTime = Date.now();
                 }
                 if (Date.now() - lastCardDragTime >= 10000) {
-                    cardPoolExpanded = false;
-                    updateCardPoolUI();
+                    Object.keys(cardPoolExpandedMap).forEach((drawerId) => {
+                        cardPoolExpandedMap[drawerId] = false;
+                        updateCardPoolUI(drawerId);
+                    });
                     stopCardPoolAutoCollapseWatcher();
                 }
             }, 500);
@@ -6206,8 +6416,8 @@
         }
 
         const CARD_POOL_ROW_SIZE = 15;
-        function renderCardPool() {
-            const content = document.getElementById('card-pool-content');
+        function renderCardPool(contentId) {
+            const content = document.getElementById(contentId || 'card-pool-content');
             if (!content) return;
             const list = (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) ? PRESET_CARDS : null;
             if (!list || list.length === 0) {
@@ -6244,6 +6454,7 @@
         let cloneHalfSize = 25;
 
         function getActivePageViewEl() {
+            if (currentView === 'raidCrystal') return document.getElementById('view-raidcrystal');
             const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
             return activePageId ? document.getElementById(activePageId) : null;
         }
@@ -6269,9 +6480,9 @@
 
         function updateZonesCache() {
             cachedZones = [];
-            const activePageId = ['page-burst', 'page-torment', 'page-support'][currentPage];
-            if (!activePageId) return;
-            document.querySelectorAll(`#${activePageId} .drop-zone`).forEach(zone => {
+            const scopeEl = getActivePageViewEl();
+            if (!scopeEl) return;
+            scopeEl.querySelectorAll('.drop-zone').forEach(zone => {
                 const r = zone.getBoundingClientRect();
                 cachedZones.push({ el: zone, l: r.left, r: r.right, t: r.top, b: r.bottom });
             });
@@ -6380,7 +6591,7 @@
             const target = lastHoveredZone || findZone(currentTouchX, currentTouchY);
             if (target) {
                 target.innerHTML = `<img src="${activeSrc}">`;
-                autoSave();
+                if (target.closest('#view-raidcrystal')) saveCrystalState(); else autoSave();
             }
             cancelDrag();
         }

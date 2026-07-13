@@ -806,6 +806,22 @@ function saveFirestoneState() {
   writeJsonSafe(FIRESTONE_STATE_PATH, firestoneState);
 }
 
+// DarkBot 用「嵌入式訊息（Embed）」回覆，內容不在 message.content 裡，
+// 要另外從 embed 的標題、描述、欄位（fields）分別拿出來，全部串成一段文字再解析
+function extractTextFromMessage(message) {
+  const parts = [];
+  if (message.content) parts.push(message.content);
+  (message.embeds || []).forEach((embed) => {
+    if (embed.title) parts.push(embed.title);
+    if (embed.description) parts.push(embed.description);
+    (embed.fields || []).forEach((f) => {
+      parts.push(`${f.name} ${f.value}`);
+    });
+    if (embed.footer && embed.footer.text) parts.push(embed.footer.text);
+  });
+  return parts.join('\n');
+}
+
 // DarkBot 的回覆格式不確定會長怎樣，用比較寬鬆的方式抓「10%」「30%」「80%」附近的數字，
 // 同時把完整原始文字也存起來，如果解析抓錯，之後可以直接看原始文字校正
 function parseFirestoneReply(text) {
@@ -828,6 +844,13 @@ if (discordEnabled) {
 
   discordClient.once('ready', () => {
     console.log(`[discord] 已登入：${discordClient.user.tag}`);
+    console.log(`[discord] 目前能看到 ${discordClient.guilds.cache.size} 個伺服器：`);
+    discordClient.guilds.cache.forEach((guild) => {
+      console.log(`[discord]   伺服器「${guild.name}」（ID: ${guild.id}）`);
+      guild.channels.cache
+        .filter((ch) => ch.isTextBased && ch.isTextBased())
+        .forEach((ch) => console.log(`[discord]     └ 頻道 #${ch.name}（ID: ${ch.id}）`));
+    });
     async function runFirestoneCheck() {
       try {
         const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID);
@@ -846,8 +869,10 @@ if (discordEnabled) {
             console.log(`[discord] 讀到 ${messages.size} 則最近的訊息，開始尋找 DarkBot 回覆`);
             const reply = messages.find(m => m.author.bot && m.author.id !== discordClient.user.id && m.createdTimestamp > sentMsg.createdTimestamp);
             if (reply) {
-              const parsed = parseFirestoneReply(reply.content);
-              firestoneState = { updatedAt: Date.now(), rawText: reply.content, ...parsed };
+              const combinedText = extractTextFromMessage(reply);
+              console.log('[discord] 找到回覆，擷取到的文字內容:', combinedText);
+              const parsed = parseFirestoneReply(combinedText);
+              firestoneState = { updatedAt: Date.now(), rawText: combinedText, ...parsed };
               saveFirestoneState();
               console.log('[discord] Fire Stone 資料已更新:', parsed);
               reply.delete().catch(() => {});

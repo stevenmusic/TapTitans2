@@ -264,6 +264,7 @@ let watcherCurrentEnemyId = (savedBossState && savedBossState.currentEnemyId) ||
 let watcherBossName = (savedBossState && savedBossState.bossName) || '—';
 let watcherBossOrdinal = (savedBossState && savedBossState.bossOrdinal) || 0;
 let watcherKillMaxHp = (savedBossState && savedBossState.killMaxHp) || 0;
+let watcherBossCurrentHp = (savedBossState && savedBossState.bossCurrentHp) || 0;
 let watcherHasReceivedAttack = (savedBossState && savedBossState.hasReceivedAttack) || false;
 let watcherPartStatus = (savedBossState && savedBossState.partStatus) || {};
 let watcherBossChangedAt = 0;
@@ -277,8 +278,8 @@ function savePushSubscriptions() { writeJsonSafe(SUBSCRIPTIONS_PATH, pushSubscri
 function saveCurrentBossState() {
   writeJsonSafe(CURRENT_BOSS_STATE_PATH, {
     bossTotal: watcherBossTotal, currentEnemyId: watcherCurrentEnemyId, bossName: watcherBossName,
-    bossOrdinal: watcherBossOrdinal, killMaxHp: watcherKillMaxHp, partStatus: watcherPartStatus,
-    hasReceivedAttack: watcherHasReceivedAttack
+    bossOrdinal: watcherBossOrdinal, killMaxHp: watcherKillMaxHp, bossCurrentHp: watcherBossCurrentHp,
+    partStatus: watcherPartStatus, hasReceivedAttack: watcherHasReceivedAttack
   });
 }
 
@@ -528,15 +529,17 @@ function checkSkillConditionsAndNotify() {
     let body = condition === 'frenzy' ? '肉體暴露部位已達 6 個以上，建議上瘋狂無效' : '骨架部位已達 6 個以上，建議上凱旋行軍';
 
     if (condition === 'march') {
-      // 禁打部位：盔甲通常打不破，肉體幾乎沒受傷，所以用「肉體目前掉了多少血」來判斷，
-      // 不用另外新增追蹤機制——bodyMax（滿血）減去 body（目前剩餘）就是這個部位目前為止受到的肉體傷害
-      const threshold = (watcherKillMaxHp || 0) * 0.01;
-      const remainingHp = locs.reduce((sum, p) => {
-        const bodyDamageSoFar = (p.bodyMax || 0) - (p.body || 0);
-        const isBanned = bodyDamageSoFar < threshold;
-        return isBanned ? sum : sum + Math.max(0, p.armor || 0) + Math.max(0, p.body || 0);
+      // 官方的 current_hp 只算「肉體擊殺門檻」，不包含還沒被打穿的盔甲；
+      // 骨架已經有 6 個以上時，如果還有部位盔甲沒破，那些盔甲之後也得打穿，一併算進去——
+      // 但盔甲剩餘還超過該部位滿血的 60%，代表幾乎沒被打過，很可能是刻意不打的禁打部位，不列入計算
+      const remainingArmorHp = locs.reduce((sum, p) => {
+        const armor = Math.max(0, p.armor || 0);
+        if (armor <= 0) return sum;
+        const isProbablyBanned = p.armorMax > 0 && armor > p.armorMax * 0.6;
+        return isProbablyBanned ? sum : sum + armor;
       }, 0);
-      body += `\n扣除禁打部位，剩餘血量約 ${fmtNum(remainingHp)}`;
+      const totalRemaining = watcherBossCurrentHp + remainingArmorHp;
+      body += `\n目前還需要打倒約 ${fmtNum(totalRemaining)} 血量`;
     }
 
     sendPushToAll(title, body, 'tt2-skill-reminder');
@@ -578,6 +581,7 @@ function watcherHandleAttack(payload) {
     const titan = watcherRaidTitans.find(t => t.enemy_id === enemyId);
     watcherBossName = (titan && titan.enemy_name) || watcherSpawnSequence[ordinal - 1] || '—';
     watcherKillMaxHp = (titan && titan.total_hp) || 0;
+    watcherBossCurrentHp = watcherKillMaxHp; // 換新王，滿血重置
     watcherPartStatus = {};
     if (titan) {
       (titan.parts || []).forEach((p) => {
@@ -610,6 +614,11 @@ function watcherHandleAttack(payload) {
     if (layer === 'armor') watcherPartStatus[loc].armor = p.current_hp;
     else if (layer === 'body') watcherPartStatus[loc].body = p.current_hp;
   });
+  // 遊戲本身就有算好「還需要打多少才會死」這個數字（raid_state.current.current_hp），
+  // 直接用這個官方數字，比我們自己土法煉鋼加總各部位血量準確多了
+  if (rs.current && typeof rs.current.current_hp === 'number') {
+    watcherBossCurrentHp = rs.current.current_hp;
+  }
   checkSkillConditionsAndNotify();
   saveCurrentBossState();
 
@@ -723,7 +732,7 @@ app.get('/full-attack-log', (req, res) => {
     currentBoss: {
       name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
       enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
-      hasReceivedAttack: watcherHasReceivedAttack
+      bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
     }
   });
 });

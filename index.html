@@ -5602,6 +5602,17 @@
                 if (!silent) showPlayerCopyToastLike('已經連線中，不用再按一次');
                 return;
             }
+            // 示範模式會每 0.9 秒持續產生假資料，如果之前開著沒關，
+            // 會一直蓋掉真實連線收到的資料，這裡先確保關閉
+            if (raidDemoTimer) {
+                clearInterval(raidDemoTimer);
+                raidDemoTimer = null;
+                const demoBtn = document.getElementById('raid-demo-btn');
+                if (demoBtn) {
+                    demoBtn.classList.remove('active');
+                    demoBtn.textContent = t('btnRaidDemo');
+                }
+            }
             raidConnState = 'connecting';
             saveRaidTokens();
             const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');

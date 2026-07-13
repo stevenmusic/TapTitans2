@@ -5096,9 +5096,8 @@
                 // 同一隻王的資料重複送來（例如 sub_cycle 定期重推），只更新血量，
                 // 不要清掉「最近攻擊」清單，也不要誤判成換了新王
                 raidState.parts = apiBuildPartsFromTitan(titan);
-                raidState.currentHp = sumBodyHp(raidState.parts);
-                raidState.maxHp = sumBodyMaxHp(raidState.parts);
-                raidState.killMaxHp = titan.total_hp; // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
+                raidState.maxHp = titan.total_hp; // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
+                raidState.killMaxHp = titan.total_hp;
                 raidState.bossOrdinal = ordinal;
                 raidState.updatedAt = Date.now();
                 return;
@@ -5110,9 +5109,9 @@
                 bossName: titan.enemy_name || '—',
                 bossOrdinal: ordinal,
                 parts: builtParts,
-                maxHp: sumBodyMaxHp(builtParts),
-                currentHp: sumBodyHp(builtParts),
-                killMaxHp: titan.total_hp, // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
+                maxHp: titan.total_hp, // API 原本的擊殺門檻，畫面上「肉體」總血量要顯示這個
+                currentHp: titan.total_hp, // 剛換新王，還沒有真實攻擊資料，先假設滿血
+                killMaxHp: titan.total_hp,
                 updatedAt: Date.now()
             };
             raidRecentAttacks = [];
@@ -5191,8 +5190,8 @@
                         bossName: fallbackName,
                         bossOrdinal: ordinal,
                         parts: fallbackParts,
-                        maxHp: sumBodyMaxHp(fallbackParts),
-                        currentHp: sumBodyHp(fallbackParts),
+                        maxHp: typeof cur.current_hp === 'number' ? cur.current_hp : sumBodyMaxHp(fallbackParts),
+                        currentHp: typeof cur.current_hp === 'number' ? cur.current_hp : sumBodyHp(fallbackParts),
                         killMaxHp: 0,
                         updatedAt: Date.now()
                     };
@@ -5212,8 +5211,13 @@
                 if (layer === 'armor') raidState.parts[loc].armor = p.current_hp;
                 else if (layer === 'body') raidState.parts[loc].body = p.current_hp;
             });
-            // 用肉體血量加總代表王的血量（跟畫面上顯示的一致），不用 API 回傳的擊殺門檻數字
-            raidState.currentHp = sumBodyHp(raidState.parts);
+            // 用 API 官方回傳的擊殺門檻數字（跟遊戲畫面最上方顯示的王總血量一致），
+            // 不要自己加總各部位肉體血量（那個算出來的數字跟遊戲畫面對不上）
+            if (typeof cur.current_hp === 'number') {
+                raidState.currentHp = cur.current_hp;
+            } else {
+                raidState.currentHp = sumBodyHp(raidState.parts);
+            }
             raidState.updatedAt = Date.now();
 
             const dmgEntries = [];
@@ -5587,8 +5591,8 @@
                         bossName: cb.name || '—',
                         bossOrdinal: cb.ordinal || 1,
                         parts: cb.parts,
-                        maxHp: sumBodyMaxHp(cb.parts),
-                        currentHp: sumBodyHp(cb.parts),
+                        maxHp: cb.killMaxHp,
+                        currentHp: typeof cb.bossCurrentHp === 'number' ? cb.bossCurrentHp : sumBodyHp(cb.parts),
                         killMaxHp: cb.killMaxHp,
                         updatedAt: Date.now()
                     };

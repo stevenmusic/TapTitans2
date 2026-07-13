@@ -359,6 +359,7 @@ async function sendLineMessage(text, mentionAll) {
 }
 // ── Claude API：讓官方帳號能用自然語言回答關於這個工具的問題 ──
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const TT2_TOOLKIT_URL = 'https://stevenmusic.github.io/TapTitans2/';
 const claudeEnabled = Boolean(ANTHROPIC_API_KEY);
 if (!claudeEnabled) {
   console.warn('尚未設定 ANTHROPIC_API_KEY，LINE 問答機器人停用（訊息會退回顯示選單）。');
@@ -443,7 +444,6 @@ const LINE_FEATURES = [
   { id: 'raid',   emoji: '⚔️', title: '突襲',           desc: '即時顯示王的血量、部位狀態、攻擊紀錄查詢、背景推播通知', color: '#C62828', url: 'https://stevenmusic.github.io/TapTitans2/#raid' },
   { id: 'abyss',  emoji: '🌀', title: '深淵',           desc: '7種模式的技能點配置、裝備順序建議', color: '#6A1B9A', url: 'https://stevenmusic.github.io/TapTitans2/#abyss' }
 ];
-const TT2_TOOLKIT_URL = 'https://stevenmusic.github.io/TapTitans2/';
 
 // 選單按鈕：點了直接連到對應頁面，不會再跳出中間的卡片
 function buildFeatureMenuMessage() {

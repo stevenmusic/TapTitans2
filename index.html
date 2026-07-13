@@ -129,23 +129,23 @@
             margin: 0 4px 7px 4px;
         }
         .home-nav-cards {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
             gap: 9px;
             flex: 1;
             min-height: 0;
         }
         .home-nav-card {
             display: flex;
-            align-items: center;
-            gap: 13px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
             width: 100%;
-            flex: 1;
-            min-height: 66px;
+            min-height: 100px;
             background: #ffffff;
             border: 1px solid #ece3d4;
             border-radius: 15px;
-            padding: 11px 15px;
+            padding: 12px 13px;
             box-shadow: 0 4px 12px rgba(90,74,66,0.10);
             cursor: pointer;
             text-align: left;
@@ -154,6 +154,13 @@
             font-family: inherit;
             box-sizing: border-box;
         }
+        .home-nav-card-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+        }
         .home-nav-card:active {
             transform: scale(0.97);
             box-shadow: 0 2px 8px rgba(90,74,66,0.12);
@@ -161,18 +168,19 @@
         .home-nav-card.deck { border-left: 4px solid #8b263e; }
         .home-nav-card.analysis { border-left: 4px solid #0d47a1; }
         .home-nav-icon {
-            font-size: 24px;
+            font-size: 20px;
             flex-shrink: 0;
-            width: 46px; height: 46px;
-            border-radius: 13px;
+            width: 40px; height: 40px;
+            border-radius: 12px;
             display: flex; align-items: center; justify-content: center;
         }
-        .home-nav-icon svg { width: 22px; height: 22px; }
+        .home-nav-icon svg { width: 19px; height: 19px; }
         .home-nav-card.deck .home-nav-icon { background: #faeaea; color: #8b263e; }
         .home-nav-card.analysis .home-nav-icon { background: #e7eff9; color: #0d47a1; }
         .home-nav-text { flex: 1; min-width: 0; }
         .home-nav-title {
-            font-size: 13.5px; font-weight: 800; color: #3d2c1e; margin-bottom: 4px;
+            font-size: 13.5px; font-weight: 800; color: #3d2c1e;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .home-nav-card.deck .home-nav-title { color: #6b1d30; }
         .home-nav-card.analysis .home-nav-title { color: #16314f; }
@@ -184,10 +192,10 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
-            min-height: calc(1.3em * 2);
+            width: 100%;
         }
         .home-nav-arrow {
-            font-size: 21px; color: #d8c8a8; flex-shrink: 0;
+            display: none;
         }
         .home-nav-card.deck .home-nav-arrow { color: #e3b8c2; }
         .home-nav-card.analysis .home-nav-arrow { color: #c4d2e6; }
@@ -1190,6 +1198,11 @@
         .home-nav-card.raidcrystal .home-nav-icon { background: #e3edfa; color: #1565c0; }
         .home-nav-card.raidcrystal .home-nav-title { color: #0d3c73; }
         .home-nav-card.raidcrystal .home-nav-arrow { color: #a9c6e8; }
+
+        .home-nav-card.firestone { border-left: 4px solid #d84315; }
+        .home-nav-card.firestone .home-nav-icon { background: #fbe9e2; color: #d84315; }
+        .home-nav-card.firestone .home-nav-title { color: #8a2c0d; }
+        .home-nav-card.firestone .home-nav-arrow { color: #edb39e; }
 
         #nav-header-abyss-list, #nav-header-abyss-detail {
             background: linear-gradient(135deg, #3d2570 0%, #221340 100%);
@@ -2407,55 +2420,56 @@
             <div class="home-section-label" data-i18n="homeSectionLabel">選擇功能</div>
             <div class="home-nav-cards">
                 <button class="home-nav-card deck" onclick="showView('deck')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navDeckTitle">牌組建構</div>
-                        <div class="home-nav-desc" data-i18n="navDeckDesc">配置爆裂／苦痛／支援牌組，自動儲存進度</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></div><div class="home-nav-title" data-i18n="navDeckTitle">牌組建構</div></div>
+                    <div class="home-nav-desc" data-i18n="navDeckDesc">配置爆裂／苦痛／支援牌組，自動儲存進度</div>
                 </button>
                 <button class="home-nav-card analysis" onclick="showView('analysis')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M20 20v-4"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navAnalysisTitle">戰報分析</div>
-                        <div class="home-nav-desc" data-i18n="navAnalysisDesc">貼上突襲 CSV，自動算出誤傷率與傷害排名</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M20 20v-4"/></svg></div><div class="home-nav-title" data-i18n="navAnalysisTitle">戰報分析</div></div>
+                    <div class="home-nav-desc" data-i18n="navAnalysisDesc">貼上突襲 CSV，自動算出誤傷率與傷害排名</div>
                 </button>
                 <button class="home-nav-card raidstatus" onclick="showView('raidStatus')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3z"/><path d="M7.5 12.5h2l1.5-3 2 6 1.5-3h2"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navRaidStatusTitle">突襲狀態</div>
-                        <div class="home-nav-desc" data-i18n="navRaidStatusDesc">即時顯示當前王、部位盔甲與血量，換王自動通知</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3z"/><path d="M7.5 12.5h2l1.5-3 2 6 1.5-3h2"/></svg></div><div class="home-nav-title" data-i18n="navRaidStatusTitle">突襲狀態</div></div>
+                    <div class="home-nav-desc" data-i18n="navRaidStatusDesc">即時顯示當前王、部位盔甲與血量，換王自動通知</div>
                 </button>
                 <button class="home-nav-card abyss" onclick="showView('abyssList')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navAbyssTitle">深淵錦標賽懶人包</div>
-                        <div class="home-nav-desc" data-i18n="navAbyssDesc">各模式推薦流派、技能配點與出裝順序攻略</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></div><div class="home-nav-title" data-i18n="navAbyssTitle">深淵錦標賽</div></div>
+                    <div class="home-nav-desc" data-i18n="navAbyssDesc">各模式推薦流派、技能配點與出裝順序攻略</div>
                 </button>
                 <button class="home-nav-card raidcrystal" onclick="showView('raidCrystal')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M4 8h16l-8 14L4 8z"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title">突襲水晶</div>
-                        <div class="home-nav-desc">分類管理要升級、要練、不要練的卡片</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M4 8h16l-8 14L4 8z"/></svg></div><div class="home-nav-title">突襲水晶</div></div>
+                    <div class="home-nav-desc">分類管理要升級、要練、不要練的卡片</div>
                 </button>
                 <button class="home-nav-card players" onclick="showView('players')">
-                    <div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6"/><circle cx="17.5" cy="9" r="2.2"/><path d="M15.8 14a4.3 4.3 0 0 1 5.2 4.2"/></svg></div>
-                    <div class="home-nav-text">
-                        <div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div>
-                        <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
-                    </div>
-                    <div class="home-nav-arrow">›</div>
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6"/><circle cx="17.5" cy="9" r="2.2"/><path d="M15.8 14a4.3 4.3 0 0 1 5.2 4.2"/></svg></div><div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div></div>
+                    <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
+                </button>
+                <button class="home-nav-card firestone" onclick="showView('firestone'); loadFirestoneData();">
+                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c2 4-2 5-2 8a4 4 0 1 0 8 0c0-1.5-1-2.5-1-2.5s.5 2-1 3c1-3-2-4-2-6.5C14 3 13 2.3 12 2z"/></svg></div><div class="home-nav-title">查詢火石</div></div>
+                    <div class="home-nav-desc">Fire Stone 賽季 10%/30%/80% 門檻</div>
                 </button>
             </div>
             <div class="home-footnote" data-i18n="homeFootnote">TT2 TOOLKIT</div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         查詢火石
+         ══════════════════════════════════════════════════════════ -->
+    <div class="view" id="view-firestone" style="display:none;">
+        <div class="nav-header" id="nav-header-firestone">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
+                <div class="nav-title">查詢火石</div>
+            </div>
+        </div>
+        <div class="standalone-page" id="page-firestone">
+            <div style="width:100%; max-width:500px; background:#fff; border:1px solid #ece3d4; border-radius:15px; padding:20px; box-sizing:border-box;">
+                <p style="font-size:12px; color:#8a7a68; margin-bottom:16px;">資料每分鐘自動從 Discord 的 DarkBot 更新一次，不用手動操作。</p>
+                <div id="firestone-content">
+                    <p style="text-align:center; color:#8a7a68;">載入中...</p>
+                </div>
+                <button class="btn-download" onclick="loadFirestoneData()" style="width:100%; margin-top:16px; background:linear-gradient(135deg,#1565c0,#0d3c73);">🔄 重新整理</button>
+            </div>
         </div>
     </div>
 
@@ -2967,7 +2981,7 @@
                 navDeckDesc: '配置爆裂／苦痛／支援牌組，自動儲存進度',
                 navAnalysisTitle: '戰報分析',
                 navAnalysisDesc: '貼上突襲 CSV，自動算出誤傷率與傷害排名',
-                navAbyssTitle: '深淵錦標賽懶人包',
+                navAbyssTitle: '深淵錦標賽',
                 navAbyssDesc: '各模式推薦流派、技能配點與出裝順序攻略',
                 navPlayersTitle: '玩家資料庫',
                 navPlayersDesc: '儲存其他玩家的存檔資料，點名字一鍵複製',
@@ -3596,6 +3610,37 @@
             }
         }
 
+        // 查詢火石：跟突襲狀態共用同一台中繼伺服器，資料由伺服器每分鐘自動從 Discord 更新
+        async function loadFirestoneData() {
+            const contentEl = document.getElementById('firestone-content');
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            contentEl.innerHTML = '<p style="text-align:center; color:#8a7a68;">載入中...</p>';
+            try {
+                const resp = await fetch(`${relayUrl}/firestone`);
+                if (!resp.ok) throw new Error('伺服器回應失敗');
+                const data = await resp.json();
+                if (!data.updatedAt) {
+                    contentEl.innerHTML = '<p style="text-align:center; color:#8a7a68;">尚未取得資料，請稍後再試（伺服器每分鐘才會更新一次）</p>';
+                    return;
+                }
+                const rows = [
+                    { label: 'Titan Slayer（前 10%）', value: data.tier10, color: '#8b263e' },
+                    { label: 'Master（前 30%）', value: data.tier30, color: '#1565c0' },
+                    { label: 'Champion（前 80%）', value: data.tier80, color: '#2e7d32' }
+                ];
+                contentEl.innerHTML = rows.map(r => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f0e8dc;">
+                        <span style="font-weight:700; color:${r.color};">${r.label}</span>
+                        <span style="font-size:18px; font-weight:800; color:#3d2c1e;">${r.value ? escapeHtml(r.value) : '未取得'}</span>
+                    </div>
+                `).join('') + `
+                    <p style="font-size:11px; color:#a89a8a; margin-top:12px; text-align:right;">最後更新：${new Date(data.updatedAt).toLocaleString('zh-TW')}</p>
+                `;
+            } catch (e) {
+                contentEl.innerHTML = '<p style="text-align:center; color:#c62828;">載入失敗，請確認中繼伺服器連線正常</p>';
+            }
+        }
+
         function restoreCrystalState() {
             const saved = localStorage.getItem(CRYSTAL_STORAGE_KEY);
             if (!saved) return;
@@ -3704,6 +3749,7 @@
             else if (currentView === 'players') headerEl = document.getElementById('nav-header-players');
             else if (currentView === 'raidStatus') headerEl = document.getElementById('nav-header-raidstatus');
             else if (currentView === 'raidCrystal') headerEl = document.getElementById('nav-header-raidcrystal');
+            else if (currentView === 'firestone') headerEl = document.getElementById('nav-header-firestone');
             if (headerEl) {
                 document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
             }
@@ -3737,7 +3783,7 @@
 
         function showView(view) {
             currentView = view;
-            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal' };
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal', firestone: 'view-firestone' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;

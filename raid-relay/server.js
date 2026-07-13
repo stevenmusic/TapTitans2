@@ -796,7 +796,7 @@ app.get('/cycle-summaries/view', (req, res) => {
 // ══════════════════════════════════════════════════════════
 const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
 
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+const DISCORD_BOT_TOKEN = sanitizeToken(process.env.DISCORD_BOT_TOKEN);
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
 const discordEnabled = Boolean(DISCORD_BOT_TOKEN && DISCORD_CHANNEL_ID);
 const FIRESTONE_STATE_PATH = path.join(__dirname, 'firestone_state.json');

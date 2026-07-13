@@ -851,23 +851,42 @@ if (discordEnabled) {
         .filter((ch) => ch.isTextBased && ch.isTextBased())
         .forEach((ch) => console.log(`[discord]     └ 頻道 #${ch.name}（ID: ${ch.id}）`));
     });
+    const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
+
     async function runFirestoneCheck() {
+      if (!DISCORD_WEBHOOK_URL) {
+        console.error('[discord] 尚未設定 DISCORD_WEBHOOK_URL，無法發送指令');
+        return;
+      }
       try {
         const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID);
         if (!channel) {
           console.error('[discord] 找不到頻道（channel 是 null），請確認 DISCORD_CHANNEL_ID 正確、機器人有加入該伺服器');
           return;
         }
-        console.log(`[discord] 找到頻道：#${channel.name}，準備發送指令`);
-        const sentMsg = await channel.send('D?Currency');
-        console.log('[discord] 已發送 D?Currency，訊息 ID:', sentMsg.id);
+        console.log(`[discord] 找到頻道：#${channel.name}，準備透過 Webhook 發送指令`);
+
+        // 改用 Webhook 發送——DarkBot 很可能會忽略「機器人帳號」發的訊息，
+        // 但 Webhook 訊息技術上不算機器人帳號，繞過這個限制
+        const webhookResp = await fetch(`${DISCORD_WEBHOOK_URL}?wait=true`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'D?Currency' })
+        });
+        if (!webhookResp.ok) {
+          console.error('[discord] Webhook 發送失敗:', webhookResp.status, await webhookResp.text());
+          return;
+        }
+        const sentMsg = await webhookResp.json();
+        console.log('[discord] 已透過 Webhook 發送 D?Currency，訊息 ID:', sentMsg.id);
+        const sentTimestamp = new Date(sentMsg.timestamp).getTime();
 
         // 等幾秒讓 DarkBot 有時間回覆，再去頻道裡找它最新的訊息
         setTimeout(async () => {
           try {
             const messages = await channel.messages.fetch({ limit: 10 });
             console.log(`[discord] 讀到 ${messages.size} 則最近的訊息，開始尋找 DarkBot 回覆`);
-            const reply = messages.find(m => m.author.bot && m.author.id !== discordClient.user.id && m.createdTimestamp > sentMsg.createdTimestamp);
+            const reply = messages.find(m => m.author.bot && m.id !== sentMsg.id && m.createdTimestamp > sentTimestamp);
             if (reply) {
               const combinedText = extractTextFromMessage(reply);
               console.log('[discord] 找到回覆，擷取到的文字內容:', combinedText);
@@ -879,7 +898,8 @@ if (discordEnabled) {
             } else {
               console.warn('[discord] 沒有找到符合條件的機器人回覆訊息（DarkBot 可能沒有回應，或權限不足看不到它的訊息）');
             }
-            sentMsg.delete().catch(() => {});
+            // Webhook 發的訊息由機器人負責刪除（Webhook 本身沒有刪除自己訊息的簡單方式）
+            channel.messages.delete(sentMsg.id).catch(() => {});
           } catch (e) {
             console.error('[discord] 讀取 DarkBot 回覆失敗:', e);
           }

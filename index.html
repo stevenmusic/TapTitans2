@@ -5377,15 +5377,16 @@
                                 const items = a.parts.filter(p => p.layer === layer);
                                 if (items.length === 0) return '';
                                 const color = layer === 'body' ? '#00707d' : '#616168';
+                                const damageByPart = {};
+                                items.forEach(p => { damageByPart[p.part] = p.damage; });
                                 return `
                                     <div class="raid-log-parts-row">
-                                        ${items.map(p => {
-                                            const colIdx = RAID_PARTS.findIndex(rp => rp.key === p.part);
-                                            const gridCol = colIdx >= 0 ? `grid-column: ${colIdx + 1};` : '';
+                                        ${RAID_PARTS.map((rp, colIdx) => {
+                                            const hasDamage = Object.prototype.hasOwnProperty.call(damageByPart, rp.key);
                                             return `
-                                                <div class="raid-log-part-cell" style="color:${color}; ${gridCol}">
-                                                    <div>${escapeHtml(raidPartLabel(p.part))}</div>
-                                                    <div style="font-weight:700;">${escapeHtml(formatNumAlwaysM(p.damage))}</div>
+                                                <div class="raid-log-part-cell" style="color:${color}; grid-column: ${colIdx + 1}; grid-row: 1;">
+                                                    <div>${escapeHtml(raidPartLabel(rp.key))}</div>
+                                                    <div style="font-weight:700;">${hasDamage ? escapeHtml(formatNumAlwaysM(damageByPart[rp.key])) : '－'}</div>
                                                 </div>
                                             `;
                                         }).join('')}

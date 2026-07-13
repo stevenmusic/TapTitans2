@@ -789,3 +789,91 @@ app.get('/cycle-summaries/view', (req, res) => {
     </body></html>
   `);
 });
+
+// ══════════════════════════════════════════════════════════
+// Fire Stone 賽季門檻：透過自己的 Discord Bot，每分鐘自動在指定頻道發送
+// 「D?Currency」，監聽 DarkBot 的回覆，解析出 10%/30%/80% 門檻數字存起來
+// ══════════════════════════════════════════════════════════
+const { Client: DiscordClient, GatewayIntentBits } = require('discord.js');
+
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
+const discordEnabled = Boolean(DISCORD_BOT_TOKEN && DISCORD_CHANNEL_ID);
+const FIRESTONE_STATE_PATH = path.join(__dirname, 'firestone_state.json');
+let firestoneState = readJsonSafe(FIRESTONE_STATE_PATH, { updatedAt: null, tier10: null, tier30: null, tier80: null, rawText: null });
+
+function saveFirestoneState() {
+  writeJsonSafe(FIRESTONE_STATE_PATH, firestoneState);
+}
+
+// DarkBot 的回覆格式不確定會長怎樣，用比較寬鬆的方式抓「10%」「30%」「80%」附近的數字，
+// 同時把完整原始文字也存起來，如果解析抓錯，之後可以直接看原始文字校正
+function parseFirestoneReply(text) {
+  const grab = (pct) => {
+    const re = new RegExp(`${pct}%[^\\d]{0,20}([\\d,.]+\\s*[KMB]?)`, 'i');
+    const m = text.match(re);
+    return m ? m[1].trim() : null;
+  };
+  return {
+    tier10: grab(10),
+    tier30: grab(30),
+    tier80: grab(80)
+  };
+}
+
+if (discordEnabled) {
+  const discordClient = new DiscordClient({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+  });
+
+  discordClient.once('ready', () => {
+    console.log(`[discord] 已登入：${discordClient.user.tag}`);
+    setInterval(async () => {
+      try {
+        const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID);
+        if (!channel) return;
+        const sentMsg = await channel.send('D?Currency');
+
+        // 等幾秒讓 DarkBot 有時間回覆，再去頻道裡找它最新的訊息
+        setTimeout(async () => {
+          try {
+            const messages = await channel.messages.fetch({ limit: 10 });
+            const reply = messages.find(m => m.author.bot && m.author.id !== discordClient.user.id && m.createdTimestamp > sentMsg.createdTimestamp);
+            if (reply) {
+              const parsed = parseFirestoneReply(reply.content);
+              firestoneState = { updatedAt: Date.now(), rawText: reply.content, ...parsed };
+              saveFirestoneState();
+              console.log('[discord] Fire Stone 資料已更新:', parsed);
+              reply.delete().catch(() => {});
+            }
+            sentMsg.delete().catch(() => {});
+          } catch (e) {
+            console.error('[discord] 讀取 DarkBot 回覆失敗:', e);
+          }
+        }, 5000);
+      } catch (e) {
+        console.error('[discord] 發送指令失敗:', e);
+      }
+    }, 60000); // 每分鐘一次
+  });
+
+  discordClient.login(DISCORD_BOT_TOKEN).catch((e) => console.error('[discord] 登入失敗:', e));
+} else {
+  console.warn('尚未設定 DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID，Fire Stone 查詢功能停用。');
+}
+
+app.get('/firestone', (req, res) => {
+  res.json(firestoneState);
+});
+app.get('/firestone/view', (req, res) => {
+  res.send(`
+    <html><body style="font-family:sans-serif; padding:24px; line-height:1.8;">
+      <h2>Fire Stone 賽季門檻</h2>
+      <p><b>Titan Slayer（前 10%）：</b>${firestoneState.tier10 || '尚未取得'}</p>
+      <p><b>Master（前 30%）：</b>${firestoneState.tier30 || '尚未取得'}</p>
+      <p><b>Champion（前 80%）：</b>${firestoneState.tier80 || '尚未取得'}</p>
+      <p><b>最後更新：</b>${firestoneState.updatedAt ? new Date(firestoneState.updatedAt).toLocaleString('zh-TW') : '尚未取得'}</p>
+      <p style="color:#888; font-size:12px;">原始回覆文字：${firestoneState.rawText ? firestoneState.rawText.replace(/</g, '&lt;') : '無'}</p>
+    </body></html>
+  `);
+});

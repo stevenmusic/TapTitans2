@@ -4172,6 +4172,13 @@
             return Math.round(n).toLocaleString('en-US');
         }
 
+        // 攻擊紀錄查詢專用：不管數字多小，一律用 M 為單位顯示（例如 10 萬顯示成 0.1M），
+        // 方便跟其他部位的傷害數字用同一個單位比較，不用另外去換算
+        function formatNumAlwaysM(n) {
+            if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/0$/, '').replace(/\.$/, '') + 'B';
+            return (n / 1000000).toFixed(1) + 'M';
+        }
+
         function formatRate(rate) {
             if (!rate || rate < 0.01) return '0%';
             return rate.toFixed(2) + '%';
@@ -5360,17 +5367,17 @@
                                 }).join('')}
                             </div>
                             <div style="font-size:11px; color:#a89a8a; margin-bottom:6px;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
-                            ${['armor', 'body'].map(layer => {
-                                const items = a.parts.filter(p => p.layer === layer);
-                                if (items.length === 0) return '';
-                                const label = layer === 'body' ? '肉體' : '盔甲';
-                                const names = items.map(p => escapeHtml(raidPartLabel(p.part))).join('<span style="color:#d8cabb; margin:0 4px;">丨</span>');
-                                const damages = items.map(p => escapeHtml(formatNum(p.damage))).join('<span style="color:#d8cabb; margin:0 4px;">丨</span>');
-                                return `
-                                    <div style="font-size:12px; color:#5a4a3a; margin-top:4px;"><b>${label}：</b>${names}</div>
-                                    <div style="font-size:12px; color:#5a4a3a; font-weight:700; margin-bottom:2px;">${damages}</div>
-                                `;
-                            }).join('')}
+                            <div style="display:flex; flex-wrap:wrap; gap:2px 10px; margin-top:4px;">
+                                ${a.parts.map(p => {
+                                    const color = p.layer === 'body' ? '#00707d' : '#616168';
+                                    return `
+                                        <div style="text-align:center; font-size:12px; color:${color};">
+                                            <div>${escapeHtml(raidPartLabel(p.part))}</div>
+                                            <div style="font-weight:700;">${escapeHtml(formatNumAlwaysM(p.damage))}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     `).join('')}
                 </div>

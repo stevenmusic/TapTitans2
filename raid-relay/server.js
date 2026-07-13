@@ -828,16 +828,22 @@ if (discordEnabled) {
 
   discordClient.once('ready', () => {
     console.log(`[discord] 已登入：${discordClient.user.tag}`);
-    setInterval(async () => {
+    async function runFirestoneCheck() {
       try {
         const channel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID);
-        if (!channel) return;
+        if (!channel) {
+          console.error('[discord] 找不到頻道（channel 是 null），請確認 DISCORD_CHANNEL_ID 正確、機器人有加入該伺服器');
+          return;
+        }
+        console.log(`[discord] 找到頻道：#${channel.name}，準備發送指令`);
         const sentMsg = await channel.send('D?Currency');
+        console.log('[discord] 已發送 D?Currency，訊息 ID:', sentMsg.id);
 
         // 等幾秒讓 DarkBot 有時間回覆，再去頻道裡找它最新的訊息
         setTimeout(async () => {
           try {
             const messages = await channel.messages.fetch({ limit: 10 });
+            console.log(`[discord] 讀到 ${messages.size} 則最近的訊息，開始尋找 DarkBot 回覆`);
             const reply = messages.find(m => m.author.bot && m.author.id !== discordClient.user.id && m.createdTimestamp > sentMsg.createdTimestamp);
             if (reply) {
               const parsed = parseFirestoneReply(reply.content);
@@ -845,6 +851,8 @@ if (discordEnabled) {
               saveFirestoneState();
               console.log('[discord] Fire Stone 資料已更新:', parsed);
               reply.delete().catch(() => {});
+            } else {
+              console.warn('[discord] 沒有找到符合條件的機器人回覆訊息（DarkBot 可能沒有回應，或權限不足看不到它的訊息）');
             }
             sentMsg.delete().catch(() => {});
           } catch (e) {
@@ -854,7 +862,9 @@ if (discordEnabled) {
       } catch (e) {
         console.error('[discord] 發送指令失敗:', e);
       }
-    }, 60000); // 每分鐘一次
+    }
+    runFirestoneCheck(); // 開機立刻跑一次，不用等第一次 60 秒
+    setInterval(runFirestoneCheck, 60000); // 之後每分鐘一次
   });
 
   discordClient.login(DISCORD_BOT_TOKEN).catch((e) => console.error('[discord] 登入失敗:', e));

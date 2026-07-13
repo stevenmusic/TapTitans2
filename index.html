@@ -5575,7 +5575,9 @@
                 }
 
                 const cb = data.currentBoss;
-                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0 && !raidState) {
+                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0) {
+                    // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
+                    // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
                     apiHasReceivedAttack = true;
                     apiCurrentEnemyId = cb.enemyId || null;
                     raidBossOrdinal = cb.ordinal || 1;

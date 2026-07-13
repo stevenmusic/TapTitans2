@@ -2954,6 +2954,13 @@
                     <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
+                <div class="backup-section">
+                    <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
+                    <div class="backup-desc" data-i18n="cardUsageDesc">檢查每一輪(cycle)裡，誰出刀時沒有帶「瘋狂無效」或「鏡子力」。資料來自伺服器 24 小時側錄，只統計該輪有出刀的人。</div>
+                    <button class="btn-backup import" onclick="renderCardUsageCheck()" data-i18n="cardUsageBtn">檢查本場突襲</button>
+                    <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -3064,6 +3071,18 @@
                 crystalSecSkip: '不要練',
                 crystalSecSkipDesc: '（不需要花資源升級的卡片）',
                 crystalBurst: '爆裂', crystalTorment: '苦痛', crystalSupport: '支援',
+                cardUsageTitle: '🃏 卡片使用檢查',
+                cardUsageDesc: '檢查每一輪(cycle)裡，誰出刀時沒有帶「瘋狂無效」或「鏡子力」。資料來自伺服器 24 小時側錄，只統計該輪有出刀的人。',
+                cardUsageBtn: '檢查本場突襲',
+                cardUsageLoading: '查詢中…',
+                cardUsageError: '查詢失敗，請確認中繼伺服器連線',
+                cardUsageEmpty: '目前還沒有任何攻擊紀錄',
+                cardUsageCycle: '第 {n} 輪',
+                cardUsageUnknownCycle: '輪次未知（舊紀錄）',
+                cardUsagePlayers: '{n} 人出刀',
+                cardUsageMissing: '沒帶的人',
+                cardUsageAllUsed: '✓ 全員都有帶',
+                cardUsageKnives: '刀',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3199,6 +3218,18 @@
                 crystalSecSkip: 'Don\'t Level',
                 crystalSecSkipDesc: '(not worth spending resources on)',
                 crystalBurst: 'Burst', crystalTorment: 'Afflict', crystalSupport: 'Support',
+                cardUsageTitle: '🃏 Card Usage Check',
+                cardUsageDesc: 'Check who attacked without Insanity Void or Mirror Force in each cycle. Data comes from the 24h server recorder; only players who attacked in that cycle are counted.',
+                cardUsageBtn: 'Check This Raid',
+                cardUsageLoading: 'Loading…',
+                cardUsageError: 'Query failed — please check the relay server connection',
+                cardUsageEmpty: 'No attack records yet',
+                cardUsageCycle: 'Cycle {n}',
+                cardUsageUnknownCycle: 'Unknown cycle (older records)',
+                cardUsagePlayers: '{n} attackers',
+                cardUsageMissing: 'missing',
+                cardUsageAllUsed: '✓ everyone brought it',
+                cardUsageKnives: 'atk',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -5376,6 +5407,7 @@
             log.push({
                 ts: Date.now(),
                 attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來判斷是不是同一筆真實攻擊（不管誰先收到）
+                cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
                 player: playerName,
                 boss: bossName,
                 bossOrdinal,
@@ -5385,6 +5417,56 @@
                 totalDamage
             });
             saveRaidFullLog(log);
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           卡片使用檢查：向中繼伺服器要 /card-usage 報表，
+           列出每一輪(cycle)裡沒有帶「瘋狂無效」「鏡子力」出刀的人
+           ══════════════════════════════════════════════════════════ */
+        const CARD_USAGE_TRACKED_NAMES = {
+            CrushingVoid: { zh: '🟣 瘋狂無效', en: '🟣 Insanity Void' },
+            MirrorForce:  { zh: '🪞 鏡子力',   en: '🪞 Mirror Force' }
+        };
+
+        async function renderCardUsageCheck() {
+            const box = document.getElementById('card-usage-result');
+            box.style.display = 'flex';
+            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            try {
+                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/card-usage`);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const report = await resp.json();
+                if (!report.cycles || report.cycles.length === 0) {
+                    box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
+                    return;
+                }
+                box.innerHTML = report.cycles.map((c) => {
+                    const cycleLabel = (c.cycle != null)
+                        ? t('cardUsageCycle').replace('{n}', c.cycle)
+                        : t('cardUsageUnknownCycle');
+                    const lists = (report.trackedCards || []).map((tc) => {
+                        const names = CARD_USAGE_TRACKED_NAMES[tc.id] || { zh: tc.zh, en: tc.id };
+                        const cardLabel = currentLang === 'en' ? names.en : names.zh;
+                        const miss = (c.missing && c.missing[tc.id]) || [];
+                        const content = miss.length === 0
+                            ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
+                            : miss.map(m => `${escapeHtml(m.name)}（${m.attacks} ${t('cardUsageKnives')}）`).join('、');
+                        return `<div style="font-size:12.5px; line-height:1.6;"><b>${cardLabel}</b> ${t('cardUsageMissing')}：${content}</div>`;
+                    }).join('');
+                    return `
+                        <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
+                            <div style="font-size:13px; font-weight:700; color:#5a4a3a; margin-bottom:4px;">
+                                ${cycleLabel}（${t('cardUsagePlayers').replace('{n}', c.playerCount)}）
+                            </div>
+                            ${lists}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('卡片使用檢查失敗:', e);
+                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageError')}</div>`;
+            }
         }
 
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄

@@ -2942,6 +2942,12 @@
 
                 </div>
 
+                <button class="btn-backup" style="background:#eef2f9; color:#3a5a8e;" onclick="loadRaidLogDemo()" data-i18n="raidLogDemoBtn">🎲 模擬示範資料（先看看長怎樣）</button>
+                <div id="raid-log-demo-banner" style="display:none; width:100%; align-items:center; justify-content:space-between; gap:8px; background:#eef2f9; border:1px solid #c9d8ee; border-radius:10px; padding:8px 12px; margin:-4px 0 4px;">
+                    <span style="font-size:12px; color:#3a5a8e;" data-i18n="raidLogDemoActiveNote">📍 目前顯示的是模擬示範資料，不是真實紀錄</span>
+                    <button style="flex-shrink:0; background:none; border:1px solid #3a5a8e; color:#3a5a8e; border-radius:8px; padding:4px 10px; font-size:12px;" onclick="exitRaidLogDemo()" data-i18n="raidLogDemoExit">結束示範</button>
+                </div>
+
                 <div class="backup-section">
                     <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
                     <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。突襲結束後，可以查詢某位成員這場用了哪些卡、打中哪個部位（肉體/盔甲）、造成多少傷害。輸入部分文字也能找到。</div>
@@ -3083,6 +3089,16 @@
                 cardUsageEmpty: '開始時間之後還沒有任何攻擊紀錄',
                 cardUsageRound: '第 {n} 輪',
                 cardUsageAllUsed: '✓ 全員都有帶',
+                raidLogToday: '今天',
+                raidLogYesterday: '昨天',
+                raidLogAttacksRemaining: '剩餘攻擊次數',
+                raidLogTapDamage: '點擊傷害',
+                raidLogTotalDamage: '總傷害',
+                raidLogAttackedAt: '攻擊時間',
+                raidLogSupport: '輔助',
+                raidLogDemoBtn: '🎲 模擬示範資料（先看看長怎樣）',
+                raidLogDemoActiveNote: '📍 目前顯示的是模擬示範資料，不是真實紀錄',
+                raidLogDemoExit: '結束示範',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3228,6 +3244,16 @@
                 cardUsageEmpty: 'No attack records after the start time yet',
                 cardUsageRound: 'Round {n}',
                 cardUsageAllUsed: '✓ everyone brought it',
+                raidLogToday: 'Today',
+                raidLogYesterday: 'Yesterday',
+                raidLogAttacksRemaining: 'Attacks remaining',
+                raidLogTapDamage: 'Tap Damage',
+                raidLogTotalDamage: 'Total Damage',
+                raidLogAttackedAt: 'Attacked at',
+                raidLogSupport: 'Support',
+                raidLogDemoBtn: '🎲 Preview with Sample Data',
+                raidLogDemoActiveNote: '📍 Showing simulated sample data, not real records',
+                raidLogDemoExit: 'Exit Demo',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -4069,6 +4095,17 @@
                         replacement.style.overflow = 'hidden';
                         inputEl.replaceWith(replacement);
                     });
+
+                    // 只截到「最後一組有配卡的牌組」，如果使用者只配了 6 組，
+                    // 就不要把空白的第 7、8 組也截進圖片裡（只看有沒有卡片圖片，備註文字不算）
+                    const allTierRowsInClone = Array.from(clonedDoc.querySelectorAll(`#${idMap[type]} .pyramid-container > .tier-row`));
+                    let lastFilledTierIdx = -1;
+                    allTierRowsInClone.forEach((row, idx) => {
+                        if (row.querySelector('.drop-zone img')) lastFilledTierIdx = idx;
+                    });
+                    if (lastFilledTierIdx >= 0) {
+                        allTierRowsInClone.slice(lastFilledTierIdx + 1).forEach(row => row.remove());
+                    }
 
                     const lastTierRow = clonedDoc.querySelector(`#${idMap[type]} .pyramid-container > .tier-row:last-child`);
                     if (lastTierRow) lastTierRow.style.marginBottom = '0px';
@@ -5386,21 +5423,31 @@
                 name: cl.id,
                 level: cl.value
             }));
+            const playerCode = (payload.player && payload.player.player_code) || null;
+            const raidLevel = (payload.player && typeof payload.player.raid_level === 'number') ? payload.player.raid_level : null;
+            const attacksRemaining = (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null;
 
-            // 每個部位的傷害，把「點擊攻擊」跟「卡片攻擊」的傷害合併加總成一個數字，不分開列
-            const partTotals = {}; // "肉體_Head" -> { part, layer, damage }
+            // 每個部位「三層」（盔甲/肉體/骨架）各自的傷害，不要把骨架併進盔甲
+            const partTotals = {}; // "armor_Head" -> { part, layer, damage }
+            // 每張卡片造成的總傷害；id 是 null/沒有 = 點擊傷害（TapDamage）
+            const cardDamageTotals = {};
             ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
+                const cardKey = cd.id || '__tap__';
                 (cd.damage_log || []).forEach(d => {
                     const { layer, loc } = apiSplitPartId(d.id);
                     const key = `${layer}_${loc}`;
-                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer === 'body' ? 'body' : 'armor', damage: 0 };
+                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer || 'armor', damage: 0 };
                     partTotals[key].damage += d.value;
+                    cardDamageTotals[cardKey] = (cardDamageTotals[cardKey] || 0) + d.value;
                 });
             });
             const parts = Object.values(partTotals);
             if (parts.length === 0) return;
 
             const totalDamage = parts.reduce((s, p) => s + p.damage, 0);
+            const tapDamage = cardDamageTotals.__tap__ || 0;
+            const cardDamage = {};
+            Object.keys(cardDamageTotals).forEach(k => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
 
             const log = loadRaidFullLog();
             log.push({
@@ -5408,10 +5455,15 @@
                 attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來判斷是不是同一筆真實攻擊（不管誰先收到）
                 cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
                 player: playerName,
+                playerCode,
+                raidLevel,
+                attacksRemaining,
                 boss: bossName,
                 bossOrdinal,
                 bossTotal,
                 cards,
+                cardDamage,
+                tapDamage,
                 parts,
                 totalDamage
             });
@@ -5476,6 +5528,92 @@
             });
         }
 
+        /* ══════════════════════════════════════════════════════════
+           模擬示範資料：讓使用者不用連線、不用真的打突襲，
+           就能先看到「攻擊紀錄查詢」跟「卡片使用檢查」畫面長怎樣。
+           示範模式開啟時，兩個功能都改讀這份假資料，不會動到真實紀錄；
+           結束示範會把畫面清空，回到原本狀態。
+           ══════════════════════════════════════════════════════════ */
+        let raidLogDemoActive = false;
+        let raidLogDemoData = null;
+
+        function buildRaidLogDemoData() {
+            const H = 3600000;
+            const startTs = Date.now() - 15 * H; // 模擬突襲從 15 小時前開始，剛好橫跨第 1、2 輪
+            const parts8 = ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'ChestUpper', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+            function mkParts(seed) {
+                return parts8.map((p, i) => ({ part: p, layer: 'armor', damage: Math.round((80 + (seed * 7 + i * 13) % 120) * 1e6) }));
+            }
+            function mkEntry(offsetH, player, raidLevel, attacksRemaining, cards, cardDamage, tapDamage, bossOrdinal) {
+                const ts = startTs + offsetH * H;
+                const parts = mkParts(offsetH + player.length);
+                const totalDamage = parts.reduce((s, p) => s + p.damage, 0) + tapDamage;
+                return {
+                    ts, attackDatetime: new Date(ts).toISOString(), cycle: Math.floor(offsetH / 12) + 1,
+                    player, raidLevel, attacksRemaining,
+                    boss: ['Jukk', 'Klonk', 'Lojak'][bossOrdinal % 3], bossOrdinal, bossTotal: 7,
+                    cards, cardDamage, tapDamage, parts, totalDamage
+                };
+            }
+            return [
+                // 第 1 輪 (0~12h)：小明忘記帶瘋狂無效；阿華忘記帶鏡子力
+                mkEntry(1, '小明', 1580, 4, [{ name: 'Haymaker', level: 70 }, { name: 'TeamTactics', level: 65 }, { name: 'MirrorForce', level: 60 }], { Haymaker: 420e6, MirrorForce: 180e6 }, 30e6, 3),
+                mkEntry(3, '小明', 1580, 3, [{ name: 'Haymaker', level: 70 }, { name: 'TeamTactics', level: 65 }, { name: 'MirrorForce', level: 60 }], { Haymaker: 400e6, MirrorForce: 175e6 }, 28e6, 4),
+                mkEntry(2, '阿華', 1420, 5, [{ name: 'CrushingVoid', level: 55 }, { name: 'Haymaker', level: 68 }, { name: 'BurstBoost', level: 50 }], { CrushingVoid: 210e6, Haymaker: 380e6 }, 25e6, 3),
+                mkEntry(5, '阿華', 1420, 3, [{ name: 'CrushingVoid', level: 55 }, { name: 'Haymaker', level: 68 }, { name: 'BurstBoost', level: 50 }], { CrushingVoid: 205e6, Haymaker: 390e6 }, 26e6, 5),
+                mkEntry(1.5, '/牛/kimsua', 1595, 5, [{ name: 'Haymaker', level: 74 }, { name: 'TeamTactics', level: 73 }, { name: 'MoonBeam', level: 62 }], { Haymaker: 546.09e6, MoonBeam: 458.40e6 }, 64.03e6, 3),
+                mkEntry(6, '/牛/kimsua', 1595, 0, [{ name: 'CrushingVoid', level: 60 }, { name: 'MirrorForce', level: 58 }, { name: 'Haymaker', level: 74 }], { CrushingVoid: 190e6, MirrorForce: 210e6, Haymaker: 500e6 }, 60e6, 7),
+                mkEntry(4, '小美', 1350, 6, [{ name: 'CrushingVoid', level: 50 }, { name: 'MirrorForce', level: 48 }, { name: 'TeamTactics', level: 45 }], { CrushingVoid: 150e6, MirrorForce: 140e6 }, 20e6, 4),
+                // 第 2 輪 (12~24h)：小明這次都有帶了；阿華還是沒帶鏡子力
+                mkEntry(13, '小明', 1580, 6, [{ name: 'CrushingVoid', level: 70 }, { name: 'Haymaker', level: 70 }, { name: 'MirrorForce', level: 60 }], { CrushingVoid: 200e6, Haymaker: 410e6, MirrorForce: 170e6 }, 29e6, 1),
+                mkEntry(15, '阿華', 1420, 4, [{ name: 'Haymaker', level: 68 }, { name: 'TeamTactics', level: 60 }, { name: 'BurstBoost', level: 50 }], { Haymaker: 385e6 }, 24e6, 2),
+                mkEntry(16, '阿華', 1420, 2, [{ name: 'Haymaker', level: 68 }, { name: 'TeamTactics', level: 60 }, { name: 'BurstBoost', level: 50 }], { Haymaker: 395e6 }, 25e6, 2),
+                mkEntry(14, '/牛/kimsua', 1595, 6, [{ name: 'CrushingVoid', level: 60 }, { name: 'MirrorForce', level: 58 }, { name: 'Haymaker', level: 74 }], { CrushingVoid: 195e6, MirrorForce: 205e6, Haymaker: 510e6 }, 62e6, 1),
+                mkEntry(18, '小美', 1350, 3, [{ name: 'CrushingVoid', level: 50 }, { name: 'MirrorForce', level: 48 }, { name: 'TeamTactics', level: 45 }], { CrushingVoid: 155e6, MirrorForce: 145e6 }, 21e6, 3)
+            ];
+        }
+
+        function loadRaidLogDemo() {
+            raidLogDemoActive = true;
+            raidLogDemoData = buildRaidLogDemoData();
+
+            const banner = document.getElementById('raid-log-demo-banner');
+            if (banner) banner.style.display = 'flex';
+
+            // 攻擊紀錄查詢：直接示範查「小明」的結果
+            const queryInput = document.getElementById('raid-log-query-input');
+            if (queryInput) queryInput.value = '小明';
+            renderRaidLogQueryResult();
+
+            // 卡片使用檢查：開始時間設成示範資料的起點（15 小時前）
+            const startInput = document.getElementById('card-usage-start-input');
+            if (startInput) {
+                const demoStart = new Date(Date.now() - 15 * 3600000);
+                const pad = n => String(n).padStart(2, '0');
+                startInput.value = `${demoStart.getFullYear()}-${pad(demoStart.getMonth() + 1)}-${pad(demoStart.getDate())}T${pad(demoStart.getHours())}:${pad(demoStart.getMinutes())}`;
+            }
+            renderCardUsageCheck();
+
+            document.getElementById('raid-log-query-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function exitRaidLogDemo() {
+            raidLogDemoActive = false;
+            raidLogDemoData = null;
+            const banner = document.getElementById('raid-log-demo-banner');
+            if (banner) banner.style.display = 'none';
+
+            const queryInput = document.getElementById('raid-log-query-input');
+            if (queryInput) queryInput.value = '';
+            const queryResult = document.getElementById('raid-log-query-result');
+            if (queryResult) queryResult.style.display = 'none';
+
+            const startInput = document.getElementById('card-usage-start-input');
+            if (startInput) startInput.value = localStorage.getItem(CARD_USAGE_START_KEY) || '';
+            const usageResult = document.getElementById('card-usage-result');
+            if (usageResult) { usageResult.style.display = 'none'; usageResult.innerHTML = ''; }
+        }
+
         async function renderCardUsageCheck() {
             const box = document.getElementById('card-usage-result');
             box.style.display = 'flex';
@@ -5492,11 +5630,16 @@
             }
             localStorage.setItem(CARD_USAGE_START_KEY, startVal);
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
-            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
             try {
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
+                let data;
+                if (raidLogDemoActive) {
+                    data = { attacks: raidLogDemoData };
+                } else {
+                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    data = await resp.json();
+                }
                 const attacks = (data.attacks || []).filter(a => cardUsageAttackTs(a) >= startTs);
                 if (attacks.length === 0) {
                     box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
@@ -5543,7 +5686,7 @@
 
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
         function queryRaidFullLogByPlayer(keyword) {
-            const log = dedupRaidFullLog(loadRaidFullLog());
+            const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
             const keywordLower = keyword.toLowerCase();
             const matchedPlayers = [...new Set(log.filter(e => e.player.toLowerCase().includes(keywordLower)).map(e => e.player))];
             if (matchedPlayers.length === 0) return null;
@@ -5569,6 +5712,29 @@
             if (deduped.length !== log.length) saveRaidFullLog(deduped);
             return deduped;
         }
+
+        // 相對日期顯示：今天/昨天/幾天前，搭配時間（沿用畫面上其他地方一致的 24 小時制）
+        function raidLogRelativeDate(ts) {
+            const d = new Date(ts);
+            const now = new Date();
+            const dOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            const diffDays = Math.round((nowOnly - dOnly) / 86400000);
+            const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            let dayLabel;
+            if (diffDays === 0) dayLabel = t('raidLogToday');
+            else if (diffDays === 1) dayLabel = t('raidLogYesterday');
+            else dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+            return `${dayLabel} ${timeStr}`;
+        }
+
+        // 每個部位在畫面上排成 3-3-2 的人形佈局（頭/雙臂在上、胸/雙手在中、雙腿在下）
+        const RAID_LOG_PART_LAYOUT = [
+            ['Head', 'ArmUpperLeft', 'ArmUpperRight'],
+            ['ChestUpper', 'HandLeft', 'HandRight'],
+            ['LegUpperLeft', 'LegUpperRight']
+        ];
+        const RAID_LOG_LAYERS = ['armor', 'body', 'skeleton'];
 
         function renderRaidLogQueryResult() {
             const input = document.getElementById('raid-log-query-input');
@@ -5596,50 +5762,76 @@
                 : '';
 
             listEl.innerHTML = results.map(r => `
-                <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; flex-direction:column; gap:10px;">
                     <div style="background:#f7f1e8; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; color:#4a3a2a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
                         <span>${escapeHtml(r.player)}</span>
                         <span style="font-weight:600; font-size:12px; color:#6b5a4a;">共 ${r.attackCount} 次・總傷害 ${escapeHtml(formatNum(r.totalDamage))}</span>
                     </div>
-                    ${r.attacks.map(a => `
-                        <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
-                            <div style="display:flex; gap:10px; margin-bottom:8px;">
-                                ${a.cards.map(c => {
-                                    const img = raidCardImage(c.name);
-                                    return `<div style="display:flex; flex-direction:column; align-items:center; gap:2px; width:52px;">
-                                        ${img
-                                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; border:1px solid #e5dcd2;">`
-                                            : `<div style="width:44px; height:44px; border-radius:8px; background:#f0e8dc; display:flex; align-items:center; justify-content:center; font-size:9px; color:#8a7a6a; text-align:center; padding:2px;">${escapeHtml(raidCardLabel(c.name))}</div>`
-                                        }
-                                        <span style="font-size:10px; color:#8a7a6a;">Lv.${escapeHtml(String(c.level))}</span>
-                                    </div>`;
-                                }).join('')}
-                            </div>
-                            <div style="font-size:11px; color:#a89a8a; margin-bottom:6px;">${escapeHtml(a.boss)} ${a.bossOrdinal ? a.bossOrdinal + '/' + (a.bossTotal || 6) : ''}　總傷害 ${escapeHtml(formatNum(a.totalDamage))}</div>
-                            ${['armor', 'body'].map(layer => {
-                                const items = a.parts.filter(p => p.layer === layer);
-                                if (items.length === 0) return '';
-                                const color = layer === 'body' ? '#00707d' : '#616168';
-                                const damageByPart = {};
-                                items.forEach(p => { damageByPart[p.part] = p.damage; });
-                                return `
-                                    <div class="raid-log-parts-row">
-                                        ${RAID_PARTS.map((rp, colIdx) => {
-                                            const hasDamage = Object.prototype.hasOwnProperty.call(damageByPart, rp.key);
-                                            return `
-                                                <div class="raid-log-part-cell" style="color:${color}; grid-column: ${colIdx + 1}; grid-row: 1;">
-                                                    <div>${escapeHtml(raidPartLabel(rp.key))}</div>
-                                                    <div style="font-weight:700;">${hasDamage ? escapeHtml(formatNumAlwaysM(damageByPart[rp.key])) : '－'}</div>
-                                                </div>
-                                            `;
-                                        }).join('')}
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    `).join('')}
+                    ${r.attacks.map(a => renderRaidLogAttackCard(a)).join('')}
                 </div>
             `).join('');
+        }
+
+        function renderRaidLogAttackCard(a) {
+            const raidLevelStr = (a.raidLevel != null) ? ` | RL ${a.raidLevel}` : '';
+            const attacksRemainingStr = (a.attacksRemaining != null)
+                ? ` | ${t('raidLogAttacksRemaining')}: ${a.attacksRemaining}`
+                : '';
+            const cardDamage = a.cardDamage || {};
+            const tapDamage = a.tapDamage || 0;
+
+            const cardRows = (a.cards || []).map(c => {
+                const img = raidCardImage(c.name);
+                const dmg = cardDamage[c.name];
+                const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
+                const icon = img
+                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:20px; height:20px; border-radius:4px; object-fit:cover; vertical-align:middle;">`
+                    : '🃏';
+                return `
+                    <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
+                        <span>Lv.${escapeHtml(String(c.level))}</span>
+                        <span>${icon}</span>
+                        <span>|</span>
+                        <span style="font-weight:600;">${dmgLabel}</span>
+                    </div>
+                `;
+            }).join('');
+
+            const partsGrid = RAID_LOG_PART_LAYOUT.map(row => `
+                <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;">
+                    ${row.map(partKey => {
+                        const cellRows = RAID_LOG_LAYERS.map(layer => {
+                            const p = a.parts.find(pp => pp.part === partKey && pp.layer === layer);
+                            const val = p ? p.damage : 0;
+                            return `<div style="font-size:11px; color:${val > 0 ? '#4a3a2a' : '#c2b8a8'}; font-weight:${val > 0 ? '700' : '400'};">${val > 0 ? escapeHtml(formatNumAlwaysM(val)) : '0'}</div>`;
+                        }).join('');
+                        return `
+                            <div style="flex:1; max-width:90px; border:1px solid #e5dcd2; border-radius:8px; padding:4px 2px; text-align:center; background:#fdfaf5;">
+                                <div style="font-size:9.5px; color:#a89a88; margin-bottom:2px;">${escapeHtml(raidPartLabel(partKey))}</div>
+                                ${cellRows}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `).join('');
+
+            return `
+                <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
+                    <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
+                        ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
+                    </div>
+                    <div style="font-size:12.5px; color:#5a4a3a; margin-bottom:2px;">${t('raidLogTapDamage')}: <b>${escapeHtml(formatNumAlwaysM(tapDamage))}</b></div>
+                    ${cardRows}
+                    <div style="font-size:12.5px; color:#5a4a3a; margin-top:4px; font-weight:700;">${t('raidLogTotalDamage')}: ${escapeHtml(formatNumAlwaysM(a.totalDamage))}</div>
+                    <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
+
+                    <div style="border-top:1px dashed #e5dcd2; margin:8px 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
+                        ${escapeHtml(a.boss)}${a.bossOrdinal ? ` (${a.bossOrdinal}/${a.bossTotal || 6})` : ''}
+                    </div>
+                    ${partsGrid}
+                    <div style="font-size:10.5px; color:#a89a88; margin-top:6px; text-align:center;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
+                </div>
+            `;
         }
 
         function clearRaidFullLog() {

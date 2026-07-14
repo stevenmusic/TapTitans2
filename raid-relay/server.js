@@ -623,30 +623,46 @@ function watcherHandleAttack(payload) {
   saveCurrentBossState();
 
   const playerName = (payload.player && payload.player.name) || '?';
+  const playerCode = (payload.player && payload.player.player_code) || null;
+  const raidLevel = (payload.player && typeof payload.player.raid_level === 'number') ? payload.player.raid_level : null;
+  const attacksRemaining = (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null;
   const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({ name: cl.id, level: cl.value }));
 
+  // 每個部位「三層」（盔甲/肉體/骨架）各自的傷害，不要把骨架併進盔甲
   const partTotals = {};
+  // 每張卡片造成的總傷害（cards_damage 的 id 是卡片名稱；id 是 null/沒有 = 點擊傷害 TapDamage）
+  const cardDamageTotals = {}; // cardId -> damage；用 '__tap__' 代表點擊傷害
   ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach((cd) => {
+    const cardKey = cd.id || '__tap__';
     (cd.damage_log || []).forEach((d) => {
       const { layer, loc } = splitPartId(d.id);
       const key = `${layer}_${loc}`;
-      if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer === 'body' ? 'body' : 'armor', damage: 0 };
+      if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer || 'armor', damage: 0 };
       partTotals[key].damage += d.value;
+      cardDamageTotals[cardKey] = (cardDamageTotals[cardKey] || 0) + d.value;
     });
   });
   const parts = Object.values(partTotals);
   if (parts.length === 0) return;
   const totalDamage = parts.reduce((s, p) => s + p.damage, 0);
+  const tapDamage = cardDamageTotals.__tap__ || 0;
+  const cardDamage = {};
+  Object.keys(cardDamageTotals).forEach((k) => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
 
   fullAttackLog.push({
     ts: Date.now(),
     attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null,
     cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
     player: playerName,
+    playerCode,
+    raidLevel,
+    attacksRemaining,
     boss: watcherBossName,
     bossOrdinal: watcherBossOrdinal,
     bossTotal: watcherBossTotal || 6,
     cards,
+    cardDamage,
+    tapDamage,
     parts,
     totalDamage
   });

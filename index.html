@@ -3099,6 +3099,7 @@
                 raidLogDemoBtn: '🎲 模擬示範資料（先看看長怎樣）',
                 raidLogDemoActiveNote: '📍 目前顯示的是模擬示範資料，不是真實紀錄',
                 raidLogDemoExit: '結束示範',
+                cardUsageMissingListLabel: '（未使用名單）',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3242,7 +3243,7 @@
                 cardUsageError: 'Query failed — please check the relay server connection',
                 cardUsageNeedStart: 'Please enter the raid start time first',
                 cardUsageEmpty: 'No attack records after the start time yet',
-                cardUsageRound: 'Round {n}',
+                cardUsageRound: 'Cycle {n}',
                 cardUsageAllUsed: '✓ everyone brought it',
                 raidLogToday: 'Today',
                 raidLogYesterday: 'Yesterday',
@@ -3254,6 +3255,7 @@
                 raidLogDemoBtn: '🎲 Preview with Sample Data',
                 raidLogDemoActiveNote: '📍 Showing simulated sample data, not real records',
                 raidLogDemoExit: 'Exit Demo',
+                cardUsageMissingListLabel: '(Not Used List)',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -5500,13 +5502,11 @@
             }
             return null;
         }
-        function cardUsageCardLabel(tc) {
-            const text = currentLang === 'en' ? tc.en : tc.zh;
+        function cardUsageCardVisual(tc) {
             const img = cardUsageImgSrc(tc.id);
-            const visual = img
-                ? `<img src="${img}" style="width:34px; height:auto; border-radius:5px; flex-shrink:0;" draggable="false">`
-                : `<span style="font-size:16px;">${tc.emoji}</span>`;
-            return `<span style="display:inline-flex; align-items:center; gap:6px;">${visual}<b>${text}</b></span>`;
+            return img
+                ? `<img src="${img}" alt="${escapeHtml(currentLang === 'en' ? tc.en : tc.zh)}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; flex-shrink:0;" draggable="false">`
+                : `<span style="font-size:22px; flex-shrink:0;">${tc.emoji}</span>`;
         }
 
         // 攻擊發生時間：優先用遊戲官方的 attack_datetime
@@ -5663,17 +5663,22 @@
                         const missNames = [...players.entries()]
                             .filter(([name, usedSet]) => !usedSet.has(tc.id))
                             .map(([name]) => escapeHtml(name));
-                        const content = missNames.length === 0
+                        const namesHtml = missNames.length === 0
                             ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
-                            : missNames.join('、');
+                            : missNames.map(n => `<span style="background:#f3e9da; border-radius:6px; padding:2px 8px;">${n}</span>`).join('');
                         return `
-                            <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">${cardUsageCardLabel(tc)}</div>
-                            <div style="font-size:12.5px; line-height:1.7; color:#5a4a3a; margin-left:2px;">${content}</div>
+                            <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
+                                ${cardUsageCardVisual(tc)}
+                                <div style="flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px; font-size:12.5px; color:#5a4a3a; padding-top:6px;">${namesHtml}</div>
+                            </div>
                         `;
                     }).join('');
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
-                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">
+                                ${t('cardUsageRound').replace('{n}', roundNo)}
+                                <span style="font-weight:500; color:#a89a88; font-size:12px;">${t('cardUsageMissingListLabel')}</span>
+                            </div>
                             ${cardBlocks}
                         </div>
                     `;
@@ -5780,22 +5785,25 @@
             const cardDamage = a.cardDamage || {};
             const tapDamage = a.tapDamage || 0;
 
-            const cardRows = (a.cards || []).map(c => {
-                const img = raidCardImage(c.name);
-                const dmg = cardDamage[c.name];
-                const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
-                const icon = img
-                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:20px; height:20px; border-radius:4px; object-fit:cover; vertical-align:middle;">`
-                    : '🃏';
-                return `
-                    <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
-                        <span>Lv.${escapeHtml(String(c.level))}</span>
-                        <span>${icon}</span>
-                        <span>|</span>
-                        <span style="font-weight:600;">${dmgLabel}</span>
-                    </div>
-                `;
-            }).join('');
+            const cardRows = `
+                <div style="display:flex; gap:10px; padding:4px 0; flex-wrap:wrap;">
+                    ${(a.cards || []).map(c => {
+                        const img = raidCardImage(c.name);
+                        const dmg = cardDamage[c.name];
+                        const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
+                        const icon = img
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover;">`
+                            : '<span style="font-size:18px;">🃏</span>';
+                        return `
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11.5px; color:#5a4a3a;">
+                                ${icon}
+                                <span>Lv.${escapeHtml(String(c.level))}</span>
+                                <span style="font-weight:600;">${dmgLabel}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
 
             const partsGrid = RAID_LOG_PART_LAYOUT.map(row => `
                 <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;">

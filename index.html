@@ -3100,6 +3100,10 @@
                 raidLogDemoActiveNote: '📍 目前顯示的是模擬示範資料，不是真實紀錄',
                 raidLogDemoExit: '結束示範',
                 cardUsageMissingListLabel: '（未使用名單）',
+                cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
+                raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
+                raidLogExpandAll: '全部展開',
+                raidLogCollapseAll: '全部收合',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3256,6 +3260,10 @@
                 raidLogDemoActiveNote: '📍 Showing simulated sample data, not real records',
                 raidLogDemoExit: 'Exit Demo',
                 cardUsageMissingListLabel: '(Not Used List)',
+                cardUsageRoundCount: '{n} cycles total (newest first)',
+                raidLogAttackCountLabel: '{n} attacks・{dmg} total',
+                raidLogExpandAll: 'Expand All',
+                raidLogCollapseAll: 'Collapse All',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -5657,7 +5665,11 @@
                     (a.cards || []).forEach(c => usedSet.add(c.name));
                 });
 
-                box.innerHTML = [...rounds.keys()].sort((x, y) => x - y).map((roundNo) => {
+                // 最新一輪排最上面，方便瀏覽大量輪次時第一眼就看到最近的狀況
+                const sortedRoundNos = [...rounds.keys()].sort((x, y) => y - x);
+                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:2px;">${t('cardUsageRoundCount').replace('{n}', sortedRoundNos.length)}</div>`;
+
+                box.innerHTML = summaryLine + sortedRoundNos.map((roundNo) => {
                     const players = rounds.get(roundNo);
                     const cardBlocks = CARD_USAGE_TRACKED.map((tc) => {
                         const missNames = [...players.entries()]
@@ -5766,18 +5778,48 @@
                 ? `符合「${keyword}」的玩家有 ${results.length} 位`
                 : '';
 
-            listEl.innerHTML = results.map(r => `
-                <div style="display:flex; flex-direction:column; gap:10px;">
-                    <div style="background:#f7f1e8; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; color:#4a3a2a; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+            listEl.innerHTML = results.map((r, rIdx) => `
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="background:#f7f1e8; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; color:#4a3a2a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
                         <span>${escapeHtml(r.player)}</span>
-                        <span style="font-weight:600; font-size:12px; color:#6b5a4a;">共 ${r.attackCount} 次・總傷害 ${escapeHtml(formatNum(r.totalDamage))}</span>
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-weight:600; font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
+                            <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap;">${t('raidLogExpandAll')}</button>
+                        </span>
                     </div>
-                    ${r.attacks.map(a => renderRaidLogAttackCard(a)).join('')}
+                    <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:8px;">
+                        ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, aIdx === 0)).join('')}
+                    </div>
                 </div>
             `).join('');
         }
 
-        function renderRaidLogAttackCard(a) {
+        // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，
+        // 依目前第一筆攻擊的展開狀態決定這次是要展開還是收合全部
+        function toggleAllRaidLogDetails(rIdx) {
+            const group = document.querySelector(`[data-player-group="${rIdx}"]`);
+            if (!group) return;
+            const details = group.querySelectorAll('.raid-log-detail');
+            const chevrons = group.querySelectorAll('.raid-log-chevron');
+            const allExpanded = details.length > 0 && [...details].every(d => d.style.display !== 'none');
+            const shouldExpand = !allExpanded;
+            details.forEach(d => { d.style.display = shouldExpand ? 'block' : 'none'; });
+            chevrons.forEach(c => { c.textContent = shouldExpand ? '▴' : '▾'; });
+            const btn = document.getElementById(`raidlog-toggle-all-${rIdx}`);
+            if (btn) btn.textContent = shouldExpand ? t('raidLogCollapseAll') : t('raidLogExpandAll');
+        }
+
+        function toggleRaidLogDetail(uid) {
+            const detail = document.getElementById(uid);
+            const chevron = document.getElementById(uid + '-chevron');
+            if (!detail) return;
+            const isHidden = detail.style.display === 'none';
+            detail.style.display = isHidden ? 'block' : 'none';
+            if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
+        }
+
+        function renderRaidLogAttackCard(a, rIdx, aIdx, expandByDefault) {
+            const uid = `raidlog-detail-${rIdx}-${aIdx}`;
             const raidLevelStr = (a.raidLevel != null) ? ` | RL ${a.raidLevel}` : '';
             const attacksRemainingStr = (a.attacksRemaining != null)
                 ? ` | ${t('raidLogAttacksRemaining')}: ${a.attacksRemaining}`
@@ -5823,21 +5865,31 @@
                 </div>
             `).join('');
 
-            return `
-                <div style="border:1px solid #e5dcd2; border-radius:10px; padding:10px; word-break:break-word;">
-                    <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
-                        ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
-                    </div>
-                    <div style="font-size:12.5px; color:#5a4a3a; margin-bottom:2px;">${t('raidLogTapDamage')}: <b>${escapeHtml(formatNumAlwaysM(tapDamage))}</b></div>
-                    ${cardRows}
-                    <div style="font-size:12.5px; color:#5a4a3a; margin-top:4px; font-weight:700;">${t('raidLogTotalDamage')}: ${escapeHtml(formatNumAlwaysM(a.totalDamage))}</div>
-                    <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
+            const bossStr = `${escapeHtml(a.boss)}${a.bossOrdinal ? ` (${a.bossOrdinal}/${a.bossTotal || 6})` : ''}`;
 
-                    <div style="border-top:1px dashed #e5dcd2; margin:8px 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
-                        ${escapeHtml(a.boss)}${a.bossOrdinal ? ` (${a.bossOrdinal}/${a.bossTotal || 6})` : ''}
+            return `
+                <div style="border:1px solid #e5dcd2; border-radius:10px; word-break:break-word; overflow:hidden;">
+                    <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; background:#faf6f0;">
+                        <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}</span>
+                        <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                            <span style="font-size:12.5px; font-weight:700; color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
+                            <span id="${uid}-chevron" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${expandByDefault ? '▴' : '▾'}</span>
+                        </span>
                     </div>
-                    ${partsGrid}
-                    <div style="font-size:10.5px; color:#a89a88; margin-top:6px; text-align:center;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
+                    <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2;">
+                        <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
+                            ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
+                        </div>
+                        <div style="font-size:12.5px; color:#5a4a3a; margin-bottom:2px;">${t('raidLogTapDamage')}: <b>${escapeHtml(formatNumAlwaysM(tapDamage))}</b></div>
+                        ${cardRows}
+                        <div style="font-size:12.5px; color:#5a4a3a; margin-top:4px; font-weight:700;">${t('raidLogTotalDamage')}: ${escapeHtml(formatNumAlwaysM(a.totalDamage))}</div>
+
+                        <div style="border-top:1px dashed #e5dcd2; margin:8px 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
+                            ${bossStr}
+                        </div>
+                        ${partsGrid}
+                        <div style="font-size:10.5px; color:#a89a88; margin-top:6px; text-align:center;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
+                    </div>
                 </div>
             `;
         }

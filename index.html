@@ -5915,19 +5915,20 @@
                             <span id="${uid}-chevron" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${expandByDefault ? '▴' : '▾'}</span>
                         </span>
                     </div>
-                    <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2;">
+                    <!-- 這一段不管收合與否都會顯示：玩家資訊、點擊傷害、卡片傷害 -->
+                    <div style="padding:10px; border-top:1px solid #e5dcd2;">
                         <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
                             ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
                         </div>
                         <div style="font-size:12.5px; color:#5a4a3a; margin-bottom:2px;">${t('raidLogTapDamage')}: <b>${escapeHtml(formatNumAlwaysM(tapDamage))}</b></div>
                         ${cardRows}
-                        <div style="font-size:12.5px; color:#5a4a3a; margin-top:4px; font-weight:700;">${t('raidLogTotalDamage')}: ${escapeHtml(formatNumAlwaysM(a.totalDamage))}</div>
-
-                        <div style="border-top:1px dashed #e5dcd2; margin:8px 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
+                    </div>
+                    <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->
+                    <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:0 10px 10px;">
+                        <div style="border-top:1px dashed #e5dcd2; margin:0 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
                             ${bossStr}
                         </div>
                         ${partsGrid}
-                        <div style="font-size:10.5px; color:#a89a88; margin-top:6px; text-align:center;">${t('raidLogAttackedAt')}・${raidLogRelativeDate(a.ts)}</div>
                     </div>
                 </div>
             `;

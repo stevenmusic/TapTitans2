@@ -2964,12 +2964,6 @@
 
                 </div>
 
-                <button class="btn-backup" style="background:#eef2f9; color:#3a5a8e;" onclick="loadRaidLogDemo()" data-i18n="raidLogDemoBtn">🎲 模擬示範資料（先看看長怎樣）</button>
-                <div id="raid-log-demo-banner" style="display:none; width:100%; align-items:center; justify-content:space-between; gap:8px; background:#eef2f9; border:1px solid #c9d8ee; border-radius:10px; padding:8px 12px; margin:-4px 0 4px;">
-                    <span style="font-size:12px; color:#3a5a8e;" data-i18n="raidLogDemoActiveNote">📍 目前顯示的是模擬示範資料，不是真實紀錄</span>
-                    <button style="flex-shrink:0; background:none; border:1px solid #3a5a8e; color:#3a5a8e; border-radius:8px; padding:4px 10px; font-size:12px;" onclick="exitRaidLogDemo()" data-i18n="raidLogDemoExit">結束示範</button>
-                </div>
-
                 <div class="backup-section">
                     <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
                     <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。突襲結束後，可以查詢某位成員這場用了哪些卡、打中哪個部位（肉體/盔甲）、造成多少傷害。輸入部分文字也能找到。</div>
@@ -3118,9 +3112,6 @@
                 raidLogTotalDamage: '總傷害',
                 raidLogAttackedAt: '攻擊時間',
                 raidLogSupport: '輔助',
-                raidLogDemoBtn: '🎲 模擬示範資料（先看看長怎樣）',
-                raidLogDemoActiveNote: '📍 目前顯示的是模擬示範資料，不是真實紀錄',
-                raidLogDemoExit: '結束示範',
                 cardUsageMissingListLabel: '（未使用名單）',
                 cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
@@ -3280,9 +3271,6 @@
                 raidLogTotalDamage: 'Total Damage',
                 raidLogAttackedAt: 'Attacked at',
                 raidLogSupport: 'Support',
-                raidLogDemoBtn: '🎲 Preview with Sample Data',
-                raidLogDemoActiveNote: '📍 Showing simulated sample data, not real records',
-                raidLogDemoExit: 'Exit Demo',
                 cardUsageMissingListLabel: '(Not Used List)',
                 cardUsageRoundCount: '{n} cycles total (newest first)',
                 playerFilterPlaceholder: '🔍 Search player name…',
@@ -5575,91 +5563,10 @@
             });
         }
 
-        /* ══════════════════════════════════════════════════════════
-           模擬示範資料：讓使用者不用連線、不用真的打突襲，
-           就能先看到「攻擊紀錄查詢」跟「卡片使用檢查」畫面長怎樣。
-           示範模式開啟時，兩個功能都改讀這份假資料，不會動到真實紀錄；
-           結束示範會把畫面清空，回到原本狀態。
-           ══════════════════════════════════════════════════════════ */
+        // 這兩個變數保留給 queryRaidFullLogByPlayer/renderCardUsageCheck 的內部判斷用，
+        // 平常一律是 false/null（沒有示範模式按鈕了，資料一律讀真實紀錄）
         let raidLogDemoActive = false;
         let raidLogDemoData = null;
-
-        function buildRaidLogDemoData() {
-            const H = 3600000;
-            const startTs = Date.now() - 15 * H; // 模擬突襲從 15 小時前開始，剛好橫跨第 1、2 輪
-            const parts8 = ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'ChestUpper', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
-            function mkParts(seed) {
-                return parts8.map((p, i) => ({ part: p, layer: 'armor', damage: Math.round((80 + (seed * 7 + i * 13) % 120) * 1e6) }));
-            }
-            function mkEntry(offsetH, player, raidLevel, attacksRemaining, cards, cardDamage, tapDamage, bossOrdinal) {
-                const ts = startTs + offsetH * H;
-                const parts = mkParts(offsetH + player.length);
-                const totalDamage = parts.reduce((s, p) => s + p.damage, 0) + tapDamage;
-                return {
-                    ts, attackDatetime: new Date(ts).toISOString(), cycle: Math.floor(offsetH / 12) + 1,
-                    player, raidLevel, attacksRemaining,
-                    boss: ['Jukk', 'Klonk', 'Lojak'][bossOrdinal % 3], bossOrdinal, bossTotal: 7,
-                    cards, cardDamage, tapDamage, parts, totalDamage
-                };
-            }
-            return [
-                // 第 1 輪 (0~12h)：小明忘記帶瘋狂無效；阿華忘記帶鏡子力
-                mkEntry(1, '小明', 1580, 4, [{ name: 'Haymaker', level: 70 }, { name: 'TeamTactics', level: 65 }, { name: 'MirrorForce', level: 60 }], { Haymaker: 420e6, MirrorForce: 180e6 }, 30e6, 3),
-                mkEntry(3, '小明', 1580, 3, [{ name: 'Haymaker', level: 70 }, { name: 'TeamTactics', level: 65 }, { name: 'MirrorForce', level: 60 }], { Haymaker: 400e6, MirrorForce: 175e6 }, 28e6, 4),
-                mkEntry(2, '阿華', 1420, 5, [{ name: 'CrushingVoid', level: 55 }, { name: 'Haymaker', level: 68 }, { name: 'BurstBoost', level: 50 }], { CrushingVoid: 210e6, Haymaker: 380e6 }, 25e6, 3),
-                mkEntry(5, '阿華', 1420, 3, [{ name: 'CrushingVoid', level: 55 }, { name: 'Haymaker', level: 68 }, { name: 'BurstBoost', level: 50 }], { CrushingVoid: 205e6, Haymaker: 390e6 }, 26e6, 5),
-                mkEntry(1.5, '/牛/kimsua', 1595, 5, [{ name: 'Haymaker', level: 74 }, { name: 'TeamTactics', level: 73 }, { name: 'MoonBeam', level: 62 }], { Haymaker: 546.09e6, MoonBeam: 458.40e6 }, 64.03e6, 3),
-                mkEntry(6, '/牛/kimsua', 1595, 0, [{ name: 'CrushingVoid', level: 60 }, { name: 'MirrorForce', level: 58 }, { name: 'Haymaker', level: 74 }], { CrushingVoid: 190e6, MirrorForce: 210e6, Haymaker: 500e6 }, 60e6, 7),
-                mkEntry(4, '小美', 1350, 6, [{ name: 'CrushingVoid', level: 50 }, { name: 'MirrorForce', level: 48 }, { name: 'TeamTactics', level: 45 }], { CrushingVoid: 150e6, MirrorForce: 140e6 }, 20e6, 4),
-                // 第 2 輪 (12~24h)：小明這次都有帶了；阿華還是沒帶鏡子力
-                mkEntry(13, '小明', 1580, 6, [{ name: 'CrushingVoid', level: 70 }, { name: 'Haymaker', level: 70 }, { name: 'MirrorForce', level: 60 }], { CrushingVoid: 200e6, Haymaker: 410e6, MirrorForce: 170e6 }, 29e6, 1),
-                mkEntry(15, '阿華', 1420, 4, [{ name: 'Haymaker', level: 68 }, { name: 'TeamTactics', level: 60 }, { name: 'BurstBoost', level: 50 }], { Haymaker: 385e6 }, 24e6, 2),
-                mkEntry(16, '阿華', 1420, 2, [{ name: 'Haymaker', level: 68 }, { name: 'TeamTactics', level: 60 }, { name: 'BurstBoost', level: 50 }], { Haymaker: 395e6 }, 25e6, 2),
-                mkEntry(14, '/牛/kimsua', 1595, 6, [{ name: 'CrushingVoid', level: 60 }, { name: 'MirrorForce', level: 58 }, { name: 'Haymaker', level: 74 }], { CrushingVoid: 195e6, MirrorForce: 205e6, Haymaker: 510e6 }, 62e6, 1),
-                mkEntry(18, '小美', 1350, 3, [{ name: 'CrushingVoid', level: 50 }, { name: 'MirrorForce', level: 48 }, { name: 'TeamTactics', level: 45 }], { CrushingVoid: 155e6, MirrorForce: 145e6 }, 21e6, 3)
-            ];
-        }
-
-        function loadRaidLogDemo() {
-            raidLogDemoActive = true;
-            raidLogDemoData = buildRaidLogDemoData();
-
-            const banner = document.getElementById('raid-log-demo-banner');
-            if (banner) banner.style.display = 'flex';
-
-            // 攻擊紀錄查詢：直接示範查「小明」的結果
-            const queryInput = document.getElementById('raid-log-query-input');
-            if (queryInput) queryInput.value = '小明';
-            renderRaidLogQueryResult();
-
-            // 卡片使用檢查：開始時間設成示範資料的起點（15 小時前）
-            const startInput = document.getElementById('card-usage-start-input');
-            if (startInput) {
-                const demoStart = new Date(Date.now() - 15 * 3600000);
-                const pad = n => String(n).padStart(2, '0');
-                startInput.value = `${demoStart.getFullYear()}-${pad(demoStart.getMonth() + 1)}-${pad(demoStart.getDate())}T${pad(demoStart.getHours())}:${pad(demoStart.getMinutes())}`;
-            }
-            renderCardUsageCheck();
-
-            document.getElementById('raid-log-query-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function exitRaidLogDemo() {
-            raidLogDemoActive = false;
-            raidLogDemoData = null;
-            const banner = document.getElementById('raid-log-demo-banner');
-            if (banner) banner.style.display = 'none';
-
-            const queryInput = document.getElementById('raid-log-query-input');
-            if (queryInput) queryInput.value = '';
-            const queryResult = document.getElementById('raid-log-query-result');
-            if (queryResult) queryResult.style.display = 'none';
-
-            const startInput = document.getElementById('card-usage-start-input');
-            if (startInput) startInput.value = localStorage.getItem(CARD_USAGE_START_KEY) || '';
-            const usageResult = document.getElementById('card-usage-result');
-            if (usageResult) { usageResult.style.display = 'none'; usageResult.innerHTML = ''; }
-        }
 
         async function renderCardUsageCheck() {
             const box = document.getElementById('card-usage-result');

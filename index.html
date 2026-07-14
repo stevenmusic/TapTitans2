@@ -2956,8 +2956,10 @@
 
                 <div class="backup-section">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
-                    <div class="backup-desc" data-i18n="cardUsageDesc">檢查每一輪(cycle)裡，誰出刀時沒有帶「瘋狂無效」或「鏡子力」。資料來自伺服器 24 小時側錄，只統計該輪有出刀的人。</div>
-                    <button class="btn-backup import" onclick="renderCardUsageCheck()" data-i18n="cardUsageBtn">檢查本場突襲</button>
+                    <div class="backup-desc" data-i18n="cardUsageDesc">填入這場突襲的開始時間，從那一刻起每 12 小時算一輪，列出每輪裡出刀時沒有帶「瘋狂無效」或「鏡子力」的人。資料來自伺服器 24 小時側錄。</div>
+                    <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
+                    <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
+                    <button class="btn-backup import" onclick="renderCardUsageCheck()" data-i18n="cardUsageBtn">查看各輪統計</button>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
@@ -3072,17 +3074,15 @@
                 crystalSecSkipDesc: '（不需要花資源升級的卡片）',
                 crystalBurst: '爆裂', crystalTorment: '苦痛', crystalSupport: '支援',
                 cardUsageTitle: '🃏 卡片使用檢查',
-                cardUsageDesc: '檢查每一輪(cycle)裡，誰出刀時沒有帶「瘋狂無效」或「鏡子力」。資料來自伺服器 24 小時側錄，只統計該輪有出刀的人。',
-                cardUsageBtn: '檢查本場突襲',
+                cardUsageDesc: '填入這場突襲的開始時間，從那一刻起每 12 小時算一輪，列出每輪裡出刀時沒有帶「瘋狂無效」或「鏡子力」的人。資料來自伺服器 24 小時側錄。',
+                cardUsageStartLabel: '突襲開始時間',
+                cardUsageBtn: '查看各輪統計',
                 cardUsageLoading: '查詢中…',
                 cardUsageError: '查詢失敗，請確認中繼伺服器連線',
-                cardUsageEmpty: '目前還沒有任何攻擊紀錄',
-                cardUsageCycle: '第 {n} 輪',
-                cardUsageUnknownCycle: '輪次未知（舊紀錄）',
-                cardUsagePlayers: '{n} 人出刀',
-                cardUsageMissing: '沒帶的人',
+                cardUsageNeedStart: '請先填入突襲開始時間',
+                cardUsageEmpty: '開始時間之後還沒有任何攻擊紀錄',
+                cardUsageRound: '第 {n} 輪',
                 cardUsageAllUsed: '✓ 全員都有帶',
-                cardUsageKnives: '刀',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3219,17 +3219,15 @@
                 crystalSecSkipDesc: '(not worth spending resources on)',
                 crystalBurst: 'Burst', crystalTorment: 'Afflict', crystalSupport: 'Support',
                 cardUsageTitle: '🃏 Card Usage Check',
-                cardUsageDesc: 'Check who attacked without Insanity Void or Mirror Force in each cycle. Data comes from the 24h server recorder; only players who attacked in that cycle are counted.',
-                cardUsageBtn: 'Check This Raid',
+                cardUsageDesc: 'Enter when this raid started; every 12 hours from that moment counts as one round. Lists players who attacked without Insanity Void or Mirror Force in each round. Data comes from the 24h server recorder.',
+                cardUsageStartLabel: 'Raid start time',
+                cardUsageBtn: 'View Round Stats',
                 cardUsageLoading: 'Loading…',
                 cardUsageError: 'Query failed — please check the relay server connection',
-                cardUsageEmpty: 'No attack records yet',
-                cardUsageCycle: 'Cycle {n}',
-                cardUsageUnknownCycle: 'Unknown cycle (older records)',
-                cardUsagePlayers: '{n} attackers',
-                cardUsageMissing: 'missing',
+                cardUsageNeedStart: 'Please enter the raid start time first',
+                cardUsageEmpty: 'No attack records after the start time yet',
+                cardUsageRound: 'Round {n}',
                 cardUsageAllUsed: '✓ everyone brought it',
-                cardUsageKnives: 'atk',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -3890,6 +3888,7 @@
             populateStageSelect();
             applyLanguage();
             syncHomeCardHeights();
+            initCardUsageStartInput();
             renderAbyssList();
             initAbyssSkillTrees();
             renderPlayersList();
@@ -5420,46 +5419,119 @@
         }
 
         /* ══════════════════════════════════════════════════════════
-           卡片使用檢查：向中繼伺服器要 /card-usage 報表，
-           列出每一輪(cycle)裡沒有帶「瘋狂無效」「鏡子力」出刀的人
+           卡片使用檢查：從中繼伺服器的 /full-attack-log 抓完整攻擊紀錄，
+           以「使用者自行填入的突襲開始時間」為基準，每 12 小時算一輪，
+           列出每一輪裡出刀時沒有帶「瘋狂無效」「鏡子力」的人（只列名字）。
+           不偵測輪次有沒有打完，指定時間內沒用到就列出來。
            ══════════════════════════════════════════════════════════ */
-        const CARD_USAGE_TRACKED_NAMES = {
-            CrushingVoid: { zh: '🟣 瘋狂無效', en: '🟣 Insanity Void' },
-            MirrorForce:  { zh: '🪞 鏡子力',   en: '🪞 Mirror Force' }
+        const CARD_USAGE_START_KEY = 'tt2_card_usage_raid_start';
+        const CARD_USAGE_ROUND_MS = 12 * 3600 * 1000; // 一輪 12 小時
+
+        const CARD_USAGE_TRACKED = [
+            { id: 'CrushingVoid', zh: '瘋狂無效', en: 'Insanity Void', emoji: '🟣' },
+            { id: 'MirrorForce',  zh: '鏡子力',   en: 'Mirror Force',  emoji: '🪞' }
+        ];
+
+        // 卡片圖片：從 cards.js 的 PRESET_CARDS 裡用檔名比對
+        // （瘋狂無效 = IMG_0093、鏡子力 = IMG_0069）
+        const CARD_USAGE_IMG_PATTERNS = {
+            CrushingVoid: /IMG[_-]?0093|crush|void|insanity|瘋狂|無效/i,
+            MirrorForce: /IMG[_-]?0069|mirror|鏡子|镜子/i
         };
+        function cardUsageImgSrc(apiId) {
+            if (typeof PRESET_CARDS !== 'undefined' && Array.isArray(PRESET_CARDS)) {
+                const re = CARD_USAGE_IMG_PATTERNS[apiId];
+                if (re) {
+                    const hit = PRESET_CARDS.find(src => typeof src === 'string' && re.test(decodeURIComponent(src)));
+                    if (hit) return hit;
+                }
+            }
+            return null;
+        }
+        function cardUsageCardLabel(tc) {
+            const text = currentLang === 'en' ? tc.en : tc.zh;
+            const img = cardUsageImgSrc(tc.id);
+            const visual = img
+                ? `<img src="${img}" style="width:34px; height:auto; border-radius:5px; flex-shrink:0;" draggable="false">`
+                : `<span style="font-size:16px;">${tc.emoji}</span>`;
+            return `<span style="display:inline-flex; align-items:center; gap:6px;">${visual}<b>${text}</b></span>`;
+        }
+
+        // 攻擊發生時間：優先用遊戲官方的 attack_datetime
+        function cardUsageAttackTs(a) {
+            if (a.attackDatetime) {
+                const t = Date.parse(a.attackDatetime);
+                if (!isNaN(t)) return t;
+            }
+            return a.ts;
+        }
+
+        function initCardUsageStartInput() {
+            const input = document.getElementById('card-usage-start-input');
+            if (!input) return;
+            const saved = localStorage.getItem(CARD_USAGE_START_KEY);
+            if (saved) input.value = saved;
+            input.addEventListener('change', () => {
+                localStorage.setItem(CARD_USAGE_START_KEY, input.value);
+            });
+        }
 
         async function renderCardUsageCheck() {
             const box = document.getElementById('card-usage-result');
             box.style.display = 'flex';
+            const input = document.getElementById('card-usage-start-input');
+            const startVal = input && input.value;
+            if (!startVal) {
+                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
+                return;
+            }
+            const startTs = new Date(startVal).getTime(); // datetime-local 會用手機本身的時區解讀
+            if (isNaN(startTs)) {
+                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
+                return;
+            }
+            localStorage.setItem(CARD_USAGE_START_KEY, startVal);
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
             const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
             try {
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/card-usage`);
+                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const report = await resp.json();
-                if (!report.cycles || report.cycles.length === 0) {
+                const data = await resp.json();
+                const attacks = (data.attacks || []).filter(a => cardUsageAttackTs(a) >= startTs);
+                if (attacks.length === 0) {
                     box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
                     return;
                 }
-                box.innerHTML = report.cycles.map((c) => {
-                    const cycleLabel = (c.cycle != null)
-                        ? t('cardUsageCycle').replace('{n}', c.cycle)
-                        : t('cardUsageUnknownCycle');
-                    const lists = (report.trackedCards || []).map((tc) => {
-                        const names = CARD_USAGE_TRACKED_NAMES[tc.id] || { zh: tc.zh, en: tc.id };
-                        const cardLabel = currentLang === 'en' ? names.en : names.zh;
-                        const miss = (c.missing && c.missing[tc.id]) || [];
-                        const content = miss.length === 0
+
+                // 依「突襲開始時間」切輪：第 1 輪 = 開始後 0～12 小時，以此類推
+                const rounds = new Map(); // roundNo -> Map(player -> Set(帶過的卡))
+                attacks.forEach((a) => {
+                    const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
+                    if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
+                    const players = rounds.get(roundNo);
+                    if (!players.has(a.player)) players.set(a.player, new Set());
+                    const usedSet = players.get(a.player);
+                    (a.cards || []).forEach(c => usedSet.add(c.name));
+                });
+
+                box.innerHTML = [...rounds.keys()].sort((x, y) => x - y).map((roundNo) => {
+                    const players = rounds.get(roundNo);
+                    const cardBlocks = CARD_USAGE_TRACKED.map((tc) => {
+                        const missNames = [...players.entries()]
+                            .filter(([name, usedSet]) => !usedSet.has(tc.id))
+                            .map(([name]) => escapeHtml(name));
+                        const content = missNames.length === 0
                             ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
-                            : miss.map(m => `${escapeHtml(m.name)}（${m.attacks} ${t('cardUsageKnives')}）`).join('、');
-                        return `<div style="font-size:12.5px; line-height:1.6;"><b>${cardLabel}</b> ${t('cardUsageMissing')}：${content}</div>`;
+                            : missNames.join('、');
+                        return `
+                            <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">${cardUsageCardLabel(tc)}</div>
+                            <div style="font-size:12.5px; line-height:1.7; color:#5a4a3a; margin-left:2px;">${content}</div>
+                        `;
                     }).join('');
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
-                            <div style="font-size:13px; font-weight:700; color:#5a4a3a; margin-bottom:4px;">
-                                ${cycleLabel}（${t('cardUsagePlayers').replace('{n}', c.playerCount)}）
-                            </div>
-                            ${lists}
+                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                            ${cardBlocks}
                         </div>
                     `;
                 }).join('');

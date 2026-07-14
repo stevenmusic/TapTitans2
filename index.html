@@ -268,6 +268,24 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        /* ── 觸控範圍擴大：外觀不變，但手指可點的範圍變大 ──
+           返回鍵/語言切換鍵視覺上只有 22~32px 高，低於 Apple 建議的 44px，
+           用透明的 ::after 偽元素把可點範圍往外擴 10px；
+           ＋/－ 這類密集排列的小按鈕只擴 4px，避免跟隔壁按鈕的點擊範圍重疊 */
+        .back-btn, .lang-toggle-btn, .btn-action {
+            position: relative;
+        }
+        .back-btn::after, .lang-toggle-btn::after {
+            content: '';
+            position: absolute;
+            inset: -10px;
+        }
+        .btn-action::after {
+            content: '';
+            position: absolute;
+            inset: -4px -2px;
+        }
+
         .back-btn {
             grid-column: 1;
             justify-self: start;
@@ -1814,6 +1832,7 @@
             padding: 30px 20px;
             line-height: 1.8;
             width: 100%;
+            box-sizing: border-box; /* 沒有這行的話 width:100% + padding 會撐出橫向捲動 */
         }
 
         .player-list {
@@ -2052,6 +2071,7 @@
             padding: 20px 20px;
             line-height: 1.7;
             width: 100%;
+            box-sizing: border-box; /* 沒有這行的話 width:100% + padding 會撐出橫向捲動 */
         }
 
         .raid-boss-card {
@@ -2816,6 +2836,8 @@
                     <button class="btn-player-add" onclick="addPlayerEntry()" data-i18n="btnAddPlayer">➕ 新增玩家</button>
                 </div>
 
+                <input type="text" id="player-filter-input" class="player-name-input" style="display:none;" data-i18n-placeholder="playerFilterPlaceholder" placeholder="🔍 搜尋玩家名稱…" oninput="renderPlayersList()">
+
                 <div class="player-list-empty" id="player-list-empty" data-i18n="noPlayersYet">尚未新增任何玩家資料</div>
 
                 <div class="player-list" id="player-list"></div>
@@ -3101,6 +3123,8 @@
                 raidLogDemoExit: '結束示範',
                 cardUsageMissingListLabel: '（未使用名單）',
                 cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
+                playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
+                playerFilterNoMatch: '沒有符合的玩家',
                 raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
                 raidLogExpandAll: '全部展開',
                 raidLogCollapseAll: '全部收合',
@@ -3261,6 +3285,8 @@
                 raidLogDemoExit: 'Exit Demo',
                 cardUsageMissingListLabel: '(Not Used List)',
                 cardUsageRoundCount: '{n} cycles total (newest first)',
+                playerFilterPlaceholder: '🔍 Search player name…',
+                playerFilterNoMatch: 'No matching players',
                 raidLogAttackCountLabel: '{n} attacks・{dmg} total',
                 raidLogExpandAll: 'Expand All',
                 raidLogCollapseAll: 'Collapse All',
@@ -4781,17 +4807,30 @@
 
         function renderPlayersList() {
             const players = loadPlayersData();
-            const names = Object.keys(players).sort((a, b) => (players[b].updatedAt || 0) - (players[a].updatedAt || 0));
+            let names = Object.keys(players).sort((a, b) => (players[b].updatedAt || 0) - (players[a].updatedAt || 0));
             const listEl = document.getElementById('player-list');
             const emptyEl = document.getElementById('player-list-empty');
+            const filterEl = document.getElementById('player-filter-input');
             if (!listEl || !emptyEl) return;
 
             if (names.length === 0) {
                 listEl.innerHTML = '';
                 emptyEl.style.display = 'block';
+                if (filterEl) filterEl.style.display = 'none';
                 return;
             }
             emptyEl.style.display = 'none';
+
+            // 玩家一多就很難用滑的找人，提供即打即搜的過濾（支援部分比對）
+            if (filterEl) {
+                filterEl.style.display = 'block';
+                const kw = filterEl.value.trim().toLowerCase();
+                if (kw) names = names.filter(n => n.toLowerCase().includes(kw));
+                if (names.length === 0) {
+                    listEl.innerHTML = `<div style="text-align:center; color:#b3a48c; font-size:13px; padding:20px;">${t('playerFilterNoMatch')}</div>`;
+                    return;
+                }
+            }
 
             listEl.innerHTML = '';
             names.forEach(name => {

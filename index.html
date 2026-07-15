@@ -4037,7 +4037,15 @@
         });
 
         window.addEventListener('load', () => window.scrollTo(0, 0));
-        window.addEventListener('pageshow', () => window.scrollTo(0, 0));
+        window.addEventListener('pageshow', (e) => {
+            window.scrollTo(0, 0);
+            // event.persisted 為 true，代表這次不是重新載入，而是 iOS/Android
+            // 把加到主畫面的 App「凍結畫面」直接解凍恢復（沒有重新連網抓最新版本）。
+            // 這正是「打開看到舊首頁、關掉重開才變新版」的原因，這裡偵測到就強制重新整理一次。
+            if (e.persisted) {
+                window.location.reload();
+            }
+        });
 
         /* ── Swiper（牌組建構：爆裂／苦痛／支援）── */
         const swiperContainer = document.getElementById('main-swiper');

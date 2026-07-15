@@ -1793,6 +1793,27 @@
             box-shadow: 0 0 0 2px rgba(184,134,11,0.18);
             background: #ffffff;
         }
+        /* 攻擊紀錄搜尋框旁的重新整理鍵：正方形、跟輸入框同高對齊，質感比純文字按鈕細緻一點 */
+        .raid-log-refresh-btn {
+            flex-shrink: 0;
+            width: 40px;
+            aspect-ratio: 1 / 1;
+            border: 1px solid #e2d7c5;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #fffdf9, #faf5ec);
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.12s, transform 0.08s, border-color 0.12s;
+        }
+        .raid-log-refresh-btn:active {
+            background: #f0e6d2;
+            border-color: #c9a876;
+            transform: scale(0.94) rotate(35deg);
+        }
         .player-data-input {
             width: 100%;
             box-sizing: border-box;
@@ -3067,7 +3088,10 @@
 
                 <div class="backup-section" id="panel-attacklog" style="display:none;">
                     <div class="backup-title">🗂️ 攻擊紀錄</div>
-                    <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
+                    <div style="display:flex; gap:8px; width:100%; align-items:stretch;">
+                        <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
+                        <button class="raid-log-refresh-btn" onclick="renderRaidLogQueryResult()" title="重新整理排行">🔄</button>
+                    </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -6023,7 +6047,11 @@
             if (!wasOpen) {
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
-                if (id === 'attacklog') renderRaidLogQueryResult(); // 攻擊紀錄第一次點開才查詢
+                // 攻擊紀錄只有第一次點開才查詢；之後再切回來不重新整理，
+                // 這樣使用者展開過的玩家卡片、搜尋關鍵字都不會因為切到別的面板又切回來而被重置
+                if (id === 'attacklog' && document.getElementById('raid-log-query-list').children.length === 0) {
+                    renderRaidLogQueryResult();
+                }
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
                 if (id === 'cardusage' && document.getElementById('card-usage-start-input').value) renderCardUsageCheck();
                 if (id === 'missed' && document.getElementById('missed-attack-start-input').value) renderMissedAttackList();

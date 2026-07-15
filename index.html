@@ -1934,6 +1934,12 @@
             border-color: #c9a876;
             transform: scale(0.96);
         }
+        /* 目前展開中的面板，對應按鈕保持深色狀態，一眼看出現在打開的是哪一個 */
+        .raid-tool-btn.active {
+            background: #8b263e;
+            border-color: #8b263e;
+            color: #fff;
+        }
         .backup-desc {
             font-size: 11px;
             color: #b3a48c;
@@ -3052,14 +3058,14 @@
 
                 <div class="backup-section">
                     <div class="raid-tool-menu">
-                        <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="scrollToRaidToolPanel('attacklog')">攻擊紀錄</button>
-                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="scrollToRaidToolPanel('topdecks')">常用牌組</button>
-                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="scrollToRaidToolPanel('cardusage')">卡片使用</button>
-                        <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="scrollToRaidToolPanel('missed')">漏打名單</button>
+                        <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="toggleRaidToolPanel('attacklog')">攻擊紀錄</button>
+                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')">常用牌組</button>
+                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">卡片使用</button>
+                        <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')">漏打名單</button>
                     </div>
                 </div>
 
-                <div class="backup-section" id="panel-attacklog">
+                <div class="backup-section" id="panel-attacklog" style="display:none;">
                     <div class="backup-title">🗂️ 攻擊紀錄</div>
                     <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
@@ -3069,13 +3075,13 @@
                     <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
-                <div class="backup-section" id="panel-topdecks">
+                <div class="backup-section" id="panel-topdecks" style="display:none;">
                     <div class="backup-title">🎴 常用牌組</div>
                     <button id="top-decks-toggle-btn" class="btn-backup import" onclick="toggleTopDecks()">顯示常用牌組</button>
                     <div id="top-decks-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:8px;"></div>
                 </div>
 
-                <div class="backup-section" id="panel-cardusage">
+                <div class="backup-section" id="panel-cardusage" style="display:none;">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
                     <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
@@ -3083,7 +3089,7 @@
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
-                <div class="backup-section" id="panel-missed">
+                <div class="backup-section" id="panel-missed" style="display:none;">
                     <div class="backup-title">📋 漏打名單</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;">突襲開始時間</div>
                     <input type="datetime-local" id="missed-attack-start-input" class="player-name-input" style="margin-bottom:8px;">
@@ -4057,7 +4063,6 @@
             initCardUsageStartInput();
             initMissedAttackStartInput();
             initRaidLogLiveSearch();
-            renderRaidLogQueryResult(); // 攻擊紀錄預設就直接顯示全部排行，不用等使用者按按鈕
             renderAbyssList();
             initAbyssSkillTrees();
             renderPlayersList();
@@ -5163,8 +5168,8 @@
             document.getElementById('raid-player-token-input').value = playerToken;
             document.getElementById('raid-relay-url-input').value = relayUrl;
             localStorage.setItem(RAID_RELAY_URL_KEY, relayUrl); // 補上預設值，之後都固定用這個中繼伺服器
-            // 已經填過 Token 就預設收合，避免每次打開都要先看到一堆輸入框
-            toggleRaidSettingsPanel(!(appToken && playerToken));
+            // 統一預設收合，不管有沒有填過 Token，都要使用者自己點開才會展開
+            toggleRaidSettingsPanel(false);
 
             // 貼上/輸入的當下就立刻存起來，不用等按下「連線」才存，
             // 避免貼完 Token 還沒按連線就重新整理頁面導致遺失
@@ -6016,9 +6021,21 @@
             input.addEventListener('input', () => renderRaidLogQueryResult());
         }
 
-        function scrollToRaidToolPanel(id) {
+        // 四個面板預設都收合，點按鈕才顯示內容（同時間只顯示一個，點別的按鈕會自動關掉前一個）
+        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed'];
+        function toggleRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
-            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const wasOpen = panel.style.display === 'block';
+            RAID_TOOL_PANELS.forEach(p => {
+                document.getElementById('panel-' + p).style.display = 'none';
+                document.getElementById('raid-tool-btn-' + p).classList.remove('active');
+            });
+            if (!wasOpen) {
+                panel.style.display = 'block';
+                document.getElementById('raid-tool-btn-' + id).classList.add('active');
+                if (id === 'attacklog') renderRaidLogQueryResult(); // 攻擊紀錄第一次點開才查詢
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
 
         /* ══════════════════════════════════════════════════════════

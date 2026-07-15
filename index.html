@@ -3179,6 +3179,9 @@
                 raidLogSupport: '輔助',
                 cardUsageMissingListLabel: '（未使用名單）',
                 cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
+                cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
+                cardUsageNoneMissedBoth: '✓ 沒有人兩張都沒帶',
+                cardUsageNeverUsedTitle: '📋 整場突襲下來，這張卡從沒帶過的人',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
                 playerFilterNoMatch: '沒有符合的玩家',
                 raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
@@ -3341,6 +3344,9 @@
                 raidLogSupport: 'Support',
                 cardUsageMissingListLabel: '(Not Used List)',
                 cardUsageRoundCount: '{n} cycles total (newest first)',
+                cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
+                cardUsageNoneMissedBoth: '✓ Nobody missed both',
+                cardUsageNeverUsedTitle: '📋 Never used this card across the whole raid',
                 playerFilterPlaceholder: '🔍 Search player name…',
                 playerFilterNoMatch: 'No matching players',
                 raidLogAttackCountLabel: '{n} attacks・{dmg} total',
@@ -5695,6 +5701,7 @@
 
                 // 依「突襲開始時間」切輪：第 1 輪 = 開始後 0～12 小時，以此類推
                 const rounds = new Map(); // roundNo -> Map(player -> Set(帶過的卡))
+                const globalUsage = new Map(); // player -> Set(帶過的卡)，不分輪次，整場合併看
                 attacks.forEach((a) => {
                     const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
                     if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
@@ -5702,13 +5709,40 @@
                     if (!players.has(a.player)) players.set(a.player, new Set());
                     const usedSet = players.get(a.player);
                     (a.cards || []).forEach(c => usedSet.add(c.name));
+
+                    if (!globalUsage.has(a.player)) globalUsage.set(a.player, new Set());
+                    const globalSet = globalUsage.get(a.player);
+                    (a.cards || []).forEach(c => globalSet.add(c.name));
                 });
+
+                // 整場突襲下來，每張卡分開檢查「全部輪次都沒有帶過」的人是誰
+                // （只要曾經帶過一次，任何一輪都算，就不會出現在這份名單）
+                const neverUsedBlocks = CARD_USAGE_TRACKED.map((tc) => {
+                    const neverNames = [...globalUsage.entries()]
+                        .filter(([name, usedSet]) => !usedSet.has(tc.id))
+                        .map(([name]) => escapeHtml(name));
+                    const content = neverNames.length === 0
+                        ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</span>`
+                        : neverNames.map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px;">${n}</span>`).join('');
+                    return `
+                        <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
+                            ${cardUsageCardVisual(tc)}
+                            <div style="flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px; font-size:12.5px; padding-top:6px;">${content}</div>
+                        </div>
+                    `;
+                }).join('');
+                const neverUsedSection = `
+                    <div style="background:#fdecec; border:1px solid #f3b8b8; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
+                        <div style="font-size:13.5px; font-weight:700; color:#8e3a3a;">${t('cardUsageNeverUsedTitle')}</div>
+                        ${neverUsedBlocks}
+                    </div>
+                `;
 
                 // 最新一輪排最上面，方便瀏覽大量輪次時第一眼就看到最近的狀況
                 const sortedRoundNos = [...rounds.keys()].sort((x, y) => y - x);
-                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:2px;">${t('cardUsageRoundCount').replace('{n}', sortedRoundNos.length)}</div>`;
+                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">${t('cardUsageRoundCount').replace('{n}', sortedRoundNos.length)}</div>`;
 
-                box.innerHTML = summaryLine + sortedRoundNos.map((roundNo) => {
+                box.innerHTML = summaryLine + neverUsedSection + sortedRoundNos.map((roundNo) => {
                     const players = rounds.get(roundNo);
                     const cardBlocks = CARD_USAGE_TRACKED.map((tc) => {
                         const totalPlayers = players.size; // 這一輪總共有幾人出刀
@@ -5729,6 +5763,23 @@
                             </div>
                         `;
                     }).join('');
+
+                    // 兩張卡都沒帶的人（比對兩張卡各自的名單取交集），
+                    // 背景顏色跟突襲狀態頁「禁打部位」用同一套紅色系，一眼就能看出是警示訊息
+                    const bothMissing = [...players.entries()]
+                        .filter(([name, usedSet]) => CARD_USAGE_TRACKED.every(tc => !usedSet.has(tc.id)))
+                        .map(([name]) => escapeHtml(name));
+                    const bothMissingBlock = bothMissing.length === 0
+                        ? `<div style="margin-top:8px; font-size:12px; color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</div>`
+                        : `
+                            <div style="margin-top:8px; background:#fdecec; border:1px solid #f3b8b8; border-radius:8px; padding:8px 10px;">
+                                <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:4px;">${t('cardUsageMissedBothLabel').replace('{n}', bothMissing.length)}</div>
+                                <div style="display:flex; flex-wrap:wrap; gap:6px; font-size:12.5px; color:#8e3a3a;">
+                                    ${bothMissing.map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px;">${n}</span>`).join('')}
+                                </div>
+                            </div>
+                        `;
+
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
                             <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">
@@ -5736,6 +5787,7 @@
                                 <span style="font-weight:500; color:#a89a88; font-size:12px;">${t('cardUsageMissingListLabel')}</span>
                             </div>
                             ${cardBlocks}
+                            ${bothMissingBlock}
                         </div>
                     `;
                 }).join('');

@@ -913,6 +913,12 @@
         .crystal-controls .btn-action { width: 26px; height: 26px; padding: 0; font-size: 14px; line-height: 26px; border-radius: 6px; border: none; background: #8b263e; color: #fff; }
         .crystal-controls .btn-action.del { background: #c97a7a; }
 
+        /* 超小螢幕（例如 iPhone SE 320px）：label + slots + 加減按鈕原本會超出畫面寬度，
+           這裡把卡槽區塊縮窄一點，配合原本 overflow-x:auto 讓多出來的卡槽用捲動的方式呈現 */
+        @media (max-width: 359px) {
+            .crystal-slots { width: 176px; }
+        }
+
         /* 爆裂／苦痛／支援三個橫排套用跟牌組建構一樣的底色 */
         .crystal-row.burst   { background: var(--bg-burst); }
         .crystal-row.burst   .crystal-label { color: var(--text-burst); }
@@ -6097,11 +6103,11 @@
             });
         }
 
-        function renderMissedRow(p, rank) {
+        function renderMissedRow(p, rank, maxSoFar) {
             return `
                 <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
                     <span>${rank}. ${escapeHtml(p.name)}</span>
-                    <span style="font-weight:700; color:#8e3a3a;">${p.count}/${RAID_ATTACKS_PER_ROUND}</span>
+                    <span style="font-weight:700; color:#8e3a3a;">${p.count}/${maxSoFar}</span>
                 </div>
             `;
         }
@@ -6133,34 +6139,50 @@
             // 整場突襲裡出現過的所有玩家名單（不分輪次），用來檢查「這輪完全沒出刀」的人
             const allPlayers = new Set(attacks.map(a => a.player));
 
-            // 依輪次分組，算出每個人這一輪出了幾刀
-            const rounds = new Map(); // roundNo -> Map(player -> 出刀次數)
+            // 依輪次分組，先算出每個人「這一輪單獨」出了幾刀
+            const perRoundCounts = new Map(); // roundNo -> Map(player -> 這一輪出刀次數)
             attacks.forEach((a) => {
                 const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
-                if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
-                const m = rounds.get(roundNo);
+                if (!perRoundCounts.has(roundNo)) perRoundCounts.set(roundNo, new Map());
+                const m = perRoundCounts.get(roundNo);
                 m.set(a.player, (m.get(a.player) || 0) + 1);
             });
 
+            // 累計次數：第 N 輪顯示的是「從第 1 輪到第 N 輪」總共出了幾刀，
+            // 對照的總次數也跟著累加（第 1 輪 6 次、第 2 輪 12 次、第 3 輪 18 次...），
+            // 這樣才符合「這場突襲到目前為止，還缺幾刀」的概念，而不是只看單輪
+            const ascendingRoundNos = [...perRoundCounts.keys()].sort((x, y) => x - y);
+            const runningTotal = new Map(); // player -> 累計到目前為止的出刀次數
+            const cumulativeByRound = new Map(); // roundNo -> Map(player -> 累計次數快照)
+            ascendingRoundNos.forEach((roundNo) => {
+                const thisRoundCounts = perRoundCounts.get(roundNo);
+                allPlayers.forEach((p) => {
+                    const prev = runningTotal.get(p) || 0;
+                    runningTotal.set(p, prev + (thisRoundCounts.get(p) || 0));
+                });
+                cumulativeByRound.set(roundNo, new Map(runningTotal));
+            });
+
             // 最新一輪排最上面；只列出「有攻擊紀錄」的輪次，完全沒人出刀的輪次不會出現在這裡
-            const sortedRoundNos = [...rounds.keys()].sort((x, y) => y - x);
+            const sortedRoundNos = [...ascendingRoundNos].reverse();
 
             box.innerHTML = sortedRoundNos.map((roundNo) => {
-                const counts = rounds.get(roundNo);
+                const maxSoFar = RAID_ATTACKS_PER_ROUND * roundNo; // 到這一輪為止，滿刀應該累計幾次
+                const cumCounts = cumulativeByRound.get(roundNo);
                 const missed = [...allPlayers]
-                    .map(name => ({ name, count: counts.get(name) || 0 }))
-                    .filter(p => p.count < RAID_ATTACKS_PER_ROUND)
+                    .map(name => ({ name, count: cumCounts.get(name) || 0 }))
+                    .filter(p => p.count < maxSoFar)
                     .sort((a, b) => a.count - b.count); // 缺最多刀的排最前面
 
                 const listHtml = missed.length === 0
-                    ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', RAID_ATTACKS_PER_ROUND)}</div>`
+                    ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', maxSoFar)}</div>`
                     : `
                         <div style="display:flex; gap:8px;">
                             <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
-                                ${missed.slice(0, 5).map((p, i) => renderMissedRow(p, i + 1)).join('')}
+                                ${missed.slice(0, 5).map((p, i) => renderMissedRow(p, i + 1, maxSoFar)).join('')}
                             </div>
                             <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
-                                ${missed.slice(5, 10).map((p, i) => renderMissedRow(p, i + 6)).join('')}
+                                ${missed.slice(5, 10).map((p, i) => renderMissedRow(p, i + 6, maxSoFar)).join('')}
                             </div>
                         </div>
                     `;

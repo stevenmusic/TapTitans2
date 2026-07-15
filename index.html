@@ -2966,9 +2966,9 @@
 
                 <div class="backup-section">
                     <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
-                    <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。突襲結束後，可以查詢某位成員這場用了哪些卡、打中哪個部位（肉體/盔甲）、造成多少傷害。輸入部分文字也能找到。</div>
-                    <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="輸入玩家名稱，可以只打部分文字">
-                    <button class="btn-backup import" onclick="renderRaidLogQueryResult()">查詢</button>
+                    <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。預設列出所有玩家的總傷害排行，點一位玩家可以展開看他這場用了哪些卡；可輸入部分文字篩選特定玩家。</div>
+                    <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
+                    <button class="btn-backup import" onclick="renderRaidLogQueryResult()">顯示排行</button>
                     <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -5563,7 +5563,7 @@
             });
         }
 
-        // 這兩個變數保留給 queryRaidFullLogByPlayer/renderCardUsageCheck 的內部判斷用，
+        // 這兩個變數保留給 buildRaidLogRanking/renderCardUsageCheck 的內部判斷用，
         // 平常一律是 false/null（沒有示範模式按鈕了，資料一律讀真實紀錄）
         let raidLogDemoActive = false;
         let raidLogDemoData = null;
@@ -5653,17 +5653,21 @@
         }
 
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
-        function queryRaidFullLogByPlayer(keyword) {
+        // 依總傷害排行列出玩家：keyword 留空 = 列出全部玩家，有輸入才用來篩選名稱（部分比對）
+        function buildRaidLogRanking(keyword) {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
-            const keywordLower = keyword.toLowerCase();
-            const matchedPlayers = [...new Set(log.filter(e => e.player.toLowerCase().includes(keywordLower)).map(e => e.player))];
-            if (matchedPlayers.length === 0) return null;
+            const keywordLower = (keyword || '').toLowerCase();
+            let playerNames = [...new Set(log.map(e => e.player))];
+            if (keywordLower) playerNames = playerNames.filter(name => name.toLowerCase().includes(keywordLower));
+            if (playerNames.length === 0) return [];
 
-            return matchedPlayers.map(playerName => {
+            const ranked = playerNames.map(playerName => {
                 const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
                 return { player: playerName, attackCount: attacks.length, totalDamage, attacks };
             });
+            ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
+            return ranked;
         }
 
         // 保險機制：清掉可能已經存在的重複紀錄（例如這次修正之前就已經重複存進去的舊資料）
@@ -5711,38 +5715,52 @@
             const listEl = document.getElementById('raid-log-query-list');
             const summaryEl = document.getElementById('raid-log-query-summary');
 
-            if (!keyword) {
-                alert('請輸入玩家名稱（可以只打部分文字）');
-                return;
-            }
+            const ranked = buildRaidLogRanking(keyword);
+            resultWrap.style.display = 'block';
 
-            const results = queryRaidFullLogByPlayer(keyword);
-            if (!results) {
-                resultWrap.style.display = 'block';
-                summaryEl.textContent = `找不到名稱包含「${keyword}」的攻擊紀錄`;
+            if (ranked.length === 0) {
+                summaryEl.textContent = keyword
+                    ? `找不到名稱包含「${keyword}」的攻擊紀錄`
+                    : '目前還沒有任何攻擊紀錄';
                 listEl.innerHTML = '';
                 return;
             }
 
-            resultWrap.style.display = 'block';
-            summaryEl.textContent = results.length > 1
-                ? `符合「${keyword}」的玩家有 ${results.length} 位`
-                : '';
+            summaryEl.textContent = keyword
+                ? `符合「${keyword}」的玩家有 ${ranked.length} 位（依總傷害排序）`
+                : `共 ${ranked.length} 位玩家（依總傷害排序）`;
 
-            listEl.innerHTML = results.map((r, rIdx) => `
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    <div style="background:#f7f1e8; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; color:#4a3a2a; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
-                        <span>${escapeHtml(r.player)}</span>
-                        <span style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-weight:600; font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
-                            <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap;">${t('raidLogExpandAll')}</button>
+            listEl.innerHTML = ranked.map((r, rIdx) => `
+                <div style="border:1px solid #e5dcd2; border-radius:10px; overflow:hidden;">
+                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8;">
+                        <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
+                        <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                            <span style="font-size:12.5px; font-weight:700; color:#4a3a2a;">${escapeHtml(formatNum(r.totalDamage))}</span>
+                            <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">▾</span>
                         </span>
                     </div>
-                    <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:8px;">
-                        ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, aIdx === 0)).join('')}
+                    <div id="raidlog-player-group-${rIdx}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+                            <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
+                            <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
+                        </div>
+                        <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:8px;">
+                            ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
+                        </div>
                     </div>
                 </div>
             `).join('');
+        }
+
+        // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄
+        // （每一筆配卡紀錄自己的八部位圖表預設是收合的，要再點一次才會展開）
+        function toggleRaidLogPlayerGroup(rIdx) {
+            const group = document.getElementById(`raidlog-player-group-${rIdx}`);
+            const chevron = document.getElementById(`raidlog-player-chevron-${rIdx}`);
+            if (!group) return;
+            const isHidden = group.style.display === 'none';
+            group.style.display = isHidden ? 'block' : 'none';
+            if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
         }
 
         // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，
@@ -5779,27 +5797,23 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:flex; gap:14px; padding:4px 0; flex-wrap:wrap; align-items:center;">
-                    <div style="display:flex; align-items:center;">
-                        <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
-                            <span>${t('raidLogTapDamage')}</span>
-                            <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
-                        </div>
+                <div style="display:grid; grid-template-columns: 60px repeat(${(a.cards || []).length}, 28px 60px); column-gap:6px; row-gap:4px; align-items:center; padding:4px 0;">
+                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                        <span>${t('raidLogTapDamage')}</span>
+                        <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
                     ${(a.cards || []).map(c => {
                         const img = raidCardImage(c.name);
                         const dmg = cardDamage[c.name];
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; flex-shrink:0;">`
-                            : '<span style="font-size:18px; flex-shrink:0;">🃏</span>';
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
+                            : '<span style="font-size:18px;">🃏</span>';
                         return `
-                            <div style="display:flex; align-items:center; gap:6px;">
-                                ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
-                                    <span>Lv.${escapeHtml(String(c.level))}</span>
-                                    <span style="font-weight:600;">${dmgLabel}</span>
-                                </div>
+                            ${icon}
+                            <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                                <span>Lv.${escapeHtml(String(c.level))}</span>
+                                <span style="font-weight:600;">${dmgLabel}</span>
                             </div>
                         `;
                     }).join('')}

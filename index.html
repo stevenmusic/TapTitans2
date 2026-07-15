@@ -5618,15 +5618,20 @@
                 box.innerHTML = summaryLine + sortedRoundNos.map((roundNo) => {
                     const players = rounds.get(roundNo);
                     const cardBlocks = CARD_USAGE_TRACKED.map((tc) => {
+                        const totalPlayers = players.size; // 這一輪總共有幾人出刀
                         const missNames = [...players.entries()]
                             .filter(([name, usedSet]) => !usedSet.has(tc.id))
                             .map(([name]) => escapeHtml(name));
+                        const usedCount = totalPlayers - missNames.length; // 左邊數字：總人數扣掉未使用的人數
                         const namesHtml = missNames.length === 0
                             ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
                             : missNames.map(n => `<span style="background:#f3e9da; border-radius:6px; padding:2px 8px;">${n}</span>`).join('');
                         return `
                             <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
-                                ${cardUsageCardVisual(tc)}
+                                <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
+                                    ${cardUsageCardVisual(tc)}
+                                    <span style="font-size:10px; color:#8a7a6a; font-weight:600; white-space:nowrap;">${usedCount}/${totalPlayers}</span>
+                                </div>
                                 <div style="flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px; font-size:12.5px; color:#5a4a3a; padding-top:6px;">${namesHtml}</div>
                             </div>
                         `;
@@ -5774,19 +5779,27 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:flex; gap:10px; padding:4px 0; flex-wrap:wrap;">
+                <div style="display:flex; gap:14px; padding:4px 0; flex-wrap:wrap; align-items:center;">
+                    <div style="display:flex; align-items:center;">
+                        <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                            <span>${t('raidLogTapDamage')}</span>
+                            <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
+                        </div>
+                    </div>
                     ${(a.cards || []).map(c => {
                         const img = raidCardImage(c.name);
                         const dmg = cardDamage[c.name];
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover;">`
-                            : '<span style="font-size:18px;">🃏</span>';
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; flex-shrink:0;">`
+                            : '<span style="font-size:18px; flex-shrink:0;">🃏</span>';
                         return `
-                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11.5px; color:#5a4a3a;">
+                            <div style="display:flex; align-items:center; gap:6px;">
                                 ${icon}
-                                <span>Lv.${escapeHtml(String(c.level))}</span>
-                                <span style="font-weight:600;">${dmgLabel}</span>
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                                    <span>Lv.${escapeHtml(String(c.level))}</span>
+                                    <span style="font-weight:600;">${dmgLabel}</span>
+                                </div>
                             </div>
                         `;
                     }).join('')}
@@ -5827,7 +5840,6 @@
                         <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
                             ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
                         </div>
-                        <div style="font-size:12.5px; color:#5a4a3a; margin-bottom:2px;">${t('raidLogTapDamage')}: <b>${escapeHtml(formatNumAlwaysM(tapDamage))}</b></div>
                         ${cardRows}
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->

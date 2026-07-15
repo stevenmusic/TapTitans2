@@ -3105,7 +3105,7 @@
                 </div>
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
-                    <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
+                    <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
                     <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
@@ -3229,7 +3229,7 @@
                 crystalSecSkip: '不要練',
                 crystalSecSkipDesc: '（不需要花資源升級的卡片）',
                 crystalBurst: '爆裂', crystalTorment: '苦痛', crystalSupport: '支援',
-                cardUsageTitle: '🃏 卡片使用檢查',
+                cardUsageTitle: '🃏 卡片使用',
                 cardUsageDesc: '填入這場突襲的開始時間，從那一刻起每 12 小時算一輪，列出每輪裡出刀時沒有帶「瘋狂無效」或「鏡子力」的人。資料來自伺服器 24 小時側錄。',
                 cardUsageStartLabel: '突襲開始時間',
                 cardUsageBtn: '查看各輪統計',
@@ -3250,7 +3250,8 @@
                 cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
                 cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
                 cardUsageNoneMissedBoth: '✓ 沒有人兩張都沒帶',
-                cardUsageNeverUsedTitle: '📋 整場突襲下來，這張卡從沒帶過的人',
+                cardUsageNeverUsedTitle: '📋整場突襲沒有使用',
+                cardUsagePeopleUnit: '人',
                 missedAttackAllDone: '✓ 全員都打滿 {n} 刀',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
                 playerFilterNoMatch: '沒有符合的玩家',
@@ -3393,7 +3394,7 @@
                 crystalSecSkip: 'Don\'t Level',
                 crystalSecSkipDesc: '(not worth spending resources on)',
                 crystalBurst: 'Burst', crystalTorment: 'Afflict', crystalSupport: 'Support',
-                cardUsageTitle: '🃏 Card Usage Check',
+                cardUsageTitle: '🃏 Card Usage',
                 cardUsageDesc: 'Enter when this raid started; every 12 hours from that moment counts as one round. Lists players who attacked without Insanity Void or Mirror Force in each round. Data comes from the 24h server recorder.',
                 cardUsageStartLabel: 'Raid start time',
                 cardUsageBtn: 'View Round Stats',
@@ -3415,6 +3416,7 @@
                 cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
                 cardUsageNoneMissedBoth: '✓ Nobody missed both',
                 cardUsageNeverUsedTitle: '📋 Never used this card across the whole raid',
+                cardUsagePeopleUnit: ' people',
                 missedAttackAllDone: '✓ Everyone used all {n} attacks',
                 playerFilterPlaceholder: '🔍 Search player name…',
                 playerFilterNoMatch: 'No matching players',
@@ -5796,11 +5798,14 @@
                         .map(([name]) => escapeHtml(name));
                     const content = neverNames.length === 0
                         ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</span>`
-                        : neverNames.map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px;">${n}</span>`).join('');
+                        : neverNames.join('、');
                     return `
                         <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
-                            ${cardUsageCardVisual(tc)}
-                            <div style="flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px; font-size:12.5px; padding-top:6px;">${content}</div>
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
+                                ${cardUsageCardVisual(tc)}
+                                <span style="font-size:10px; color:#8a7a6a; font-weight:600; white-space:nowrap;">${neverNames.length}${t('cardUsagePeopleUnit')}</span>
+                            </div>
+                            <div style="flex:1; font-size:12.5px; color:#5a4a3a; line-height:1.7; padding-top:6px;">${content}</div>
                         </div>
                     `;
                 }).join('');
@@ -5825,14 +5830,14 @@
                         const usedCount = totalPlayers - missNames.length; // 左邊數字：總人數扣掉未使用的人數
                         const namesHtml = missNames.length === 0
                             ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
-                            : missNames.map(n => `<span style="background:#f3e9da; border-radius:6px; padding:2px 8px;">${n}</span>`).join('');
+                            : missNames.join('、');
                         return `
                             <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
                                     ${cardUsageCardVisual(tc)}
                                     <span style="font-size:10px; color:#8a7a6a; font-weight:600; white-space:nowrap;">${usedCount}/${totalPlayers}</span>
                                 </div>
-                                <div style="flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; gap:6px; font-size:12.5px; color:#5a4a3a; padding-top:6px;">${namesHtml}</div>
+                                <div style="flex:1; font-size:12.5px; color:#5a4a3a; line-height:1.7; padding-top:6px;">${namesHtml}</div>
                             </div>
                         `;
                     }).join('');

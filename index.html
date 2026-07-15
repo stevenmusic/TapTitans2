@@ -5827,7 +5827,66 @@
                 if (!decks.has(key)) decks.set(key, { cards: names, count: 0 });
                 decks.get(key).count++;
             });
-            return [...decks.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+            return [...decks.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+        }
+
+        // 讓同一張卡在排行榜裡固定出現在同一欄（例如都排在第一格），
+        // 而不是每一列各自照原本出牌順序排，導致同一張卡東跑西跑不好比對。
+        // 做法：把「同一副牌組裡的卡片」視為互斥（不能同欄），越常出現的卡片
+        // 越優先搶到固定欄位，再用貪婪演算法分配 0/1/2 三欄。
+        function assignDeckColumns(decks) {
+            const conflicts = new Map(); // 卡片 -> 不能跟它同欄的其他卡片
+            const freq = new Map(); // 卡片 -> 在這份排行榜裡總共出現幾次（決定分欄優先順序）
+            decks.forEach(d => {
+                d.cards.forEach(name => {
+                    freq.set(name, (freq.get(name) || 0) + 1);
+                    if (!conflicts.has(name)) conflicts.set(name, new Set());
+                });
+                d.cards.forEach(a => d.cards.forEach(b => { if (a !== b) conflicts.get(a).add(b); }));
+            });
+
+            const order = [...freq.keys()].sort((a, b) => freq.get(b) - freq.get(a));
+            const columnOf = new Map();
+            order.forEach(name => {
+                const used = new Set([...conflicts.get(name)].map(c => columnOf.get(c)).filter(c => c !== undefined));
+                let chosen = [0, 1, 2].find(c => !used.has(c));
+                if (chosen === undefined) chosen = 0; // 極少數三欄都衝突時退回第一欄，畫面仍看得懂只是那組沒對齊
+                columnOf.set(name, chosen);
+            });
+            return columnOf;
+        }
+
+        // 依照分配好的欄位，把這副牌組的三張卡片排進正確的格子；
+        // 萬一遇到分欄衝突（同一列有兩張卡搶同一欄），剩下的卡片依序補進空格，不會漏卡或報錯
+        function orderCardsByColumn(cards, columnOf) {
+            const slots = [null, null, null];
+            const leftover = [];
+            cards.forEach(name => {
+                const col = columnOf.get(name);
+                if (col !== undefined && slots[col] === null) slots[col] = name;
+                else leftover.push(name);
+            });
+            for (let i = 0; i < 3; i++) {
+                if (slots[i] === null && leftover.length > 0) slots[i] = leftover.shift();
+            }
+            return slots.filter(Boolean);
+        }
+
+        function renderTopDeckRow(d, rank) {
+            return `
+                <div style="display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid #e5dcd2; border-radius:10px; background:#fdf9f3;">
+                    <div style="font-size:12px; font-weight:700; color:#8a7a63; width:16px; flex-shrink:0;">${rank}.</div>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                        ${d.cards.map(name => {
+                            const img = raidCardImage(name);
+                            return img
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:26px; height:26px; border-radius:5px; object-fit:cover; display:block;">`
+                                : `<span style="font-size:16px; width:26px; text-align:center;">🃏</span>`;
+                        }).join('')}
+                    </div>
+                    <div style="flex:1; text-align:right; font-size:14px; font-weight:800; color:#4a3a2a;">${d.count}</div>
+                </div>
+            `;
         }
 
         function toggleTopDecks() {
@@ -5848,20 +5907,20 @@
                 return;
             }
 
-            box.innerHTML = decks.map((d, i) => `
-                <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #e5dcd2; border-radius:10px; background:#fdf9f3;">
-                    <div style="font-size:13px; font-weight:700; color:#8a7a63; width:16px; flex-shrink:0;">${i + 1}.</div>
-                    <div style="display:flex; gap:6px; flex-shrink:0;">
-                        ${d.cards.map(name => {
-                            const img = raidCardImage(name);
-                            return img
-                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:32px; height:32px; border-radius:6px; object-fit:cover; display:block;">`
-                                : `<span style="font-size:20px; width:32px; text-align:center;">🃏</span>`;
-                        }).join('')}
+            // 讓同一張卡固定出現在同一欄，方便一眼比對哪些牌組共用了同一張卡
+            const columnOf = assignDeckColumns(decks);
+            decks.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
+
+            box.innerHTML = `
+                <div style="display:flex; gap:8px;">
+                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                        ${decks.slice(0, 5).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
                     </div>
-                    <div style="flex:1; text-align:right; font-size:15px; font-weight:800; color:#4a3a2a;">${d.count}</div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                        ${decks.slice(5, 10).map((d, i) => renderTopDeckRow(d, i + 6)).join('')}
+                    </div>
                 </div>
-            `).join('');
+            `;
         }
 
         function renderRaidLogQueryResult() {

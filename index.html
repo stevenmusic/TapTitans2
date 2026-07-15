@@ -1926,12 +1926,13 @@
             font-weight: 700;
             font-family: inherit;
             cursor: pointer;
-            transition: background 0.15s, border-color 0.15s;
+            transition: background 0.12s, border-color 0.12s, transform 0.08s;
         }
-        .raid-tool-btn.active {
-            background: #8b263e;
-            border-color: #8b263e;
-            color: #fff;
+        /* 按下去要有明顯的「按到了」回饋：背景變暗、稍微縮小一點 */
+        .raid-tool-btn:active {
+            background: #ecdcc4;
+            border-color: #c9a876;
+            transform: scale(0.96);
         }
         .backup-desc {
             font-size: 11px;
@@ -3050,33 +3051,31 @@
                 </div>
 
                 <div class="backup-section">
-                    <div class="backup-title">📊 突襲工具</div>
                     <div class="raid-tool-menu">
-                        <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="toggleRaidToolPanel('attacklog')">攻擊紀錄</button>
-                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')">常用牌組</button>
-                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">卡片使用</button>
-                        <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')">漏打名單</button>
+                        <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="scrollToRaidToolPanel('attacklog')">攻擊紀錄</button>
+                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="scrollToRaidToolPanel('topdecks')">常用牌組</button>
+                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="scrollToRaidToolPanel('cardusage')">卡片使用</button>
+                        <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="scrollToRaidToolPanel('missed')">漏打名單</button>
                     </div>
                 </div>
 
-                <div class="backup-section" id="panel-attacklog" style="display:none;">
+                <div class="backup-section" id="panel-attacklog">
                     <div class="backup-title">🗂️ 攻擊紀錄</div>
                     <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
-                    <button id="raid-log-toggle-btn" class="btn-backup import" onclick="toggleRaidLogRanking()">顯示排行</button>
-                    <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
+                    <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
                     </div>
                     <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
-                <div class="backup-section" id="panel-topdecks" style="display:none;">
+                <div class="backup-section" id="panel-topdecks">
                     <div class="backup-title">🎴 常用牌組</div>
                     <button id="top-decks-toggle-btn" class="btn-backup import" onclick="toggleTopDecks()">顯示常用牌組</button>
                     <div id="top-decks-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:8px;"></div>
                 </div>
 
-                <div class="backup-section" id="panel-cardusage" style="display:none;">
+                <div class="backup-section" id="panel-cardusage">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
                     <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
@@ -3084,7 +3083,7 @@
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
-                <div class="backup-section" id="panel-missed" style="display:none;">
+                <div class="backup-section" id="panel-missed">
                     <div class="backup-title">📋 漏打名單</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;">突襲開始時間</div>
                     <input type="datetime-local" id="missed-attack-start-input" class="player-name-input" style="margin-bottom:8px;">
@@ -3231,8 +3230,6 @@
                 raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
                 raidLogExpandAll: '全部展開',
                 raidLogCollapseAll: '全部收合',
-                raidLogShowRanking: '顯示排行',
-                raidLogHideRanking: '收合排行',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3397,8 +3394,6 @@
                 raidLogAttackCountLabel: '{n} attacks・{dmg} total',
                 raidLogExpandAll: 'Expand All',
                 raidLogCollapseAll: 'Collapse All',
-                raidLogShowRanking: 'Show Ranking',
-                raidLogHideRanking: 'Hide Ranking',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -4061,6 +4056,8 @@
             syncHomeCardHeights();
             initCardUsageStartInput();
             initMissedAttackStartInput();
+            initRaidLogLiveSearch();
+            renderRaidLogQueryResult(); // 攻擊紀錄預設就直接顯示全部排行，不用等使用者按按鈕
             renderAbyssList();
             initAbyssSkillTrees();
             renderPlayersList();
@@ -5889,21 +5886,6 @@
         ];
         const RAID_LOG_LAYERS = ['armor', 'body']; // 骨架幾乎不會造成傷害，拿掉節省版面
 
-        // 「顯示排行」按鈕本身也能收合：已經顯示時再按一次就整個收起來，
-        // 再按一次會重新查詢並顯示（這樣切換關鍵字後也一定會是最新結果）
-        function toggleRaidLogRanking() {
-            const resultWrap = document.getElementById('raid-log-query-result');
-            const btn = document.getElementById('raid-log-toggle-btn');
-            const isVisible = resultWrap.style.display !== 'none' && resultWrap.style.display !== '';
-            if (isVisible) {
-                resultWrap.style.display = 'none';
-                if (btn) btn.textContent = t('raidLogShowRanking');
-            } else {
-                renderRaidLogQueryResult();
-                if (btn) btn.textContent = t('raidLogHideRanking');
-            }
-        }
-
         /* ══════════════════════════════════════════════════════════
            常用牌組：統計「哪三張卡搭配在一起」出現次數最多，跟排行榜同一份
            攻擊紀錄來源。判斷牌組是否相同看的是「這三張卡是誰」，不管出牌順序，
@@ -6025,19 +6007,18 @@
            突襲工具選單：四個按鈕，一次只顯示一個面板（跟選單分頁一樣），
            再按一次同一個按鈕會收合起來，不用一定要選別的才能關掉。
            ══════════════════════════════════════════════════════════ */
-        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed'];
-        function toggleRaidToolPanel(id) {
+        // 四個面板現在都直接顯示，按鈕只是「快速跳到該區塊」的捷徑，不再負責顯示/收合
+        // 攻擊紀錄查詢的篩選框改成「即打即找」：每打一個字就重新查一次，
+        // 不用再按按鈕，排行榜會馬上更新成符合關鍵字的結果
+        function initRaidLogLiveSearch() {
+            const input = document.getElementById('raid-log-query-input');
+            if (!input) return;
+            input.addEventListener('input', () => renderRaidLogQueryResult());
+        }
+
+        function scrollToRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
-            const wasVisible = panel.style.display !== 'none' && panel.style.display !== '';
-            RAID_TOOL_PANELS.forEach(p => {
-                document.getElementById('panel-' + p).style.display = 'none';
-                document.getElementById('raid-tool-btn-' + p).classList.remove('active');
-            });
-            if (!wasVisible) {
-                panel.style.display = 'block';
-                document.getElementById('raid-tool-btn-' + id).classList.add('active');
-                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -6059,6 +6040,15 @@
                 const cardUsageInput = document.getElementById('card-usage-start-input');
                 if (cardUsageInput) cardUsageInput.value = input.value;
             });
+        }
+
+        function renderMissedRow(p, rank) {
+            return `
+                <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
+                    <span>${rank}. ${escapeHtml(p.name)}</span>
+                    <span style="font-weight:700; color:#8e3a3a;">${p.count}/${RAID_ATTACKS_PER_ROUND}</span>
+                </div>
+            `;
         }
 
         function renderMissedAttackList() {
@@ -6109,12 +6099,16 @@
 
                 const listHtml = missed.length === 0
                     ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', RAID_ATTACKS_PER_ROUND)}</div>`
-                    : missed.map((p, i) => `
-                        <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
-                            <span>${i + 1}. ${escapeHtml(p.name)}</span>
-                            <span style="font-weight:700; color:#8e3a3a;">${p.count}/${RAID_ATTACKS_PER_ROUND}</span>
+                    : `
+                        <div style="display:flex; gap:8px;">
+                            <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
+                                ${missed.slice(0, 5).map((p, i) => renderMissedRow(p, i + 1)).join('')}
+                            </div>
+                            <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
+                                ${missed.slice(5, 10).map((p, i) => renderMissedRow(p, i + 6)).join('')}
+                            </div>
                         </div>
-                    `).join('');
+                    `;
 
                 return `
                     <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
@@ -6241,7 +6235,7 @@
                 <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;">
                     ${row.map(partKey => {
                         const cellRows = RAID_LOG_LAYERS.map(layer => {
-                            const p = a.parts.find(pp => pp.part === partKey && pp.layer === layer);
+                            const p = (a.parts || []).find(pp => pp.part === partKey && pp.layer === layer);
                             const val = p ? p.damage : 0;
                             // 肉體傷害用跟肉體血條一樣的青色，盔甲維持原本的深咖啡色
                             const activeColor = layer === 'body' ? '#00acc1' : '#4a3a2a';

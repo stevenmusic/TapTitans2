@@ -2968,7 +2968,7 @@
                     <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
                     <div class="backup-desc">從連線開始，每一筆攻擊都會自動記錄下來。預設列出所有玩家的總傷害排行，點一位玩家可以展開看他這場用了哪些卡；可輸入部分文字篩選特定玩家。</div>
                     <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
-                    <button class="btn-backup import" onclick="renderRaidLogQueryResult()">顯示排行</button>
+                    <button id="raid-log-toggle-btn" class="btn-backup import" onclick="toggleRaidLogRanking()">顯示排行</button>
                     <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -3119,6 +3119,8 @@
                 raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
                 raidLogExpandAll: '全部展開',
                 raidLogCollapseAll: '全部收合',
+                raidLogShowRanking: '顯示排行',
+                raidLogHideRanking: '收合排行',
                 analysisPageTitle: '戰報分析',
                 backAria: '返回首頁',
                 tabBurst: '爆裂', tabTorment: '苦痛', tabSupport: '支援',
@@ -3278,6 +3280,8 @@
                 raidLogAttackCountLabel: '{n} attacks・{dmg} total',
                 raidLogExpandAll: 'Expand All',
                 raidLogCollapseAll: 'Collapse All',
+                raidLogShowRanking: 'Show Ranking',
+                raidLogHideRanking: 'Hide Ranking',
                 analysisPageTitle: 'Report Analyzer',
                 backAria: 'Back to home',
                 tabBurst: 'Burst', tabTorment: 'Affliction', tabSupport: 'Support',
@@ -5700,13 +5704,32 @@
             return `${dayLabel} ${timeStr}`;
         }
 
-        // 每個部位在畫面上排成 3-3-2 的人形佈局（頭/雙臂在上、胸/雙手在中、雙腿在下）
+        // 跟遊戲畫面一致：Boss 面向我們，所以畫面左邊顯示 Boss 的「右」側部位，
+        // 畫面右邊顯示 Boss 的「左」側部位（左右鏡射），頭／肚子置中
+        //   右肩  頭   左肩
+        //   右手  肚   左手
+        //     右腳  左腳
         const RAID_LOG_PART_LAYOUT = [
-            ['Head', 'ArmUpperLeft', 'ArmUpperRight'],
-            ['ChestUpper', 'HandLeft', 'HandRight'],
-            ['LegUpperLeft', 'LegUpperRight']
+            ['ArmUpperRight', 'Head', 'ArmUpperLeft'],
+            ['HandRight', 'ChestUpper', 'HandLeft'],
+            ['LegUpperRight', 'LegUpperLeft']
         ];
         const RAID_LOG_LAYERS = ['armor', 'body', 'skeleton'];
+
+        // 「顯示排行」按鈕本身也能收合：已經顯示時再按一次就整個收起來，
+        // 再按一次會重新查詢並顯示（這樣切換關鍵字後也一定會是最新結果）
+        function toggleRaidLogRanking() {
+            const resultWrap = document.getElementById('raid-log-query-result');
+            const btn = document.getElementById('raid-log-toggle-btn');
+            const isVisible = resultWrap.style.display !== 'none' && resultWrap.style.display !== '';
+            if (isVisible) {
+                resultWrap.style.display = 'none';
+                if (btn) btn.textContent = t('raidLogShowRanking');
+            } else {
+                renderRaidLogQueryResult();
+                if (btn) btn.textContent = t('raidLogHideRanking');
+            }
+        }
 
         function renderRaidLogQueryResult() {
             const input = document.getElementById('raid-log-query-input');
@@ -5808,7 +5831,7 @@
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
                             ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
-                            : '<span style="font-size:18px;">🃏</span>';
+                            : '<span style="font-size:18px; line-height:28px; display:block; text-align:center;">🃏</span>';
                         return `
                             ${icon}
                             <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
@@ -6383,6 +6406,7 @@
             // 支援 Support
             CrushingVoid: '瘋狂無效', // [已驗證]
             MentalFocus: '變質氣體',  // [已驗證，原本誤標為「靈魂之火」]
+            BarbedMorningstar: '帶刺的晨星', // 新卡，英文代號用 PascalCase 命名慣例推測，如果圖片沒對到請截圖確認實際代號
             InnerTruth: '靈魂之火', // [已驗證，原本誤標為「振奮士氣」]
             // 振奮士氣原本配給 InnerTruth，已釋出，正確代碼待驗證
             FinisherAttack: '凱旋行軍', // [已驗證]
@@ -6429,6 +6453,7 @@
             CrushingVoid: 'images/IMG_0093.jpeg',
             BurstBoost: 'images/IMG_0094.jpeg',
             MentalFocus: 'images/IMG_0095.jpeg',
+            BarbedMorningstar: 'images/IMG_1026.jpeg',
             ExecutionersAxe: 'images/IMG_0096.jpeg',
             AstralEcho: 'images/IMG_0097.jpeg',
             ImpactAttack: 'images/IMG_0098.jpeg',

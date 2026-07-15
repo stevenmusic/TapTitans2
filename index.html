@@ -2162,16 +2162,54 @@
             border: 1px solid #80deea;
             color: #00565f;
         }
+        .raid-target-banner.banned {
+            background: #fdecec;
+            border: 1px solid #f3b8b8;
+            color: #8e3a3a;
+        }
         .raid-target-banner b { font-weight: 800; }
         .raid-target-parts { margin-top: 3px; font-size: 12.5px; }
+        .raid-target-banned-note {
+            background: #fdecec;
+            border: 1px solid #f3b8b8;
+            color: #8e3a3a;
+            border-radius: 8px;
+            padding: 4px 8px;
+            margin-bottom: 6px;
+            font-size: 11px;
+        }
+
+        /* 部位卡片右上角的紅色 X：跟遊戲畫面一樣，代表幹部標記「禁打」，是官方資料，不是猜的 */
+        .raid-part-cell { position: relative; }
+        .raid-part-cell.is-banned { border-color: #e57373; background: #fff5f5; }
+        .raid-part-cell.is-banned::after {
+            content: '✗';
+            position: absolute;
+            top: 3px;
+            right: 4px;
+            font-size: 12px;
+            font-weight: 900;
+            color: #e53935;
+            line-height: 1;
+        }
 
         .raid-parts-grid {
             width: 100%;
             max-width: 500px;
             margin: 0 auto;
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            display: flex;
+            flex-direction: column;
             gap: 5px;
+        }
+        .raid-parts-row {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+        .raid-parts-row .raid-part-cell {
+            flex: 1;
+            max-width: 130px;
+            min-width: 0;
         }
         .raid-part-cell {
             background: #ffffff;
@@ -3055,6 +3093,7 @@
                 raidStatusDemoRunning: '🎬 示範模式中（假資料）',
                 raidEmptyState: '尚未有任何突襲資料，請先連線或使用示範模式',
                 raidTargetArmorLabel: '🛡️ 優先拆除盔甲，先打這些部位（其他部位的肉體先不要打）：',
+                raidTargetBannedLabel: '🚫 幹部已標記禁打，不要打這些部位：',
                 raidTargetFocusLabel: '💧 盔甲已全破，目前肉體血量最多、建議集火：',
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
@@ -3216,6 +3255,7 @@
                 raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
                 raidEmptyState: 'No raid data yet. Connect or use Demo Mode to preview.',
                 raidTargetArmorLabel: '🛡️ Break armor first on these parts (avoid hitting body on other parts for now):',
+                raidTargetBannedLabel: '🚫 Marked as banned by officers — do not attack these parts:',
                 raidTargetFocusLabel: '💧 All armor destroyed — focus this part (highest body HP):',
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
@@ -5218,6 +5258,7 @@
         let raidSocket = null;
         let apiRaidTitans = [];
         let apiSpawnSequence = []; // spawn_sequence[ordinal-1] 給出王的名字，比對 titans 陣列更可靠、更即時
+        let raidBannedParts = []; // 公會幹部在遊戲裡標記「打叉／禁打」的部位（來自官方 titan_target 資料，跟遊戲畫面完全一致）
         let apiBossTotal = 6; // 這場突襲總共有幾隻王，預設 6（示範模式用），連線後會依 spawn_sequence 的實際長度更新
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
@@ -5276,6 +5317,17 @@
             return apiRaidTitans.find(t => t.enemy_id === enemyId) || null;
         }
 
+        // 從官方 titan_target 資料抓出「打叉／禁打」的部位（state === "1"）。
+        // 這是公會幹部在遊戲裡實際標記的，跟畫面上顯示的紅色 X 完全一致，
+        // 不是用血量去猜測的。titan_target 只會在 sub_start/start/sub_cycle/cycle_reset 出現。
+        function updateBannedPartsFromPayload(payload) {
+            if (!payload || !Array.isArray(payload.titan_target) || !apiCurrentEnemyId) return;
+            const entry = payload.titan_target.find(tt => tt.enemy_id === apiCurrentEnemyId);
+            if (entry && Array.isArray(entry.state)) {
+                raidBannedParts = entry.state.filter(s => String(s.state) === '1').map(s => s.id);
+            }
+        }
+
         // ordinal：畫面上「第幾隻／6」的數字，一律用 titan_index + 1 計算，
         // 這是唯一可靠的來源（陣列本身只是預覽視窗，不能拿位置當作第幾隻）
         function apiSetRaidFromTitan(titan, ordinal) {
@@ -5312,6 +5364,7 @@
             raidLastSkillReminder = null;
             raidLastSkillReminderNotifiedAt = 0;
             raidLastBossLowNotifiedAt = 0;
+            raidBannedParts = []; // 換了新王，禁打標記歸零，等下一筆 titan_target 資料進來再重新套用
 
             // 回到第一隻王，代表上一輪突襲已經全部清完、新一輪開始了，
             // 把本機保存的上一輪攻擊紀錄清掉，避免新舊資料混在一起
@@ -5337,6 +5390,7 @@
             if (raidState && apiCurrentEnemyId) {
                 const stillExists = titans.some(t => t.enemy_id === apiCurrentEnemyId);
                 if (stillExists) {
+                    updateBannedPartsFromPayload(payload);
                     renderRaidStatus();
                     return;
                 }
@@ -5344,6 +5398,7 @@
 
             const idx = apiFindActiveTitanIndex(titans);
             apiSetRaidFromTitan(titans[idx], idx + 1);
+            updateBannedPartsFromPayload(payload);
             renderRaidStatus();
         }
 
@@ -6498,7 +6553,8 @@
             let allBodyDepleted = true;
             Object.keys(raidState.parts).forEach(key => {
                 const p = raidState.parts[key];
-                if (p.armor > 0) armoredParts.push(key);
+                // 幹部已經標記「打叉／禁打」的部位，不建議大家去打，即使還有盔甲也跳過
+                if (p.armor > 0 && !raidBannedParts.includes(key)) armoredParts.push(key);
                 // 集火目標只考慮「盔甲已破、肉體尚存」的部位，已進入骨架階段的部位不算
                 if (p.armor <= 0 && p.body > 0) {
                     allBodyDepleted = false;
@@ -6551,15 +6607,18 @@
 
             const target = computeRaidTarget();
             const bannerEl = document.getElementById('raid-target-banner');
+            const bannedNote = raidBannedParts.length > 0
+                ? `<div class="raid-target-banned-note">${t('raidTargetBannedLabel')} <b>${raidBannedParts.map(raidPartLabel).join('、')}</b></div>`
+                : '';
             if (target.armoredParts.length > 0) {
                 bannerEl.className = 'raid-target-banner armor';
-                bannerEl.innerHTML = `<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
+                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
             } else if (!target.allBodyDepleted) {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
+                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
             } else {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `<div>${t('raidTargetSkeletonLabel')}</div>`;
+                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetSkeletonLabel')}</div>`;
             }
 
             /* 瘋狂無效（紫球）：肉體暴露部位（盔甲已破、肉體尚存）≥6 個時通知
@@ -6605,36 +6664,44 @@
 
             const gridEl = document.getElementById('raid-parts-grid');
             gridEl.innerHTML = '';
-            RAID_PARTS.forEach(def => {
-                const p = raidState.parts[def.key];
-                const isSkeleton = p.armor <= 0 && p.body <= 0;
-                const isPriorityArmor = target.armoredParts.includes(def.key);
-                const isFocusBody = (def.key === target.maxBodyPart && target.armoredParts.length === 0 && p.armor <= 0 && p.body > 0);
-                let cellCls = '';
-                if (isPriorityArmor || isFocusBody) cellCls = 'is-target';
-                else if (isSkeleton) cellCls = 'is-destroyed';
+            RAID_LOG_PART_LAYOUT.forEach(rowKeys => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'raid-parts-row';
+                rowKeys.forEach(key => {
+                    const def = RAID_PARTS.find(d => d.key === key);
+                    const p = raidState.parts[key];
+                    const isSkeleton = p.armor <= 0 && p.body <= 0;
+                    const isPriorityArmor = target.armoredParts.includes(key);
+                    const isFocusBody = (key === target.maxBodyPart && target.armoredParts.length === 0 && p.armor <= 0 && p.body > 0);
+                    const isBanned = raidBannedParts.includes(key);
+                    let cellCls = '';
+                    if (isBanned) cellCls = 'is-banned';
+                    else if (isPriorityArmor || isFocusBody) cellCls = 'is-target';
+                    else if (isSkeleton) cellCls = 'is-destroyed';
 
-                const cell = document.createElement('div');
-                cell.className = 'raid-part-cell ' + cellCls;
-                if (isSkeleton) {
-                    // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害
-                    cell.innerHTML = `
-                        <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                        <div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>
-                    `;
-                } else {
-                    // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體
-                    const activeLayer = p.armor > 0 ? 'armor' : 'body';
-                    const activeValue = p.armor > 0 ? p.armor : p.body;
-                    cell.innerHTML = `
-                        <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                        <div class="raid-part-layer-row">
-                            <span class="raid-part-layer ${activeLayer}">${t(activeLayer === 'armor' ? 'raidLayerArmor' : 'raidLayerBody')}</span>
-                            <span class="raid-part-hp">${formatNum(activeValue)}</span>
-                        </div>
-                    `;
-                }
-                gridEl.appendChild(cell);
+                    const cell = document.createElement('div');
+                    cell.className = 'raid-part-cell ' + cellCls;
+                    if (isSkeleton) {
+                        // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害
+                        cell.innerHTML = `
+                            <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                            <div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>
+                        `;
+                    } else {
+                        // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體
+                        const activeLayer = p.armor > 0 ? 'armor' : 'body';
+                        const activeValue = p.armor > 0 ? p.armor : p.body;
+                        cell.innerHTML = `
+                            <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                            <div class="raid-part-layer-row">
+                                <span class="raid-part-layer ${activeLayer}">${t(activeLayer === 'armor' ? 'raidLayerArmor' : 'raidLayerBody')}</span>
+                                <span class="raid-part-hp">${formatNum(activeValue)}</span>
+                            </div>
+                        `;
+                    }
+                    rowEl.appendChild(cell);
+                });
+                gridEl.appendChild(rowEl);
             });
 
             document.getElementById('raid-updated-at').textContent =
@@ -6797,6 +6864,9 @@
             const targetHtml = target.armoredParts.length > 0
                 ? `🛡️ ${target.armoredParts.map(raidPartLabel).join('、')}`
                 : (!target.allBodyDepleted ? `💧 ${raidPartLabel(target.maxBodyPart)}` : `🦴 ${t('raidLayerSkeleton')}`);
+            const bannedHtml = raidBannedParts.length > 0
+                ? `<div style="font-size:11px; font-weight:700; color:#ff8a80; margin-bottom:4px;">🚫 ${raidBannedParts.map(raidPartLabel).join('、')}</div>`
+                : '';
 
             const parts = Object.values(raidState.parts);
             const armorSum = parts.reduce((s, p) => s + p.armor, 0);
@@ -6823,6 +6893,7 @@
                     <div style="background:#4dd0e1; height:100%; width:${bodyPct.toFixed(1)}%;"></div>
                 </div>
                 <div style="font-size:12px; font-weight:700;">${targetHtml}</div>
+                ${bannedHtml}
                 ${skillIconHtml}
             `;
         }

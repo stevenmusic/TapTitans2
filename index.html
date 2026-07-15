@@ -5764,22 +5764,6 @@
                         `;
                     }).join('');
 
-                    // 兩張卡都沒帶的人（比對兩張卡各自的名單取交集），
-                    // 背景顏色跟突襲狀態頁「禁打部位」用同一套紅色系，一眼就能看出是警示訊息
-                    const bothMissing = [...players.entries()]
-                        .filter(([name, usedSet]) => CARD_USAGE_TRACKED.every(tc => !usedSet.has(tc.id)))
-                        .map(([name]) => escapeHtml(name));
-                    const bothMissingBlock = bothMissing.length === 0
-                        ? `<div style="margin-top:8px; font-size:12px; color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</div>`
-                        : `
-                            <div style="margin-top:8px; background:#fdecec; border:1px solid #f3b8b8; border-radius:8px; padding:8px 10px;">
-                                <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:4px;">${t('cardUsageMissedBothLabel').replace('{n}', bothMissing.length)}</div>
-                                <div style="display:flex; flex-wrap:wrap; gap:6px; font-size:12.5px; color:#8e3a3a;">
-                                    ${bothMissing.map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px;">${n}</span>`).join('')}
-                                </div>
-                            </div>
-                        `;
-
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
                             <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">
@@ -5787,7 +5771,6 @@
                                 <span style="font-weight:500; color:#a89a88; font-size:12px;">${t('cardUsageMissingListLabel')}</span>
                             </div>
                             ${cardBlocks}
-                            ${bothMissingBlock}
                         </div>
                     `;
                 }).join('');

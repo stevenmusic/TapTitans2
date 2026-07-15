@@ -5819,15 +5819,17 @@
            ══════════════════════════════════════════════════════════ */
         function buildTopDecks() {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
-            const decks = new Map(); // "CardA|CardB|CardC" -> { cards: [原始順序], count }
+            const decks = new Map(); // "CardA|CardB|CardC" -> { cards: [原始順序], count, totalDamage }
             log.forEach(a => {
                 const names = (a.cards || []).map(c => c.name).filter(Boolean);
                 if (names.length === 0) return;
                 const key = [...names].sort().join('|'); // 排序後當 key，順序不同也算同一組
-                if (!decks.has(key)) decks.set(key, { cards: names, count: 0 });
-                decks.get(key).count++;
+                if (!decks.has(key)) decks.set(key, { cards: names, count: 0, totalDamage: 0 });
+                const d = decks.get(key);
+                d.count++;
+                d.totalDamage += a.totalDamage || 0;
             });
-            return [...decks.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+            return [...decks.values()].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 10);
         }
 
         // 讓同一張卡在排行榜裡固定出現在同一欄（例如都排在第一格），
@@ -5884,7 +5886,7 @@
                                 : `<span style="font-size:16px; width:26px; text-align:center;">🃏</span>`;
                         }).join('')}
                     </div>
-                    <div style="flex:1; text-align:right; font-size:14px; font-weight:800; color:#4a3a2a;">${d.count}</div>
+                    <div style="flex:1; text-align:right; font-size:14px; font-weight:800; color:#4a3a2a;">${escapeHtml(formatNum(d.totalDamage))}</div>
                 </div>
             `;
         }

@@ -5707,6 +5707,15 @@
             }
             return null;
         }
+        // 名單裡的玩家名稱有中文也有英文，維持原本紀錄順序常常會中英交替出現、很難閱讀，
+        // 這裡先分成「英文/數字開頭」跟「中文開頭」兩組，各自照字母排序，組內同語言排在一起
+        function sortNamesGrouped(names) {
+            const isCJK = (s) => /^[\u3000-\u9fff\uff00-\uffef]/.test(s);
+            const latin = names.filter(n => !isCJK(n)).sort((a, b) => a.localeCompare(b));
+            const cjk = names.filter(isCJK).sort((a, b) => a.localeCompare(b, 'zh'));
+            return [...latin, ...cjk];
+        }
+
         function cardUsageCardVisual(tc) {
             const img = cardUsageImgSrc(tc.id);
             return img
@@ -5798,7 +5807,7 @@
                         .map(([name]) => escapeHtml(name));
                     const content = neverNames.length === 0
                         ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</span>`
-                        : neverNames.join('、');
+                        : sortNamesGrouped(neverNames).map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px; display:inline-block; margin:2px 3px 2px 0;">${n}</span>`).join('');
                     return `
                         <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
                             <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
@@ -5830,7 +5839,7 @@
                         const usedCount = totalPlayers - missNames.length; // 左邊數字：總人數扣掉未使用的人數
                         const namesHtml = missNames.length === 0
                             ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
-                            : missNames.join('、');
+                            : sortNamesGrouped(missNames).map(n => `<span style="background:#f3e9da; border-radius:6px; padding:2px 8px; display:inline-block; margin:2px 3px 2px 0;">${n}</span>`).join('');
                         return `
                             <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">

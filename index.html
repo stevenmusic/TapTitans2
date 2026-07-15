@@ -1908,6 +1908,31 @@
             color: #4a3728;
             margin-bottom: 4px;
         }
+        /* 突襲工具選單：跟首頁卡片一樣每橫排兩個 */
+        .raid-tool-menu {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 9px;
+            width: 100%;
+        }
+        .raid-tool-btn {
+            min-width: 0;
+            padding: 14px 8px;
+            border-radius: 12px;
+            border: 1.5px solid #e5d5c0;
+            background: #fffaf3;
+            color: #6b4a2a;
+            font-size: 14px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .raid-tool-btn.active {
+            background: #8b263e;
+            border-color: #8b263e;
+            color: #fff;
+        }
         .backup-desc {
             font-size: 11px;
             color: #b3a48c;
@@ -3025,7 +3050,17 @@
                 </div>
 
                 <div class="backup-section">
-                    <div class="backup-title">🗂️ 攻擊紀錄查詢</div>
+                    <div class="backup-title">📊 突襲工具</div>
+                    <div class="raid-tool-menu">
+                        <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="toggleRaidToolPanel('attacklog')">攻擊紀錄</button>
+                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')">常用牌組</button>
+                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">卡片使用</button>
+                        <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')">漏打名單</button>
+                    </div>
+                </div>
+
+                <div class="backup-section" id="panel-attacklog" style="display:none;">
+                    <div class="backup-title">🗂️ 攻擊紀錄</div>
                     <input type="text" id="raid-log-query-input" class="player-name-input" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
                     <button id="raid-log-toggle-btn" class="btn-backup import" onclick="toggleRaidLogRanking()">顯示排行</button>
                     <div id="raid-log-query-result" style="display:none; width:100%; margin-top:12px;">
@@ -3035,18 +3070,26 @@
                     <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
-                <div class="backup-section">
+                <div class="backup-section" id="panel-topdecks" style="display:none;">
                     <div class="backup-title">🎴 常用牌組</div>
                     <button id="top-decks-toggle-btn" class="btn-backup import" onclick="toggleTopDecks()">顯示常用牌組</button>
                     <div id="top-decks-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:8px;"></div>
                 </div>
 
-                <div class="backup-section">
+                <div class="backup-section" id="panel-cardusage" style="display:none;">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
                     <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
                     <button class="btn-backup import" onclick="renderCardUsageCheck()" data-i18n="cardUsageBtn">查看各輪統計</button>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
+                </div>
+
+                <div class="backup-section" id="panel-missed" style="display:none;">
+                    <div class="backup-title">📋 漏打名單</div>
+                    <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;">突襲開始時間</div>
+                    <input type="datetime-local" id="missed-attack-start-input" class="player-name-input" style="margin-bottom:8px;">
+                    <button class="btn-backup import" onclick="renderMissedAttackList()">查看各輪漏打</button>
+                    <div id="missed-attack-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
             </div>
@@ -3182,6 +3225,7 @@
                 cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
                 cardUsageNoneMissedBoth: '✓ 沒有人兩張都沒帶',
                 cardUsageNeverUsedTitle: '📋 整場突襲下來，這張卡從沒帶過的人',
+                missedAttackAllDone: '✓ 全員都打滿 {n} 刀',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
                 playerFilterNoMatch: '沒有符合的玩家',
                 raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
@@ -3347,6 +3391,7 @@
                 cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
                 cardUsageNoneMissedBoth: '✓ Nobody missed both',
                 cardUsageNeverUsedTitle: '📋 Never used this card across the whole raid',
+                missedAttackAllDone: '✓ Everyone used all {n} attacks',
                 playerFilterPlaceholder: '🔍 Search player name…',
                 playerFilterNoMatch: 'No matching players',
                 raidLogAttackCountLabel: '{n} attacks・{dmg} total',
@@ -4015,6 +4060,7 @@
             applyLanguage();
             syncHomeCardHeights();
             initCardUsageStartInput();
+            initMissedAttackStartInput();
             renderAbyssList();
             initAbyssSkillTrees();
             renderPlayersList();
@@ -5659,6 +5705,9 @@
             if (saved) input.value = saved;
             input.addEventListener('change', () => {
                 localStorage.setItem(CARD_USAGE_START_KEY, input.value);
+                // 跟漏打名單共用同一個「突襲開始時間」，這裡改了那邊也同步更新
+                const missedInput = document.getElementById('missed-attack-start-input');
+                if (missedInput) missedInput.value = input.value;
             });
         }
 
@@ -5970,6 +6019,110 @@
                     </div>
                 </div>
             `;
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           突襲工具選單：四個按鈕，一次只顯示一個面板（跟選單分頁一樣），
+           再按一次同一個按鈕會收合起來，不用一定要選別的才能關掉。
+           ══════════════════════════════════════════════════════════ */
+        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed'];
+        function toggleRaidToolPanel(id) {
+            const panel = document.getElementById('panel-' + id);
+            const wasVisible = panel.style.display !== 'none' && panel.style.display !== '';
+            RAID_TOOL_PANELS.forEach(p => {
+                document.getElementById('panel-' + p).style.display = 'none';
+                document.getElementById('raid-tool-btn-' + p).classList.remove('active');
+            });
+            if (!wasVisible) {
+                panel.style.display = 'block';
+                document.getElementById('raid-tool-btn-' + id).classList.add('active');
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           漏打名單：以同一套「突襲開始時間、12 小時一輪」邏輯，
+           列出每一輪裡「沒有打滿 6 刀」的人，由缺最多刀的排到最少；
+           如果某一輪完全沒有任何人出刀（例如還沒打到那個時段），
+           這一輪就直接跳過，不會顯示空白或誤導的名單。
+           ══════════════════════════════════════════════════════════ */
+        const RAID_ATTACKS_PER_ROUND = 6;
+
+        function initMissedAttackStartInput() {
+            const input = document.getElementById('missed-attack-start-input');
+            if (!input) return;
+            const saved = localStorage.getItem(CARD_USAGE_START_KEY);
+            if (saved) input.value = saved;
+            input.addEventListener('change', () => {
+                localStorage.setItem(CARD_USAGE_START_KEY, input.value);
+                // 跟卡片使用檢查共用同一個「突襲開始時間」，這裡改了那邊也同步更新
+                const cardUsageInput = document.getElementById('card-usage-start-input');
+                if (cardUsageInput) cardUsageInput.value = input.value;
+            });
+        }
+
+        function renderMissedAttackList() {
+            const box = document.getElementById('missed-attack-result');
+            box.style.display = 'flex';
+            const input = document.getElementById('missed-attack-start-input');
+            const startVal = input && input.value;
+            if (!startVal) {
+                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
+                return;
+            }
+            const startTs = new Date(startVal).getTime();
+            if (isNaN(startTs)) {
+                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
+                return;
+            }
+            localStorage.setItem(CARD_USAGE_START_KEY, startVal);
+            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
+
+            const log = dedupRaidFullLog(loadRaidFullLog());
+            const attacks = log.filter(a => cardUsageAttackTs(a) >= startTs);
+            if (attacks.length === 0) {
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
+                return;
+            }
+
+            // 整場突襲裡出現過的所有玩家名單（不分輪次），用來檢查「這輪完全沒出刀」的人
+            const allPlayers = new Set(attacks.map(a => a.player));
+
+            // 依輪次分組，算出每個人這一輪出了幾刀
+            const rounds = new Map(); // roundNo -> Map(player -> 出刀次數)
+            attacks.forEach((a) => {
+                const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
+                if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
+                const m = rounds.get(roundNo);
+                m.set(a.player, (m.get(a.player) || 0) + 1);
+            });
+
+            // 最新一輪排最上面；只列出「有攻擊紀錄」的輪次，完全沒人出刀的輪次不會出現在這裡
+            const sortedRoundNos = [...rounds.keys()].sort((x, y) => y - x);
+
+            box.innerHTML = sortedRoundNos.map((roundNo) => {
+                const counts = rounds.get(roundNo);
+                const missed = [...allPlayers]
+                    .map(name => ({ name, count: counts.get(name) || 0 }))
+                    .filter(p => p.count < RAID_ATTACKS_PER_ROUND)
+                    .sort((a, b) => a.count - b.count); // 缺最多刀的排最前面
+
+                const listHtml = missed.length === 0
+                    ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', RAID_ATTACKS_PER_ROUND)}</div>`
+                    : missed.map((p, i) => `
+                        <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
+                            <span>${i + 1}. ${escapeHtml(p.name)}</span>
+                            <span style="font-weight:700; color:#8e3a3a;">${p.count}/${RAID_ATTACKS_PER_ROUND}</span>
+                        </div>
+                    `).join('');
+
+                return `
+                    <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
+                        <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                        ${listHtml}
+                    </div>
+                `;
+            }).join('');
         }
 
         function renderRaidLogQueryResult() {

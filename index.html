@@ -5714,7 +5714,7 @@
             ['HandRight', 'ChestUpper', 'HandLeft'],
             ['LegUpperRight', 'LegUpperLeft']
         ];
-        const RAID_LOG_LAYERS = ['armor', 'body', 'skeleton'];
+        const RAID_LOG_LAYERS = ['armor', 'body']; // 骨架幾乎不會造成傷害，拿掉節省版面
 
         // 「顯示排行」按鈕本身也能收合：已經顯示時再按一次就整個收起來，
         // 再按一次會重新查詢並顯示（這樣切換關鍵字後也一定會是最新結果）
@@ -5849,7 +5849,9 @@
                         const cellRows = RAID_LOG_LAYERS.map(layer => {
                             const p = a.parts.find(pp => pp.part === partKey && pp.layer === layer);
                             const val = p ? p.damage : 0;
-                            return `<div style="font-size:11px; color:${val > 0 ? '#4a3a2a' : '#c2b8a8'}; font-weight:${val > 0 ? '700' : '400'};">${val > 0 ? escapeHtml(formatNumAlwaysM(val)) : '0'}</div>`;
+                            // 肉體傷害用跟肉體血條一樣的青色，盔甲維持原本的深咖啡色
+                            const activeColor = layer === 'body' ? '#00acc1' : '#4a3a2a';
+                            return `<div style="font-size:11px; color:${val > 0 ? activeColor : '#c2b8a8'}; font-weight:${val > 0 ? '700' : '400'};">${val > 0 ? escapeHtml(formatNumAlwaysM(val)) : '0'}</div>`;
                         }).join('');
                         return `
                             <div style="flex:1; max-width:90px; border:1px solid #e5dcd2; border-radius:8px; padding:4px 2px; text-align:center; background:#fdfaf5;">

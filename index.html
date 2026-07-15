@@ -3077,15 +3077,13 @@
 
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
                     <div class="backup-title">🎴 常用牌組</div>
-                    <button id="top-decks-toggle-btn" class="btn-backup import" onclick="toggleTopDecks()">顯示常用牌組</button>
-                    <div id="top-decks-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:8px;"></div>
+                    <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用檢查</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
                     <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
-                    <button class="btn-backup import" onclick="renderCardUsageCheck()" data-i18n="cardUsageBtn">查看各輪統計</button>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
@@ -3093,7 +3091,6 @@
                     <div class="backup-title">📋 漏打名單</div>
                     <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;">突襲開始時間</div>
                     <input type="datetime-local" id="missed-attack-start-input" class="player-name-input" style="margin-bottom:8px;">
-                    <button class="btn-backup import" onclick="renderMissedAttackList()">查看各輪漏打</button>
                     <div id="missed-attack-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
@@ -5710,6 +5707,7 @@
                 // 跟漏打名單共用同一個「突襲開始時間」，這裡改了那邊也同步更新
                 const missedInput = document.getElementById('missed-attack-start-input');
                 if (missedInput) missedInput.value = input.value;
+                renderCardUsageCheck(); // 選好時間就直接顯示結果，不用再按按鈕
             });
         }
 
@@ -5974,18 +5972,10 @@
             `;
         }
 
-        function toggleTopDecks() {
+        function renderTopDecks() {
             const box = document.getElementById('top-decks-result');
-            const btn = document.getElementById('top-decks-toggle-btn');
-            const isVisible = box.style.display !== 'none' && box.style.display !== '';
-            if (isVisible) {
-                box.style.display = 'none';
-                if (btn) btn.textContent = '顯示常用牌組';
-                return;
-            }
             const decks = buildTopDecks();
             box.style.display = 'flex';
-            if (btn) btn.textContent = '收合常用牌組';
 
             if (decks.length === 0) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">目前還沒有任何攻擊紀錄</div>`;
@@ -6034,6 +6024,9 @@
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
                 if (id === 'attacklog') renderRaidLogQueryResult(); // 攻擊紀錄第一次點開才查詢
+                if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
+                if (id === 'cardusage' && document.getElementById('card-usage-start-input').value) renderCardUsageCheck();
+                if (id === 'missed' && document.getElementById('missed-attack-start-input').value) renderMissedAttackList();
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
@@ -6056,6 +6049,7 @@
                 // 跟卡片使用檢查共用同一個「突襲開始時間」，這裡改了那邊也同步更新
                 const cardUsageInput = document.getElementById('card-usage-start-input');
                 if (cardUsageInput) cardUsageInput.value = input.value;
+                renderMissedAttackList(); // 選好時間就直接顯示結果，不用再按按鈕
             });
         }
 

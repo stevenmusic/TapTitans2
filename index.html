@@ -5708,11 +5708,13 @@
             return null;
         }
         // 名單裡的玩家名稱有中文也有英文，維持原本紀錄順序常常會中英交替出現、很難閱讀，
-        // 這裡先分成「英文/數字開頭」跟「中文開頭」兩組，各自照字母排序，組內同語言排在一起
+        // 這裡先分成「含英文字母」跟「完全沒有英文字母（含中文、符號）」兩組，各自排序，
+        // 判斷依據是整個名字裡有沒有英文字母，不是只看開頭第一個字（例如「/天/宸宸」開頭是符號，
+        // 但整個名字沒有任何英文字母，所以算中文組）
         function sortNamesGrouped(names) {
-            const isCJK = (s) => /^[\u3000-\u9fff\uff00-\uffef]/.test(s);
-            const latin = names.filter(n => !isCJK(n)).sort((a, b) => a.localeCompare(b));
-            const cjk = names.filter(isCJK).sort((a, b) => a.localeCompare(b, 'zh'));
+            const hasLatinLetter = (s) => /[A-Za-z]/.test(s);
+            const latin = names.filter(hasLatinLetter).sort((a, b) => a.localeCompare(b));
+            const cjk = names.filter(n => !hasLatinLetter(n)).sort((a, b) => a.localeCompare(b, 'zh'));
             return [...latin, ...cjk];
         }
 

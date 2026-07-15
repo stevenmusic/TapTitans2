@@ -2193,6 +2193,25 @@
             line-height: 1;
         }
 
+        .raid-parts-legend {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            font-size: 10.5px;
+            color: #8a7a63;
+            margin: 0 auto 5px auto;
+        }
+        .raid-parts-legend-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            margin-right: 3px;
+        }
+        .raid-parts-legend-swatch.armor { background: rgba(120,120,132,0.55); }
+        .raid-parts-legend-swatch.body { background: rgba(0,172,193,0.55); }
+
         .raid-parts-grid {
             width: 100%;
             max-width: 500px;
@@ -2221,7 +2240,7 @@
         }
         .raid-part-cell.is-target { border-color: #26c6da; background: #f0fbfd; box-shadow: 0 0 0 2px rgba(38,198,218,0.35); }
         .raid-part-cell.is-destroyed { opacity: 0.55; }
-        .raid-part-name { font-size: 9.5px; font-weight: 800; color: #4a2020; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .raid-part-name { font-size: 9.5px; font-weight: 800; color: #4a2020; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
         .raid-part-layer-row {
             display: flex;
             align-items: center;
@@ -2239,7 +2258,7 @@
             color: #8a7a63;
             line-height: 1.4;
         }
-        .raid-part-hp { font-size: 10px; font-weight: 800; color: #4a2020; white-space: nowrap; }
+        .raid-part-hp { font-size: 10px; font-weight: 800; color: #4a2020; white-space: nowrap; text-align: center; display: block; }
 
         .raid-updated-at {
             width: 100%;
@@ -2993,6 +3012,9 @@
 
                     <div class="raid-target-banner" id="raid-target-banner"></div>
 
+                    <div class="raid-parts-legend">
+                        <span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>
+                    </div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
                     <div class="raid-recent-title" data-i18n="raidRecentAttacksTitle">⚔️ 最近攻擊</div>
@@ -3093,7 +3115,7 @@
                 raidStatusDemoRunning: '🎬 示範模式中（假資料）',
                 raidEmptyState: '尚未有任何突襲資料，請先連線或使用示範模式',
                 raidTargetArmorLabel: '🛡️ 優先拆除盔甲，先打這些部位（其他部位的肉體先不要打）：',
-                raidTargetBannedLabel: '🚫 幹部已標記禁打，不要打這些部位：',
+                raidTargetBannedLabel: '🚫 禁打',
                 raidTargetFocusLabel: '💧 盔甲已全破，目前肉體血量最多、建議集火：',
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
@@ -3255,7 +3277,7 @@
                 raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
                 raidEmptyState: 'No raid data yet. Connect or use Demo Mode to preview.',
                 raidTargetArmorLabel: '🛡️ Break armor first on these parts (avoid hitting body on other parts for now):',
-                raidTargetBannedLabel: '🚫 Marked as banned by officers — do not attack these parts:',
+                raidTargetBannedLabel: '🚫 Banned',
                 raidTargetFocusLabel: '💧 All armor destroyed — focus this part (highest body HP):',
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
@@ -6608,7 +6630,7 @@
             const target = computeRaidTarget();
             const bannerEl = document.getElementById('raid-target-banner');
             const bannedNote = raidBannedParts.length > 0
-                ? `<div class="raid-target-banned-note">${t('raidTargetBannedLabel')} <b>${raidBannedParts.map(raidPartLabel).join('、')}</b></div>`
+                ? `<div class="raid-target-banned-note">${t('raidTargetBannedLabel')}丨<b>${raidBannedParts.map(raidPartLabel).join('、')}</b></div>`
                 : '';
             if (target.armoredParts.length > 0) {
                 bannerEl.className = 'raid-target-banner armor';
@@ -6688,15 +6710,18 @@
                             <div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>
                         `;
                     } else {
-                        // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體
+                        // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體。
+                        // 不再用文字標「盔甲／肉體」，改用背景顏色區分（盔甲＝灰、肉體＝跟肉體血條同色的青），
+                        // 並依剩餘百分比從左邊填滿背景，一眼就能看出這個部位還剩多少
                         const activeLayer = p.armor > 0 ? 'armor' : 'body';
                         const activeValue = p.armor > 0 ? p.armor : p.body;
+                        const activeMax = p.armor > 0 ? p.armorMax : p.bodyMax;
+                        const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
+                        const fillColor = activeLayer === 'armor' ? 'rgba(120,120,132,0.30)' : 'rgba(0,172,193,0.30)';
+                        cell.style.background = `linear-gradient(to right, ${fillColor} ${pct}%, #ffffff ${pct}%)`;
                         cell.innerHTML = `
                             <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                            <div class="raid-part-layer-row">
-                                <span class="raid-part-layer ${activeLayer}">${t(activeLayer === 'armor' ? 'raidLayerArmor' : 'raidLayerBody')}</span>
-                                <span class="raid-part-hp">${formatNum(activeValue)}</span>
-                            </div>
+                            <div class="raid-part-hp">${formatNum(activeValue)}</div>
                         `;
                     }
                     rowEl.appendChild(cell);

@@ -3190,7 +3190,7 @@
                         <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">最佳六組</button>
                     </div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
-                    <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-bottom:10px;">
+                    <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
                         <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
                             <span id="best-six-dropdown-label">最佳六組（支援傷15%）</span>
                             <span class="best-six-dropdown-caret">▾</span>
@@ -3202,8 +3202,7 @@
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
                     <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用</div>
-                    <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;" data-i18n="cardUsageStartLabel">突襲開始時間</div>
-                    <input type="datetime-local" id="card-usage-start-input" class="player-name-input" style="margin-bottom:8px;">
+                    <div id="card-usage-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
@@ -5331,8 +5330,10 @@
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
         function loadRaidTokens() {
-            const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || '';
-            const playerToken = localStorage.getItem(RAID_PLAYER_TOKEN_KEY) || '';
+            // 沒填過 Token 的裝置（第一次打開）直接預設用《亞瑟斯》這組，
+            // 讓 autoConnectRaidOnLoad() 一進頁面就能自動連線，不用先按公會按鈕
+            const appToken = localStorage.getItem(RAID_APP_TOKEN_KEY) || RAID_ASSERTHUS_PROFILE.appToken;
+            const playerToken = localStorage.getItem(RAID_PLAYER_TOKEN_KEY) || RAID_ASSERTHUS_PROFILE.playerToken;
             const relayUrl = localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL;
             document.getElementById('raid-app-token-input').value = appToken;
             document.getElementById('raid-player-token-input').value = playerToken;
@@ -5892,52 +5893,81 @@
             return a.ts;
         }
 
-        function initCardUsageStartInput() {
-            const input = document.getElementById('card-usage-start-input');
-            if (!input) return;
-            const saved = localStorage.getItem(CARD_USAGE_START_KEY);
-            if (saved) input.value = saved;
-            input.addEventListener('change', () => {
-                localStorage.setItem(CARD_USAGE_START_KEY, input.value);
-                // 跟漏打名單共用同一個「突襲開始時間」，這裡改了那邊也同步更新
-                const missedInput = document.getElementById('missed-attack-start-input');
-                if (missedInput) missedInput.value = input.value;
-                renderCardUsageCheck(); // 選好時間就直接顯示結果，不用再按按鈕
-            });
-        }
+        // 卡片使用檢查已改成跟攻擊紀錄一樣的「依場次瀏覽」模式，
+        // 不再需要手動填開始時間（CARD_USAGE_START_KEY 保留給漏打名單用）
+        function initCardUsageStartInput() {}
 
         // 這兩個變數保留給 buildRaidLogRanking/renderCardUsageCheck 的內部判斷用，
         // 平常一律是 false/null（沒有示範模式按鈕了，資料一律讀真實紀錄）
         let raidLogDemoActive = false;
         let raidLogDemoData = null;
 
+        // 目前卡片使用檢查選擇的場次（null = 自動選最新一場）
+        let cardUsageSessionFilter = null;
+
+        // 卡片使用的場次選單：跟攻擊紀錄的「依場次瀏覽」同一套顯示方式
+        // （2026-07-14 22:40 M-62 這種格式），最新的場次排最上面
+        function renderCardUsageSessionMenu(sessions) {
+            const box = document.getElementById('card-usage-session-menu');
+            if (!box) return;
+            if (!sessions || sessions.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            const activeStart = cardUsageSessionFilter ? cardUsageSessionFilter.startedAt : null;
+            box.innerHTML = `
+                <div style="font-size:12px; font-weight:700; color:#6b4a2a; margin-bottom:6px;">📅 依場次瀏覽</div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    ${sessions.map((s, i) => `
+                        <button onclick="selectCardUsageSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${activeStart === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${activeStart === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                            ${escapeHtml(formatSessionLabel(s))} <span style="font-weight:500; opacity:0.75;">（${s.attacks.length} 筆攻擊）</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function selectCardUsageSession(idx) {
+            const sessions = buildRaidSessions();
+            const session = sessions[idx];
+            if (!session) return;
+            cardUsageSessionFilter = session;
+            renderCardUsageCheck();
+        }
+
         async function renderCardUsageCheck() {
             const box = document.getElementById('card-usage-result');
             box.style.display = 'flex';
-            const input = document.getElementById('card-usage-start-input');
-            const startVal = input && input.value;
-            if (!startVal) {
-                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
-                return;
-            }
-            const startTs = new Date(startVal).getTime(); // datetime-local 會用手機本身的時區解讀
-            if (isNaN(startTs)) {
-                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
-                return;
-            }
-            localStorage.setItem(CARD_USAGE_START_KEY, startVal);
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
             try {
-                let data;
-                if (raidLogDemoActive) {
-                    data = { attacks: raidLogDemoData };
-                } else {
-                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                    const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    data = await resp.json();
+                // 先跟中繼伺服器同步最新的攻擊紀錄再分場次；同步失敗就用本機已有的紀錄
+                if (!raidLogDemoActive) {
+                    try {
+                        const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                        await mergeServerFullAttackLog(relayUrl);
+                    } catch (e) { /* 離線時直接用本機紀錄 */ }
                 }
-                const attacks = (data.attacks || []).filter(a => cardUsageAttackTs(a) >= startTs);
+
+                // 跟攻擊紀錄共用同一套場次分組（最新的場次在最上面）
+                const sessions = buildRaidSessions();
+                if (sessions.length === 0) {
+                    renderCardUsageSessionMenu([]);
+                    box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
+                    return;
+                }
+
+                // 沿用之前選的場次；還沒選過（或那場已不存在）就自動顯示最新一場
+                let session = cardUsageSessionFilter
+                    ? sessions.find(s => s.startedAt === cardUsageSessionFilter.startedAt)
+                    : null;
+                if (!session) session = sessions[0];
+                cardUsageSessionFilter = session;
+                renderCardUsageSessionMenu(sessions);
+
+                const startTs = parseRaidSessionTs(session.startedAt);
+                const attacks = session.attacks.slice();
                 if (attacks.length === 0) {
                     box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
                     return;
@@ -5947,7 +5977,7 @@
                 const rounds = new Map(); // roundNo -> Map(player -> Set(帶過的卡))
                 const globalUsage = new Map(); // player -> Set(帶過的卡)，不分輪次，整場合併看
                 attacks.forEach((a) => {
-                    const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
+                    const roundNo = Math.max(1, Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1);
                     if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
                     const players = rounds.get(roundNo);
                     if (!players.has(a.player)) players.set(a.player, new Set());
@@ -6055,6 +6085,16 @@
             return list;
         }
 
+        // 場次時間字串轉毫秒：有些來源的時間是「2026-07-14 22:40:00」用空白隔開，
+        // iPhone Safari 的 Date 解析不了會變成 NaN，導致排序失效（新舊順序亂掉），
+        // 這裡先把空白換成 T 再解析，確保「新的場次一定排最上面」
+        function parseRaidSessionTs(s) {
+            if (!s) return 0;
+            let t = new Date(s).getTime();
+            if (isNaN(t) && typeof s === 'string') t = new Date(s.replace(' ', 'T')).getTime();
+            return isNaN(t) ? 0 : t;
+        }
+
         function buildRaidSessions() {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
 
@@ -6070,7 +6110,7 @@
             loadManualRaidSessions().forEach(s => {
                 if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
             });
-            const knownStarts = [...startToLevel.keys()].sort((a, b) => new Date(a) - new Date(b));
+            const knownStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
 
             const sessions = new Map(); // raidStartedAt -> { startedAt, levelTier, attacks }
             const fallback = [];
@@ -6083,8 +6123,8 @@
                     // 落在裡面就算那一場的，早於所有已知場次開始時間的才會歸到「早期紀錄」
                     const attackTs = cardUsageAttackTs(a);
                     for (let i = 0; i < knownStarts.length; i++) {
-                        const startMs = new Date(knownStarts[i]).getTime();
-                        const nextStartMs = (i + 1 < knownStarts.length) ? new Date(knownStarts[i + 1]).getTime() : Infinity;
+                        const startMs = parseRaidSessionTs(knownStarts[i]);
+                        const nextStartMs = (i + 1 < knownStarts.length) ? parseRaidSessionTs(knownStarts[i + 1]) : Infinity;
                         if (attackTs >= startMs && attackTs < nextStartMs) { matchedStart = knownStarts[i]; break; }
                     }
                 }
@@ -6097,13 +6137,14 @@
                 sessions.get(matchedStart).attacks.push(a);
             });
 
-            const list = [...sessions.values()].sort((x, y) => new Date(y.startedAt) - new Date(x.startedAt));
+            // 新的日期一定排最上面（用 parseRaidSessionTs 解析，避免 iOS 解析失敗導致排序亂掉）
+            const list = [...sessions.values()].sort((x, y) => parseRaidSessionTs(y.startedAt) - parseRaidSessionTs(x.startedAt));
             return list;
         }
 
         function formatSessionLabel(session) {
             if (!session.startedAt) return '早期紀錄（無場次資訊）';
-            const d = new Date(session.startedAt);
+            const d = new Date(parseRaidSessionTs(session.startedAt));
             const pad = n => String(n).padStart(2, '0');
             const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
             return session.levelTier ? `${dateStr} M-${session.levelTier}` : dateStr;
@@ -6462,7 +6503,6 @@
             }
 
             box.innerHTML = `
-                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:8px;">依總傷害排序，卡片彼此不重複的前 6 組</div>
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
                         ${decks.slice(0, 3).map((d, i) => renderBestSixRow(d, i + 1)).join('')}
@@ -6526,7 +6566,7 @@
                     renderRaidLogQueryResult();
                 }
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
-                if (id === 'cardusage' && document.getElementById('card-usage-start-input').value) renderCardUsageCheck();
+                if (id === 'cardusage') renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
                 if (id === 'missed' && document.getElementById('missed-attack-start-input').value) renderMissedAttackList();
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }

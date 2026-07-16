@@ -3135,7 +3135,7 @@
                     <div class="backup-title">🎴 常用牌組</div>
                     <div class="deck-subtab-row">
                         <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">常用牌組</button>
-                        <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">建議牌組</button>
+                        <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">最佳六組</button>
                     </div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                     <div id="suggested-deck-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
@@ -6034,7 +6034,7 @@
                 d.count++;
                 d.totalDamage += a.totalDamage || 0;
             });
-            return [...decks.values()].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 6);
+            return [...decks.values()].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 10);
         }
 
         // 讓同一張卡在排行榜裡固定出現在同一欄（例如都排在第一格），
@@ -6117,10 +6117,10 @@
             box.innerHTML = `
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
-                        ${decks.slice(0, 3).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
+                        ${decks.slice(0, 5).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
                     </div>
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
-                        ${decks.slice(3, 6).map((d, i) => renderTopDeckRow(d, i + 4)).join('')}
+                        ${decks.slice(5, 10).map((d, i) => renderTopDeckRow(d, i + 6)).join('')}
                     </div>
                 </div>
             `;
@@ -6138,54 +6138,80 @@
         }
 
         /* ══════════════════════════════════════════════════════════
-           建議牌組：找出「最多人用過」的 6 張不同的卡（每張卡只算一次，
-           不會重複），組成一套建議配置。判斷依據是「有多少不同玩家用過
-           這張卡」，而不是總出牌次數，這樣才不會被某個人瘋狂連刷同一張
-           卡誤導，真正反映公會裡有多少人覺得這張卡值得帶。
+           最佳六組：把所有出現過的三張一組配卡，各自算出「平均單次傷害」
+           （這組配卡的總傷害 ÷ 使用次數），由高到低排序，依序挑選——
+           只要挑進來的這組卡，有任何一張已經被前面選中的組別用過，
+           就跳過，確保最後選出來的六組「彼此之間卡片完全不重複」。
            ══════════════════════════════════════════════════════════ */
-        function buildSuggestedDeck() {
+        function buildBestSixGroups() {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
-            const cardUsers = new Map(); // 卡片代號 -> Set(用過這張卡的玩家)
+            const decks = new Map(); // "CardA|CardB|CardC" -> { cards, count, totalDamage }
             log.forEach(a => {
-                (a.cards || []).forEach(c => {
-                    if (!c.name) return;
-                    if (!cardUsers.has(c.name)) cardUsers.set(c.name, new Set());
-                    cardUsers.get(c.name).add(a.player);
-                });
+                const names = (a.cards || []).map(c => c.name).filter(Boolean);
+                if (names.length === 0) return;
+                const key = [...names].sort().join('|');
+                if (!decks.has(key)) decks.set(key, { cards: names, count: 0, totalDamage: 0 });
+                const d = decks.get(key);
+                d.count++;
+                d.totalDamage += a.totalDamage || 0;
             });
-            return [...cardUsers.entries()]
-                .map(([name, players]) => ({ name, userCount: players.size }))
-                .sort((a, b) => b.userCount - a.userCount)
-                .slice(0, 6);
+
+            const allDecks = [...decks.values()].map(d => ({
+                ...d,
+                avgDamage: d.count > 0 ? d.totalDamage / d.count : 0
+            }));
+            allDecks.sort((a, b) => b.avgDamage - a.avgDamage); // 平均單次傷害高到低
+
+            const usedCards = new Set();
+            const selected = [];
+            for (const d of allDecks) {
+                if (d.cards.some(c => usedCards.has(c))) continue; // 跟已選的組別有卡片重複，跳過
+                selected.push(d);
+                d.cards.forEach(c => usedCards.add(c));
+                if (selected.length === 6) break;
+            }
+            return selected;
         }
 
         function renderSuggestedDeck() {
             const box = document.getElementById('suggested-deck-result');
-            const cards = buildSuggestedDeck();
+            const decks = buildBestSixGroups();
             box.style.display = 'flex';
 
-            if (cards.length === 0) {
+            if (decks.length === 0) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">目前還沒有任何攻擊紀錄</div>`;
                 return;
             }
 
             box.innerHTML = `
-                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:2px;">依「有多少人用過」排序，取前 6 張不重複的卡</div>
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
-                    ${cards.map((c, i) => {
-                        const img = raidCardImage(c.name);
-                        const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; display:block; margin:0 auto;">`
-                            : `<span style="font-size:28px; display:block; text-align:center;">🃏</span>`;
-                        return `
-                            <div style="border:1px solid #e5dcd2; border-radius:10px; padding:8px 6px; background:#fdf9f3; text-align:center;">
-                                <div style="font-size:11px; font-weight:700; color:#8a7a63; margin-bottom:4px;">${i + 1}</div>
-                                ${icon}
-                                <div style="font-size:10.5px; color:#5a4a3a; margin-top:4px;">${escapeHtml(raidCardLabel(c.name))}</div>
-                                <div style="font-size:10px; color:#8e3a3a; font-weight:700; margin-top:2px;">${c.userCount} 人使用</div>
-                            </div>
-                        `;
-                    }).join('')}
+                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:8px;">依平均單次傷害排序，卡片彼此不重複的前 6 組</div>
+                <div style="display:flex; gap:8px;">
+                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                        ${decks.slice(0, 3).map((d, i) => renderBestSixRow(d, i + 1)).join('')}
+                    </div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                        ${decks.slice(3, 6).map((d, i) => renderBestSixRow(d, i + 4)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderBestSixRow(d, rank) {
+            return `
+                <div style="display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid #e5dcd2; border-radius:10px; background:#fdf9f3;">
+                    <div style="font-size:12px; font-weight:700; color:#8a7a63; width:16px; flex-shrink:0;">${rank}.</div>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                        ${d.cards.map(name => {
+                            const img = raidCardImage(name);
+                            return img
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:26px; height:26px; border-radius:5px; object-fit:cover; display:block;">`
+                                : `<span style="font-size:16px; width:26px; text-align:center;">🃏</span>`;
+                        }).join('')}
+                    </div>
+                    <div style="flex:1; text-align:center;">
+                        <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.avgDamage))}</div>
+                        <div style="font-size:10px; color:#a89a88; line-height:1.3;">（平均*${d.count}次）</div>
+                    </div>
                 </div>
             `;
         }

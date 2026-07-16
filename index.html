@@ -1993,6 +1993,54 @@
             border-color: #8b263e;
             color: #fff;
         }
+        /* 最佳六組上方的增益類型下拉選單 */
+        .best-six-dropdown-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1.5px solid #e5d5c0;
+            background: #fffaf3;
+            color: #6b4a2a;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .best-six-dropdown-btn:active { background: #f3e9da; }
+        .best-six-dropdown-caret { font-size: 11px; color: #a89a88; transition: transform 0.15s; }
+        .best-six-dropdown-btn.open .best-six-dropdown-caret { transform: rotate(180deg); }
+        .best-six-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: #fffaf3;
+            border: 1.5px solid #e5d5c0;
+            border-radius: 10px;
+            box-shadow: 0 4px 16px rgba(90,74,66,0.18);
+            overflow: hidden;
+        }
+        .best-six-dropdown-item {
+            width: 100%;
+            display: block;
+            text-align: left;
+            padding: 10px 14px;
+            border: none;
+            border-bottom: 1px solid #f0e6d2;
+            background: #fffaf3;
+            color: #6b4a2a;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .best-six-dropdown-item:last-child { border-bottom: none; }
+        .best-six-dropdown-item:active { background: #f3e9da; }
+        .best-six-dropdown-item.selected { background: #8b263e; color: #fff; }
         .backup-desc {
             font-size: 11px;
             color: #b3a48c;
@@ -3138,6 +3186,13 @@
                         <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">最佳六組</button>
                     </div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
+                    <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-bottom:10px;">
+                        <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
+                            <span id="best-six-dropdown-label">最佳六組（支援傷15%）</span>
+                            <span class="best-six-dropdown-caret">▾</span>
+                        </button>
+                        <div id="best-six-dropdown-menu" class="best-six-dropdown-menu" style="display:none;"></div>
+                    </div>
                     <div id="suggested-deck-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                 </div>
 
@@ -6131,10 +6186,56 @@
             const isTopDecks = id === 'topdecks';
             document.getElementById('top-decks-result').style.display = isTopDecks ? 'flex' : 'none';
             document.getElementById('suggested-deck-result').style.display = isTopDecks ? 'none' : 'flex';
+            document.getElementById('best-six-dropdown-wrap').style.display = isTopDecks ? 'none' : 'block';
             document.getElementById('deck-subtab-btn-topdecks').classList.toggle('active', isTopDecks);
             document.getElementById('deck-subtab-btn-suggested').classList.toggle('active', !isTopDecks);
             if (isTopDecks) renderTopDecks();
             else renderSuggestedDeck();
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           最佳六組的增益類型下拉選單：不同的團隊突擊活動加成（爆裂傷/苦痛傷/
+           支援傷/突襲傷/機率/攻擊時間），各自可能對應不同的最佳配卡組合。
+           目前只有「支援傷15%」有實際資料（使用者提供），其餘類型先留空，
+           等之後有對應的突襲紀錄再補上。
+           ══════════════════════════════════════════════════════════ */
+        const BEST_SIX_BUFF_OPTIONS = ['爆裂傷30%', '爆裂機率*1.3', '苦痛傷30%', '苦痛機率*1.3', '支援傷15%', '突襲傷15%', '攻擊時間+3秒'];
+        let bestSixSelectedBuff = '支援傷15%';
+
+        // 使用者提供的實際數據，先寫進「支援傷15%」這個分類裡
+        const BEST_SIX_PRESET_DATA = {
+            '支援傷15%': [
+                { cards: ['PlagueAttack', 'SandsOfTime', 'CrushingVoid'], totalDamage: 24.1e9, avgDamage: 409e6, count: 59 },
+                { cards: ['WhipOfLightning', 'BurningAttack', 'TriangleSupport'], totalDamage: 16e9, avgDamage: 372.4e6, count: 43 },
+                { cards: ['PowerBubble', 'InnerTruth', 'MentalFocus'], totalDamage: 13.5e9, avgDamage: 375.2e6, count: 36 },
+                { cards: ['BurstCount', 'BurstBoost', 'Weaken'], totalDamage: 12.8e9, avgDamage: 255.4e6, count: 50 },
+                { cards: ['Purify', 'MagicPotion', 'BattleDrums'], totalDamage: 11e9, avgDamage: 298.6e6, count: 37 },
+                { cards: ['AstralEcho', 'Haymaker', 'TotemFairySkill'], totalDamage: 8.4e9, avgDamage: 337.7e6, count: 25 }
+            ]
+        };
+
+        function toggleBestSixDropdown() {
+            const menu = document.getElementById('best-six-dropdown-menu');
+            const btn = document.getElementById('best-six-dropdown-btn');
+            const isOpen = menu.style.display !== 'none';
+            if (isOpen) {
+                menu.style.display = 'none';
+                btn.classList.remove('open');
+                return;
+            }
+            menu.innerHTML = BEST_SIX_BUFF_OPTIONS.map(label => `
+                <button class="best-six-dropdown-item ${label === bestSixSelectedBuff ? 'selected' : ''}" onclick="selectBestSixBuff('${label}')">${label}</button>
+            `).join('');
+            menu.style.display = 'block';
+            btn.classList.add('open');
+        }
+
+        function selectBestSixBuff(label) {
+            bestSixSelectedBuff = label;
+            document.getElementById('best-six-dropdown-label').textContent = `最佳六組（${label}）`;
+            document.getElementById('best-six-dropdown-menu').style.display = 'none';
+            document.getElementById('best-six-dropdown-btn').classList.remove('open');
+            renderSuggestedDeck();
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -6175,11 +6276,13 @@
 
         function renderSuggestedDeck() {
             const box = document.getElementById('suggested-deck-result');
-            const decks = buildBestSixGroups();
             box.style.display = 'flex';
 
-            if (decks.length === 0) {
-                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">目前還沒有任何攻擊紀錄</div>`;
+            const preset = BEST_SIX_PRESET_DATA[bestSixSelectedBuff];
+            const decks = preset || buildBestSixGroups();
+
+            if (!preset && decks.length === 0) {
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">「${bestSixSelectedBuff}」這個類型目前還沒有資料</div>`;
                 return;
             }
 

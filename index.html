@@ -4574,17 +4574,67 @@
             });
         }
 
-        const PART_BASE_NAMES = ['頭部', '肚子', '左臂', '右臂', '左手', '右手', '左腿', '右腿'];
+        // 遊戲匯出的 CSV 表頭，簡體/繁體用字不同（例如「玩家名稱」vs「玩家名称」），
+        // 「肚子」這個部位在匯出檔裡也可能寫成「身體/身体」，這裡把所有已知的寫法都收進來，
+        // 不管玩家的遊戲語言設定是簡體還繁體，都能正確抓到欄位
+        const PART_NAME_VARIANTS = {
+            '頭部': ['頭部', '头部'],
+            '肚子': ['肚子', '身體', '身体'],
+            '左臂': ['左臂'],
+            '右臂': ['右臂'],
+            '左手': ['左手'],
+            '右手': ['右手'],
+            '左腿': ['左腿'],
+            '右腿': ['右腿']
+        };
+        const PART_BASE_NAMES = Object.keys(PART_NAME_VARIANTS);
+        const ARMOR_SUFFIXES = ['(裝甲)', '(装甲)'];
+        const FLESH_SUFFIXES = ['(肉體)', '(肉体)'];
+        const SKELETON_SUFFIXES = ['(骨架)'];
+
+        // 依欄位候選名稱列表找出在表頭裡的位置，找不到回傳 -1
+        function findHeaderIdx(headers, candidates) {
+            for (const c of candidates) {
+                const idx = headers.indexOf(c);
+                if (idx >= 0) return idx;
+            }
+            return -1;
+        }
+        function armorColIdx(headers, base) {
+            for (const v of (PART_NAME_VARIANTS[base] || [base])) {
+                for (const suf of ARMOR_SUFFIXES) {
+                    const idx = headers.indexOf(v + suf);
+                    if (idx >= 0) return idx;
+                }
+            }
+            return -1;
+        }
+        function fleshColIdx(headers, base) {
+            for (const v of (PART_NAME_VARIANTS[base] || [base])) {
+                for (const suf of FLESH_SUFFIXES) {
+                    const idx = headers.indexOf(v + suf);
+                    if (idx >= 0) return idx;
+                }
+            }
+            return -1;
+        }
+        // 把 CSV 表頭裡實際出現的部位名稱（可能是簡體或「身體/身体」）轉回內部統一使用的名稱（跟畫面上的按鈕一致）
+        function canonicalPartBase(name) {
+            for (const [canon, variants] of Object.entries(PART_NAME_VARIANTS)) {
+                if (variants.includes(name)) return canon;
+            }
+            return name;
+        }
         function armorHeaderOf(base) { return `${base}(裝甲)`; }
         function fleshHeaderOf(base) { return `${base}(肉體)`; }
         function basePartName(dataPart) { return dataPart.replace('(裝甲)', ''); }
 
         function autoDetectBannedParts(headers, dataRows) {
-            const bossColIdx = headers.findIndex(h => h === '泰坦名稱');
-            const dIdx = headers.findIndex(h => h === '泰坦傷害');
+            const bossColIdx = findHeaderIdx(headers, ['泰坦名稱', '泰坦名称']);
+            const dIdx = findHeaderIdx(headers, ['泰坦傷害', '泰坦伤害']);
             if (dIdx < 0) return;
 
-            const hasAnyFleshCol = PART_BASE_NAMES.some(base => headers.includes(fleshHeaderOf(base)));
+            const hasAnyFleshCol = PART_BASE_NAMES.some(base => fleshColIdx(headers, base) >= 0);
             if (!hasAnyFleshCol) return;
 
             [1, 2, 3].forEach(slotIdx => {
@@ -4604,7 +4654,7 @@
 
                 if (!bossFleshDmg[bossName]) bossFleshDmg[bossName] = {};
                 PART_BASE_NAMES.forEach(base => {
-                    const colIdx = headers.indexOf(fleshHeaderOf(base));
+                    const colIdx = fleshColIdx(headers, base);
                     const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
                     bossFleshDmg[bossName][base] = (bossFleshDmg[bossName][base] || 0) + val;
                 });
@@ -4643,10 +4693,10 @@
             const headers = rows[0].map(h => h.trim());
             const dataRows = rows.slice(1);
 
-            const pIdx = headers.findIndex(h => h === '玩家名稱');
-            const bIdx = headers.findIndex(h => h === '泰坦名稱');
-            const dIdx = headers.findIndex(h => h === '泰坦傷害');
-            const cIdx = headers.findIndex(h => h === '總突擊傷害');
+            const pIdx = findHeaderIdx(headers, ['玩家名稱', '玩家名称']);
+            const bIdx = findHeaderIdx(headers, ['泰坦名稱', '泰坦名称']);
+            const dIdx = findHeaderIdx(headers, ['泰坦傷害', '泰坦伤害']);
+            const cIdx = findHeaderIdx(headers, ['總突擊傷害', '总突击伤害']);
 
             autoDetectBossesFromCSV(dataRows, bIdx);
             autoDetectBannedParts(headers, dataRows);
@@ -4695,8 +4745,9 @@
                         return;
                     }
 
-                    if (header.endsWith('(裝甲)') || header.endsWith('(肉體)')) {
-                        const baseName = header.replace('(裝甲)', '').replace('(肉體)', '');
+                    if (header.endsWith('(裝甲)') || header.endsWith('(装甲)') || header.endsWith('(肉體)') || header.endsWith('(肉体)')) {
+                        const rawBase = header.replace('(裝甲)', '').replace('(装甲)', '').replace('(肉體)', '').replace('(肉体)', '');
+                        const baseName = canonicalPartBase(rawBase);
                         if (bannedBaseNames.includes(baseName)) {
                             grouped[pName].accident += val;
                         }
@@ -5983,7 +6034,7 @@
                 d.count++;
                 d.totalDamage += a.totalDamage || 0;
             });
-            return [...decks.values()].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 10);
+            return [...decks.values()].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 6);
         }
 
         // 讓同一張卡在排行榜裡固定出現在同一欄（例如都排在第一格），
@@ -6066,10 +6117,10 @@
             box.innerHTML = `
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
-                        ${decks.slice(0, 5).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
+                        ${decks.slice(0, 3).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
                     </div>
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
-                        ${decks.slice(5, 10).map((d, i) => renderTopDeckRow(d, i + 6)).join('')}
+                        ${decks.slice(3, 6).map((d, i) => renderTopDeckRow(d, i + 4)).join('')}
                     </div>
                 </div>
             `;

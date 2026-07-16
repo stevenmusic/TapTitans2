@@ -6160,7 +6160,7 @@
                 ...d,
                 avgDamage: d.count > 0 ? d.totalDamage / d.count : 0
             }));
-            allDecks.sort((a, b) => b.avgDamage - a.avgDamage); // 平均單次傷害高到低
+            allDecks.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低
 
             const usedCards = new Set();
             const selected = [];
@@ -6184,7 +6184,7 @@
             }
 
             box.innerHTML = `
-                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:8px;">依平均單次傷害排序，卡片彼此不重複的前 6 組</div>
+                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:8px;">依總傷害排序，卡片彼此不重複的前 6 組</div>
                 <div style="display:flex; gap:8px;">
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
                         ${decks.slice(0, 3).map((d, i) => renderBestSixRow(d, i + 1)).join('')}
@@ -6209,8 +6209,8 @@
                         }).join('')}
                     </div>
                     <div style="flex:1; text-align:center;">
-                        <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.avgDamage))}</div>
-                        <div style="font-size:10px; color:#a89a88; line-height:1.3;">（平均*${d.count}次）</div>
+                        <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
+                        <div style="font-size:10px; color:#a89a88; line-height:1.3;">（${escapeHtml(formatNum(d.avgDamage))}*${d.count}）</div>
                     </div>
                 </div>
             `;

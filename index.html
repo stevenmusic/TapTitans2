@@ -3168,9 +3168,14 @@
 
                 <div class="backup-section" id="panel-attacklog" style="display:none;">
                     <div class="backup-title">🗂️ 攻擊紀錄</div>
+                    <div id="raid-session-menu" style="display:none; width:100%; margin-bottom:10px;"></div>
+                    <div id="raid-session-active-bar" style="display:none; width:100%; margin-bottom:10px; padding:8px 10px; background:#f0e6d2; border-radius:8px; align-items:center; justify-content:space-between; gap:8px;">
+                        <span id="raid-session-active-label" style="font-size:12px; color:#6b4a2a; font-weight:700;"></span>
+                        <button onclick="clearRaidSessionFilter()" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:3px 8px; flex-shrink:0;">返回全部場次</button>
+                    </div>
                     <div style="display:flex; gap:8px; width:100%; align-items:stretch;">
                         <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
-                        <button class="raid-log-refresh-btn" onclick="renderRaidLogQueryResult()" title="重新整理排行">🔄</button>
+                        <button class="raid-log-refresh-btn" onclick="renderRaidSessionMenu(); renderRaidLogQueryResult();" title="重新整理排行">🔄</button>
                     </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
@@ -5628,7 +5633,16 @@
         }
 
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
+        let apiCurrentRaidStartedAt = null; // 這場突襲的開始時間（ISO字串），用來把攻擊紀錄依「場次」分組
+        let apiCurrentRaidLevel = null; // 這場突襲的等級（畫面顯示成 M-62 這種格式）
+
         function handleApiRaidStart(payload) {
+            if (payload && typeof payload.raid_started_at === 'string') {
+                apiCurrentRaidStartedAt = payload.raid_started_at;
+            }
+            if (payload && payload.raid && typeof payload.raid.level === 'number') {
+                apiCurrentRaidLevel = payload.raid.level;
+            }
             const titans = payload && payload.raid && payload.raid.titans;
             const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
             if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
@@ -5804,6 +5818,8 @@
                 ts: Date.now(),
                 attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來判斷是不是同一筆真實攻擊（不管誰先收到）
                 cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
+                raidStartedAt: apiCurrentRaidStartedAt, // 這筆攻擊屬於哪一場突襲（用突襲開始時間當場次識別碼）
+                raidLevelTier: apiCurrentRaidLevel, // 這場突襲的等級，畫面顯示成 M-62 這種格式
                 player: playerName,
                 playerCode,
                 raidLevel,
@@ -6014,8 +6030,110 @@
 
         // 支援部分比對：輸入「隨」也能找到「隨便」，回傳所有符合的玩家各自的完整攻擊紀錄
         // 依總傷害排行列出玩家：keyword 留空 = 列出全部玩家，有輸入才用來篩選名稱（部分比對）
-        function buildRaidLogRanking(keyword) {
+        // 目前選擇的突襲場次（null = 顯示全部場次合併的排行，跟原本一樣）
+        let raidSessionFilter = null;
+
+        // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
+        // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
+        function buildRaidSessions() {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+
+            // 先蒐集所有「已知」場次的開始時間跟等級（來自有標記 raidStartedAt 的紀錄），由早到晚排序，
+            // 等一下用來判斷舊資料應該落在哪一場的時間區間裡
+            const startToLevel = new Map(); // raidStartedAt -> levelTier
+            log.forEach(a => {
+                if (a.raidStartedAt && !startToLevel.has(a.raidStartedAt)) {
+                    startToLevel.set(a.raidStartedAt, a.raidLevelTier);
+                }
+            });
+            const knownStarts = [...startToLevel.keys()].sort((a, b) => new Date(a) - new Date(b));
+
+            const sessions = new Map(); // raidStartedAt -> { startedAt, levelTier, attacks }
+            const fallback = [];
+
+            log.forEach(a => {
+                let matchedStart = a.raidStartedAt || null;
+
+                if (!matchedStart) {
+                    // 沒有場次標記的舊資料：看這筆攻擊的時間，落在哪一場「開始時間 ~ 下一場開始時間」的區間裡，
+                    // 落在裡面就算那一場的，早於所有已知場次開始時間的才會歸到「早期紀錄」
+                    const attackTs = cardUsageAttackTs(a);
+                    for (let i = 0; i < knownStarts.length; i++) {
+                        const startMs = new Date(knownStarts[i]).getTime();
+                        const nextStartMs = (i + 1 < knownStarts.length) ? new Date(knownStarts[i + 1]).getTime() : Infinity;
+                        if (attackTs >= startMs && attackTs < nextStartMs) { matchedStart = knownStarts[i]; break; }
+                    }
+                }
+
+                if (!matchedStart) { fallback.push(a); return; }
+
+                if (!sessions.has(matchedStart)) {
+                    sessions.set(matchedStart, { startedAt: matchedStart, levelTier: startToLevel.get(matchedStart) || null, attacks: [] });
+                }
+                sessions.get(matchedStart).attacks.push(a);
+            });
+
+            const list = [...sessions.values()].sort((x, y) => new Date(y.startedAt) - new Date(x.startedAt));
+            if (fallback.length > 0) list.push({ startedAt: null, levelTier: null, attacks: fallback });
+            return list;
+        }
+
+        function formatSessionLabel(session) {
+            if (!session.startedAt) return '早期紀錄（無場次資訊）';
+            const d = new Date(session.startedAt);
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            return session.levelTier ? `${dateStr} M-${session.levelTier}` : dateStr;
+        }
+
+        // 攻擊紀錄上層的「場次選單」：列出每一場突襲（依開始時間+等級標示），
+        // 點一場就把下面原本的排行榜過濾成只顯示那一場的資料
+        function renderRaidSessionMenu() {
+            const box = document.getElementById('raid-session-menu');
+            const sessions = buildRaidSessions();
+            if (sessions.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div style="font-size:12px; font-weight:700; color:#6b4a2a; margin-bottom:6px;">📅 依場次瀏覽</div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    ${sessions.map((s, i) => `
+                        <button onclick="selectRaidSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                            ${escapeHtml(formatSessionLabel(s))} <span style="font-weight:500; opacity:0.75;">（${s.attacks.length} 筆攻擊）</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function selectRaidSession(idx) {
+            const sessions = buildRaidSessions();
+            const session = sessions[idx];
+            if (!session) return;
+            raidSessionFilter = session;
+            document.getElementById('raid-session-active-bar').style.display = 'flex';
+            document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(session)}`;
+            renderRaidSessionMenu();
+            renderRaidLogQueryResult();
+            document.getElementById('raid-session-active-bar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function clearRaidSessionFilter() {
+            raidSessionFilter = null;
+            document.getElementById('raid-session-active-bar').style.display = 'none';
+            renderRaidSessionMenu();
+            renderRaidLogQueryResult();
+        }
+
+        function buildRaidLogRanking(keyword) {
+            const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
+            // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
+            // 否則回溯歸類進來的舊資料會因為欄位本身還是空的而被漏掉
+            const log = raidSessionFilter ? raidSessionFilter.attacks : fullLog;
             const keywordLower = (keyword || '').toLowerCase();
             let playerNames = [...new Set(log.map(e => e.player))];
             if (keywordLower) playerNames = playerNames.filter(name => name.toLowerCase().includes(keywordLower));
@@ -6348,6 +6466,7 @@
                 // 攻擊紀錄只有第一次點開才查詢；之後再切回來不重新整理，
                 // 這樣使用者展開過的玩家卡片、搜尋關鍵字都不會因為切到別的面板又切回來而被重置
                 if (id === 'attacklog' && document.getElementById('raid-log-query-list').children.length === 0) {
+                    renderRaidSessionMenu();
                     renderRaidLogQueryResult();
                 }
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕

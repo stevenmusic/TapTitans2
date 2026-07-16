@@ -3160,7 +3160,7 @@
                     <div class="raid-tool-menu">
                         <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="toggleRaidToolPanel('attacklog')">攻擊紀錄</button>
                         <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')">常用牌組</button>
-                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">卡片使用</button>
+                        <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">紫球&amp;鏡子力使用</button>
                         <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')">漏打名單</button>
                     </div>
                 </div>
@@ -3201,7 +3201,7 @@
                 </div>
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
-                    <div class="backup-title" data-i18n="cardUsageTitle">🃏 卡片使用</div>
+                    <div class="backup-title" id="card-usage-panel-title">🃏 紫球&amp;鏡子力使用</div>
                     <div id="card-usage-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
@@ -3324,7 +3324,7 @@
                 crystalSecSkip: '不要練',
                 crystalSecSkipDesc: '（不需要花資源升級的卡片）',
                 crystalBurst: '爆裂', crystalTorment: '苦痛', crystalSupport: '支援',
-                cardUsageTitle: '🃏 卡片使用',
+                cardUsageTitle: '🃏 紫球&鏡子力使用',
                 cardUsageDesc: '填入這場突襲的開始時間，從那一刻起每 12 小時算一輪，列出每輪裡出刀時沒有帶「瘋狂無效」或「鏡子力」的人。資料來自伺服器 24 小時側錄。',
                 cardUsageStartLabel: '突襲開始時間',
                 cardUsageBtn: '查看各輪統計',
@@ -3489,7 +3489,7 @@
                 crystalSecSkip: 'Don\'t Level',
                 crystalSecSkipDesc: '(not worth spending resources on)',
                 crystalBurst: 'Burst', crystalTorment: 'Afflict', crystalSupport: 'Support',
-                cardUsageTitle: '🃏 Card Usage',
+                cardUsageTitle: '🃏 Void & Mirror Usage',
                 cardUsageDesc: 'Enter when this raid started; every 12 hours from that moment counts as one round. Lists players who attacked without Insanity Void or Mirror Force in each round. Data comes from the 24h server recorder.',
                 cardUsageStartLabel: 'Raid start time',
                 cardUsageBtn: 'View Round Stats',
@@ -3607,6 +3607,7 @@
             if (typeof renderPlayersList === 'function') renderPlayersList();
             if (typeof renderAbyssList === 'function') renderAbyssList();
             if (typeof updateSkillCategoryLabels === 'function') updateSkillCategoryLabels();
+            if (typeof applyCardUsageIconTitles === 'function') applyCardUsageIconTitles();
             if (currentView === 'abyssDetail' && typeof ABYSS_MODES !== 'undefined') {
                 const mode = ABYSS_MODES.find(m => m.key === currentAbyssModeKey);
                 if (mode) {
@@ -4177,6 +4178,7 @@
             syncCardPoolCardSize();
             populateStageSelect();
             applyLanguage();
+            applyCardUsageIconTitles();
             syncHomeCardHeights();
             initCardUsageStartInput();
             initMissedAttackStartInput();
@@ -5866,6 +5868,27 @@
             }
             return null;
         }
+
+        /* 面板標題跟選單按鈕改用「卡片圖示 & 卡片圖示 使用」顯示：
+           圖片從 cards.js 找（跟名單區同一套 cardUsageImgSrc），
+           找不到圖時退回用 emoji 🟣🪞，語言切換時會重新套一次 */
+        function cardUsageIconHtml(tc, size) {
+            const img = cardUsageImgSrc(tc.id);
+            const label = escapeHtml(currentLang === 'en' ? tc.en : tc.zh);
+            return img
+                ? `<img src="${img}" alt="${label}" title="${label}" style="width:${size}px; height:${size}px; border-radius:4px; object-fit:cover; vertical-align:-${Math.round(size * 0.25)}px;" draggable="false">`
+                : `<span title="${label}">${tc.emoji}</span>`;
+        }
+        function applyCardUsageIconTitles() {
+            if (typeof CARD_USAGE_TRACKED === 'undefined') return;
+            const suffix = (currentLang === 'en') ? ' Usage' : ' 使用';
+            const build = (size) =>
+                `${cardUsageIconHtml(CARD_USAGE_TRACKED[0], size)}<span style="margin:0 3px;">&</span>${cardUsageIconHtml(CARD_USAGE_TRACKED[1], size)}<span>${suffix}</span>`;
+            const btn = document.getElementById('raid-tool-btn-cardusage');
+            if (btn) btn.innerHTML = build(18);
+            const title = document.getElementById('card-usage-panel-title');
+            if (title) title.innerHTML = build(20);
+        }
         // 名單裡的玩家名稱有中文也有英文，維持原本紀錄順序常常會中英交替出現、很難閱讀，
         // 這裡先分成「含英文字母」跟「完全沒有英文字母（含中文、符號）」兩組，各自排序，
         // 判斷依據是整個名字裡有沒有英文字母，不是只看開頭第一個字（例如「/天/宸宸」開頭是符號，
@@ -5918,7 +5941,6 @@
             box.style.display = 'block';
             const activeStart = cardUsageSessionFilter ? cardUsageSessionFilter.startedAt : null;
             box.innerHTML = `
-                <div style="font-size:12px; font-weight:700; color:#6b4a2a; margin-bottom:6px;">📅 依場次瀏覽</div>
                 <div style="display:flex; flex-direction:column; gap:6px;">
                     ${sessions.map((s, i) => `
                         <button onclick="selectCardUsageSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${activeStart === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${activeStart === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
@@ -6162,7 +6184,6 @@
             }
             box.style.display = 'block';
             box.innerHTML = `
-                <div style="font-size:12px; font-weight:700; color:#6b4a2a; margin-bottom:6px;">📅 依場次瀏覽</div>
                 <div style="display:flex; flex-direction:column; gap:6px;">
                     ${sessions.map((s, i) => `
                         <button onclick="selectRaidSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">

@@ -278,12 +278,21 @@
         .back-btn::after, .lang-toggle-btn::after {
             content: '';
             position: absolute;
-            inset: -10px;
+            inset: -11px;
         }
         .btn-action::after {
             content: '';
             position: absolute;
             inset: -2px;
+        }
+        /* 突襲水晶的＋/－按鈕上下沒有緊鄰的按鈕，可點範圍上下多擴一點（左右維持小幅，避免互相重疊） */
+        .crystal-controls .btn-action::after { inset: -8px -2px; }
+        /* 牌組頁的「全部位」下拉觸發鈕視覺上只有 26px 高，上下各擴 7px 讓手指好點（左右不擴，避免蓋到旁邊元素） */
+        .dropdown-trigger { position: relative; }
+        .dropdown-trigger::after {
+            content: '';
+            position: absolute;
+            inset: -7px -2px;
         }
 
         .back-btn {
@@ -307,7 +316,7 @@
             font-size: 11px;
             font-weight: 700;
             border-radius: 14px;
-            padding: 4px 10px;
+            padding: 5px 12px;
             cursor: pointer;
             font-family: inherit;
             white-space: nowrap;
@@ -795,7 +804,7 @@
         }
         .btn-action {
             border: none;
-            padding: 4px 0;
+            padding: 6px 0;
             font-size: 12px;
             font-weight: bold;
             border-radius: 5px;
@@ -2039,6 +2048,12 @@
             cursor: pointer;
         }
         .best-six-dropdown-item:last-child { border-bottom: none; }
+        /* 最佳六組排行：預設左右兩欄各三組；超小螢幕（<360px）改單欄六列，數字才不會擠在一起 */
+        .best-six-cols { display: flex; gap: 8px; }
+        .best-six-cols > div { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+        @media (max-width: 359px) {
+            .best-six-cols { flex-direction: column; }
+        }
         .best-six-dropdown-item:active { background: #f3e9da; }
         .backup-desc {
             font-size: 11px;
@@ -3208,8 +3223,7 @@
 
                 <div class="backup-section" id="panel-missed" style="display:none;">
                     <div class="backup-title">📋 漏打名單</div>
-                    <div style="width:100%; font-size:12px; color:#8a7a6a; margin-bottom:4px;">突襲開始時間</div>
-                    <input type="datetime-local" id="missed-attack-start-input" class="player-name-input" style="margin-bottom:8px;">
+                    <div id="missed-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="missed-attack-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
 
@@ -3331,7 +3345,7 @@
                 cardUsageLoading: '查詢中…',
                 cardUsageError: '查詢失敗，請確認中繼伺服器連線',
                 cardUsageNeedStart: '請先填入突襲開始時間',
-                cardUsageEmpty: '開始時間之後還沒有任何攻擊紀錄',
+                cardUsageEmpty: '目前還沒有任何攻擊紀錄',
                 cardUsageRound: '第 {n} 輪',
                 cardUsageAllUsed: '✓ 全員都有帶',
                 raidLogToday: '今天',
@@ -3496,7 +3510,7 @@
                 cardUsageLoading: 'Loading…',
                 cardUsageError: 'Query failed — please check the relay server connection',
                 cardUsageNeedStart: 'Please enter the raid start time first',
-                cardUsageEmpty: 'No attack records after the start time yet',
+                cardUsageEmpty: 'No attack records yet',
                 cardUsageRound: 'Cycle {n}',
                 cardUsageAllUsed: '✓ everyone brought it',
                 raidLogToday: 'Today',
@@ -6524,11 +6538,11 @@
             }
 
             box.innerHTML = `
-                <div style="display:flex; gap:8px;">
-                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                <div class="best-six-cols">
+                    <div>
                         ${decks.slice(0, 3).map((d, i) => renderBestSixRow(d, i + 1)).join('')}
                     </div>
-                    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+                    <div>
                         ${decks.slice(3, 6).map((d, i) => renderBestSixRow(d, i + 4)).join('')}
                     </div>
                 </div>
@@ -6588,7 +6602,7 @@
                 }
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
                 if (id === 'cardusage') renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
-                if (id === 'missed' && document.getElementById('missed-attack-start-input').value) renderMissedAttackList();
+                if (id === 'missed') renderMissedAttackList(); // 點開就直接依場次顯示，不用再填時間
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
@@ -6601,18 +6615,39 @@
            ══════════════════════════════════════════════════════════ */
         const RAID_ATTACKS_PER_ROUND = 6;
 
-        function initMissedAttackStartInput() {
-            const input = document.getElementById('missed-attack-start-input');
-            if (!input) return;
-            const saved = localStorage.getItem(CARD_USAGE_START_KEY);
-            if (saved) input.value = saved;
-            input.addEventListener('change', () => {
-                localStorage.setItem(CARD_USAGE_START_KEY, input.value);
-                // 跟卡片使用檢查共用同一個「突襲開始時間」，這裡改了那邊也同步更新
-                const cardUsageInput = document.getElementById('card-usage-start-input');
-                if (cardUsageInput) cardUsageInput.value = input.value;
-                renderMissedAttackList(); // 選好時間就直接顯示結果，不用再按按鈕
-            });
+        // 漏打名單也改成「依場次瀏覽」模式，不再需要手動填開始時間
+        function initMissedAttackStartInput() {}
+
+        // 目前漏打名單選擇的場次（null = 自動選最新一場）
+        let missedSessionFilter = null;
+
+        function renderMissedSessionMenu(sessions) {
+            const box = document.getElementById('missed-session-menu');
+            if (!box) return;
+            if (!sessions || sessions.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            const activeStart = missedSessionFilter ? missedSessionFilter.startedAt : null;
+            box.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    ${sessions.map((s, i) => `
+                        <button onclick="selectMissedSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${activeStart === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${activeStart === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                            ${escapeHtml(formatSessionLabel(s))} <span style="font-weight:500; opacity:0.75;">（${s.attacks.length} 筆攻擊）</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function selectMissedSession(idx) {
+            const sessions = buildRaidSessions();
+            const session = sessions[idx];
+            if (!session) return;
+            missedSessionFilter = session;
+            renderMissedAttackList();
         }
 
         function renderMissedRow(p, rank, maxSoFar) {
@@ -6624,25 +6659,36 @@
             `;
         }
 
-        function renderMissedAttackList() {
+        async function renderMissedAttackList() {
             const box = document.getElementById('missed-attack-result');
             box.style.display = 'flex';
-            const input = document.getElementById('missed-attack-start-input');
-            const startVal = input && input.value;
-            if (!startVal) {
-                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
-                return;
-            }
-            const startTs = new Date(startVal).getTime();
-            if (isNaN(startTs)) {
-                box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageNeedStart')}</div>`;
-                return;
-            }
-            localStorage.setItem(CARD_USAGE_START_KEY, startVal);
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
 
-            const log = dedupRaidFullLog(loadRaidFullLog());
-            const attacks = log.filter(a => cardUsageAttackTs(a) >= startTs);
+            // 先跟中繼伺服器同步最新攻擊紀錄再分場次；同步失敗就用本機已有的紀錄
+            if (!raidLogDemoActive) {
+                try {
+                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    await mergeServerFullAttackLog(relayUrl);
+                } catch (e) { /* 離線時直接用本機紀錄 */ }
+            }
+
+            const sessions = buildRaidSessions();
+            if (sessions.length === 0) {
+                renderMissedSessionMenu([]);
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
+                return;
+            }
+
+            // 沿用之前選的場次；還沒選過（或那場已不存在）就自動顯示最新一場
+            let session = missedSessionFilter
+                ? sessions.find(x => x.startedAt === missedSessionFilter.startedAt)
+                : null;
+            if (!session) session = sessions[0];
+            missedSessionFilter = session;
+            renderMissedSessionMenu(sessions);
+
+            const startTs = parseRaidSessionTs(session.startedAt);
+            const attacks = session.attacks.slice();
             if (attacks.length === 0) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageEmpty')}</div>`;
                 return;
@@ -6654,7 +6700,7 @@
             // 依輪次分組，先算出每個人「這一輪單獨」出了幾刀
             const perRoundCounts = new Map(); // roundNo -> Map(player -> 這一輪出刀次數)
             attacks.forEach((a) => {
-                const roundNo = Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1;
+                const roundNo = Math.max(1, Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1);
                 if (!perRoundCounts.has(roundNo)) perRoundCounts.set(roundNo, new Map());
                 const m = perRoundCounts.get(roundNo);
                 m.set(a.player, (m.get(a.player) || 0) + 1);

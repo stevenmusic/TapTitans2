@@ -283,7 +283,7 @@
         .btn-action::after {
             content: '';
             position: absolute;
-            inset: -4px -2px;
+            inset: -2px;
         }
 
         .back-btn {
@@ -1967,6 +1967,32 @@
             border-color: #8b263e;
             color: #fff;
         }
+        /* 常用牌組面板裡的子頁籤（常用牌組／建議牌組），比外層選單按鈕小一號 */
+        .deck-subtab-row {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .deck-subtab-btn {
+            flex: 1;
+            padding: 8px 4px;
+            border-radius: 8px;
+            border: 1.5px solid #e5d5c0;
+            background: #fffaf3;
+            color: #6b4a2a;
+            font-size: 12.5px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.12s, border-color 0.12s, transform 0.08s;
+        }
+        .deck-subtab-btn:active { transform: scale(0.96); }
+        .deck-subtab-btn.active {
+            background: #8b263e;
+            border-color: #8b263e;
+            color: #fff;
+        }
         .backup-desc {
             font-size: 11px;
             color: #b3a48c;
@@ -3107,7 +3133,12 @@
 
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
                     <div class="backup-title">🎴 常用牌組</div>
+                    <div class="deck-subtab-row">
+                        <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">常用牌組</button>
+                        <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">建議牌組</button>
+                    </div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
+                    <div id="suggested-deck-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
@@ -6040,6 +6071,70 @@
                     <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
                         ${decks.slice(5, 10).map((d, i) => renderTopDeckRow(d, i + 6)).join('')}
                     </div>
+                </div>
+            `;
+        }
+
+        // 切換「常用牌組」／「建議牌組」兩個子頁籤，同一個面板內切換，不用重新點外層選單
+        function switchDeckSubtab(id) {
+            const isTopDecks = id === 'topdecks';
+            document.getElementById('top-decks-result').style.display = isTopDecks ? 'flex' : 'none';
+            document.getElementById('suggested-deck-result').style.display = isTopDecks ? 'none' : 'flex';
+            document.getElementById('deck-subtab-btn-topdecks').classList.toggle('active', isTopDecks);
+            document.getElementById('deck-subtab-btn-suggested').classList.toggle('active', !isTopDecks);
+            if (isTopDecks) renderTopDecks();
+            else renderSuggestedDeck();
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           建議牌組：找出「最多人用過」的 6 張不同的卡（每張卡只算一次，
+           不會重複），組成一套建議配置。判斷依據是「有多少不同玩家用過
+           這張卡」，而不是總出牌次數，這樣才不會被某個人瘋狂連刷同一張
+           卡誤導，真正反映公會裡有多少人覺得這張卡值得帶。
+           ══════════════════════════════════════════════════════════ */
+        function buildSuggestedDeck() {
+            const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const cardUsers = new Map(); // 卡片代號 -> Set(用過這張卡的玩家)
+            log.forEach(a => {
+                (a.cards || []).forEach(c => {
+                    if (!c.name) return;
+                    if (!cardUsers.has(c.name)) cardUsers.set(c.name, new Set());
+                    cardUsers.get(c.name).add(a.player);
+                });
+            });
+            return [...cardUsers.entries()]
+                .map(([name, players]) => ({ name, userCount: players.size }))
+                .sort((a, b) => b.userCount - a.userCount)
+                .slice(0, 6);
+        }
+
+        function renderSuggestedDeck() {
+            const box = document.getElementById('suggested-deck-result');
+            const cards = buildSuggestedDeck();
+            box.style.display = 'flex';
+
+            if (cards.length === 0) {
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">目前還沒有任何攻擊紀錄</div>`;
+                return;
+            }
+
+            box.innerHTML = `
+                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:2px;">依「有多少人用過」排序，取前 6 張不重複的卡</div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
+                    ${cards.map((c, i) => {
+                        const img = raidCardImage(c.name);
+                        const icon = img
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; display:block; margin:0 auto;">`
+                            : `<span style="font-size:28px; display:block; text-align:center;">🃏</span>`;
+                        return `
+                            <div style="border:1px solid #e5dcd2; border-radius:10px; padding:8px 6px; background:#fdf9f3; text-align:center;">
+                                <div style="font-size:11px; font-weight:700; color:#8a7a63; margin-bottom:4px;">${i + 1}</div>
+                                ${icon}
+                                <div style="font-size:10.5px; color:#5a4a3a; margin-top:4px;">${escapeHtml(raidCardLabel(c.name))}</div>
+                                <div style="font-size:10px; color:#8e3a3a; font-weight:700; margin-top:2px;">${c.userCount} 人使用</div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             `;
         }

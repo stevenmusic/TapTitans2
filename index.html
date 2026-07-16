@@ -2040,7 +2040,6 @@
         }
         .best-six-dropdown-item:last-child { border-bottom: none; }
         .best-six-dropdown-item:active { background: #f3e9da; }
-        .best-six-dropdown-item.selected { background: #8b263e; color: #fff; }
         .backup-desc {
             font-size: 11px;
             color: #b3a48c;
@@ -6344,6 +6343,21 @@
         const BEST_SIX_BUFF_OPTIONS = ['爆裂傷30%', '爆裂機率*1.3', '苦痛傷30%', '苦痛機率*1.3', '支援傷15%', '突襲傷15%', '攻擊時間+3秒'];
         let bestSixSelectedBuff = '支援傷15%';
 
+        // 下拉選單背景色跟牌組建構頁的爆裂／苦痛／支援用同一套顏色，
+        // 突襲傷跟攻擊時間不屬於這三類，另外給一個顏色區分
+        const BEST_SIX_BUFF_CATEGORY = {
+            '爆裂傷30%': 'burst', '爆裂機率*1.3': 'burst',
+            '苦痛傷30%': 'torment', '苦痛機率*1.3': 'torment',
+            '支援傷15%': 'support',
+            '突襲傷15%': 'other', '攻擊時間+3秒': 'other'
+        };
+        const BEST_SIX_CATEGORY_COLORS = {
+            burst: { bg: '#f4e3e7', color: '#8b263e' },
+            torment: { bg: '#e9e0f5', color: '#4a148c' },
+            support: { bg: '#dcf0dd', color: '#2e7d32' },
+            other: { bg: '#f7ecd9', color: '#8b6a2a' }
+        };
+
         // 使用者提供的實際數據，先寫進「支援傷15%」這個分類裡
         const BEST_SIX_PRESET_DATA = {
             '支援傷15%': [
@@ -6365,11 +6379,27 @@
                 btn.classList.remove('open');
                 return;
             }
-            menu.innerHTML = BEST_SIX_BUFF_OPTIONS.map(label => `
-                <button class="best-six-dropdown-item ${label === bestSixSelectedBuff ? 'selected' : ''}" onclick="selectBestSixBuff('${label}')">${label}</button>
-            `).join('');
+            menu.innerHTML = BEST_SIX_BUFF_OPTIONS.map(label => {
+                const cat = BEST_SIX_BUFF_CATEGORY[label] || 'other';
+                const { bg, color } = BEST_SIX_CATEGORY_COLORS[cat];
+                const isSelected = label === bestSixSelectedBuff;
+                return `
+                    <button class="best-six-dropdown-item" style="background:${bg}; color:${color}; ${isSelected ? 'box-shadow: inset 0 0 0 2px ' + color + ';' : ''}" onclick="selectBestSixBuff('${label}')">
+                        ${isSelected ? '✓ ' : ''}${label}
+                    </button>
+                `;
+            }).join('');
             menu.style.display = 'block';
             btn.classList.add('open');
+        }
+
+        function applyBestSixButtonColor(label) {
+            const btn = document.getElementById('best-six-dropdown-btn');
+            const cat = BEST_SIX_BUFF_CATEGORY[label] || 'other';
+            const { bg, color } = BEST_SIX_CATEGORY_COLORS[cat];
+            btn.style.background = bg;
+            btn.style.color = color;
+            btn.style.borderColor = color;
         }
 
         function selectBestSixBuff(label) {
@@ -6377,6 +6407,7 @@
             document.getElementById('best-six-dropdown-label').textContent = `最佳六組（${label}）`;
             document.getElementById('best-six-dropdown-menu').style.display = 'none';
             document.getElementById('best-six-dropdown-btn').classList.remove('open');
+            applyBestSixButtonColor(label);
             renderSuggestedDeck();
         }
 
@@ -6419,6 +6450,7 @@
         function renderSuggestedDeck() {
             const box = document.getElementById('suggested-deck-result');
             box.style.display = 'flex';
+            applyBestSixButtonColor(bestSixSelectedBuff);
 
             // 最佳六組固定顯示使用者提供的卡片組合，不會因為之後累積新的突襲紀錄而變動
             // （新的突襲資料只會反映在「常用牌組」那邊）

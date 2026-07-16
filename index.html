@@ -6278,10 +6278,11 @@
             const box = document.getElementById('suggested-deck-result');
             box.style.display = 'flex';
 
-            const preset = BEST_SIX_PRESET_DATA[bestSixSelectedBuff];
-            const decks = preset || buildBestSixGroups();
+            // 最佳六組固定顯示使用者提供的卡片組合，不會因為之後累積新的突襲紀錄而變動
+            // （新的突襲資料只會反映在「常用牌組」那邊）
+            const decks = BEST_SIX_PRESET_DATA[bestSixSelectedBuff];
 
-            if (!preset && decks.length === 0) {
+            if (!decks) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">「${bestSixSelectedBuff}」這個類型目前還沒有資料</div>`;
                 return;
             }

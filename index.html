@@ -6035,16 +6035,41 @@
 
         // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
         // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
+        /* ══════════════════════════════════════════════════════════
+           手動場次標記：每次突襲結束後，使用者直接告訴我「開始時間＋等級」，
+           就手動加進這份清單，讓「依場次瀏覽」就算沒有即時連線抓到
+           raid_started_at，也能正確把那個時間點之後的攻擊紀錄分進同一場。
+           存在 localStorage，之後告訴我新的場次會持續累加進來。
+           ══════════════════════════════════════════════════════════ */
+        const MANUAL_RAID_SESSION_KEY = 'tt2_manual_raid_sessions';
+        // 使用者目前已經告訴我的場次，之後每次再告訴我，就加一筆新的進來
+        const DEFAULT_MANUAL_RAID_SESSIONS = [
+            { startedAt: '2026-07-14T22:40:00', levelTier: 62 }
+        ];
+        function loadManualRaidSessions() {
+            let list = [];
+            try { list = JSON.parse(localStorage.getItem(MANUAL_RAID_SESSION_KEY) || '[]'); } catch (e) { list = []; }
+            // 確保預設場次一定存在（合併、不會覆蓋掉使用者之後自己加的）
+            DEFAULT_MANUAL_RAID_SESSIONS.forEach(def => {
+                if (!list.some(s => s.startedAt === def.startedAt)) list.push(def);
+            });
+            return list;
+        }
+
         function buildRaidSessions() {
             const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
 
-            // 先蒐集所有「已知」場次的開始時間跟等級（來自有標記 raidStartedAt 的紀錄），由早到晚排序，
+            // 已知場次開始時間跟等級，來源有兩種：① 有即時連線時記錄下來的 raidStartedAt 標記，
+            // ② 使用者事後手動告訴我的場次時間；兩者合併，由早到晚排序，
             // 等一下用來判斷舊資料應該落在哪一場的時間區間裡
             const startToLevel = new Map(); // raidStartedAt -> levelTier
             log.forEach(a => {
                 if (a.raidStartedAt && !startToLevel.has(a.raidStartedAt)) {
                     startToLevel.set(a.raidStartedAt, a.raidLevelTier);
                 }
+            });
+            loadManualRaidSessions().forEach(s => {
+                if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
             });
             const knownStarts = [...startToLevel.keys()].sort((a, b) => new Date(a) - new Date(b));
 
@@ -6074,7 +6099,6 @@
             });
 
             const list = [...sessions.values()].sort((x, y) => new Date(y.startedAt) - new Date(x.startedAt));
-            if (fallback.length > 0) list.push({ startedAt: null, levelTier: null, attacks: fallback });
             return list;
         }
 

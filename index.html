@@ -7510,7 +7510,9 @@
                這個提醒比較急迫，條件持續成立時每 5 分鐘（而不是 30 分鐘）重新通知一次 */
             const currentBossTotal = raidDemoTimer ? 6 : apiBossTotal;
             const isLastBoss = raidState.bossOrdinal === currentBossTotal;
-            const isLowHp = raidState.currentHp <= RAID_LAST_BOSS_HP_THRESHOLD;
+            // 血量要「大於 0 但低於門檻」才算快死了；已經歸零或變負數代表王已經死了，
+            // 不該再跳「快要死了」的提醒（不然王死掉之後每次打開網頁都還會一直跳）
+            const isLowHp = raidState.currentHp > 0 && raidState.currentHp <= RAID_LAST_BOSS_HP_THRESHOLD;
             if (isLastBoss && isLowHp) {
                 const now = Date.now();
                 const justChangedBoss = (now - raidBossChangedAt) < RAID_SKILL_REMINDER_GRACE_MS;

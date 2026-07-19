@@ -3211,6 +3211,7 @@
                         <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">總傷前十</button>
                         <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">這樣配最簡單！</button>
                     </div>
+                    <div id="top-decks-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                     <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
                         <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
@@ -6302,8 +6303,10 @@
            攻擊紀錄來源。判斷牌組是否相同看的是「這三張卡是誰」，不管出牌順序，
            所以只要三張卡的組合一樣就算同一組，就算跟別組共用 1、2 張卡也沒關係。
            ══════════════════════════════════════════════════════════ */
-        function buildTopDecks() {
-            const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+        function buildTopDecks(attackList) {
+            // attackList 有給就只統計那一場的攻擊（依場次瀏覽用），沒給就照舊統計全部
+            const log = attackList ? attackList.slice()
+                : (raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog()));
             const decks = new Map(); // "CardA|CardB|CardC" -> { cards: [原始順序], count, totalDamage }
             log.forEach(a => {
                 const names = (a.cards || []).map(c => c.name).filter(Boolean);
@@ -6380,10 +6383,57 @@
             `;
         }
 
+        // 目前總傷前十選擇的場次（null = 自動選最新一場）
+        let topDecksSessionFilter = null;
+
+        function renderTopDecksSessionMenu(sessions) {
+            const box = document.getElementById('top-decks-session-menu');
+            if (!box) return;
+            if (!sessions || sessions.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            const activeStart = topDecksSessionFilter ? topDecksSessionFilter.startedAt : null;
+            box.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    ${sessions.map((s, i) => `
+                        <button onclick="selectTopDecksSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${activeStart === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${activeStart === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                            ${escapeHtml(formatSessionLabel(s))} <span style="font-weight:500; opacity:0.75;">（${s.attacks.length} 筆攻擊）</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function selectTopDecksSession(idx) {
+            const sessions = buildRaidSessions();
+            const session = sessions[idx];
+            if (!session) return;
+            topDecksSessionFilter = session;
+            renderTopDecks();
+        }
+
         function renderTopDecks() {
             const box = document.getElementById('top-decks-result');
-            const decks = buildTopDecks();
             box.style.display = 'flex';
+
+            // 跟其他面板同一套場次分組：新的場次在最上面，預設自動選最新一場
+            const sessions = buildRaidSessions();
+            let decks;
+            if (sessions.length === 0) {
+                renderTopDecksSessionMenu([]);
+                decks = buildTopDecks(); // 沒有場次資訊時照舊統計全部紀錄（例如示範模式）
+            } else {
+                let session = topDecksSessionFilter
+                    ? sessions.find(x => x.startedAt === topDecksSessionFilter.startedAt)
+                    : null;
+                if (!session) session = sessions[0];
+                topDecksSessionFilter = session;
+                renderTopDecksSessionMenu(sessions);
+                decks = buildTopDecks(session.attacks);
+            }
 
             if (decks.length === 0) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">目前還沒有任何攻擊紀錄</div>`;
@@ -6409,6 +6459,7 @@
         // 切換「常用牌組」／「建議牌組」兩個子頁籤，同一個面板內切換，不用重新點外層選單
         function switchDeckSubtab(id) {
             const isTopDecks = id === 'topdecks';
+            document.getElementById('top-decks-session-menu').style.display = 'none'; // renderTopDecks 會在有場次時再打開
             document.getElementById('top-decks-result').style.display = isTopDecks ? 'flex' : 'none';
             document.getElementById('suggested-deck-result').style.display = isTopDecks ? 'none' : 'flex';
             document.getElementById('best-six-dropdown-wrap').style.display = isTopDecks ? 'none' : 'block';

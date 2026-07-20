@@ -6293,18 +6293,28 @@
         }
 
         /* RL 等級用一格一格的 SVG 方塊表示，比純數字更直覺：
-           每 100 級算一格，餘數 50 以下無條件捨去、50 以上進位多算一格
-           （例如 RL1380 → 13 格 + 餘 80 進位 → 14 格） */
+           每 200 級算一整格，餘數 100 級以上算半格、100 級以下不列入計算
+           （例如 RL1380 → 6 整格 + 餘 180（≥100）→ 再補半格 = 6.5 格） */
         function raidLevelSquaresSvg(rl) {
             if (rl == null) return '';
-            let squares = Math.floor(rl / 100) + ((rl % 100) >= 50 ? 1 : 0);
-            if (squares <= 0) return ''; // RL 不到 50 級：完全捨去，不顯示方塊
-            const size = 7, gap = 2;
-            const width = squares * size + (squares - 1) * gap;
-            const rects = Array.from({ length: squares }, (_, i) =>
-                `<rect x="${i * (size + gap)}" y="0" width="${size}" height="${size}" rx="1.5" fill="#c9a876" stroke="#8e6a3a" stroke-width="0.6"/>`
-            ).join('');
-            return `<svg width="${width}" height="${size}" viewBox="0 0 ${width} ${size}" style="vertical-align:1px;" aria-hidden="true">${rects}</svg>`;
+            const remainder = rl % 200;
+            const fullSquares = Math.floor(rl / 200);
+            const hasHalf = remainder >= 100;
+            if (fullSquares <= 0 && !hasHalf) return ''; // 不到 100 級：完全捨去，不顯示方塊
+            const size = 7, gap = 2, halfWidth = size / 2;
+            const segCount = fullSquares + (hasHalf ? 1 : 0);
+            const totalWidth = fullSquares * size + (hasHalf ? halfWidth : 0) + (segCount > 1 ? (segCount - 1) * gap : 0);
+            let x = 0;
+            let rects = '';
+            for (let i = 0; i < fullSquares; i++) {
+                rects += `<rect x="${x}" y="0" width="${size}" height="${size}" rx="1.5" fill="#c9a876" stroke="#8e6a3a" stroke-width="0.6"/>`;
+                x += size + gap;
+            }
+            if (hasHalf) {
+                // 半格：只畫半寬的方塊，讓「不滿一整格」的等級也能一眼看出差異
+                rects += `<rect x="${x}" y="0" width="${halfWidth}" height="${size}" rx="1" fill="#c9a876" stroke="#8e6a3a" stroke-width="0.6"/>`;
+            }
+            return `<svg width="${totalWidth}" height="${size}" viewBox="0 0 ${totalWidth} ${size}" style="vertical-align:1px;" aria-hidden="true">${rects}</svg>`;
         }
 
         function buildRaidLogRanking(keyword) {
@@ -6794,9 +6804,9 @@
 
         function renderMissedRow(p, rank, maxSoFar) {
             return `
-                <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#5a4a3a; padding:2px 0;">
-                    <span>${rank}. ${escapeHtml(p.name)}</span>
-                    <span style="font-weight:700; color:#8e3a3a;">${p.count}/${maxSoFar}</span>
+                <div style="display:flex; justify-content:space-between; gap:4px; font-size:12px; color:#5a4a3a; padding:3px 6px; background:#fff; border:1px solid #ece3d4; border-radius:6px;">
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;">${rank}. ${escapeHtml(p.name)}</span>
+                    <span style="font-weight:700; color:#8e3a3a; flex-shrink:0;">${p.count}/${maxSoFar}</span>
                 </div>
             `;
         }
@@ -6839,6 +6849,15 @@
             // 整場突襲裡出現過的所有玩家名單（不分輪次），用來檢查「這輪完全沒出刀」的人
             const allPlayers = new Set(attacks.map(a => a.player));
 
+            // 每個人這整場的均傷（總傷害 ÷ 出刀次數），用來排序漏打名單——
+            // 均傷低的排前面，方便公會長優先關注輸出比較弱的人
+            const avgDamageByPlayer = new Map();
+            allPlayers.forEach((name) => {
+                const theirAttacks = attacks.filter(a => a.player === name);
+                const total = theirAttacks.reduce((s, a) => s + a.totalDamage, 0);
+                avgDamageByPlayer.set(name, theirAttacks.length > 0 ? total / theirAttacks.length : 0);
+            });
+
             // 依輪次分組，先算出每個人「這一輪單獨」出了幾刀
             const perRoundCounts = new Map(); // roundNo -> Map(player -> 這一輪出刀次數)
             attacks.forEach((a) => {
@@ -6870,20 +6889,24 @@
                 const maxSoFar = RAID_ATTACKS_PER_ROUND * roundNo; // 到這一輪為止，滿刀應該累計幾次
                 const cumCounts = cumulativeByRound.get(roundNo);
                 const missed = [...allPlayers]
-                    .map(name => ({ name, count: cumCounts.get(name) || 0 }))
+                    .map(name => ({ name, count: cumCounts.get(name) || 0, avg: avgDamageByPlayer.get(name) || 0 }))
                     .filter(p => p.count < maxSoFar)
-                    .sort((a, b) => a.count - b.count); // 缺最多刀的排最前面
+                    .sort((a, b) => a.avg - b.avg); // 根據均傷排列：均傷低的排最前面
+
+                // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多
+                // （跟低傷名單同一套排版邏輯，但這裡不設 50 人上限——漏打名單需要看到全部人）
+                const missedColumns = [];
+                for (let i = 0; i < missed.length; i += 8) missedColumns.push(missed.slice(i, i + 8));
 
                 const listHtml = missed.length === 0
                     ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', maxSoFar)}</div>`
                     : `
-                        <div style="display:flex; gap:8px;">
-                            <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
-                                ${missed.slice(0, 5).map((p, i) => renderMissedRow(p, i + 1, maxSoFar)).join('')}
-                            </div>
-                            <div style="flex:1; display:flex; flex-direction:column; gap:2px; min-width:0;">
-                                ${missed.slice(5, 10).map((p, i) => renderMissedRow(p, i + 6, maxSoFar)).join('')}
-                            </div>
+                        <div style="display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px;">
+                            ${missedColumns.map((col, colIdx) => `
+                                <div style="flex:0 0 auto; width:112px; display:flex; flex-direction:column; gap:2px;">
+                                    ${col.map((p, i) => renderMissedRow(p, colIdx * 8 + i + 1, maxSoFar)).join('')}
+                                </div>
+                            `).join('')}
                         </div>
                     `;
 
@@ -6901,6 +6924,12 @@
            每一直排最多放 8 位，超過 8 位就再開一直排，用左右滑動看更多，
            手機上直排瀏覽比單一長列表更好抓、一眼就能看出「這排有幾個問題名字」 */
         function renderLowDamageList() {
+            const wrap = document.getElementById('low-damage-list-wrap');
+            if (wrap) wrap.style.display = 'none'; // 低傷名單目前先隱藏不顯示（功能保留，之後要恢復把這行 return 刪掉、改回呼叫 renderLowDamageListImpl() 即可）
+            return;
+        }
+
+        function renderLowDamageListImpl() {
             const wrap = document.getElementById('low-damage-list-wrap');
             const scroll = document.getElementById('low-damage-list-scroll');
             if (!wrap || !scroll) return;
@@ -6962,8 +6991,8 @@
                 : `共 ${ranked.length} 位玩家（依總傷害排序）`;
 
             listEl.innerHTML = ranked.map((r, rIdx) => `
-                <div style="border:1px solid #e5dcd2; border-radius:10px; overflow:hidden;">
-                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8; min-width:0;">
+                <div style="border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
+                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}${(r.raidLevel != null && raidLevelSquaresSvg(r.raidLevel)) ? ` 丨${raidLevelSquaresSvg(r.raidLevel)}` : ''}</span>
                         <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}</span>

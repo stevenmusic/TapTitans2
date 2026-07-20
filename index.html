@@ -6216,6 +6216,13 @@
             const sessions = new Map(); // raidStartedAt -> { startedAt, levelTier, attacks }
             const fallback = [];
 
+            // 先把所有「已知的場次」（手動清單＋內建預設）都先建好空欄位，就算這個瀏覽器
+            // 完全沒有快取到那場的攻擊紀錄（例如無痕模式、換新裝置、清過資料），
+            // 場次欄位還是會出現在清單裡（顯示 0 筆攻擊），不會讓人誤以為那場不見了
+            knownStarts.forEach(k => {
+                if (!sessions.has(k)) sessions.set(k, { startedAt: k, levelTier: startToLevel.get(k) || null, attacks: [] });
+            });
+
             log.forEach(a => {
                 let matchedStart = a.raidStartedAt ? (canonicalOf.get(a.raidStartedAt) || a.raidStartedAt) : null;
 

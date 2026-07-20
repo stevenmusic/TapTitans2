@@ -3198,8 +3198,8 @@
                         <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
                         <button class="raid-log-refresh-btn" onclick="renderRaidSessionMenu(); renderRaidLogQueryResult();" title="重新整理排行">🔄</button>
                     </div>
-                    <div id="low-damage-list-wrap" style="display:none; width:100%; margin-top:12px; background:#fdf5f4; border:1px solid #f0c9c5; border-radius:10px; padding:10px 12px;">
-                        <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:8px;">⚠️ 低傷名單（低於自己均傷一半，最多 50 位）</div>
+                    <div id="low-damage-list-wrap" style="display:none; width:100%; margin-top:12px; background:#fdf5f4; border:1px solid #f0c9c5; border-radius:10px; padding:10px 12px; box-sizing:border-box;">
+                        <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#c0392b" stroke-width="2"/><line x1="12" y1="7" x2="12" y2="13.5" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#c0392b"/></svg> 低傷名單（低於自己均傷一半的次數）</div>
                         <div id="low-damage-list-scroll" style="display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px;"></div>
                     </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
@@ -6292,6 +6292,21 @@
             renderRaidLogQueryResult();
         }
 
+        /* RL 等級用一格一格的 SVG 方塊表示，比純數字更直覺：
+           每 100 級算一格，餘數 50 以下無條件捨去、50 以上進位多算一格
+           （例如 RL1380 → 13 格 + 餘 80 進位 → 14 格） */
+        function raidLevelSquaresSvg(rl) {
+            if (rl == null) return '';
+            let squares = Math.floor(rl / 100) + ((rl % 100) >= 50 ? 1 : 0);
+            if (squares <= 0) return ''; // RL 不到 50 級：完全捨去，不顯示方塊
+            const size = 7, gap = 2;
+            const width = squares * size + (squares - 1) * gap;
+            const rects = Array.from({ length: squares }, (_, i) =>
+                `<rect x="${i * (size + gap)}" y="0" width="${size}" height="${size}" rx="1.5" fill="#c9a876" stroke="#8e6a3a" stroke-width="0.6"/>`
+            ).join('');
+            return `<svg width="${width}" height="${size}" viewBox="0 0 ${width} ${size}" style="vertical-align:1px;" aria-hidden="true">${rects}</svg>`;
+        }
+
         function buildRaidLogRanking(keyword) {
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
@@ -6907,12 +6922,12 @@
             wrap.style.display = 'block';
 
             const columns = [];
-            for (let i = 0; i < flagged.length; i += 8) columns.push(flagged.slice(i, i + 8));
+            for (let i = 0; i < flagged.length; i += 5) columns.push(flagged.slice(i, i + 5));
 
             scroll.innerHTML = columns.map((col, colIdx) => `
                 <div style="flex:0 0 auto; width:112px; display:flex; flex-direction:column; gap:4px;">
                     ${col.map((p, i) => {
-                        const rank = colIdx * 8 + i + 1;
+                        const rank = colIdx * 5 + i + 1;
                         return `
                             <div style="font-size:11.5px; color:#8e3a3a; background:#fff; border:1px solid #f0c9c5; border-radius:6px; padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(p.player)}">
                                 <span style="color:#a88a86;">${rank}.</span> ${escapeHtml(p.player)} <span style="font-weight:700;">×${p.lowCount}</span>
@@ -6948,8 +6963,8 @@
 
             listEl.innerHTML = ranked.map((r, rIdx) => `
                 <div style="border:1px solid #e5dcd2; border-radius:10px; overflow:hidden;">
-                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8;">
-                        <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rIdx + 1}. ${escapeHtml(r.player)}${r.raidLevel != null ? ` RL${r.raidLevel}` : ''}</span>
+                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8; min-width:0;">
+                        <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}${(r.raidLevel != null && raidLevelSquaresSvg(r.raidLevel)) ? ` 丨${raidLevelSquaresSvg(r.raidLevel)}` : ''}</span>
                         <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">▾</span>

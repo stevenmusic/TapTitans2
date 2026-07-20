@@ -3198,6 +3198,10 @@
                         <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
                         <button class="raid-log-refresh-btn" onclick="renderRaidSessionMenu(); renderRaidLogQueryResult();" title="重新整理排行">🔄</button>
                     </div>
+                    <div id="low-damage-list-wrap" style="display:none; width:100%; margin-top:12px; background:#fdf5f4; border:1px solid #f0c9c5; border-radius:10px; padding:10px 12px;">
+                        <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:8px;">⚠️ 低傷名單（低於自己均傷一半，最多 50 位）</div>
+                        <div id="low-damage-list-scroll" style="display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px;"></div>
+                    </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -3359,6 +3363,7 @@
                 raidLogToday: '今天',
                 raidLogYesterday: '昨天',
                 raidLogAttacksRemaining: '剩餘攻擊次數',
+                raidLogAttacksLeftShort: '剩{n}次',
                 raidLogTapDamage: '點擊傷害',
                 raidLogTotalDamage: '總傷害',
                 raidLogAttackedAt: '攻擊時間',
@@ -3524,6 +3529,7 @@
                 raidLogToday: 'Today',
                 raidLogYesterday: 'Yesterday',
                 raidLogAttacksRemaining: 'Attacks remaining',
+                raidLogAttacksLeftShort: '{n} left',
                 raidLogTapDamage: 'Tap Damage',
                 raidLogTotalDamage: 'Total Damage',
                 raidLogAttackedAt: 'Attacked at',
@@ -6300,6 +6306,10 @@
             const ranked = playerNames.map(playerName => {
                 const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
+                // RL 拿「最新一筆有記錄到的」代表：原本 RL 顯示在每筆攻擊卡片裡，
+                // 現在改放在玩家排行列，一個人一場通常只有一個 RL，取最新的就好
+                const raidLevelEntry = attacks.find(a => a.raidLevel != null);
+                const raidLevel = raidLevelEntry ? raidLevelEntry.raidLevel : null;
                 // 均傷跟「這位玩家自己」的攻擊比較，不是跟全場所有人比——
                 // 每個人的牌組強度差很多，拿全場平均當基準會讓輸出本來就偏低的玩家
                 // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
@@ -6308,7 +6318,7 @@
                 const lowDamageThreshold = avgOwnDamage / 2;
                 attacks.forEach(a => { a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < lowDamageThreshold; });
                 const hasLowAttack = attacks.some(a => a.isLowDamage);
-                return { player: playerName, attackCount: attacks.length, totalDamage, attacks, hasLowAttack };
+                return { player: playerName, attackCount: attacks.length, totalDamage, attacks, hasLowAttack, raidLevel };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
@@ -6871,7 +6881,50 @@
             }).join('');
         }
 
+        /* 低傷名單：根據「單次攻擊傷害低於自己均傷一半」抓出來的名單（跟攻擊紀錄紅字用同一套判斷），
+           不受上面搜尋框篩選影響，永遠列出目前這個場次裡全部符合的人，最多 50 位。
+           每一直排最多放 8 位，超過 8 位就再開一直排，用左右滑動看更多，
+           手機上直排瀏覽比單一長列表更好抓、一眼就能看出「這排有幾個問題名字」 */
+        function renderLowDamageList() {
+            const wrap = document.getElementById('low-damage-list-wrap');
+            const scroll = document.getElementById('low-damage-list-scroll');
+            if (!wrap || !scroll) return;
+
+            const ranked = buildRaidLogRanking(''); // 永遠看全部人，不受搜尋框關鍵字影響
+            let flagged = ranked.filter(r => r.hasLowAttack).map(r => {
+                const lowHits = r.attacks.filter(a => a.isLowDamage);
+                return { player: r.player, lowCount: lowHits.length, minLowDamage: Math.min(...lowHits.map(a => a.totalDamage)) };
+            });
+            // 低傷刀數多的排前面（問題比較大）；刀數一樣就看誰那一刀更低
+            flagged.sort((a, b) => (b.lowCount - a.lowCount) || (a.minLowDamage - b.minLowDamage));
+            flagged = flagged.slice(0, 50);
+
+            if (flagged.length === 0) {
+                wrap.style.display = 'none';
+                scroll.innerHTML = '';
+                return;
+            }
+            wrap.style.display = 'block';
+
+            const columns = [];
+            for (let i = 0; i < flagged.length; i += 8) columns.push(flagged.slice(i, i + 8));
+
+            scroll.innerHTML = columns.map((col, colIdx) => `
+                <div style="flex:0 0 auto; width:112px; display:flex; flex-direction:column; gap:4px;">
+                    ${col.map((p, i) => {
+                        const rank = colIdx * 8 + i + 1;
+                        return `
+                            <div style="font-size:11.5px; color:#8e3a3a; background:#fff; border:1px solid #f0c9c5; border-radius:6px; padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(p.player)}">
+                                <span style="color:#a88a86;">${rank}.</span> ${escapeHtml(p.player)} <span style="font-weight:700;">×${p.lowCount}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `).join('');
+        }
+
         function renderRaidLogQueryResult() {
+            renderLowDamageList();
             const input = document.getElementById('raid-log-query-input');
             const keyword = input.value.trim();
             const resultWrap = document.getElementById('raid-log-query-result');
@@ -6896,7 +6949,7 @@
             listEl.innerHTML = ranked.map((r, rIdx) => `
                 <div style="border:1px solid #e5dcd2; border-radius:10px; overflow:hidden;">
                     <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8;">
-                        <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
+                        <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rIdx + 1}. ${escapeHtml(r.player)}${r.raidLevel != null ? ` RL${r.raidLevel}` : ''}</span>
                         <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">▾</span>
@@ -6952,10 +7005,6 @@
 
         function renderRaidLogAttackCard(a, rIdx, aIdx, expandByDefault) {
             const uid = `raidlog-detail-${rIdx}-${aIdx}`;
-            const raidLevelStr = (a.raidLevel != null) ? ` | RL ${a.raidLevel}` : '';
-            const attacksRemainingStr = (a.attacksRemaining != null)
-                ? ` | ${t('raidLogAttacksRemaining')}: ${a.attacksRemaining}`
-                : '';
             const cardDamage = a.cardDamage || {};
             const tapDamage = a.tapDamage || 0;
 
@@ -7004,11 +7053,14 @@
             `).join('');
 
             const bossStr = `${escapeHtml(a.boss)}${a.bossOrdinal ? ` (${a.bossOrdinal}/${a.bossTotal || 6})` : ''}`;
+            const attacksLeftInline = (a.attacksRemaining != null)
+                ? ` ・${t('raidLogAttacksLeftShort').replace('{n}', a.attacksRemaining)}`
+                : '';
 
             return `
                 <div style="border:1px solid #e5dcd2; border-radius:10px; word-break:break-word; overflow:hidden;">
                     <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; background:#faf6f0;">
-                        <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}</span>
+                        <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}${attacksLeftInline}</span>
                         <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
                             <span id="${uid}-chevron" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${expandByDefault ? '▴' : '▾'}</span>
@@ -7016,9 +7068,6 @@
                     </div>
                     <!-- 這一段不管收合與否都會顯示：玩家資訊、點擊傷害、卡片傷害 -->
                     <div style="padding:10px; border-top:1px solid #e5dcd2;">
-                        <div style="font-size:12.5px; font-weight:700; color:#4a3a2a; margin-bottom:6px;">
-                            ${escapeHtml(a.player)}${raidLevelStr}${attacksRemainingStr}
-                        </div>
                         ${cardRows}
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->

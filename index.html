@@ -5667,6 +5667,9 @@
             if (payload && payload.raid && typeof payload.raid.level === 'number') {
                 apiCurrentRaidLevel = payload.raid.level;
             }
+            // 自動偵測新場次：官方 API 的 sub_start / start / sub_cycle 事件都帶有
+            // 場次開始時間（和等級），收到就自動存進場次清單，之後不用再人工回報
+            if (apiCurrentRaidStartedAt) autoCaptureRaidSession(apiCurrentRaidStartedAt, apiCurrentRaidLevel);
             const titans = payload && payload.raid && payload.raid.titans;
             const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
             if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
@@ -6130,6 +6133,37 @@
             return list;
         }
 
+        // 開始時間差在這個範圍內就視為同一場：官方 API 回報的是 UTC 時間、
+        // 手動填的是當地時間（可能有幾分鐘誤差），避免同一場出現兩個場次欄位
+        const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
+
+        /* 自動偵測場次：只要有任何一台裝置在突襲期間開著頁面（有連線），
+           收到官方 API 的場次開始資訊就自動記錄「開始時間＋等級」，
+           攻擊紀錄／牌組參考／紫球&鏡子力／漏打名單四個面板的場次欄位會自動長出來 */
+        function autoCaptureRaidSession(startedAt, levelTier) {
+            const ts = parseRaidSessionTs(startedAt);
+            if (!ts) return;
+            let list = [];
+            try { list = JSON.parse(localStorage.getItem(MANUAL_RAID_SESSION_KEY) || '[]'); } catch (e) { list = []; }
+            const all = list.concat(DEFAULT_MANUAL_RAID_SESSIONS);
+            const dup = all.find(x => Math.abs(parseRaidSessionTs(x.startedAt) - ts) < RAID_SESSION_MATCH_MS);
+            if (dup) {
+                // 這場已經記過了：只在原本沒記到等級時補上等級
+                if (!dup.levelTier && typeof levelTier === 'number') {
+                    const inList = list.find(x => x.startedAt === dup.startedAt);
+                    if (inList) {
+                        inList.levelTier = levelTier;
+                        localStorage.setItem(MANUAL_RAID_SESSION_KEY, JSON.stringify(list));
+                    }
+                }
+                return;
+            }
+            list.push({ startedAt, levelTier: (typeof levelTier === 'number') ? levelTier : null });
+            localStorage.setItem(MANUAL_RAID_SESSION_KEY, JSON.stringify(list));
+            // 攻擊紀錄的場次選單如果正開著，馬上長出新場次
+            try { if (typeof renderRaidSessionMenu === 'function') renderRaidSessionMenu(); } catch (e) {}
+        }
+
         // 場次時間字串轉毫秒：有些來源的時間是「2026-07-14 22:40:00」用空白隔開，
         // iPhone Safari 的 Date 解析不了會變成 NaN，導致排序失效（新舊順序亂掉），
         // 這裡先把空白換成 T 再解析，確保「新的場次一定排最上面」
@@ -6155,13 +6189,29 @@
             loadManualRaidSessions().forEach(s => {
                 if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
             });
-            const knownStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
+            const rawStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
+
+            // 官方 API 記到的開始時間（UTC）跟手動填的當地時間可能差幾分鐘，
+            // 差距在 10 分鐘內的視為同一場，統一用最早的那個當這場的識別碼，
+            // 才不會同一場突襲被拆成兩個場次欄位
+            const canonicalOf = new Map();
+            const knownStarts = [];
+            rawStarts.forEach(k => {
+                const last = knownStarts[knownStarts.length - 1];
+                if (last && parseRaidSessionTs(k) - parseRaidSessionTs(last) < RAID_SESSION_MATCH_MS) {
+                    canonicalOf.set(k, last);
+                    if (!startToLevel.get(last) && startToLevel.get(k)) startToLevel.set(last, startToLevel.get(k));
+                } else {
+                    canonicalOf.set(k, k);
+                    knownStarts.push(k);
+                }
+            });
 
             const sessions = new Map(); // raidStartedAt -> { startedAt, levelTier, attacks }
             const fallback = [];
 
             log.forEach(a => {
-                let matchedStart = a.raidStartedAt || null;
+                let matchedStart = a.raidStartedAt ? (canonicalOf.get(a.raidStartedAt) || a.raidStartedAt) : null;
 
                 if (!matchedStart) {
                     // 沒有場次標記的舊資料：看這筆攻擊的時間，落在哪一場「開始時間 ~ 下一場開始時間」的區間裡，
@@ -6247,10 +6297,19 @@
             if (keywordLower) playerNames = playerNames.filter(name => name.toLowerCase().includes(keywordLower));
             if (playerNames.length === 0) return [];
 
+            // 均傷抓的是「目前這個畫面看得到的所有單次攻擊」的平均傷害（同一場次或同一次查詢結果內），
+            // 低於均傷一半的單次攻擊視為異常低傷，畫面上用紅字標出來提醒
+            const avgSingleAttackDamage = log.length > 0
+                ? log.reduce((s, a) => s + a.totalDamage, 0) / log.length
+                : 0;
+            const lowDamageThreshold = avgSingleAttackDamage / 2;
+
             const ranked = playerNames.map(playerName => {
                 const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
-                return { player: playerName, attackCount: attacks.length, totalDamage, attacks };
+                attacks.forEach(a => { a.isLowDamage = avgSingleAttackDamage > 0 && a.totalDamage < lowDamageThreshold; });
+                const hasLowAttack = attacks.some(a => a.isLowDamage);
+                return { player: playerName, attackCount: attacks.length, totalDamage, attacks, hasLowAttack };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
@@ -6840,7 +6899,7 @@
                     <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:#f7f1e8;">
                         <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
                         <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                            <span style="font-size:12.5px; font-weight:700; color:#4a3a2a;">${escapeHtml(formatNum(r.totalDamage))}</span>
+                            <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">▾</span>
                         </span>
                     </div>
@@ -6952,7 +7011,7 @@
                     <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; background:#faf6f0;">
                         <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}</span>
                         <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
-                            <span style="font-size:12.5px; font-weight:700; color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
+                            <span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
                             <span id="${uid}-chevron" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${expandByDefault ? '▴' : '▾'}</span>
                         </span>
                     </div>

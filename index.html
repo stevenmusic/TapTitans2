@@ -6297,17 +6297,16 @@
             if (keywordLower) playerNames = playerNames.filter(name => name.toLowerCase().includes(keywordLower));
             if (playerNames.length === 0) return [];
 
-            // 均傷抓的是「目前這個畫面看得到的所有單次攻擊」的平均傷害（同一場次或同一次查詢結果內），
-            // 低於均傷一半的單次攻擊視為異常低傷，畫面上用紅字標出來提醒
-            const avgSingleAttackDamage = log.length > 0
-                ? log.reduce((s, a) => s + a.totalDamage, 0) / log.length
-                : 0;
-            const lowDamageThreshold = avgSingleAttackDamage / 2;
-
             const ranked = playerNames.map(playerName => {
                 const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
-                attacks.forEach(a => { a.isLowDamage = avgSingleAttackDamage > 0 && a.totalDamage < lowDamageThreshold; });
+                // 均傷跟「這位玩家自己」的攻擊比較，不是跟全場所有人比——
+                // 每個人的牌組強度差很多，拿全場平均當基準會讓輸出本來就偏低的玩家
+                // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
+                // 真正異常低的那幾刀（例如漏按卡片、斷線只點擊沒出卡等情況）
+                const avgOwnDamage = attacks.length > 0 ? totalDamage / attacks.length : 0;
+                const lowDamageThreshold = avgOwnDamage / 2;
+                attacks.forEach(a => { a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < lowDamageThreshold; });
                 const hasLowAttack = attacks.some(a => a.isLowDamage);
                 return { player: playerName, attackCount: attacks.length, totalDamage, attacks, hasLowAttack };
             });

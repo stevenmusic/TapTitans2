@@ -1808,27 +1808,6 @@
             box-shadow: 0 0 0 2px rgba(184,134,11,0.18);
             background: #ffffff;
         }
-        /* 攻擊紀錄搜尋框旁的重新整理鍵：正方形、跟輸入框同高對齊，質感比純文字按鈕細緻一點 */
-        .raid-log-refresh-btn {
-            flex-shrink: 0;
-            width: 40px;
-            aspect-ratio: 1 / 1;
-            border: 1px solid #e2d7c5;
-            border-radius: 8px;
-            background: linear-gradient(180deg, #fffdf9, #faf5ec);
-            font-size: 16px;
-            line-height: 1;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.12s, transform 0.08s, border-color 0.12s;
-        }
-        .raid-log-refresh-btn:active {
-            background: #f0e6d2;
-            border-color: #c9a876;
-            transform: scale(0.94) rotate(35deg);
-        }
         .player-data-input {
             width: 100%;
             box-sizing: border-box;
@@ -3196,7 +3175,6 @@
                     </div>
                     <div style="display:flex; gap:8px; width:100%; align-items:stretch;">
                         <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
-                        <button class="raid-log-refresh-btn" onclick="renderRaidSessionMenu(); renderRaidLogQueryResult();" title="重新整理排行">🔄</button>
                     </div>
                     <div id="low-damage-list-wrap" style="display:none; width:100%; margin-top:12px; background:#fdf5f4; border:1px solid #f0c9c5; border-radius:10px; padding:10px 12px; box-sizing:border-box;">
                         <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#c0392b" stroke-width="2"/><line x1="12" y1="7" x2="12" y2="13.5" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#c0392b"/></svg> 低傷名單（低於自己均傷一半的次數）</div>
@@ -6753,12 +6731,8 @@
             if (!wasOpen) {
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
-                // 攻擊紀錄只有第一次點開才查詢；之後再切回來不重新整理，
-                // 這樣使用者展開過的玩家卡片、搜尋關鍵字都不會因為切到別的面板又切回來而被重置
-                if (id === 'attacklog' && document.getElementById('raid-log-query-list').children.length === 0) {
-                    renderRaidSessionMenu();
-                    renderRaidLogQueryResult();
-                }
+                // 攻擊紀錄跟其他三個面板一樣，點開就直接重新查詢，不用另外按重新整理
+                if (id === 'attacklog') { renderRaidSessionMenu(); renderRaidLogQueryResult(); }
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
                 if (id === 'cardusage') renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
                 if (id === 'missed') renderMissedAttackList(); // 點開就直接依場次顯示，不用再填時間
@@ -6853,11 +6827,15 @@
                 return;
             }
 
-            // 整場突襲裡出現過的所有玩家名單（不分輪次），用來檢查「這輪完全沒出刀」的人
-            const allPlayers = new Set(attacks.map(a => a.player));
+            // 公會成員名單：不能只看這一場的攻擊紀錄，不然整場完全沒出刀的人
+            // 根本不會出現在 attacks 裡、也就永遠不會被列進漏打名單。
+            // 改成用「歷史所有場次曾經出現過的人」當作成員名單（來自跟中繼伺服器同步的完整紀錄），
+            // 這樣就算某人這場 0 次攻擊，只要他是曾經同步過紀錄的成員，也會被列出來（例如 0/18）
+            const fullLogForRoster = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const allPlayers = new Set(fullLogForRoster.map(a => a.player));
 
-            // 每個人這整場的均傷（總傷害 ÷ 出刀次數），用來排序漏打名單——
-            // 均傷低的排前面，方便公會長優先關注輸出比較弱的人
+            // 每個人在「這一場」的均傷（總傷害 ÷ 出刀次數；完全沒出刀就是 0），
+            // 用來排序漏打名單——均傷高的排前面，方便公會長優先盯著本來很能打、卻漏刀的人
             const avgDamageByPlayer = new Map();
             allPlayers.forEach((name) => {
                 const theirAttacks = attacks.filter(a => a.player === name);
@@ -6898,7 +6876,7 @@
                 const missed = [...allPlayers]
                     .map(name => ({ name, count: cumCounts.get(name) || 0, avg: avgDamageByPlayer.get(name) || 0 }))
                     .filter(p => p.count < maxSoFar)
-                    .sort((a, b) => a.avg - b.avg); // 根據均傷排列：均傷低的排最前面
+                    .sort((a, b) => b.avg - a.avg); // 根據均傷排列：均傷高的排最前面
 
                 // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多
                 // （跟低傷名單同一套排版邏輯，但這裡不設 50 人上限——漏打名單需要看到全部人）

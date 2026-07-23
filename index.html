@@ -7141,51 +7141,43 @@
             `;
         }
 
-        // 點某張卡片，看這位玩家「這場」用這張卡的所有出刀紀錄（不受目前收合狀態影響，
+        // 點某張卡片，看這位玩家「這場」搭配這張卡出過哪些牌組（不管出牌順序，同樣三張卡算同一組），
+        // 依出現次數多到少排列，只列卡片圖示，不顯示傷害/時間等其他資料。
         // 直接從最近一次排行榜算好的資料撈，資料範圍跟畫面上的排行榜一致：
-        // 有選場次就只看那一場，沒選就是全部場次合併）
+        // 有選場次就只看那一場，沒選就是全部場次合併
         function openCardUsageDetail(rIdx, cardName) {
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
 
-            const records = r.attacks
-                .filter(a => (a.cards || []).some(c => c.name === cardName))
-                .map(a => {
-                    const cardInfo = a.cards.find(c => c.name === cardName);
-                    const dmg = (a.cardDamage && a.cardDamage[cardName]) || 0;
-                    return {
-                        ts: a.ts, boss: a.boss, bossOrdinal: a.bossOrdinal, bossTotal: a.bossTotal,
-                        level: cardInfo ? cardInfo.level : null, damage: dmg
-                    };
-                }); // r.attacks 已經是新到舊排序，不用再排一次
+            const deckMap = new Map(); // "CardA|CardB|CardC"（排序後）-> { cards: [原始順序], count }
+            r.attacks.forEach(a => {
+                const names = (a.cards || []).map(c => c.name).filter(Boolean);
+                if (!names.includes(cardName)) return;
+                const key = [...names].sort().join('|');
+                if (!deckMap.has(key)) deckMap.set(key, { cards: names, count: 0 });
+                deckMap.get(key).count++;
+            });
+            const decks = [...deckMap.values()].sort((a, b) => b.count - a.count);
 
-            const totalDamage = records.reduce((s, x) => s + x.damage, 0);
-            const img = raidCardImage(cardName);
+            // 讓同一張卡固定出現在同一欄，方便一眼比對（跟「常用牌組」同一套排版邏輯）
+            const columnOf = assignDeckColumns(decks);
+            decks.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
+
             const label = raidCardLabel(cardName);
-            const icon = img
-                ? `<img src="${img}" alt="${escapeHtml(label)}" style="width:32px; height:32px; border-radius:6px; object-fit:cover; display:block;">`
-                : '<span style="font-size:22px; line-height:32px; display:block; text-align:center;">🃏</span>';
-
             const body = document.getElementById('card-usage-detail-body');
             body.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-                    ${icon}
-                    <div style="min-width:0;">
-                        <div style="font-weight:700; font-size:14px; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.player)} · ${escapeHtml(label)}</div>
-                        <div style="font-size:11.5px; color:#8a7a6a;">共 ${records.length} 次出刀・總傷害 ${escapeHtml(formatNumAlwaysM(totalDamage))}</div>
-                    </div>
-                </div>
-                <div style="display:flex; flex-direction:column; gap:6px;">
-                    ${records.map(rec => {
-                        const dmgLabel = rec.damage > 0 ? escapeHtml(formatNumAlwaysM(rec.damage)) : t('raidLogSupport');
-                        const bossStr = `${escapeHtml(rec.boss)}${rec.bossOrdinal ? ` (${rec.bossOrdinal}/${rec.bossTotal || 6})` : ''}`;
-                        return `
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; background:#fff; border:1px solid #ece3d4; border-radius:8px; font-size:12px;">
-                                <span style="color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(rec.ts)}</span>
-                                <span style="font-weight:700; color:#4a3a2a; flex-shrink:0;">Lv.${escapeHtml(String(rec.level))} ・ ${dmgLabel}</span>
-                            </div>
-                        `;
-                    }).join('')}
+                <div style="font-weight:700; font-size:14px; color:#4a3a2a; margin-bottom:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.player)} · ${escapeHtml(label)}</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${decks.map(d => `
+                        <div style="display:flex; gap:8px; justify-content:center; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                            ${d.cards.map(name => {
+                                const img = raidCardImage(name);
+                                return img
+                                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
+                                    : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
+                            }).join('')}
+                        </div>
+                    `).join('')}
                 </div>
                 <button class="btn-close" style="width:100%; margin-top:14px;" onclick="closeCardUsageDetail()">關閉</button>
             `;

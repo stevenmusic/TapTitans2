@@ -1808,6 +1808,26 @@
             box-shadow: 0 0 0 2px rgba(184,134,11,0.18);
             background: #ffffff;
         }
+        /* 攻擊紀錄卡片列：點卡片圖示＋等級傷害文字，看這位玩家這場用這張卡的所有紀錄 */
+        .raid-log-card-tap {
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.12s;
+        }
+        .raid-log-card-tap:active {
+            background: #f0e6d2;
+        }
+        #card-usage-detail-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); z-index: 10001;
+            justify-content: center; align-items: center;
+            padding: 20px; box-sizing: border-box;
+        }
+        #card-usage-detail-modal .card-usage-detail-box {
+            background: #fffaf3; border-radius: 14px; max-width: 420px; width: 100%;
+            max-height: 80vh; overflow-y: auto; padding: 16px; box-sizing: border-box;
+        }
         .player-data-input {
             width: 100%;
             box-sizing: border-box;
@@ -3228,6 +3248,10 @@
             <button class="btn-share" id="btn-share-image" onclick="shareCurrentImage()" data-i18n="btnShareImage">📤 分享到 LINE／Discord</button>
             <button class="btn-close" onclick="closeModal()" data-i18n="btnBackToEdit">返回修改</button>
         </div>
+    </div>
+
+    <div id="card-usage-detail-modal" onclick="if (event.target === this) closeCardUsageDetail();">
+        <div class="card-usage-detail-box" id="card-usage-detail-body"></div>
     </div>
 
     <script>
@@ -6093,6 +6117,9 @@
         // 目前選擇的突襲場次（null = 顯示全部場次合併的排行，跟原本一樣）
         let raidSessionFilter = null;
 
+        // 最近一次排行榜算出來的結果，點卡片看單張卡片的所有紀錄時要從這裡撈資料
+        let raidLogLastRanked = [];
+
         // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
         // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
         /* ══════════════════════════════════════════════════════════
@@ -6961,6 +6988,7 @@
             const summaryEl = document.getElementById('raid-log-query-summary');
 
             const ranked = buildRaidLogRanking(keyword);
+            raidLogLastRanked = ranked;
             resultWrap.style.display = 'block';
 
             if (ranked.length === 0) {
@@ -7050,11 +7078,14 @@
                         const icon = img
                             ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
                             : '<span style="font-size:18px; line-height:28px; display:block; text-align:center;">🃏</span>';
+                        // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            ${icon}
-                            <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
-                                <span>Lv.${escapeHtml(String(c.level))}</span>
-                                <span style="font-weight:600;">${dmgLabel}</span>
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail(${rIdx}, '${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 28px 60px; column-gap:6px; align-items:center;">
+                                ${icon}
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                                    <span>Lv.${escapeHtml(String(c.level))}</span>
+                                    <span style="font-weight:600;">${dmgLabel}</span>
+                                </div>
                             </div>
                         `;
                     }).join('')}
@@ -7108,6 +7139,61 @@
                     </div>
                 </div>
             `;
+        }
+
+        // 點某張卡片，看這位玩家「這場」用這張卡的所有出刀紀錄（不受目前收合狀態影響，
+        // 直接從最近一次排行榜算好的資料撈，資料範圍跟畫面上的排行榜一致：
+        // 有選場次就只看那一場，沒選就是全部場次合併）
+        function openCardUsageDetail(rIdx, cardName) {
+            const r = raidLogLastRanked[rIdx];
+            if (!r) return;
+
+            const records = r.attacks
+                .filter(a => (a.cards || []).some(c => c.name === cardName))
+                .map(a => {
+                    const cardInfo = a.cards.find(c => c.name === cardName);
+                    const dmg = (a.cardDamage && a.cardDamage[cardName]) || 0;
+                    return {
+                        ts: a.ts, boss: a.boss, bossOrdinal: a.bossOrdinal, bossTotal: a.bossTotal,
+                        level: cardInfo ? cardInfo.level : null, damage: dmg
+                    };
+                }); // r.attacks 已經是新到舊排序，不用再排一次
+
+            const totalDamage = records.reduce((s, x) => s + x.damage, 0);
+            const img = raidCardImage(cardName);
+            const label = raidCardLabel(cardName);
+            const icon = img
+                ? `<img src="${img}" alt="${escapeHtml(label)}" style="width:32px; height:32px; border-radius:6px; object-fit:cover; display:block;">`
+                : '<span style="font-size:22px; line-height:32px; display:block; text-align:center;">🃏</span>';
+
+            const body = document.getElementById('card-usage-detail-body');
+            body.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                    ${icon}
+                    <div style="min-width:0;">
+                        <div style="font-weight:700; font-size:14px; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.player)} · ${escapeHtml(label)}</div>
+                        <div style="font-size:11.5px; color:#8a7a6a;">共 ${records.length} 次出刀・總傷害 ${escapeHtml(formatNumAlwaysM(totalDamage))}</div>
+                    </div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    ${records.map(rec => {
+                        const dmgLabel = rec.damage > 0 ? escapeHtml(formatNumAlwaysM(rec.damage)) : t('raidLogSupport');
+                        const bossStr = `${escapeHtml(rec.boss)}${rec.bossOrdinal ? ` (${rec.bossOrdinal}/${rec.bossTotal || 6})` : ''}`;
+                        return `
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; background:#fff; border:1px solid #ece3d4; border-radius:8px; font-size:12px;">
+                                <span style="color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(rec.ts)}</span>
+                                <span style="font-weight:700; color:#4a3a2a; flex-shrink:0;">Lv.${escapeHtml(String(rec.level))} ・ ${dmgLabel}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <button class="btn-close" style="width:100%; margin-top:14px;" onclick="closeCardUsageDetail()">關閉</button>
+            `;
+            document.getElementById('card-usage-detail-modal').style.display = 'flex';
+        }
+
+        function closeCardUsageDetail() {
+            document.getElementById('card-usage-detail-modal').style.display = 'none';
         }
 
         function clearRaidFullLog() {

@@ -5624,7 +5624,6 @@
         function apiSetRaidFromTitan(titan, ordinal) {
             if (!titan) return;
             const isSameTitan = raidState && apiCurrentEnemyId === titan.enemy_id;
-            const hadPreviousState = !!raidState; // 用來判斷這是不是第一次載入（第一次不用清空）
             apiCurrentEnemyId = titan.enemy_id;
             raidBossOrdinal = ordinal;
 
@@ -5656,28 +5655,13 @@
             raidLastSkillReminderNotifiedAt = 0;
             raidLastBossLowNotifiedAt = 0;
             raidBannedParts = []; // 換了新王，禁打標記歸零，等下一筆 titan_target 資料進來再重新套用
-
-            // 回到第一隻王，代表上一輪突襲已經全部清完、新一輪開始了，
-            // 把本機保存的上一輪攻擊紀錄清掉，避免新舊資料混在一起
-            if (hadPreviousState && ordinal === 1) {
-                saveRaidFullLog([]);
-            }
         }
 
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
-        let apiCurrentRaidStartedAt = null; // 這場突襲的開始時間（ISO字串），用來把攻擊紀錄依「場次」分組
-        let apiCurrentRaidLevel = null; // 這場突襲的等級（畫面顯示成 M-62 這種格式）
-
         function handleApiRaidStart(payload) {
-            if (payload && typeof payload.raid_started_at === 'string') {
-                apiCurrentRaidStartedAt = payload.raid_started_at;
-            }
-            if (payload && payload.raid && typeof payload.raid.level === 'number') {
-                apiCurrentRaidLevel = payload.raid.level;
-            }
-            // 自動偵測新場次：官方 API 的 sub_start / start / sub_cycle 事件都帶有
-            // 場次開始時間（和等級），收到就自動存進場次清單，之後不用再人工回報
-            if (apiCurrentRaidStartedAt) autoCaptureRaidSession(apiCurrentRaidStartedAt, apiCurrentRaidLevel);
+            // 場次開始時間／等級不再由瀏覽器自己記錄場次清單——伺服器 24 小時背景側錄
+            // 已經在做一樣的事（見 server.js 的 upsertRaidSessionIfNew），比只有網頁開著
+            // 才記得到更可靠，網頁需要場次清單時直接跟伺服器要（serverManualSessionsCache）
             const titans = payload && payload.raid && payload.raid.titans;
             const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
             if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
@@ -5783,92 +5767,69 @@
                 pushRaidRecentAttack(playerName, loc, layer === 'body' ? 'body' : 'armor', totalDmg);
             }
 
-            recordFullAttackLog(payload);
+            // 完整攻擊紀錄不再由瀏覽器自己記，改成完全信任伺服器 24 小時背景側錄寫進資料庫的那份，
+            // 這裡只需要更新「最近攻擊」跑馬燈跟即時血量畫面
             renderRaidStatus();
         }
 
         /* ══════════════════════════════════════════════════════════
-           完整攻擊紀錄：只要收到 attack 事件就立刻記錄下來（不像「最近攻擊」只留幾筆），
-           突襲結束後可以查詢某個成員這場總共用了哪些卡、各自造成多少傷害
+           完整攻擊紀錄：不再存在瀏覽器 localStorage 裡（不然無痕視窗、
+           不同裝置看到的資料都會不一樣，而且清瀏覽器資料就會整個消失）。
+           改成完全信任中繼伺服器那份資料庫——伺服器 24 小時背景側錄，
+           不管有沒有人開著網頁都會持續記錄，網頁只負責在需要顯示時
+           去問伺服器要最新資料，存進下面這個「只存在這次網頁瀏覽期間」
+           的記憶體變數裡，重新整理網頁就會重新跟伺服器要一次。
            ══════════════════════════════════════════════════════════ */
-        const RAID_FULL_LOG_KEY = 'tt2_raid_full_attack_log';
+        let serverAttackLogCache = []; // 伺服器資料庫裡的完整攻擊紀錄（這次瀏覽期間的記憶體快取，不寫入 localStorage）
+        let serverManualSessionsCache = []; // 伺服器資料庫裡的場次開始時間清單（同上，只存在記憶體）
 
-        function loadRaidFullLog() {
-            try {
-                const raw = localStorage.getItem(RAID_FULL_LOG_KEY);
-                return raw ? JSON.parse(raw) : [];
-            } catch (e) {
-                console.error('讀取完整攻擊紀錄失敗:', e);
-                return [];
+        // 跟中繼伺服器要最新的攻擊紀錄＋場次清單，兩份都是伺服器端資料庫的資料，
+        // 任何瀏覽器（含無痕視窗）問到的都是同一份。失敗就保留原本記憶體裡的舊資料，
+        // 呼叫端自己決定要不要提示使用者「連不到伺服器」
+        async function fetchServerRaidData(relayUrl) {
+            const [logResp, sessionsResp] = await Promise.all([
+                fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`),
+                fetch(`${relayUrl}${raidWatcherPathPrefix()}/manual-raid-sessions`)
+            ]);
+            if (logResp.ok) {
+                const data = await logResp.json();
+                if (Array.isArray(data.attacks)) serverAttackLogCache = data.attacks;
+
+                const cb = data.currentBoss;
+                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0) {
+                    // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
+                    // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
+                    apiHasReceivedAttack = true;
+                    apiCurrentEnemyId = cb.enemyId || null;
+                    raidBossOrdinal = cb.ordinal || 1;
+                    apiBossTotal = cb.total || 6;
+                    raidState = {
+                        bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
+                        bossName: cb.name || '—',
+                        bossOrdinal: cb.ordinal || 1,
+                        parts: cb.parts,
+                        maxHp: cb.killMaxHp,
+                        currentHp: typeof cb.bossCurrentHp === 'number' ? cb.bossCurrentHp : sumBodyHp(cb.parts),
+                        killMaxHp: cb.killMaxHp,
+                        updatedAt: Date.now()
+                    };
+                    renderRaidStatus();
+                }
+            }
+            if (sessionsResp.ok) {
+                const data = await sessionsResp.json();
+                if (Array.isArray(data.sessions)) serverManualSessionsCache = data.sessions;
             }
         }
 
-        function saveRaidFullLog(log) {
+        // 面板要顯示資料前，先確保這次瀏覽期間的記憶體快取是最新的（示範模式除外）；
+        // 連不到伺服器就靜默失敗，沿用目前記憶體裡已有的資料，不會去讀任何本機備份
+        async function ensureServerRaidDataFresh() {
+            if (raidLogDemoActive) return;
             try {
-                localStorage.setItem(RAID_FULL_LOG_KEY, JSON.stringify(log));
-            } catch (e) {
-                console.error('儲存完整攻擊紀錄失敗（可能超過瀏覽器儲存空間上限）:', e);
-            }
-        }
-
-        function recordFullAttackLog(payload) {
-            const playerName = (payload.player && payload.player.name) || '?';
-            const bossName = (raidState && raidState.bossName) || '—';
-            const bossOrdinal = (raidState && raidState.bossOrdinal) || raidBossOrdinal || 0;
-            const bossTotal = apiBossTotal || 6;
-
-            // 這次攻擊實際裝備的卡片（不含點擊攻擊），直接從 cards_level 拿，就是畫面上那 3 張卡
-            const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({
-                name: cl.id,
-                level: cl.value
-            }));
-            const playerCode = (payload.player && payload.player.player_code) || null;
-            const raidLevel = (payload.player && typeof payload.player.raid_level === 'number') ? payload.player.raid_level : null;
-            const attacksRemaining = (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null;
-
-            // 每個部位「三層」（盔甲/肉體/骨架）各自的傷害，不要把骨架併進盔甲
-            const partTotals = {}; // "armor_Head" -> { part, layer, damage }
-            // 每張卡片造成的總傷害；id 是 null/沒有 = 點擊傷害（TapDamage）
-            const cardDamageTotals = {};
-            ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
-                const cardKey = cd.id || '__tap__';
-                (cd.damage_log || []).forEach(d => {
-                    const { layer, loc } = apiSplitPartId(d.id);
-                    const key = `${layer}_${loc}`;
-                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer || 'armor', damage: 0 };
-                    partTotals[key].damage += d.value;
-                    cardDamageTotals[cardKey] = (cardDamageTotals[cardKey] || 0) + d.value;
-                });
-            });
-            const parts = Object.values(partTotals);
-            if (parts.length === 0) return;
-
-            const totalDamage = parts.reduce((s, p) => s + p.damage, 0);
-            const tapDamage = cardDamageTotals.__tap__ || 0;
-            const cardDamage = {};
-            Object.keys(cardDamageTotals).forEach(k => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
-
-            const log = loadRaidFullLog();
-            log.push({
-                ts: Date.now(),
-                attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null, // 遊戲本身的時間戳記，用來判斷是不是同一筆真實攻擊（不管誰先收到）
-                cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
-                raidStartedAt: apiCurrentRaidStartedAt, // 這筆攻擊屬於哪一場突襲（用突襲開始時間當場次識別碼）
-                raidLevelTier: apiCurrentRaidLevel, // 這場突襲的等級，畫面顯示成 M-62 這種格式
-                player: playerName,
-                playerCode,
-                raidLevel,
-                attacksRemaining,
-                boss: bossName,
-                bossOrdinal,
-                bossTotal,
-                cards,
-                cardDamage,
-                tapDamage,
-                parts,
-                totalDamage
-            });
-            saveRaidFullLog(log);
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                await fetchServerRaidData(relayUrl);
+            } catch (e) { /* 離線時沿用記憶體裡目前已有的資料 */ }
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -5997,13 +5958,8 @@
             box.style.display = 'flex';
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
             try {
-                // 先跟中繼伺服器同步最新的攻擊紀錄再分場次；同步失敗就用本機已有的紀錄
-                if (!raidLogDemoActive) {
-                    try {
-                        const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                        await mergeServerFullAttackLog(relayUrl);
-                    } catch (e) { /* 離線時直接用本機紀錄 */ }
-                }
+                // 先跟中繼伺服器要最新的攻擊紀錄再分場次
+                await ensureServerRaidDataFresh();
 
                 // 跟攻擊紀錄共用同一套場次分組（最新的場次在最上面）
                 const sessions = buildRaidSessions();
@@ -6122,58 +6078,13 @@
 
         // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
         // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
-        /* ══════════════════════════════════════════════════════════
-           手動場次標記：每次突襲結束後，使用者直接告訴我「開始時間＋等級」，
-           就手動加進這份清單，讓「依場次瀏覽」就算沒有即時連線抓到
-           raid_started_at，也能正確把那個時間點之後的攻擊紀錄分進同一場。
-           存在 localStorage，之後告訴我新的場次會持續累加進來。
-           ══════════════════════════════════════════════════════════ */
-        const MANUAL_RAID_SESSION_KEY = 'tt2_manual_raid_sessions';
-        // 使用者目前已經告訴我的場次，之後每次再告訴我，就加一筆新的進來
-        const DEFAULT_MANUAL_RAID_SESSIONS = [
-            { startedAt: '2026-07-14T22:40:00', levelTier: 62 },
-            { startedAt: '2026-07-19T22:30:00', levelTier: 67 }
-        ];
-        function loadManualRaidSessions() {
-            let list = [];
-            try { list = JSON.parse(localStorage.getItem(MANUAL_RAID_SESSION_KEY) || '[]'); } catch (e) { list = []; }
-            // 確保預設場次一定存在（合併、不會覆蓋掉使用者之後自己加的）
-            DEFAULT_MANUAL_RAID_SESSIONS.forEach(def => {
-                if (!list.some(s => s.startedAt === def.startedAt)) list.push(def);
-            });
-            return list;
-        }
+        // 場次開始時間清單（含等級）現在完全由伺服器維護（server.js 的 24 小時背景側錄
+        // 自動偵測、寫進資料庫），網頁只要讀 serverManualSessionsCache 就好，
+        // 不用再自己存一份 localStorage、也不用自動記錄的邏輯。
 
         // 開始時間差在這個範圍內就視為同一場：官方 API 回報的是 UTC 時間、
         // 手動填的是當地時間（可能有幾分鐘誤差），避免同一場出現兩個場次欄位
         const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
-
-        /* 自動偵測場次：只要有任何一台裝置在突襲期間開著頁面（有連線），
-           收到官方 API 的場次開始資訊就自動記錄「開始時間＋等級」，
-           攻擊紀錄／牌組參考／紫球&鏡子力／漏打名單四個面板的場次欄位會自動長出來 */
-        function autoCaptureRaidSession(startedAt, levelTier) {
-            const ts = parseRaidSessionTs(startedAt);
-            if (!ts) return;
-            let list = [];
-            try { list = JSON.parse(localStorage.getItem(MANUAL_RAID_SESSION_KEY) || '[]'); } catch (e) { list = []; }
-            const all = list.concat(DEFAULT_MANUAL_RAID_SESSIONS);
-            const dup = all.find(x => Math.abs(parseRaidSessionTs(x.startedAt) - ts) < RAID_SESSION_MATCH_MS);
-            if (dup) {
-                // 這場已經記過了：只在原本沒記到等級時補上等級
-                if (!dup.levelTier && typeof levelTier === 'number') {
-                    const inList = list.find(x => x.startedAt === dup.startedAt);
-                    if (inList) {
-                        inList.levelTier = levelTier;
-                        localStorage.setItem(MANUAL_RAID_SESSION_KEY, JSON.stringify(list));
-                    }
-                }
-                return;
-            }
-            list.push({ startedAt, levelTier: (typeof levelTier === 'number') ? levelTier : null });
-            localStorage.setItem(MANUAL_RAID_SESSION_KEY, JSON.stringify(list));
-            // 攻擊紀錄的場次選單如果正開著，馬上長出新場次
-            try { if (typeof renderRaidSessionMenu === 'function') renderRaidSessionMenu(); } catch (e) {}
-        }
 
         // 場次時間字串轉毫秒：有些來源的時間是「2026-07-14 22:40:00」用空白隔開，
         // iPhone Safari 的 Date 解析不了會變成 NaN，導致排序失效（新舊順序亂掉），
@@ -6186,7 +6097,7 @@
         }
 
         function buildRaidSessions() {
-            const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const log = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
 
             // 已知場次開始時間跟等級，來源有兩種：① 有即時連線時記錄下來的 raidStartedAt 標記，
             // ② 使用者事後手動告訴我的場次時間；兩者合併，由早到晚排序，
@@ -6197,7 +6108,7 @@
                     startToLevel.set(a.raidStartedAt, a.raidLevelTier);
                 }
             });
-            loadManualRaidSessions().forEach(s => {
+            serverManualSessionsCache.forEach(s => {
                 if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
             });
             const rawStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
@@ -6330,7 +6241,7 @@
         }
 
         function buildRaidLogRanking(keyword) {
-            const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
             // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
             // 否則回溯歸類進來的舊資料會因為欄位本身還是空的而被漏掉
@@ -6359,21 +6270,6 @@
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
-        }
-
-        // 保險機制：清掉可能已經存在的重複紀錄（例如這次修正之前就已經重複存進去的舊資料）
-        function dedupRaidFullLog(log) {
-            const seen = new Set();
-            const deduped = [];
-            log.forEach(entry => {
-                const key = raidLogDedupKey(entry);
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    deduped.push(entry);
-                }
-            });
-            if (deduped.length !== log.length) saveRaidFullLog(deduped);
-            return deduped;
         }
 
         // 相對日期顯示：今天/昨天/幾天前，搭配時間（沿用畫面上其他地方一致的 24 小時制）
@@ -6411,7 +6307,7 @@
         function buildTopDecks(attackList) {
             // attackList 有給就只統計那一場的攻擊（依場次瀏覽用），沒給就照舊統計全部
             const log = attackList ? attackList.slice()
-                : (raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog()));
+                : (raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache);
             const decks = new Map(); // "CardA|CardB|CardC" -> { cards: [原始順序], count, totalDamage }
             log.forEach(a => {
                 const names = (a.cards || []).map(c => c.name).filter(Boolean);
@@ -6520,11 +6416,13 @@
             renderTopDecks();
         }
 
-        function renderTopDecks() {
+        async function renderTopDecks() {
             const box = document.getElementById('top-decks-result');
             box.style.display = 'flex';
 
-            // 跟其他面板同一套場次分組：新的場次在最上面，預設自動選最新一場
+            // 先跟中繼伺服器要最新攻擊紀錄，再跟其他面板同一套場次分組：
+            // 新的場次在最上面，預設自動選最新一場
+            await ensureServerRaidDataFresh();
             const sessions = buildRaidSessions();
             let decks;
             if (sessions.length === 0) {
@@ -6658,7 +6556,7 @@
            就跳過，確保最後選出來的六組「彼此之間卡片完全不重複」。
            ══════════════════════════════════════════════════════════ */
         function buildBestSixGroups() {
-            const log = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const log = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             const decks = new Map(); // "CardA|CardB|CardC" -> { cards, count, totalDamage }
             log.forEach(a => {
                 const names = (a.cards || []).map(c => c.name).filter(Boolean);
@@ -6759,12 +6657,19 @@
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
                 // 攻擊紀錄跟其他三個面板一樣，點開就直接重新查詢，不用另外按重新整理
-                if (id === 'attacklog') { renderRaidSessionMenu(); renderRaidLogQueryResult(); }
+                if (id === 'attacklog') openAttackLogPanel();
                 if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
                 if (id === 'cardusage') renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
                 if (id === 'missed') renderMissedAttackList(); // 點開就直接依場次顯示，不用再填時間
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+        }
+
+        // 攻擊紀錄面板：先跟伺服器要最新資料，再重新畫場次選單跟排行榜
+        async function openAttackLogPanel() {
+            await ensureServerRaidDataFresh();
+            renderRaidSessionMenu();
+            renderRaidLogQueryResult();
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -6824,13 +6729,8 @@
             box.style.display = 'flex';
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
 
-            // 先跟中繼伺服器同步最新攻擊紀錄再分場次；同步失敗就用本機已有的紀錄
-            if (!raidLogDemoActive) {
-                try {
-                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                    await mergeServerFullAttackLog(relayUrl);
-                } catch (e) { /* 離線時直接用本機紀錄 */ }
-            }
+            // 先跟中繼伺服器要最新攻擊紀錄再分場次
+            await ensureServerRaidDataFresh();
 
             const sessions = buildRaidSessions();
             if (sessions.length === 0) {
@@ -6858,7 +6758,7 @@
             // 根本不會出現在 attacks 裡、也就永遠不會被列進漏打名單。
             // 改成用「歷史所有場次曾經出現過的人」當作成員名單（來自跟中繼伺服器同步的完整紀錄），
             // 這樣就算某人這場 0 次攻擊，只要他是曾經同步過紀錄的成員，也會被列出來（例如 0/18）
-            const fullLogForRoster = raidLogDemoActive ? raidLogDemoData.slice() : dedupRaidFullLog(loadRaidFullLog());
+            const fullLogForRoster = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             const allPlayers = new Set(fullLogForRoster.map(a => a.player));
 
             // 每個人在「這一場」的均傷（總傷害 ÷ 出刀次數；完全沒出刀就是 0），
@@ -7188,12 +7088,25 @@
             document.getElementById('card-usage-detail-modal').style.display = 'none';
         }
 
-        function clearRaidFullLog() {
-            if (!confirm('確定要清空完整攻擊紀錄嗎？這個動作無法復原。')) return;
-            saveRaidFullLog([]);
-            const resultWrap = document.getElementById('raid-log-query-result');
-            if (resultWrap) resultWrap.style.display = 'none';
-            showPlayerCopyToastLike('已清空攻擊紀錄');
+        async function clearRaidFullLog() {
+            // 攻擊紀錄現在是伺服器上「全公會共用」的資料庫，不是只清自己瀏覽器的快取，
+            // 清空之後所有人都看不到舊紀錄，所以警語要講清楚
+            if (!confirm('確定要清空「全公會共用」的攻擊紀錄資料庫嗎？這個動作無法復原，清空後所有人都看不到舊紀錄。')) return;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/clear`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: true })
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                serverAttackLogCache = [];
+                const resultWrap = document.getElementById('raid-log-query-result');
+                if (resultWrap) resultWrap.style.display = 'none';
+                showPlayerCopyToastLike('已清空攻擊紀錄');
+            } catch (e) {
+                alert('清空失敗，請確認網路連線後再試一次：' + (e && e.message ? e.message : String(e)));
+            }
         }
 
         function disconnectRaidAPI() {
@@ -7267,7 +7180,7 @@
 
             raidConnState = 'connected';
             setRaidConnectStatus('✓ 已連線', 'ok');
-            mergeServerFullAttackLog(relayUrl);
+            fetchServerRaidData(relayUrl);
             startRaidLogAutoSync(relayUrl);
         }
 
@@ -7283,7 +7196,7 @@
                     stopRaidLogAutoSync();
                     return;
                 }
-                mergeServerFullAttackLog(relayUrl);
+                fetchServerRaidData(relayUrl);
             }, RAID_LOG_SYNC_INTERVAL_MS);
         }
 
@@ -7292,14 +7205,6 @@
                 clearInterval(raidLogSyncTimer);
                 raidLogSyncTimer = null;
             }
-        }
-
-        // 連線成功後，跟 relay server 要它 24 小時側錄下來的完整攻擊紀錄，
-        // 合併進手機本機的紀錄裡，這樣查詢時才看得到「網頁沒開著」那段時間發生的攻擊；
-        // 同時把伺服器已經確認過的即時王血量狀態直接拿來顯示，不用等這次連線後剛好有人攻擊
-        function raidLogDedupKey(entry) {
-            // 優先用遊戲本身的時間戳記（不管誰先收到都一樣），沒有的話（舊資料）才退回用本機收到時間
-            return entry.attackDatetime ? `${entry.attackDatetime}_${entry.player}` : `${entry.ts}_${entry.player}`;
         }
 
         // 如果這個瀏覽器有自己註冊過背景側錄，就用 /watchers/{id}/... 這組專屬端點；
@@ -7336,55 +7241,6 @@
                     : '✓ 註冊成功！伺服器已經開始 24 小時側錄你的公會';
             } catch (e) {
                 statusEl.textContent = '註冊失敗：' + (e && e.message ? e.message : String(e));
-            }
-        }
-
-        async function mergeServerFullAttackLog(relayUrl) {
-            try {
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`);
-                if (!resp.ok) return;
-                const data = await resp.json();
-
-                if (Array.isArray(data.attacks) && data.attacks.length > 0) {
-                    const localLog = loadRaidFullLog();
-                    const existingKeys = new Set(localLog.map(raidLogDedupKey));
-                    let addedCount = 0;
-                    data.attacks.forEach(entry => {
-                        const key = raidLogDedupKey(entry);
-                        if (!existingKeys.has(key)) {
-                            localLog.push(entry);
-                            existingKeys.add(key);
-                            addedCount++;
-                        }
-                    });
-                    if (addedCount > 0) {
-                        localLog.sort((a, b) => a.ts - b.ts);
-                        saveRaidFullLog(localLog);
-                    }
-                }
-
-                const cb = data.currentBoss;
-                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0) {
-                    // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
-                    // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
-                    apiHasReceivedAttack = true;
-                    apiCurrentEnemyId = cb.enemyId || null;
-                    raidBossOrdinal = cb.ordinal || 1;
-                    apiBossTotal = cb.total || 6;
-                    raidState = {
-                        bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
-                        bossName: cb.name || '—',
-                        bossOrdinal: cb.ordinal || 1,
-                        parts: cb.parts,
-                        maxHp: cb.killMaxHp,
-                        currentHp: typeof cb.bossCurrentHp === 'number' ? cb.bossCurrentHp : sumBodyHp(cb.parts),
-                        killMaxHp: cb.killMaxHp,
-                        updatedAt: Date.now()
-                    };
-                    renderRaidStatus();
-                }
-            } catch (e) {
-                console.error('合併伺服器端攻擊紀錄失敗:', e);
             }
         }
 

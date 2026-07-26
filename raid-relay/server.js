@@ -14,6 +14,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const { io: ioClient } = require('socket.io-client');
 const webpush = require('web-push');
+const Database = require('better-sqlite3');
 
 const app = express();
 app.use(cors());
@@ -204,11 +205,165 @@ function writeJsonSafe(filePath, data) {
   }
 }
 
+/* ══════════════════════════════════════════════════════════
+   攻擊紀錄資料庫（SQLite）
+   攻擊紀錄不再放在瀏覽器 localStorage、也不再只是伺服器記憶體裡一個
+   會被清空的陣列——改成寫進這個資料庫檔案，永久保留，不會因為「新一輪
+   突襲開始」就被清掉。不管用無痕視窗還是一般視窗打開網頁，看到的都是
+   同一份伺服器端資料。
+   DB_PATH 可以用環境變數指到外接的持久化磁碟（例如 Render 的
+   Persistent Disk），沒設定的話預設放在跟這支程式同一個資料夾——
+   要注意：沒有外接持久化磁碟的話，平台重新部署還是可能把這個檔案
+   跟著容器一起洗掉，跟現在的 JSON 檔案風險一樣，之後要徹底解決
+   還是得掛一個持久化磁碟。
+   ══════════════════════════════════════════════════════════ */
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'raid_data.sqlite3');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS attacks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dedup_key TEXT UNIQUE NOT NULL,
+    ts INTEGER NOT NULL,
+    attack_datetime TEXT,
+    cycle INTEGER,
+    raid_started_at TEXT,
+    raid_level_tier INTEGER,
+    player TEXT NOT NULL,
+    player_code TEXT,
+    raid_level INTEGER,
+    attacks_remaining INTEGER,
+    boss TEXT,
+    boss_ordinal INTEGER,
+    boss_total INTEGER,
+    cards TEXT,
+    card_damage TEXT,
+    tap_damage INTEGER,
+    parts TEXT,
+    total_damage INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts);
+  CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at);
+
+  CREATE TABLE IF NOT EXISTS manual_raid_sessions (
+    started_at TEXT PRIMARY KEY,
+    level_tier INTEGER
+  );
+`);
+
+function attackDedupKey(entry) {
+  return `${entry.attackDatetime || entry.ts}_${entry.player}`;
+}
+
+const insertAttackStmt = db.prepare(`
+  INSERT OR IGNORE INTO attacks
+    (dedup_key, ts, attack_datetime, cycle, raid_started_at, raid_level_tier, player, player_code,
+     raid_level, attacks_remaining, boss, boss_ordinal, boss_total, cards, card_damage, tap_damage, parts, total_damage)
+  VALUES (@dedup_key, @ts, @attack_datetime, @cycle, @raid_started_at, @raid_level_tier, @player, @player_code,
+     @raid_level, @attacks_remaining, @boss, @boss_ordinal, @boss_total, @cards, @card_damage, @tap_damage, @parts, @total_damage)
+`);
+
+function insertAttack(entry) {
+  insertAttackStmt.run({
+    dedup_key: attackDedupKey(entry),
+    ts: entry.ts,
+    attack_datetime: entry.attackDatetime || null,
+    cycle: (typeof entry.cycle === 'number') ? entry.cycle : null,
+    raid_started_at: entry.raidStartedAt || null,
+    raid_level_tier: (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : null,
+    player: entry.player,
+    player_code: entry.playerCode || null,
+    raid_level: (typeof entry.raidLevel === 'number') ? entry.raidLevel : null,
+    attacks_remaining: (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : null,
+    boss: entry.boss || null,
+    boss_ordinal: entry.bossOrdinal || null,
+    boss_total: entry.bossTotal || null,
+    cards: JSON.stringify(entry.cards || []),
+    card_damage: JSON.stringify(entry.cardDamage || {}),
+    tap_damage: entry.tapDamage || 0,
+    parts: JSON.stringify(entry.parts || []),
+    total_damage: entry.totalDamage || 0
+  });
+}
+
+function rowToAttack(row) {
+  return {
+    ts: row.ts,
+    attackDatetime: row.attack_datetime,
+    cycle: row.cycle,
+    raidStartedAt: row.raid_started_at,
+    raidLevelTier: row.raid_level_tier,
+    player: row.player,
+    playerCode: row.player_code,
+    raidLevel: row.raid_level,
+    attacksRemaining: row.attacks_remaining,
+    boss: row.boss,
+    bossOrdinal: row.boss_ordinal,
+    bossTotal: row.boss_total,
+    cards: JSON.parse(row.cards || '[]'),
+    cardDamage: JSON.parse(row.card_damage || '{}'),
+    tapDamage: row.tap_damage,
+    parts: JSON.parse(row.parts || '[]'),
+    totalDamage: row.total_damage
+  };
+}
+
+const selectAllAttacksStmt = db.prepare('SELECT * FROM attacks ORDER BY ts ASC');
+function getAllAttacks() { return selectAllAttacksStmt.all().map(rowToAttack); }
+
+const countAttacksStmt = db.prepare('SELECT COUNT(*) AS c FROM attacks');
+const deleteAllAttacksStmt = db.prepare('DELETE FROM attacks');
+function clearAllAttacks() { deleteAllAttacksStmt.run(); }
+
+const selectManualSessionsStmt = db.prepare('SELECT started_at, level_tier FROM manual_raid_sessions');
+function getManualRaidSessions() {
+  return selectManualSessionsStmt.all().map(r => ({ startedAt: r.started_at, levelTier: r.level_tier }));
+}
+const insertManualSessionStmt = db.prepare('INSERT OR IGNORE INTO manual_raid_sessions (started_at, level_tier) VALUES (?, ?)');
+const updateManualSessionLevelStmt = db.prepare('UPDATE manual_raid_sessions SET level_tier = ? WHERE started_at = ?');
+
+// 場次開始時間差在這範圍內視為同一場（跟前端 RAID_SESSION_MATCH_MS 邏輯一致）
+const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
+function upsertRaidSessionIfNew(startedAt, levelTier) {
+  if (!startedAt) return;
+  const ts = new Date(startedAt).getTime();
+  if (isNaN(ts)) return;
+  const dup = getManualRaidSessions().find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
+  if (dup) {
+    if (dup.levelTier == null && typeof levelTier === 'number') {
+      updateManualSessionLevelStmt.run(levelTier, dup.startedAt);
+    }
+    return;
+  }
+  insertManualSessionStmt.run(startedAt, (typeof levelTier === 'number') ? levelTier : null);
+}
+
+// 預設場次（沿用原本寫在前端程式碼裡、當作種子資料的兩筆）
+const DEFAULT_MANUAL_RAID_SESSIONS = [
+  { startedAt: '2026-07-14T22:40:00', levelTier: 62 },
+  { startedAt: '2026-07-19T22:30:00', levelTier: 67 }
+];
+if (getManualRaidSessions().length === 0) {
+  DEFAULT_MANUAL_RAID_SESSIONS.forEach(s => insertManualSessionStmt.run(s.startedAt, s.levelTier));
+}
+
+// 一次性搬家：把舊版存在 full_attack_log.json 的資料搬進資料庫。用 INSERT OR IGNORE
+// 靠 dedup_key 天然防重複，所以每次開機都可以放心重跑，不會重複匯入。
+(function migrateJsonAttackLogToDb(filePath, label) {
+  const oldLog = readJsonSafe(filePath, []);
+  if (oldLog.length === 0) return;
+  const before = countAttacksStmt.get().c;
+  const insertMany = db.transaction((rows) => { rows.forEach(insertAttack); });
+  insertMany(oldLog);
+  const added = countAttacksStmt.get().c - before;
+  if (added > 0) console.log(`[migrate] 已把 ${added} 筆${label}攻擊紀錄搬進資料庫`);
+})(FULL_LOG_PATH, '舊版 JSON ');
+
 let watcherSocket = null;
 let watcherReconnectTimer = null;
 let watcherRaidTitans = [];
 let watcherSpawnSequence = [];
-let fullAttackLog = readJsonSafe(FULL_LOG_PATH, []);
 let cycleSummaries = readJsonSafe(CYCLE_SUMMARIES_PATH, []);
 let pushSubscriptions = readJsonSafe(SUBSCRIPTIONS_PATH, []);
 
@@ -219,24 +374,11 @@ function recoverOrphanedMultiTenantData() {
   const orphanDir = path.join(__dirname, 'watcher_data', 'default');
   if (!fs.existsSync(orphanDir)) return;
 
-  const orphanLog = readJsonSafe(path.join(orphanDir, 'full_attack_log.json'), []);
-  if (orphanLog.length > 0) {
-    const existingKeys = new Set(fullAttackLog.map(e => `${e.attackDatetime || e.ts}_${e.player}`));
-    let addedCount = 0;
-    orphanLog.forEach((entry) => {
-      const key = `${entry.attackDatetime || entry.ts}_${entry.player}`;
-      if (!existingKeys.has(key)) {
-        fullAttackLog.push(entry);
-        existingKeys.add(key);
-        addedCount++;
-      }
-    });
-    if (addedCount > 0) {
-      fullAttackLog.sort((a, b) => a.ts - b.ts);
-      writeJsonSafe(FULL_LOG_PATH, fullAttackLog);
-      console.log(`[recover] 從多公會版孤兒資料裡撿回 ${addedCount} 筆攻擊紀錄`);
-    }
-  }
+  const before = countAttacksStmt.get().c;
+  const insertMany = db.transaction((rows) => { rows.forEach(insertAttack); });
+  insertMany(readJsonSafe(path.join(orphanDir, 'full_attack_log.json'), []));
+  const added = countAttacksStmt.get().c - before;
+  if (added > 0) console.log(`[recover] 從多公會版孤兒資料裡撿回 ${added} 筆攻擊紀錄`);
 
   const orphanSummaries = readJsonSafe(path.join(orphanDir, 'cycle_summaries.json'), []);
   if (orphanSummaries.length > 0) {
@@ -271,8 +413,9 @@ let watcherBossChangedAt = 0;
 let watcherLastSkillReminder = 'none';
 let watcherLastSkillReminderAt = 0;
 let watcherLastCycle = null;
+let watcherCurrentRaidStartedAt = null; // 這場突襲的開始時間，用來把攻擊紀錄依「場次」分組
+let watcherCurrentRaidLevel = null; // 這場突襲的等級（畫面顯示成 M-62 這種格式）
 
-function saveFullAttackLog() { writeJsonSafe(FULL_LOG_PATH, fullAttackLog); }
 function saveCycleSummaries() { writeJsonSafe(CYCLE_SUMMARIES_PATH, cycleSummaries); }
 function savePushSubscriptions() { writeJsonSafe(SUBSCRIPTIONS_PATH, pushSubscriptions); }
 function saveCurrentBossState() {
@@ -556,6 +699,16 @@ function splitPartId(partId) {
 }
 
 function watcherHandleRaidSnapshot(payload) {
+  // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
+  // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
+  if (payload && typeof payload.raid_started_at === 'string') {
+    watcherCurrentRaidStartedAt = payload.raid_started_at;
+  }
+  if (payload && payload.raid && typeof payload.raid.level === 'number') {
+    watcherCurrentRaidLevel = payload.raid.level;
+  }
+  if (watcherCurrentRaidStartedAt) upsertRaidSessionIfNew(watcherCurrentRaidStartedAt, watcherCurrentRaidLevel);
+
   const titans = payload && payload.raid && payload.raid.titans;
   const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
   if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
@@ -596,11 +749,6 @@ function watcherHandleAttack(payload) {
     watcherLastSkillReminder = 'none';
     if (!isFirstBoss) {
       sendPushToAll('⚔️ 換王了！', `目前是：${watcherBossName}（${watcherBossOrdinal}/${watcherBossTotal || 6}）`, 'tt2-boss-change');
-      if (ordinal === 1 && fullAttackLog.length > 0) {
-        console.log(`[watcher] 偵測到新一輪突襲開始，清空上一輪的攻擊紀錄`);
-        fullAttackLog = [];
-        saveFullAttackLog();
-      }
     }
   } else {
     watcherBossOrdinal = ordinal;
@@ -649,10 +797,12 @@ function watcherHandleAttack(payload) {
   const cardDamage = {};
   Object.keys(cardDamageTotals).forEach((k) => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
 
-  fullAttackLog.push({
+  insertAttack({
     ts: Date.now(),
     attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null,
     cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
+    raidStartedAt: watcherCurrentRaidStartedAt, // 這筆攻擊屬於哪一場突襲（用突襲開始時間當場次識別碼）
+    raidLevelTier: watcherCurrentRaidLevel, // 這場突襲的等級，畫面顯示成 M-62 這種格式
     player: playerName,
     playerCode,
     raidLevel,
@@ -666,7 +816,6 @@ function watcherHandleAttack(payload) {
     parts,
     totalDamage
   });
-  saveFullAttackLog();
 }
 
 function handleWatcherRaidEnd(reason) {
@@ -745,13 +894,17 @@ startWatcher();
 
 app.get('/full-attack-log', (req, res) => {
   res.json({
-    attacks: fullAttackLog,
+    attacks: getAllAttacks(),
     currentBoss: {
       name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
       enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
       bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
     }
   });
+});
+
+app.get('/manual-raid-sessions', (req, res) => {
+  res.json({ sessions: getManualRaidSessions() });
 });
 
 function fmtNum(n) {
@@ -761,13 +914,14 @@ function fmtNum(n) {
 }
 
 app.get('/full-attack-log/summary', (req, res) => {
-  const totalDamage = fullAttackLog.reduce((s, a) => s + (a.totalDamage || 0), 0);
-  const playerSet = new Set(fullAttackLog.map(a => a.player));
+  const attacks = getAllAttacks();
+  const totalDamage = attacks.reduce((s, a) => s + (a.totalDamage || 0), 0);
+  const playerSet = new Set(attacks.map(a => a.player));
   res.send(`
     <html><body style="font-family:sans-serif; padding:24px; line-height:1.8;">
       <h2>攻擊紀錄統計</h2>
       <p><b>累積總傷害：</b>${fmtNum(totalDamage)}（精確值：${totalDamage}）</p>
-      <p><b>攻擊筆數：</b>${fullAttackLog.length}</p>
+      <p><b>攻擊筆數：</b>${attacks.length}</p>
       <p><b>參與人數：</b>${playerSet.size}</p>
     </body></html>
   `);
@@ -777,14 +931,22 @@ app.get('/full-attack-log/clear', (req, res) => {
   if (req.query.confirm !== 'yes') {
     return res.send(`
       <html><body style="font-family:sans-serif; padding:24px; text-align:center;">
-        <p style="font-size:18px;">確定要清空完整攻擊紀錄嗎？<br>請先確認已經在網頁上查詢/備份過了。</p>
+        <p style="font-size:18px;">確定要清空完整攻擊紀錄嗎？這是所有人共用的資料庫，清空後全公會都看不到舊紀錄。<br>請先確認已經在網頁上查詢/備份過了。</p>
         <a href="/full-attack-log/clear?confirm=yes" style="display:inline-block; margin-top:16px; padding:12px 24px; background:#c62828; color:white; border-radius:8px; text-decoration:none;">確定清空</a>
       </body></html>
     `);
   }
-  fullAttackLog = [];
-  saveFullAttackLog();
+  clearAllAttacks();
   res.send('<html><body style="font-family:sans-serif; padding:24px; text-align:center;">✓ 已清空</body></html>');
+});
+
+// 給網頁上「🗑️ 清空攻擊紀錄」按鈕用的 API 版本（同一個資料庫，清掉的是全公會共用的紀錄）
+app.post('/full-attack-log/clear', (req, res) => {
+  if (!(req.body && req.body.confirm === true)) {
+    return res.status(400).json({ error: 'missing confirm' });
+  }
+  clearAllAttacks();
+  res.json({ ok: true });
 });
 
 app.get('/cycle-summaries', (req, res) => {

@@ -14,7 +14,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const { io: ioClient } = require('socket.io-client');
 const webpush = require('web-push');
-const Database = require('better-sqlite3');
+const { google } = require('googleapis');
 
 const app = express();
 app.use(cors());
@@ -183,7 +183,6 @@ function watcherNextBackoffMs() {
   return Math.min(delay, WATCHER_MAX_BACKOFF_MS);
 }
 
-const FULL_LOG_PATH = path.join(__dirname, 'full_attack_log.json');
 const CURRENT_BOSS_STATE_PATH = path.join(__dirname, 'current_boss_state.json');
 const CYCLE_SUMMARIES_PATH = path.join(__dirname, 'cycle_summaries.json');
 const SUBSCRIPTIONS_PATH = path.join(__dirname, 'push_subscriptions.json');
@@ -206,157 +205,234 @@ function writeJsonSafe(filePath, data) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   攻擊紀錄資料庫（SQLite）
-   攻擊紀錄不再放在瀏覽器 localStorage、也不再只是伺服器記憶體裡一個
-   會被清空的陣列——改成寫進這個資料庫檔案，永久保留，不會因為「新一輪
-   突襲開始」就被清掉。不管用無痕視窗還是一般視窗打開網頁，看到的都是
-   同一份伺服器端資料。
-   DB_PATH 可以用環境變數指到外接的持久化磁碟（例如 Render 的
-   Persistent Disk），沒設定的話預設放在跟這支程式同一個資料夾——
-   要注意：沒有外接持久化磁碟的話，平台重新部署還是可能把這個檔案
-   跟著容器一起洗掉，跟現在的 JSON 檔案風險一樣，之後要徹底解決
-   還是得掛一個持久化磁碟。
+   攻擊紀錄資料庫（Google 試算表）
+   攻擊紀錄不再放在瀏覽器 localStorage、也不再是伺服器記憶體裡一個
+   會被清空的陣列——改成寫進公會自己的 Google 試算表，永久保留，
+   不會因為「新一輪突襲開始」就被清掉，也不會因為 Render 重新部署
+   把伺服器容器洗掉而跟著消失（試算表存在 Google 那邊，跟這支程式
+   的執行環境完全無關）。
+   讀取走「開機時整份讀進記憶體、之後都直接查記憶體」，寫入走
+   「先進記憶體、每隔幾秒批次寫回試算表」，這樣查詢速度不受
+   Google Sheets API 影響，也不會因為出刀太頻繁而撞到 API 頻率限制。
+   需要三個環境變數：GOOGLE_SERVICE_ACCOUNT_EMAIL、
+   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY、GOOGLE_SHEET_ID，
+   沒設定的話攻擊紀錄退回「只存在記憶體」（重啟就會消失，先求網站
+   能動，設定好之後就會自動恢復正常寫入）。
    ══════════════════════════════════════════════════════════ */
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'raid_data.sqlite3');
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
+// 私鑰貼進 Render 環境變數時，換行常常會被存成字面上的 "\n" 兩個字元，這裡轉回真正的換行字元
+const GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
+const sheetsEnabled = Boolean(GOOGLE_SERVICE_ACCOUNT_EMAIL && GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY && GOOGLE_SHEET_ID);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS attacks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    dedup_key TEXT UNIQUE NOT NULL,
-    ts INTEGER NOT NULL,
-    attack_datetime TEXT,
-    cycle INTEGER,
-    raid_started_at TEXT,
-    raid_level_tier INTEGER,
-    player TEXT NOT NULL,
-    player_code TEXT,
-    raid_level INTEGER,
-    attacks_remaining INTEGER,
-    boss TEXT,
-    boss_ordinal INTEGER,
-    boss_total INTEGER,
-    cards TEXT,
-    card_damage TEXT,
-    tap_damage INTEGER,
-    parts TEXT,
-    total_damage INTEGER
-  );
-  CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts);
-  CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at);
+const ATTACKS_SHEET_NAME = 'Attacks';
+const SESSIONS_SHEET_NAME = 'Sessions';
+const ATTACKS_HEADER = ['dedupKey', 'ts', 'attackDatetime', 'cycle', 'raidStartedAt', 'raidLevelTier', 'player', 'playerCode', 'raidLevel', 'attacksRemaining', 'boss', 'bossOrdinal', 'bossTotal', 'cards', 'cardDamage', 'tapDamage', 'parts', 'totalDamage'];
+const SESSIONS_HEADER = ['startedAt', 'levelTier'];
 
-  CREATE TABLE IF NOT EXISTS manual_raid_sessions (
-    started_at TEXT PRIMARY KEY,
-    level_tier INTEGER
+let sheetsClient = null;
+if (sheetsEnabled) {
+  const jwtClient = new google.auth.JWT(
+    GOOGLE_SERVICE_ACCOUNT_EMAIL, null, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
+    ['https://www.googleapis.com/auth/spreadsheets']
   );
-`);
+  sheetsClient = google.sheets({ version: 'v4', auth: jwtClient });
+} else {
+  console.warn('尚未設定 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / GOOGLE_SHEET_ID，攻擊紀錄暫時只存在記憶體裡（重啟就會消失），設定好環境變數後重新部署即可恢復正常寫入。');
+}
 
 function attackDedupKey(entry) {
   return `${entry.attackDatetime || entry.ts}_${entry.player}`;
 }
 
-const insertAttackStmt = db.prepare(`
-  INSERT OR IGNORE INTO attacks
-    (dedup_key, ts, attack_datetime, cycle, raid_started_at, raid_level_tier, player, player_code,
-     raid_level, attacks_remaining, boss, boss_ordinal, boss_total, cards, card_damage, tap_damage, parts, total_damage)
-  VALUES (@dedup_key, @ts, @attack_datetime, @cycle, @raid_started_at, @raid_level_tier, @player, @player_code,
-     @raid_level, @attacks_remaining, @boss, @boss_ordinal, @boss_total, @cards, @card_damage, @tap_damage, @parts, @total_damage)
-`);
-
-function insertAttack(entry) {
-  insertAttackStmt.run({
-    dedup_key: attackDedupKey(entry),
-    ts: entry.ts,
-    attack_datetime: entry.attackDatetime || null,
-    cycle: (typeof entry.cycle === 'number') ? entry.cycle : null,
-    raid_started_at: entry.raidStartedAt || null,
-    raid_level_tier: (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : null,
-    player: entry.player,
-    player_code: entry.playerCode || null,
-    raid_level: (typeof entry.raidLevel === 'number') ? entry.raidLevel : null,
-    attacks_remaining: (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : null,
-    boss: entry.boss || null,
-    boss_ordinal: entry.bossOrdinal || null,
-    boss_total: entry.bossTotal || null,
-    cards: JSON.stringify(entry.cards || []),
-    card_damage: JSON.stringify(entry.cardDamage || {}),
-    tap_damage: entry.tapDamage || 0,
-    parts: JSON.stringify(entry.parts || []),
-    total_damage: entry.totalDamage || 0
-  });
+function attackToRow(entry) {
+  return [
+    attackDedupKey(entry), entry.ts, entry.attackDatetime || '', (typeof entry.cycle === 'number') ? entry.cycle : '',
+    entry.raidStartedAt || '', (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : '',
+    entry.player, entry.playerCode || '', (typeof entry.raidLevel === 'number') ? entry.raidLevel : '',
+    (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : '',
+    entry.boss || '', entry.bossOrdinal || '', entry.bossTotal || '',
+    JSON.stringify(entry.cards || []), JSON.stringify(entry.cardDamage || {}),
+    entry.tapDamage || 0, JSON.stringify(entry.parts || []), entry.totalDamage || 0
+  ];
 }
 
 function rowToAttack(row) {
+  const num = (v) => (v === '' || v === undefined || v === null) ? null : Number(v);
   return {
-    ts: row.ts,
-    attackDatetime: row.attack_datetime,
-    cycle: row.cycle,
-    raidStartedAt: row.raid_started_at,
-    raidLevelTier: row.raid_level_tier,
-    player: row.player,
-    playerCode: row.player_code,
-    raidLevel: row.raid_level,
-    attacksRemaining: row.attacks_remaining,
-    boss: row.boss,
-    bossOrdinal: row.boss_ordinal,
-    bossTotal: row.boss_total,
-    cards: JSON.parse(row.cards || '[]'),
-    cardDamage: JSON.parse(row.card_damage || '{}'),
-    tapDamage: row.tap_damage,
-    parts: JSON.parse(row.parts || '[]'),
-    totalDamage: row.total_damage
+    ts: Number(row[1]) || 0,
+    attackDatetime: row[2] || null,
+    cycle: num(row[3]),
+    raidStartedAt: row[4] || null,
+    raidLevelTier: num(row[5]),
+    player: row[6] || '?',
+    playerCode: row[7] || null,
+    raidLevel: num(row[8]),
+    attacksRemaining: num(row[9]),
+    boss: row[10] || null,
+    bossOrdinal: num(row[11]),
+    bossTotal: num(row[12]),
+    cards: JSON.parse(row[13] || '[]'),
+    cardDamage: JSON.parse(row[14] || '{}'),
+    tapDamage: Number(row[15]) || 0,
+    parts: JSON.parse(row[16] || '[]'),
+    totalDamage: Number(row[17]) || 0
   };
 }
 
-const selectAllAttacksStmt = db.prepare('SELECT * FROM attacks ORDER BY ts ASC');
-function getAllAttacks() { return selectAllAttacksStmt.all().map(rowToAttack); }
+let attacksCache = [];
+let attacksDedupSet = new Set();
+let pendingAttackRows = []; // 排隊等批次寫回試算表的新資料列
 
-const countAttacksStmt = db.prepare('SELECT COUNT(*) AS c FROM attacks');
-const deleteAllAttacksStmt = db.prepare('DELETE FROM attacks');
-function clearAllAttacks() { deleteAllAttacksStmt.run(); }
+function getAllAttacks() { return attacksCache; }
 
-const selectManualSessionsStmt = db.prepare('SELECT started_at, level_tier FROM manual_raid_sessions');
-function getManualRaidSessions() {
-  return selectManualSessionsStmt.all().map(r => ({ startedAt: r.started_at, levelTier: r.level_tier }));
+function insertAttack(entry) {
+  const key = attackDedupKey(entry);
+  if (attacksDedupSet.has(key)) return; // 跟同一支水管另一端重複收到的攻擊事件擋掉，不要記兩筆
+  attacksDedupSet.add(key);
+  attacksCache.push(entry);
+  if (sheetsEnabled) pendingAttackRows.push(attackToRow(entry));
 }
-const insertManualSessionStmt = db.prepare('INSERT OR IGNORE INTO manual_raid_sessions (started_at, level_tier) VALUES (?, ?)');
-const updateManualSessionLevelStmt = db.prepare('UPDATE manual_raid_sessions SET level_tier = ? WHERE started_at = ?');
+
+// 每 8 秒批次寫回一次，而不是每刀都寫——突襲激烈的時候短時間內會有大量攻擊事件，
+// 逐筆寫入很容易撞到 Google Sheets API 的頻率限制，批次寫可以完全避開這個問題
+const ATTACK_FLUSH_INTERVAL_MS = 8000;
+async function flushPendingAttackRows() {
+  if (!sheetsEnabled || pendingAttackRows.length === 0) return;
+  const rowsToFlush = pendingAttackRows;
+  pendingAttackRows = [];
+  try {
+    await sheetsClient.spreadsheets.values.append({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      range: `${ATTACKS_SHEET_NAME}!A:A`,
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: rowsToFlush }
+    });
+  } catch (e) {
+    console.error('[sheets] 批次寫入攻擊紀錄失敗，下次再重試:', e && e.message ? e.message : e);
+    pendingAttackRows = rowsToFlush.concat(pendingAttackRows); // 寫失敗就放回佇列前面，不會弄丟這批資料
+  }
+}
+
+async function clearAllAttacks() {
+  attacksCache = [];
+  attacksDedupSet = new Set();
+  pendingAttackRows = [];
+  if (!sheetsEnabled) return;
+  await sheetsClient.spreadsheets.values.clear({ spreadsheetId: GOOGLE_SHEET_ID, range: `${ATTACKS_SHEET_NAME}!A2:R` });
+}
 
 // 場次開始時間差在這範圍內視為同一場（跟前端 RAID_SESSION_MATCH_MS 邏輯一致）
 const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
+let sessionsCache = []; // { startedAt, levelTier, rowIndex }；rowIndex 是試算表裡實際的列號（含標題列），還沒寫進表格前是 null
+
+function getManualRaidSessions() {
+  return sessionsCache.map(s => ({ startedAt: s.startedAt, levelTier: s.levelTier }));
+}
+
+async function appendSessionRow(entry) {
+  if (!sheetsEnabled) return;
+  const resp = await sheetsClient.spreadsheets.values.append({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${SESSIONS_SHEET_NAME}!A:A`,
+    valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: [[entry.startedAt, entry.levelTier == null ? '' : entry.levelTier]] }
+  });
+  // 從回傳的 updatedRange（例如 "Sessions!A5:B5"）解析出實際寫入的列號，之後補等級時才知道要更新哪一列
+  const range = resp.data.updates && resp.data.updates.updatedRange;
+  const m = range && range.match(/![A-Z]+(\d+)/);
+  if (m) entry.rowIndex = Number(m[1]);
+}
+
+async function updateSessionLevelInSheet(entry) {
+  if (!sheetsEnabled || !entry.rowIndex) return;
+  await sheetsClient.spreadsheets.values.update({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `${SESSIONS_SHEET_NAME}!B${entry.rowIndex}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[entry.levelTier]] }
+  });
+}
+
+// 場次資料量很小（一場突襲大概只會新增一筆），不用像攻擊紀錄那樣批次處理，
+// 直接非同步寫回試算表就好，呼叫端不用等待、失敗也只是記錄檔案裡看得到 log
 function upsertRaidSessionIfNew(startedAt, levelTier) {
   if (!startedAt) return;
   const ts = new Date(startedAt).getTime();
   if (isNaN(ts)) return;
-  const dup = getManualRaidSessions().find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
+  const dup = sessionsCache.find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
   if (dup) {
     if (dup.levelTier == null && typeof levelTier === 'number') {
-      updateManualSessionLevelStmt.run(levelTier, dup.startedAt);
+      dup.levelTier = levelTier;
+      updateSessionLevelInSheet(dup).catch(e => console.error('[sheets] 補上場次等級失敗:', e && e.message ? e.message : e));
     }
     return;
   }
-  insertManualSessionStmt.run(startedAt, (typeof levelTier === 'number') ? levelTier : null);
+  const newEntry = { startedAt, levelTier: (typeof levelTier === 'number') ? levelTier : null, rowIndex: null };
+  sessionsCache.push(newEntry);
+  appendSessionRow(newEntry).catch(e => console.error('[sheets] 新增場次失敗:', e && e.message ? e.message : e));
 }
 
-// M-62、M-67 是舊版遺留下來的場次標記，背後已經沒有真正的攻擊紀錄可以對應
-// （這幾場的資料在改版過程中遺失了，公會決定放棄、從下一場開始重新記錄），
-// 開機時清掉，場次清單才不會一直顯示「0 筆攻擊」的空場次
-const LEGACY_EMPTY_SESSIONS_TO_REMOVE = ['2026-07-14T22:40:00', '2026-07-19T22:30:00'];
-const deleteManualSessionStmt = db.prepare('DELETE FROM manual_raid_sessions WHERE started_at = ?');
-LEGACY_EMPTY_SESSIONS_TO_REMOVE.forEach(startedAt => deleteManualSessionStmt.run(startedAt));
+// 確保試算表裡有 Attacks、Sessions 兩個分頁，各自都有標題列（新建立的試算表只有
+// 預設的 Sheet1，要自己補上這兩個分頁；如果分頁已經存在就不去動裡面的資料）
+async function ensureHeaderRow(sheetName, header) {
+  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${sheetName}!A1:A1` });
+  if (!resp.data.values || resp.data.values.length === 0) {
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: GOOGLE_SHEET_ID, range: `${sheetName}!A1`,
+      valueInputOption: 'RAW', requestBody: { values: [header] }
+    });
+  }
+}
 
-// 一次性搬家：把舊版存在 full_attack_log.json 的資料搬進資料庫。用 INSERT OR IGNORE
-// 靠 dedup_key 天然防重複，所以每次開機都可以放心重跑，不會重複匯入。
-(function migrateJsonAttackLogToDb(filePath, label) {
-  const oldLog = readJsonSafe(filePath, []);
-  if (oldLog.length === 0) return;
-  const before = countAttacksStmt.get().c;
-  const insertMany = db.transaction((rows) => { rows.forEach(insertAttack); });
-  insertMany(oldLog);
-  const added = countAttacksStmt.get().c - before;
-  if (added > 0) console.log(`[migrate] 已把 ${added} 筆${label}攻擊紀錄搬進資料庫`);
-})(FULL_LOG_PATH, '舊版 JSON ');
+async function ensureSheetTabsExist() {
+  const meta = await sheetsClient.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID });
+  const existingTitles = (meta.data.sheets || []).map(s => s.properties.title);
+  const toAdd = [ATTACKS_SHEET_NAME, SESSIONS_SHEET_NAME].filter(name => !existingTitles.includes(name));
+  if (toAdd.length > 0) {
+    await sheetsClient.spreadsheets.batchUpdate({
+      spreadsheetId: GOOGLE_SHEET_ID,
+      requestBody: { requests: toAdd.map(title => ({ addSheet: { properties: { title } } })) }
+    });
+  }
+  await ensureHeaderRow(ATTACKS_SHEET_NAME, ATTACKS_HEADER);
+  await ensureHeaderRow(SESSIONS_SHEET_NAME, SESSIONS_HEADER);
+}
+
+async function loadAttacksFromSheet() {
+  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${ATTACKS_SHEET_NAME}!A2:R` });
+  const rows = resp.data.values || [];
+  attacksCache = rows.map(rowToAttack);
+  attacksDedupSet = new Set(rows.map(r => r[0]));
+}
+
+async function loadSessionsFromSheet() {
+  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${SESSIONS_SHEET_NAME}!A2:B` });
+  const rows = resp.data.values || [];
+  sessionsCache = rows.map((r, i) => ({
+    startedAt: r[0],
+    levelTier: (r[1] === '' || r[1] === undefined) ? null : Number(r[1]),
+    rowIndex: i + 2 // +2：第 1 列是標題列，資料從第 2 列開始
+  }));
+}
+
+// 開機時把整份試算表讀進記憶體；一定要在 startWatcher() 之前跑完，不然突襲期間
+// 剛好收到即時攻擊、跟這裡的初始化讀取同時進行，會被 loadAttacksFromSheet 整批
+// 覆蓋蓋掉記憶體裡剛收到的新資料
+async function initGoogleSheetsStore() {
+  if (!sheetsEnabled) return;
+  try {
+    await ensureSheetTabsExist();
+    await loadAttacksFromSheet();
+    await loadSessionsFromSheet();
+    console.log(`[sheets] 初始化完成，讀到 ${attacksCache.length} 筆攻擊紀錄、${sessionsCache.length} 個場次`);
+  } catch (e) {
+    console.error('[sheets] 初始化失敗，攻擊紀錄暫時改成只存在記憶體裡:', e && e.message ? e.message : e);
+  }
+  setInterval(flushPendingAttackRows, ATTACK_FLUSH_INTERVAL_MS);
+}
 
 let watcherSocket = null;
 let watcherReconnectTimer = null;
@@ -372,12 +448,8 @@ function recoverOrphanedMultiTenantData() {
   const orphanDir = path.join(__dirname, 'watcher_data', 'default');
   if (!fs.existsSync(orphanDir)) return;
 
-  const before = countAttacksStmt.get().c;
-  const insertMany = db.transaction((rows) => { rows.forEach(insertAttack); });
-  insertMany(readJsonSafe(path.join(orphanDir, 'full_attack_log.json'), []));
-  const added = countAttacksStmt.get().c - before;
-  if (added > 0) console.log(`[recover] 從多公會版孤兒資料裡撿回 ${added} 筆攻擊紀錄`);
-
+  // 攻擊紀錄改用 Google 試算表之後採全新記錄模式，不再從這個孤兒資料夾撿回舊的
+  // 攻擊紀錄；每輪總結（cycle_summaries）還是 JSON 檔案存的，跟這次改版無關，維持原樣
   const orphanSummaries = readJsonSafe(path.join(orphanDir, 'cycle_summaries.json'), []);
   if (orphanSummaries.length > 0) {
     const existingTs = new Set(cycleSummaries.map(s => s.ts));
@@ -888,7 +960,9 @@ function startWatcher() {
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
 
-startWatcher();
+// 一定要先把試算表裡的舊資料讀進記憶體，才能開始連線收即時攻擊事件——
+// 不然剛好同時發生的話，讀取會用舊資料整批蓋掉這段時間收到的新攻擊
+initGoogleSheetsStore().then(startWatcher);
 
 app.get('/full-attack-log', (req, res) => {
   res.json({
@@ -925,7 +999,7 @@ app.get('/full-attack-log/summary', (req, res) => {
   `);
 });
 
-app.get('/full-attack-log/clear', (req, res) => {
+app.get('/full-attack-log/clear', async (req, res) => {
   if (req.query.confirm !== 'yes') {
     return res.send(`
       <html><body style="font-family:sans-serif; padding:24px; text-align:center;">
@@ -934,16 +1008,16 @@ app.get('/full-attack-log/clear', (req, res) => {
       </body></html>
     `);
   }
-  clearAllAttacks();
+  await clearAllAttacks();
   res.send('<html><body style="font-family:sans-serif; padding:24px; text-align:center;">✓ 已清空</body></html>');
 });
 
 // 給網頁上「🗑️ 清空攻擊紀錄」按鈕用的 API 版本（同一個資料庫，清掉的是全公會共用的紀錄）
-app.post('/full-attack-log/clear', (req, res) => {
+app.post('/full-attack-log/clear', async (req, res) => {
   if (!(req.body && req.body.confirm === true)) {
     return res.status(400).json({ error: 'missing confirm' });
   }
-  clearAllAttacks();
+  await clearAllAttacks();
   res.json({ ok: true });
 });
 

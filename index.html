@@ -5773,18 +5773,41 @@
         }
 
         /* ══════════════════════════════════════════════════════════
-           完整攻擊紀錄：不再存在瀏覽器 localStorage 裡（不然無痕視窗、
-           不同裝置看到的資料都會不一樣，而且清瀏覽器資料就會整個消失）。
-           改成完全信任中繼伺服器那份資料庫——伺服器 24 小時背景側錄，
-           不管有沒有人開著網頁都會持續記錄，網頁只負責在需要顯示時
-           去問伺服器要最新資料，存進下面這個「只存在這次網頁瀏覽期間」
-           的記憶體變數裡，重新整理網頁就會重新跟伺服器要一次。
+           完整攻擊紀錄：主要來源是中繼伺服器那份資料庫（伺服器 24 小時
+           背景側錄，不管有沒有人開著網頁都會持續記錄），網頁需要顯示時
+           就去問伺服器要最新資料。
+           雙重保險：每次成功跟伺服器要到資料，順便鏡射存一份進這台瀏覽器
+           的 localStorage 當本機備份——平常畫面一律顯示伺服器資料（確保
+           不同瀏覽器看到的內容一致），只有連不到伺服器時才退回顯示這份
+           本機備份，讓離線或伺服器故障時至少還看得到最近一次的資料。
+           這份本機備份不會被自動清空，只有伺服器成功回應、有更新的資料
+           時才會覆蓋掉舊的備份。
            ══════════════════════════════════════════════════════════ */
-        let serverAttackLogCache = []; // 伺服器資料庫裡的完整攻擊紀錄（這次瀏覽期間的記憶體快取，不寫入 localStorage）
-        let serverManualSessionsCache = []; // 伺服器資料庫裡的場次開始時間清單（同上，只存在記憶體）
+        const RAID_FULL_LOG_BACKUP_KEY = 'tt2_raid_full_attack_log_backup';
+        let serverAttackLogCache = []; // 目前畫面在用的攻擊紀錄（優先是伺服器最新資料，連不上才退回本機備份）
+        let serverManualSessionsCache = []; // 伺服器資料庫裡的場次開始時間清單（只存在記憶體，場次清單本身不算「攻擊紀錄」）
+
+        function loadRaidFullLogBackup() {
+            try {
+                const raw = localStorage.getItem(RAID_FULL_LOG_BACKUP_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                console.error('讀取本機攻擊紀錄備份失敗:', e);
+                return [];
+            }
+        }
+
+        function saveRaidFullLogBackup(log) {
+            try {
+                localStorage.setItem(RAID_FULL_LOG_BACKUP_KEY, JSON.stringify(log));
+            } catch (e) {
+                console.error('儲存本機攻擊紀錄備份失敗（可能超過瀏覽器儲存空間上限）:', e);
+            }
+        }
 
         // 跟中繼伺服器要最新的攻擊紀錄＋場次清單，兩份都是伺服器端資料庫的資料，
-        // 任何瀏覽器（含無痕視窗）問到的都是同一份。失敗就保留原本記憶體裡的舊資料，
+        // 任何瀏覽器（含無痕視窗）問到的都是同一份。成功拿到攻擊紀錄後順便鏡射
+        // 備份一份到 localStorage；失敗就保留原本記憶體裡的舊資料，
         // 呼叫端自己決定要不要提示使用者「連不到伺服器」
         async function fetchServerRaidData(relayUrl) {
             const [logResp, sessionsResp] = await Promise.all([
@@ -5793,7 +5816,10 @@
             ]);
             if (logResp.ok) {
                 const data = await logResp.json();
-                if (Array.isArray(data.attacks)) serverAttackLogCache = data.attacks;
+                if (Array.isArray(data.attacks)) {
+                    serverAttackLogCache = data.attacks;
+                    saveRaidFullLogBackup(data.attacks); // 雙重保險：鏡射備份到本機，絕對不主動清空
+                }
 
                 const cb = data.currentBoss;
                 if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0) {
@@ -5822,14 +5848,17 @@
             }
         }
 
-        // 面板要顯示資料前，先確保這次瀏覽期間的記憶體快取是最新的（示範模式除外）；
-        // 連不到伺服器就靜默失敗，沿用目前記憶體裡已有的資料，不會去讀任何本機備份
+        // 面板要顯示資料前，先確保資料是最新的（示範模式除外）：
+        // 優先跟伺服器要最新資料；連不到伺服器就退回這台瀏覽器上次備份到的資料，
+        // 至少不會整個顯示空白
         async function ensureServerRaidDataFresh() {
             if (raidLogDemoActive) return;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 await fetchServerRaidData(relayUrl);
-            } catch (e) { /* 離線時沿用記憶體裡目前已有的資料 */ }
+            } catch (e) {
+                serverAttackLogCache = loadRaidFullLogBackup(); // 離線/伺服器連不上時，退回本機備份
+            }
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -7090,8 +7119,10 @@
 
         async function clearRaidFullLog() {
             // 攻擊紀錄現在是伺服器上「全公會共用」的資料庫，不是只清自己瀏覽器的快取，
-            // 清空之後所有人都看不到舊紀錄，所以警語要講清楚
-            if (!confirm('確定要清空「全公會共用」的攻擊紀錄資料庫嗎？這個動作無法復原，清空後所有人都看不到舊紀錄。')) return;
+            // 清空之後所有人都看不到舊紀錄，所以警語要講清楚。
+            // 注意：這裡故意不動 localStorage 的本機備份（RAID_FULL_LOG_BACKUP_KEY），
+            // 雙重保險的意義就在於萬一不小心清錯，這台瀏覽器上還留著最近一次的備份可以救援
+            if (!confirm('確定要清空「全公會共用」的攻擊紀錄資料庫嗎？這個動作無法復原，清空後所有人都看不到舊紀錄（這台瀏覽器上的本機備份不會被清掉）。')) return;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/clear`, {

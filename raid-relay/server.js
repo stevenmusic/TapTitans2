@@ -339,14 +339,12 @@ function upsertRaidSessionIfNew(startedAt, levelTier) {
   insertManualSessionStmt.run(startedAt, (typeof levelTier === 'number') ? levelTier : null);
 }
 
-// 預設場次（沿用原本寫在前端程式碼裡、當作種子資料的兩筆）
-const DEFAULT_MANUAL_RAID_SESSIONS = [
-  { startedAt: '2026-07-14T22:40:00', levelTier: 62 },
-  { startedAt: '2026-07-19T22:30:00', levelTier: 67 }
-];
-if (getManualRaidSessions().length === 0) {
-  DEFAULT_MANUAL_RAID_SESSIONS.forEach(s => insertManualSessionStmt.run(s.startedAt, s.levelTier));
-}
+// M-62、M-67 是舊版遺留下來的場次標記，背後已經沒有真正的攻擊紀錄可以對應
+// （這幾場的資料在改版過程中遺失了，公會決定放棄、從下一場開始重新記錄），
+// 開機時清掉，場次清單才不會一直顯示「0 筆攻擊」的空場次
+const LEGACY_EMPTY_SESSIONS_TO_REMOVE = ['2026-07-14T22:40:00', '2026-07-19T22:30:00'];
+const deleteManualSessionStmt = db.prepare('DELETE FROM manual_raid_sessions WHERE started_at = ?');
+LEGACY_EMPTY_SESSIONS_TO_REMOVE.forEach(startedAt => deleteManualSessionStmt.run(startedAt));
 
 // 一次性搬家：把舊版存在 full_attack_log.json 的資料搬進資料庫。用 INSERT OR IGNORE
 // 靠 dedup_key 天然防重複，所以每次開機都可以放心重跑，不會重複匯入。

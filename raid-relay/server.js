@@ -434,6 +434,71 @@ async function initGoogleSheetsStore() {
   setInterval(flushPendingAttackRows, ATTACK_FLUSH_INTERVAL_MS);
 }
 
+/* ══════════════════════════════════════════════════════════
+   額外的自動備份：定期把目前的攻擊紀錄整份寫進 GitHub repo 裡的一個
+   JSON 檔案（用同一個檔案路徑覆蓋，每次的版本都留在 git 歷史紀錄裡，
+   等於自動有時間軸備份）。這是 Google 試算表之外「再多一層」的保險，
+   就算試算表那邊出問題，repo 裡還有一份最近的完整資料可以救回來。
+   需要 GITHUB_BACKUP_TOKEN（有 repo 內容讀寫權限的 GitHub Personal
+   Access Token）、GITHUB_BACKUP_REPO（格式 owner/repo）兩個環境變數，
+   沒設定就不會執行，不影響其他功能。
+   ══════════════════════════════════════════════════════════ */
+const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
+const GITHUB_BACKUP_REPO = process.env.GITHUB_BACKUP_REPO || '';
+const GITHUB_BACKUP_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json';
+const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
+const GITHUB_BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 每小時備份一次
+const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
+if (!githubBackupEnabled) {
+  console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Google 試算表還是照常運作，這只是多一層保險）。');
+}
+
+async function backupAttackLogToGitHub() {
+  if (!githubBackupEnabled) return;
+  try {
+    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_PATH}`;
+    const headers = {
+      Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    };
+
+    // 更新既有檔案一定要帶原本的 sha，所以先查一次；檔案還不存在的話會是 404，這是正常現象
+    let sha;
+    const getResp = await fetch(`${apiUrl}?ref=${GITHUB_BACKUP_BRANCH}`, { headers });
+    if (getResp.ok) {
+      sha = (await getResp.json()).sha;
+    } else if (getResp.status !== 404) {
+      console.error('[github-backup] 查詢現有備份檔案失敗:', getResp.status, await getResp.text());
+      return;
+    }
+
+    const backup = {
+      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log', exportedAt: new Date().toISOString(), count: attacksCache.length },
+      attacks: attacksCache
+    };
+    const content = Buffer.from(JSON.stringify(backup, null, 2)).toString('base64');
+
+    const putResp = await fetch(apiUrl, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: `Automated raid attack log backup (${attacksCache.length} records)`,
+        content,
+        branch: GITHUB_BACKUP_BRANCH,
+        sha
+      })
+    });
+    if (!putResp.ok) {
+      console.error('[github-backup] 寫入備份檔案失敗:', putResp.status, await putResp.text());
+      return;
+    }
+    console.log(`[github-backup] 已把 ${attacksCache.length} 筆攻擊紀錄備份進 GitHub repo`);
+  } catch (e) {
+    console.error('[github-backup] 備份失敗:', e && e.message ? e.message : e);
+  }
+}
+
 let watcherSocket = null;
 let watcherReconnectTimer = null;
 let watcherRaidTitans = [];
@@ -899,6 +964,7 @@ function handleWatcherRaidEnd(reason) {
       players: summary.map(p => ({ name: p.name, playerCode: p.player_code, numAttacks: p.num_attacks || 0, totalDamage: p.total_damage || 0 }))
     });
     saveCycleSummaries();
+    backupAttackLogToGitHub(); // 突襲結束是個自然的時間點，順便馬上備份一次，不用等到下個整點
   };
 }
 
@@ -962,7 +1028,13 @@ function startWatcher() {
 
 // 一定要先把試算表裡的舊資料讀進記憶體，才能開始連線收即時攻擊事件——
 // 不然剛好同時發生的話，讀取會用舊資料整批蓋掉這段時間收到的新攻擊
-initGoogleSheetsStore().then(startWatcher);
+initGoogleSheetsStore().then(() => {
+  startWatcher();
+  if (githubBackupEnabled) {
+    backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一小時
+    setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
+  }
+});
 
 app.get('/full-attack-log', (req, res) => {
   res.json({
@@ -1019,6 +1091,17 @@ app.post('/full-attack-log/clear', async (req, res) => {
   }
   await clearAllAttacks();
   res.json({ ok: true });
+});
+
+// 給網頁「匯入攻擊紀錄」按鈕用：把使用者上傳的 JSON 檔案裡的攻擊紀錄併回資料庫，
+// 靠 insertAttack 本身的 dedup 邏輯擋掉已經有的紀錄，重複匯入同一份檔案也不會有問題
+app.post('/full-attack-log/import', (req, res) => {
+  const attacks = (req.body && Array.isArray(req.body.attacks)) ? req.body.attacks : null;
+  if (!attacks) return res.status(400).json({ error: 'missing attacks array' });
+  const before = attacksCache.length;
+  attacks.forEach(insertAttack);
+  const imported = attacksCache.length - before;
+  res.json({ ok: true, imported, total: attacksCache.length });
 });
 
 app.get('/cycle-summaries', (req, res) => {

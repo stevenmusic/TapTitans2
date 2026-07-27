@@ -3205,9 +3205,11 @@
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
-                        <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出攻擊紀錄（JSON）</button>
-                        <button class="btn-backup" style="background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
+                        <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
+                        <button class="btn-backup import" onclick="document.getElementById('raid-log-import-input').click()">📥 匯入（JSON）</button>
                     </div>
+                    <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
+                    <button class="btn-backup" style="margin-top:8px; width:100%; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
@@ -7144,6 +7146,49 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
 
             showPlayerCopyToastLike(`已匯出 ${serverAttackLogCache.length} 筆攻擊紀錄`);
+        }
+
+        // 匯入之前匯出的 JSON 檔案：讀出裡面的攻擊紀錄，送到伺服器跟現有資料庫合併
+        // （伺服器會靠 dedup 邏輯自動擋掉已經有的紀錄，同一個檔案重複匯入也不會出問題）
+        function importRaidFullLog(file) {
+            if (!file) return;
+            const input = document.getElementById('raid-log-import-input');
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                let parsed;
+                try {
+                    parsed = JSON.parse(e.target.result);
+                } catch (err) {
+                    alert('這不是有效的 JSON 檔案');
+                    if (input) input.value = '';
+                    return;
+                }
+                const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : (Array.isArray(parsed) ? parsed : null);
+                if (!attacks) {
+                    alert('檔案格式不對，裡面找不到攻擊紀錄陣列');
+                    if (input) input.value = '';
+                    return;
+                }
+                try {
+                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/import`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ attacks })
+                    });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    await ensureServerRaidDataFresh();
+                    renderRaidSessionMenu();
+                    renderRaidLogQueryResult();
+                    showPlayerCopyToastLike(`已匯入 ${data.imported} 筆新紀錄（檔案裡共 ${attacks.length} 筆，其餘是已經有的重複紀錄）`);
+                } catch (err) {
+                    alert('匯入失敗，請確認網路連線後再試一次：' + (err && err.message ? err.message : String(err)));
+                } finally {
+                    if (input) input.value = ''; // 清掉選取，才能再次選同一個檔案重複觸發
+                }
+            };
+            reader.readAsText(file);
         }
 
         async function clearRaidFullLog() {

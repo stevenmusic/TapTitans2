@@ -3209,6 +3209,7 @@
                         <button class="btn-backup import" onclick="document.getElementById('raid-log-import-input').click()">📥 匯入（JSON）</button>
                     </div>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
+                    <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
                     <button class="btn-backup" style="margin-top:8px; width:100%; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
@@ -6706,6 +6707,7 @@
             await ensureServerRaidDataFresh();
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
+            checkLegacyRaidFullLogButton();
             startAttackLogAutoRefresh();
         }
 
@@ -7170,8 +7172,24 @@
             showPlayerCopyToastLike(`已匯出 ${serverAttackLogCache.length} 筆攻擊紀錄`);
         }
 
+        // 把攻擊紀錄陣列送到伺服器合併進資料庫（靠伺服器的 dedup 邏輯擋掉已經有的紀錄，
+        // 重複匯入同一批資料也不會出問題），匯入功能、舊版資料救援功能共用這段邏輯
+        async function submitAttacksForImport(attacks, sourceLabel) {
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ attacks })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            await ensureServerRaidDataFresh();
+            renderRaidSessionMenu();
+            renderRaidLogQueryResult();
+            showPlayerCopyToastLike(`已匯入 ${data.imported} 筆新紀錄（${sourceLabel}共 ${attacks.length} 筆，其餘是已經有的重複紀錄）`);
+        }
+
         // 匯入之前匯出的 JSON 檔案：讀出裡面的攻擊紀錄，送到伺服器跟現有資料庫合併
-        // （伺服器會靠 dedup 邏輯自動擋掉已經有的紀錄，同一個檔案重複匯入也不會出問題）
         function importRaidFullLog(file) {
             if (!file) return;
             const input = document.getElementById('raid-log-import-input');
@@ -7192,18 +7210,7 @@
                     return;
                 }
                 try {
-                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                    const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/import`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ attacks })
-                    });
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
-                    await ensureServerRaidDataFresh();
-                    renderRaidSessionMenu();
-                    renderRaidLogQueryResult();
-                    showPlayerCopyToastLike(`已匯入 ${data.imported} 筆新紀錄（檔案裡共 ${attacks.length} 筆，其餘是已經有的重複紀錄）`);
+                    await submitAttacksForImport(attacks, '檔案裡');
                 } catch (err) {
                     alert('匯入失敗，請確認網路連線後再試一次：' + (err && err.message ? err.message : String(err)));
                 } finally {
@@ -7211,6 +7218,43 @@
                 }
             };
             reader.readAsText(file);
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           救援舊版留在裝置上的攻擊紀錄：改版前，攻擊紀錄是直接存在瀏覽器
+           localStorage 的 tt2_raid_full_attack_log 這個 key。改版後網頁
+           不會再讀寫它，但這台裝置上原本存的資料還在，只是沒有任何畫面
+           會顯示——這裡偵測到有殘留資料就自動秀出按鈕，一鍵匯回資料庫。
+           ══════════════════════════════════════════════════════════ */
+        const LEGACY_RAID_FULL_LOG_KEY = 'tt2_raid_full_attack_log';
+
+        function loadLegacyRaidFullLog() {
+            try {
+                const arr = JSON.parse(localStorage.getItem(LEGACY_RAID_FULL_LOG_KEY) || '[]');
+                return Array.isArray(arr) ? arr : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function checkLegacyRaidFullLogButton() {
+            const btn = document.getElementById('raid-log-legacy-import-btn');
+            if (!btn) return;
+            btn.style.display = loadLegacyRaidFullLog().length > 0 ? 'block' : 'none';
+        }
+
+        async function importLegacyRaidFullLog() {
+            const attacks = loadLegacyRaidFullLog();
+            if (attacks.length === 0) {
+                alert('這台裝置上找不到舊版留下的攻擊紀錄');
+                return;
+            }
+            if (!confirm(`這台裝置上找到 ${attacks.length} 筆舊版留下的攻擊紀錄，確定要匯入到目前的資料庫嗎？`)) return;
+            try {
+                await submitAttacksForImport(attacks, '這台裝置上');
+            } catch (err) {
+                alert('匯入失敗，請確認網路連線後再試一次：' + (err && err.message ? err.message : String(err)));
+            }
         }
 
         async function clearRaidFullLog() {

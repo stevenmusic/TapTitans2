@@ -268,10 +268,21 @@ const dbReady = (async () => {
   // （早期版本沒有穩定記錄這個欄位），沒有標記的攻擊會靠時間去猜屬於哪一場，
   // 這裡把已知的歷史場次起始時間先建好基準點，猜測才不會跑到別場去。
   // 用 INSERT OR IGNORE，已經存在（或之後被使用者自己修改過等級）就不會覆蓋。
+  //
+  // ⚠️ 這三個時間原本是用「台灣當地時間」直接寫成 ISO 字串、沒加 Z（例如 22:30:00），
+  // 結果被 new Date() 當成 UTC 時間解析，導致跟遊戲 API 真正回報的 UTC raid_started_at
+  // 標記（例如 M-67 真正的 14:30:10Z）差了將近 8 小時、超過 10 分鐘合併門檻，
+  // 被誤判成兩個不同場次（M-67 因此重複出現、部分早期攻擊也被排擠到任何場次範圍之外）。
+  // 修正方式：先刪掉舊的（錯誤時間的）三筆種子，再用正確帶 Z 的 UTC 時間重新寫入
+  // （台灣當地時間 -8 小時＝ UTC 時間）。
+  const OLD_WRONG_HISTORICAL_SEED_STARTS = ['2026-07-14T22:40:00', '2026-07-19T22:30:00', '2026-07-22T10:41:00'];
+  for (const oldStart of OLD_WRONG_HISTORICAL_SEED_STARTS) {
+    await db.execute({ sql: 'DELETE FROM manual_raid_sessions WHERE started_at = ?', args: [oldStart] });
+  }
   const HISTORICAL_SESSION_SEEDS = [
-    { startedAt: '2026-07-14T22:40:00', levelTier: 62 },
-    { startedAt: '2026-07-19T22:30:00', levelTier: 67 },
-    { startedAt: '2026-07-22T10:41:00', levelTier: 72 }
+    { startedAt: '2026-07-14T14:40:00Z', levelTier: 62 }, // 台灣當地 07-14 22:40
+    { startedAt: '2026-07-19T14:30:00Z', levelTier: 67 }, // 台灣當地 07-19 22:30
+    { startedAt: '2026-07-22T02:41:00Z', levelTier: 72 }  // 台灣當地 07-22 10:41
   ];
   for (const s of HISTORICAL_SESSION_SEEDS) {
     await db.execute({

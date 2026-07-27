@@ -363,6 +363,34 @@ async function getAllAttacks() {
   }
 }
 
+// 只抓某個時間範圍內的攻擊紀錄（用來「只載入目前選的那一場」，不用每次都整包全抓）
+// endTsExclusive 是 null 代表沒有上限（用在最新一場，還沒有「下一場」可以當上限）
+async function getAttacksInRange(startTs, endTsExclusive) {
+  try {
+    await dbReady;
+    const result = (endTsExclusive == null)
+      ? await db.execute({ sql: 'SELECT * FROM attacks WHERE ts >= ? ORDER BY ts ASC', args: [startTs] })
+      : await db.execute({ sql: 'SELECT * FROM attacks WHERE ts >= ? AND ts < ? ORDER BY ts ASC', args: [startTs, endTsExclusive] });
+    return result.rows.map(rowToAttack);
+  } catch (e) {
+    console.error('[turso] 讀取指定範圍攻擊紀錄失敗:', e && e.message ? e.message : e);
+    return [];
+  }
+}
+
+// 只抓出現過的玩家名字（給漏打名單的「全部成員名單」比對用），
+// 只選一個欄位，比整包攻擊紀錄輕量很多
+async function getDistinctPlayers() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT DISTINCT player FROM attacks');
+    return result.rows.map(r => r.player);
+  } catch (e) {
+    console.error('[turso] 讀取玩家名單失敗:', e && e.message ? e.message : e);
+    return [];
+  }
+}
+
 async function clearAllAttacks() {
   try {
     await dbReady;
@@ -384,6 +412,77 @@ async function getManualRaidSessions() {
     console.error('[turso] 讀取場次清單失敗:', e && e.message ? e.message : e);
     return [];
   }
+}
+
+function parseRaidSessionTsServer(s) {
+  if (!s) return 0;
+  let t = new Date(s).getTime();
+  if (isNaN(t) && typeof s === 'string') t = new Date(s.replace(' ', 'T')).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+/* ══════════════════════════════════════════════════════════
+   算出「場次清單＋各場次筆數＋各場次時間範圍」，只查 ts / raid_started_at /
+   raid_level_tier 三個輕量欄位（不含卡片/傷害等 JSON 欄位），用意是讓網頁
+   可以先快速拿到場次選單跟筆數，再決定要不要真的載入某一場的完整資料，
+   不用每次都整包全抓、拖慢載入速度。
+   分組邏輯跟前端 buildRaidSessions() 完全一致：先用 raidStartedAt 相同/
+   10 分鐘內視為同一場合併，沒有標記的舊資料再用時間範圍去對應到最接近的場次。
+   ══════════════════════════════════════════════════════════ */
+async function computeSessionSummary() {
+  await dbReady;
+  const lightRows = (await db.execute('SELECT ts, raid_started_at, raid_level_tier FROM attacks')).rows;
+  const manualSessions = await getManualRaidSessions();
+
+  const startToLevel = new Map();
+  lightRows.forEach(r => {
+    if (r.raid_started_at && !startToLevel.has(r.raid_started_at)) {
+      startToLevel.set(r.raid_started_at, r.raid_level_tier);
+    }
+  });
+  manualSessions.forEach(s => {
+    if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
+  });
+
+  const rawStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTsServer(a) - parseRaidSessionTsServer(b));
+  const canonicalOf = new Map();
+  const knownStarts = [];
+  rawStarts.forEach(k => {
+    const last = knownStarts[knownStarts.length - 1];
+    if (last && parseRaidSessionTsServer(k) - parseRaidSessionTsServer(last) < RAID_SESSION_MATCH_MS) {
+      canonicalOf.set(k, last);
+      if (!startToLevel.get(last) && startToLevel.get(k)) startToLevel.set(last, startToLevel.get(k));
+    } else {
+      canonicalOf.set(k, k);
+      knownStarts.push(k);
+    }
+  });
+
+  const countByCanonical = new Map(knownStarts.map(k => [k, 0]));
+  let fallbackCount = 0;
+  lightRows.forEach(r => {
+    let matchedStart = r.raid_started_at ? (canonicalOf.get(r.raid_started_at) || r.raid_started_at) : null;
+    if (!matchedStart) {
+      const attackTs = Number(r.ts) || 0;
+      for (let i = 0; i < knownStarts.length; i++) {
+        const startMs = parseRaidSessionTsServer(knownStarts[i]);
+        const nextStartMs = (i + 1 < knownStarts.length) ? parseRaidSessionTsServer(knownStarts[i + 1]) : Infinity;
+        if (attackTs >= startMs && attackTs < nextStartMs) { matchedStart = knownStarts[i]; break; }
+      }
+    }
+    if (!matchedStart) { fallbackCount++; return; }
+    countByCanonical.set(matchedStart, (countByCanonical.get(matchedStart) || 0) + 1);
+  });
+
+  const sessions = knownStarts.map((startedAt, i) => ({
+    startedAt,
+    levelTier: startToLevel.get(startedAt) || null,
+    attackCount: countByCanonical.get(startedAt) || 0,
+    rangeStartTs: parseRaidSessionTsServer(startedAt),
+    rangeEndTs: (i + 1 < knownStarts.length) ? parseRaidSessionTsServer(knownStarts[i + 1]) : null // null = 沒有上限（最新一場）
+  })).sort((a, b) => b.rangeStartTs - a.rangeStartTs); // 新到舊
+
+  return { sessions, fallbackCount };
 }
 
 // 場次資料量很小（一場突襲大概只會新增一筆），直接查、直接寫，
@@ -1052,15 +1151,35 @@ restoreAttackLogFromGitHubBackup().then(() => {
   }
 });
 
+// 預設（沒有帶 session 參數）只回傳「最新一場」的攻擊紀錄，不是全部場次整包回傳——
+// 場次資料量大了之後整包抓很慢，網頁需要看舊場次時才會另外帶 session 參數再抓一次；
+// 想要「全部場次合併」的完整資料（例如備份、匯出）才需要帶 all=true
 app.get('/full-attack-log', async (req, res) => {
-  res.json({
-    attacks: await getAllAttacks(),
-    currentBoss: {
-      name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
-      enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
-      bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
-    }
-  });
+  const currentBoss = {
+    name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
+    enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
+    bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
+  };
+
+  if (req.query.all === 'true') {
+    return res.json({ attacks: await getAllAttacks(), currentBoss });
+  }
+
+  const { sessions } = await computeSessionSummary();
+  const target = req.query.session
+    ? sessions.find(s => s.startedAt === req.query.session)
+    : sessions[0]; // 沒指定就是最新一場
+  const attacks = target ? await getAttacksInRange(target.rangeStartTs, target.rangeEndTs) : [];
+  res.json({ attacks, currentBoss });
+});
+
+app.get('/raid-sessions-summary', async (req, res) => {
+  const { sessions, fallbackCount } = await computeSessionSummary();
+  res.json({ sessions, fallbackCount });
+});
+
+app.get('/raid-players', async (req, res) => {
+  res.json({ players: await getDistinctPlayers() });
 });
 
 app.get('/manual-raid-sessions', async (req, res) => {

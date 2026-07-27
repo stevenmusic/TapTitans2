@@ -3204,7 +3204,10 @@
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
                     </div>
-                    <button class="btn-backup" style="margin-top:10px; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
+                    <div style="display:flex; gap:8px; margin-top:10px;">
+                        <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出攻擊紀錄（JSON）</button>
+                        <button class="btn-backup" style="background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
+                    </div>
                 </div>
 
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
@@ -7115,6 +7118,32 @@
 
         function closeCardUsageDetail() {
             document.getElementById('card-usage-detail-modal').style.display = 'none';
+        }
+
+        // 匯出目前看得到的所有攻擊紀錄成一個 JSON 檔案下載（先跟伺服器要最新資料再匯出），
+        // 在雲端資料庫還沒設定好、或想額外手動備份一份存到自己電腦時使用
+        async function exportRaidFullLog() {
+            await ensureServerRaidDataFresh();
+
+            const backup = {
+                _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log', exportedAt: new Date().toISOString(), count: serverAttackLogCache.length },
+                attacks: serverAttackLogCache
+            };
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const filename = `tt2-raid-attack-log-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+            showPlayerCopyToastLike(`已匯出 ${serverAttackLogCache.length} 筆攻擊紀錄`);
         }
 
         async function clearRaidFullLog() {

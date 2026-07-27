@@ -6776,11 +6776,25 @@
             if (!wasOpen) {
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
-                // 攻擊紀錄跟其他三個面板一樣，點開就直接重新查詢，不用另外按重新整理
-                if (id === 'attacklog') openAttackLogPanel();
-                if (id === 'topdecks') renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
-                if (id === 'cardusage') renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
-                if (id === 'missed') renderMissedAttackList(); // 點開就直接依場次顯示，不用再填時間
+                // 每次重新打開面板，一律先重設回「預設顯示最新場次」，不會記住上次關掉面板前
+                // 選到的舊場次——避免使用者上次點過舊場次後，下次打開面板還停留在那場舊資料
+                if (id === 'attacklog') {
+                    raidSessionFilter = null;
+                    document.getElementById('raid-session-active-bar').style.display = 'none';
+                    openAttackLogPanel();
+                }
+                if (id === 'topdecks') {
+                    topDecksSessionFilter = null;
+                    renderTopDecks(); // 常用牌組點開就直接查詢顯示，不用額外按鈕
+                }
+                if (id === 'cardusage') {
+                    cardUsageSessionFilter = null;
+                    renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
+                }
+                if (id === 'missed') {
+                    missedSessionFilter = null;
+                    renderMissedAttackList(); // 點開就直接依場次顯示，不用再填時間
+                }
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }

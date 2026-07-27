@@ -6687,6 +6687,7 @@
                 document.getElementById('panel-' + p).style.display = 'none';
                 document.getElementById('raid-tool-btn-' + p).classList.remove('active');
             });
+            stopAttackLogAutoRefresh(); // 不管這次是關掉哪個面板，攻擊紀錄的背景自動更新計時器都先停掉，面板沒開著就不用一直要資料
             if (!wasOpen) {
                 panel.style.display = 'block';
                 document.getElementById('raid-tool-btn-' + id).classList.add('active');
@@ -6699,11 +6700,32 @@
             }
         }
 
-        // 攻擊紀錄面板：先跟伺服器要最新資料，再重新畫場次選單跟排行榜
+        // 攻擊紀錄面板：先跟伺服器要最新資料，再重新畫場次選單跟排行榜，
+        // 開著的期間每 20 秒自動重複這個動作，不用手動切出去再切回來才會更新
         async function openAttackLogPanel() {
             await ensureServerRaidDataFresh();
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
+            startAttackLogAutoRefresh();
+        }
+
+        const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
+        let attackLogAutoRefreshTimer = null;
+
+        function startAttackLogAutoRefresh() {
+            stopAttackLogAutoRefresh();
+            attackLogAutoRefreshTimer = setInterval(async () => {
+                await ensureServerRaidDataFresh();
+                renderRaidSessionMenu();
+                renderRaidLogQueryResult();
+            }, ATTACK_LOG_AUTO_REFRESH_MS);
+        }
+
+        function stopAttackLogAutoRefresh() {
+            if (attackLogAutoRefreshTimer) {
+                clearInterval(attackLogAutoRefreshTimer);
+                attackLogAutoRefreshTimer = null;
+            }
         }
 
         /* ══════════════════════════════════════════════════════════

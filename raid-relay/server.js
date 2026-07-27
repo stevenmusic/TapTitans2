@@ -263,6 +263,22 @@ const dbReady = (async () => {
       level_tier INTEGER
     )
   `);
+
+  // 從舊版裝置救回來的歷史攻擊紀錄，不是每一筆都有記到「屬於哪一場」的標記
+  // （早期版本沒有穩定記錄這個欄位），沒有標記的攻擊會靠時間去猜屬於哪一場，
+  // 這裡把已知的歷史場次起始時間先建好基準點，猜測才不會跑到別場去。
+  // 用 INSERT OR IGNORE，已經存在（或之後被使用者自己修改過等級）就不會覆蓋。
+  const HISTORICAL_SESSION_SEEDS = [
+    { startedAt: '2026-07-14T22:40:00', levelTier: 62 },
+    { startedAt: '2026-07-19T22:30:00', levelTier: 67 },
+    { startedAt: '2026-07-22T10:41:00', levelTier: 72 }
+  ];
+  for (const s of HISTORICAL_SESSION_SEEDS) {
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO manual_raid_sessions (started_at, level_tier) VALUES (?, ?)',
+      args: [s.startedAt, s.levelTier]
+    });
+  }
 })().catch(e => console.error('[turso] 建立資料表失敗:', e && e.message ? e.message : e));
 
 function attackDedupKey(entry) {

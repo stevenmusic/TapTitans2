@@ -411,7 +411,7 @@ const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
 const GITHUB_BACKUP_REPO = process.env.GITHUB_BACKUP_REPO || '';
 const GITHUB_BACKUP_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json';
 const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
-const GITHUB_BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 每小時備份一次
+const GITHUB_BACKUP_INTERVAL_MS = 60 * 1000; // 每 60 秒備份一次（在 GitHub 濫用防護的安全範圍內，不要調更短）
 const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
 if (!githubBackupEnabled) {
   console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Turso 資料庫還是照常運作，這只是多一層保險，可以不設定）。');
@@ -461,6 +461,39 @@ async function backupAttackLogToGitHub() {
     console.log(`[github-backup] 已把 ${attacks.length} 筆攻擊紀錄備份進 GitHub repo`);
   } catch (e) {
     console.error('[github-backup] 備份失敗:', e && e.message ? e.message : e);
+  }
+}
+
+// 開機時自動把 GitHub 備份檔案裡的資料讀回資料庫——不管是重新部署、還是 Render
+// 免費方案閒置超過 15 分鐘自動休眠又醒來，只要資料庫是空的（或缺一部分），這裡都會
+// 自動補回最近一次備份的內容。用 insertAttacksBatch 的 dedup 機制，就算資料庫裡
+// 已經有一部分資料，重複匯入也不會出問題，只會把缺少的部分補回來，不會產生重複紀錄
+async function restoreAttackLogFromGitHubBackup() {
+  if (!githubBackupEnabled) return;
+  try {
+    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_PATH}`;
+    const headers = {
+      Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
+      Accept: 'application/vnd.github+json'
+    };
+    const resp = await fetch(`${apiUrl}?ref=${GITHUB_BACKUP_BRANCH}`, { headers });
+    if (resp.status === 404) {
+      console.log('[github-backup] repo 裡還沒有備份檔案，略過開機還原');
+      return;
+    }
+    if (!resp.ok) {
+      console.error('[github-backup] 開機還原時讀取備份檔案失敗:', resp.status, await resp.text());
+      return;
+    }
+    const data = await resp.json();
+    const content = Buffer.from(data.content, 'base64').toString('utf8');
+    const parsed = JSON.parse(content);
+    const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
+    if (attacks.length === 0) return;
+    const imported = await insertAttacksBatch(attacks);
+    console.log(`[github-backup] 開機還原：備份檔案裡有 ${attacks.length} 筆，補回了 ${imported} 筆資料庫裡缺少的紀錄`);
+  } catch (e) {
+    console.error('[github-backup] 開機還原失敗:', e && e.message ? e.message : e);
   }
 }
 
@@ -991,13 +1024,16 @@ function startWatcher() {
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
 
-// Turso 版不用像試算表那樣等整份資料讀進記憶體才能開始收即時攻擊——
-// 每個查詢函式自己會 await dbReady 確保資料表存在，直接啟動就好
-startWatcher();
-if (githubBackupEnabled) {
-  backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一小時
-  setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
-}
+// 開機時先把 GitHub 備份的資料還原回資料庫，確保不管上次是怎麼重啟的
+// （重新部署、Render 免費方案閒置休眠醒來、程式當機…），資料都能自動補回來，
+// 不用等資料庫自己重新累積、也不用人工匯入
+restoreAttackLogFromGitHubBackup().then(() => {
+  startWatcher();
+  if (githubBackupEnabled) {
+    backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一輪
+    setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
+  }
+});
 
 app.get('/full-attack-log', async (req, res) => {
   res.json({

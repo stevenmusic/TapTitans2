@@ -2456,8 +2456,8 @@
             from { opacity: 0; transform: translateY(-4px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .raid-recent-player { font-weight: 800; color: #4a2020; flex-shrink: 0; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .raid-recent-part { flex: 1; color: #757575; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raid-recent-part { flex-shrink: 0; color: #757575; white-space: nowrap; }
         .raid-recent-part.layer-body { color: #00838f; }
         .raid-recent-dmg { flex-shrink: 0; font-weight: 700; color: #c62828; white-space: nowrap; }
         .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
@@ -6173,6 +6173,11 @@
         // 最近一次排行榜算出來的結果，點卡片看單張卡片的所有紀錄時要從這裡撈資料
         let raidLogLastRanked = [];
 
+        // 目前展開中的玩家配卡明細，用「玩家名稱」而不是排行榜的索引位置記錄——
+        // 背景自動更新重畫排行榜時名次可能會變動，用名字才能正確對回同一個人，
+        // 不會因為重畫就把使用者展開看到一半的內容強制收合
+        let raidLogExpandedPlayers = new Set();
+
         // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
         // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
         // 場次開始時間清單（含等級）現在完全由伺服器維護（server.js 的 24 小時背景側錄
@@ -6317,6 +6322,7 @@
             const session = sessions[idx];
             if (!session) return;
             raidSessionFilter = session;
+            raidLogExpandedPlayers.clear(); // 手動切換場次是換一批不同的資料，展開狀態重新開始
             document.getElementById('raid-session-active-bar').style.display = 'flex';
             document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(session)}`;
             renderRaidSessionMenu();
@@ -6797,11 +6803,9 @@
             }
         }
 
-        // 攻擊紀錄面板：打開的時候跟伺服器要一次最新資料再畫出來。
-        // 不會每隔幾秒自動背景重畫——之前每 20 秒自動更新一次會把使用者展開看到一半的
-        // 玩家配卡明細強制收合、還會打斷捲動位置，體驗很差。現在畫面只有「打開面板」
-        // 或「切換場次」時才會更新，其餘時間畫面完全不動，要看最新資料就重新整理網頁
-        // 或關掉面板再打開一次。
+        // 攻擊紀錄面板：打開的時候跟伺服器要一次最新資料再畫出來，開著的期間也會定期
+        // 背景更新（見 startAttackLogAutoRefresh）。展開中的玩家配卡明細是用玩家名稱記錄
+        // （raidLogExpandedPlayers），背景更新重畫排行榜不會把它們強制收合。
         async function openAttackLogPanel() {
             await ensureServerRaidDataFresh();
             // 明確把 raidSessionFilter 指到「最新場次」：排行榜本來沒選任何場次時就已經是
@@ -6819,12 +6823,40 @@
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
             checkLegacyRaidFullLogButton();
+            startAttackLogAutoRefresh();
         }
 
-        // 保留這兩個函式當空殼，避免其他地方（例如切換面板時）呼叫到還沒定義的函式而報錯，
-        // 但已經不會真的啟動計時器了——攻擊紀錄面板不再自動背景更新
-        function startAttackLogAutoRefresh() {}
-        function stopAttackLogAutoRefresh() {}
+        // 舊場次是已經打完的歷史資料、不會再變動，所以背景更新只在「目前顯示的正好是
+        // 最新場次」時才會重畫排行榜；正在看舊場次時完全不會動，不會打斷正在瀏覽的內容。
+        // 玩家配卡明細的展開狀態改用名字記錄（raidLogExpandedPlayers），重畫排行榜時
+        // 會照原樣還原展開狀態，不會像以前一樣被強制收合。
+        const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
+        let attackLogAutoRefreshTimer = null;
+
+        function startAttackLogAutoRefresh() {
+            stopAttackLogAutoRefresh();
+            attackLogAutoRefreshTimer = setInterval(async () => {
+                const viewingStart = raidSessionFilter ? raidSessionFilter.startedAt : null;
+                await ensureServerRaidDataFresh();
+                const sessions = buildRaidSessions();
+                const latest = sessions[0];
+                if (!latest) return;
+                // 只有目前顯示的就是最新場次時才需要更新（有新的一刀進來、筆數/排行會變動）
+                if (viewingStart === latest.startedAt) {
+                    raidSessionFilter = latest;
+                    document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(latest)}`;
+                    renderRaidSessionMenu();
+                    renderRaidLogQueryResult();
+                }
+            }, ATTACK_LOG_AUTO_REFRESH_MS);
+        }
+
+        function stopAttackLogAutoRefresh() {
+            if (attackLogAutoRefreshTimer) {
+                clearInterval(attackLogAutoRefreshTimer);
+                attackLogAutoRefreshTimer = null;
+            }
+        }
 
         /* ══════════════════════════════════════════════════════════
            漏打名單：以同一套「突襲開始時間、12 小時一輪」邏輯，
@@ -7061,16 +7093,18 @@
                 ? `符合「${keyword}」的玩家有 ${ranked.length} 位（依總傷害排序）`
                 : `共 ${ranked.length} 位玩家（依總傷害排序）`;
 
-            listEl.innerHTML = ranked.map((r, rIdx) => `
+            listEl.innerHTML = ranked.map((r, rIdx) => {
+                const isExpanded = raidLogExpandedPlayers.has(r.player);
+                return `
                 <div style="border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
                     <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}${(r.raidLevel != null && raidLevelSquaresSvg(r.raidLevel)) ? ` 丨${raidLevelSquaresSvg(r.raidLevel)}` : ''}</span>
                         <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
-                            <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">▾</span>
+                            <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
-                    <div id="raidlog-player-group-${rIdx}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
+                    <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
@@ -7080,7 +7114,8 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄
@@ -7092,6 +7127,11 @@
             const isHidden = group.style.display === 'none';
             group.style.display = isHidden ? 'block' : 'none';
             if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
+            const r = raidLogLastRanked[rIdx];
+            if (r) {
+                if (isHidden) raidLogExpandedPlayers.add(r.player);
+                else raidLogExpandedPlayers.delete(r.player);
+            }
         }
 
         // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，

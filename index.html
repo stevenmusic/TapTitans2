@@ -6785,34 +6785,22 @@
             }
         }
 
-        // 攻擊紀錄面板：先跟伺服器要最新資料，再重新畫場次選單跟排行榜，
-        // 開著的期間每 20 秒自動重複這個動作，不用手動切出去再切回來才會更新
+        // 攻擊紀錄面板：打開的時候跟伺服器要一次最新資料再畫出來。
+        // 不會每隔幾秒自動背景重畫——之前每 20 秒自動更新一次會把使用者展開看到一半的
+        // 玩家配卡明細強制收合、還會打斷捲動位置，體驗很差。現在畫面只有「打開面板」
+        // 或「切換場次」時才會更新，其餘時間畫面完全不動，要看最新資料就重新整理網頁
+        // 或關掉面板再打開一次。
         async function openAttackLogPanel() {
             await ensureServerRaidDataFresh();
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
             checkLegacyRaidFullLogButton();
-            startAttackLogAutoRefresh();
         }
 
-        const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
-        let attackLogAutoRefreshTimer = null;
-
-        function startAttackLogAutoRefresh() {
-            stopAttackLogAutoRefresh();
-            attackLogAutoRefreshTimer = setInterval(async () => {
-                await ensureServerRaidDataFresh();
-                renderRaidSessionMenu();
-                renderRaidLogQueryResult();
-            }, ATTACK_LOG_AUTO_REFRESH_MS);
-        }
-
-        function stopAttackLogAutoRefresh() {
-            if (attackLogAutoRefreshTimer) {
-                clearInterval(attackLogAutoRefreshTimer);
-                attackLogAutoRefreshTimer = null;
-            }
-        }
+        // 保留這兩個函式當空殼，避免其他地方（例如切換面板時）呼叫到還沒定義的函式而報錯，
+        // 但已經不會真的啟動計時器了——攻擊紀錄面板不再自動背景更新
+        function startAttackLogAutoRefresh() {}
+        function stopAttackLogAutoRefresh() {}
 
         /* ══════════════════════════════════════════════════════════
            漏打名單：以同一套「突襲開始時間、12 小時一輪」邏輯，

@@ -14,7 +14,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const { io: ioClient } = require('socket.io-client');
 const webpush = require('web-push');
-const { google } = require('googleapis');
+const { createClient } = require('@libsql/client');
 
 const app = express();
 app.use(cors());
@@ -205,240 +205,204 @@ function writeJsonSafe(filePath, data) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   攻擊紀錄資料庫（Google 試算表）
+   攻擊紀錄資料庫（Turso / libSQL）
    攻擊紀錄不再放在瀏覽器 localStorage、也不再是伺服器記憶體裡一個
-   會被清空的陣列——改成寫進公會自己的 Google 試算表，永久保留，
-   不會因為「新一輪突襲開始」就被清掉，也不會因為 Render 重新部署
-   把伺服器容器洗掉而跟著消失（試算表存在 Google 那邊，跟這支程式
-   的執行環境完全無關）。
-   讀取走「開機時整份讀進記憶體、之後都直接查記憶體」，寫入走
-   「先進記憶體、每隔幾秒批次寫回試算表」，這樣查詢速度不受
-   Google Sheets API 影響，也不會因為出刀太頻繁而撞到 API 頻率限制。
-   需要三個環境變數：GOOGLE_SERVICE_ACCOUNT_EMAIL、
-   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY、GOOGLE_SHEET_ID，
-   沒設定的話攻擊紀錄退回「只存在記憶體」（重啟就會消失，先求網站
-   能動，設定好之後就會自動恢復正常寫入）。
+   會被清空的陣列——改成寫進 Turso 這個雲端資料庫，永久保留，不會
+   因為「新一輪突襲開始」就被清掉，也不會因為 Render 重新部署把
+   伺服器容器洗掉而跟著消失（資料庫存在 Turso 那邊，跟這支程式的
+   執行環境完全無關）。
+   需要 TURSO_DATABASE_URL、TURSO_AUTH_TOKEN 兩個環境變數；沒設定的話
+   自動退回「本機記憶體資料庫」（用完全同一套 SQL 邏輯，只是資料只存
+   在這次執行期間，重啟就會消失），先求網站能動，設定好之後就會
+   自動恢復正常寫入，不用改任何程式碼。
    ══════════════════════════════════════════════════════════ */
-const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
-// 私鑰貼進 Render 環境變數時，換行常常會被存成字面上的 "\n" 兩個字元，這裡轉回真正的換行字元
-const GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
-const sheetsEnabled = Boolean(GOOGLE_SERVICE_ACCOUNT_EMAIL && GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY && GOOGLE_SHEET_ID);
-
-const ATTACKS_SHEET_NAME = 'Attacks';
-const SESSIONS_SHEET_NAME = 'Sessions';
-const ATTACKS_HEADER = ['dedupKey', 'ts', 'attackDatetime', 'cycle', 'raidStartedAt', 'raidLevelTier', 'player', 'playerCode', 'raidLevel', 'attacksRemaining', 'boss', 'bossOrdinal', 'bossTotal', 'cards', 'cardDamage', 'tapDamage', 'parts', 'totalDamage'];
-const SESSIONS_HEADER = ['startedAt', 'levelTier'];
-
-let sheetsClient = null;
-if (sheetsEnabled) {
-  const jwtClient = new google.auth.JWT(
-    GOOGLE_SERVICE_ACCOUNT_EMAIL, null, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
-    ['https://www.googleapis.com/auth/spreadsheets']
-  );
-  sheetsClient = google.sheets({ version: 'v4', auth: jwtClient });
-} else {
-  console.warn('尚未設定 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / GOOGLE_SHEET_ID，攻擊紀錄暫時只存在記憶體裡（重啟就會消失），設定好環境變數後重新部署即可恢復正常寫入。');
+const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL || '';
+const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || '';
+const tursoEnabled = Boolean(TURSO_DATABASE_URL);
+if (!tursoEnabled) {
+  console.warn('尚未設定 TURSO_DATABASE_URL / TURSO_AUTH_TOKEN，攻擊紀錄暫時只存在記憶體裡（重啟就會消失），設定好環境變數後重新部署即可恢復正常寫入。');
 }
+
+const db = createClient({
+  url: tursoEnabled ? TURSO_DATABASE_URL : ':memory:',
+  authToken: tursoEnabled ? TURSO_AUTH_TOKEN : undefined
+});
+
+// 開機就建表，之後每個查詢函式都會先 await 這個 promise 再動作，
+// 確保資料表一定存在，不用刻意排順序去等它跑完才 startWatcher()
+const dbReady = (async () => {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS attacks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dedup_key TEXT UNIQUE NOT NULL,
+      ts INTEGER NOT NULL,
+      attack_datetime TEXT,
+      cycle INTEGER,
+      raid_started_at TEXT,
+      raid_level_tier INTEGER,
+      player TEXT NOT NULL,
+      player_code TEXT,
+      raid_level INTEGER,
+      attacks_remaining INTEGER,
+      boss TEXT,
+      boss_ordinal INTEGER,
+      boss_total INTEGER,
+      cards TEXT,
+      card_damage TEXT,
+      tap_damage INTEGER,
+      parts TEXT,
+      total_damage INTEGER
+    )
+  `);
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS manual_raid_sessions (
+      started_at TEXT PRIMARY KEY,
+      level_tier INTEGER
+    )
+  `);
+})().catch(e => console.error('[turso] 建立資料表失敗:', e && e.message ? e.message : e));
 
 function attackDedupKey(entry) {
   return `${entry.attackDatetime || entry.ts}_${entry.player}`;
 }
 
-function attackToRow(entry) {
+const INSERT_ATTACK_SQL = `
+  INSERT OR IGNORE INTO attacks
+    (dedup_key, ts, attack_datetime, cycle, raid_started_at, raid_level_tier, player, player_code,
+     raid_level, attacks_remaining, boss, boss_ordinal, boss_total, cards, card_damage, tap_damage, parts, total_damage)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+function attackInsertArgs(entry) {
   return [
-    attackDedupKey(entry), entry.ts, entry.attackDatetime || '', (typeof entry.cycle === 'number') ? entry.cycle : '',
-    entry.raidStartedAt || '', (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : '',
-    entry.player, entry.playerCode || '', (typeof entry.raidLevel === 'number') ? entry.raidLevel : '',
-    (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : '',
-    entry.boss || '', entry.bossOrdinal || '', entry.bossTotal || '',
+    attackDedupKey(entry), entry.ts, entry.attackDatetime || null,
+    (typeof entry.cycle === 'number') ? entry.cycle : null,
+    entry.raidStartedAt || null, (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : null,
+    entry.player, entry.playerCode || null, (typeof entry.raidLevel === 'number') ? entry.raidLevel : null,
+    (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : null,
+    entry.boss || null, entry.bossOrdinal || null, entry.bossTotal || null,
     JSON.stringify(entry.cards || []), JSON.stringify(entry.cardDamage || {}),
     entry.tapDamage || 0, JSON.stringify(entry.parts || []), entry.totalDamage || 0
   ];
 }
 
 function rowToAttack(row) {
-  const num = (v) => (v === '' || v === undefined || v === null) ? null : Number(v);
   return {
-    ts: Number(row[1]) || 0,
-    attackDatetime: row[2] || null,
-    cycle: num(row[3]),
-    raidStartedAt: row[4] || null,
-    raidLevelTier: num(row[5]),
-    player: row[6] || '?',
-    playerCode: row[7] || null,
-    raidLevel: num(row[8]),
-    attacksRemaining: num(row[9]),
-    boss: row[10] || null,
-    bossOrdinal: num(row[11]),
-    bossTotal: num(row[12]),
-    cards: JSON.parse(row[13] || '[]'),
-    cardDamage: JSON.parse(row[14] || '{}'),
-    tapDamage: Number(row[15]) || 0,
-    parts: JSON.parse(row[16] || '[]'),
-    totalDamage: Number(row[17]) || 0
+    ts: Number(row.ts) || 0,
+    attackDatetime: row.attack_datetime,
+    cycle: row.cycle,
+    raidStartedAt: row.raid_started_at,
+    raidLevelTier: row.raid_level_tier,
+    player: row.player,
+    playerCode: row.player_code,
+    raidLevel: row.raid_level,
+    attacksRemaining: row.attacks_remaining,
+    boss: row.boss,
+    bossOrdinal: row.boss_ordinal,
+    bossTotal: row.boss_total,
+    cards: JSON.parse(row.cards || '[]'),
+    cardDamage: JSON.parse(row.card_damage || '{}'),
+    tapDamage: Number(row.tap_damage) || 0,
+    parts: JSON.parse(row.parts || '[]'),
+    totalDamage: Number(row.total_damage) || 0
   };
 }
 
-let attacksCache = [];
-let attacksDedupSet = new Set();
-let pendingAttackRows = []; // 排隊等批次寫回試算表的新資料列
-
-function getAllAttacks() { return attacksCache; }
-
-function insertAttack(entry) {
-  const key = attackDedupKey(entry);
-  if (attacksDedupSet.has(key)) return; // 跟同一支水管另一端重複收到的攻擊事件擋掉，不要記兩筆
-  attacksDedupSet.add(key);
-  attacksCache.push(entry);
-  if (sheetsEnabled) pendingAttackRows.push(attackToRow(entry));
+// 即時突襲事件用：不用等待也不用管結果，內部自己 catch，呼叫端不需要 await
+async function insertAttack(entry) {
+  try {
+    await dbReady;
+    const result = await db.execute({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(entry) });
+    return result.rowsAffected > 0;
+  } catch (e) {
+    console.error('[turso] 寫入攻擊紀錄失敗:', e && e.message ? e.message : e);
+    return false;
+  }
 }
 
-// 每 8 秒批次寫回一次，而不是每刀都寫——突襲激烈的時候短時間內會有大量攻擊事件，
-// 逐筆寫入很容易撞到 Google Sheets API 的頻率限制，批次寫可以完全避開這個問題
-const ATTACK_FLUSH_INTERVAL_MS = 8000;
-async function flushPendingAttackRows() {
-  if (!sheetsEnabled || pendingAttackRows.length === 0) return;
-  const rowsToFlush = pendingAttackRows;
-  pendingAttackRows = [];
+// 匯入功能用：一次多筆用 batch 一口氣送出，比一筆一筆等網路來回快很多
+async function insertAttacksBatch(entries) {
+  if (entries.length === 0) return 0;
   try {
-    await sheetsClient.spreadsheets.values.append({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: `${ATTACKS_SHEET_NAME}!A:A`,
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: rowsToFlush }
-    });
+    await dbReady;
+    const results = await db.batch(entries.map(e => ({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(e) })), 'write');
+    return results.filter(r => r.rowsAffected > 0).length;
   } catch (e) {
-    console.error('[sheets] 批次寫入攻擊紀錄失敗，下次再重試:', e && e.message ? e.message : e);
-    pendingAttackRows = rowsToFlush.concat(pendingAttackRows); // 寫失敗就放回佇列前面，不會弄丟這批資料
+    console.error('[turso] 批次匯入攻擊紀錄失敗:', e && e.message ? e.message : e);
+    return 0;
+  }
+}
+
+async function getAllAttacks() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT * FROM attacks ORDER BY ts ASC');
+    return result.rows.map(rowToAttack);
+  } catch (e) {
+    console.error('[turso] 讀取攻擊紀錄失敗:', e && e.message ? e.message : e);
+    return [];
   }
 }
 
 async function clearAllAttacks() {
-  attacksCache = [];
-  attacksDedupSet = new Set();
-  pendingAttackRows = [];
-  if (!sheetsEnabled) return;
-  await sheetsClient.spreadsheets.values.clear({ spreadsheetId: GOOGLE_SHEET_ID, range: `${ATTACKS_SHEET_NAME}!A2:R` });
+  try {
+    await dbReady;
+    await db.execute('DELETE FROM attacks');
+  } catch (e) {
+    console.error('[turso] 清空攻擊紀錄失敗:', e && e.message ? e.message : e);
+  }
 }
 
 // 場次開始時間差在這範圍內視為同一場（跟前端 RAID_SESSION_MATCH_MS 邏輯一致）
 const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
-let sessionsCache = []; // { startedAt, levelTier, rowIndex }；rowIndex 是試算表裡實際的列號（含標題列），還沒寫進表格前是 null
 
-function getManualRaidSessions() {
-  return sessionsCache.map(s => ({ startedAt: s.startedAt, levelTier: s.levelTier }));
+async function getManualRaidSessions() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT started_at, level_tier FROM manual_raid_sessions');
+    return result.rows.map(r => ({ startedAt: r.started_at, levelTier: r.level_tier }));
+  } catch (e) {
+    console.error('[turso] 讀取場次清單失敗:', e && e.message ? e.message : e);
+    return [];
+  }
 }
 
-async function appendSessionRow(entry) {
-  if (!sheetsEnabled) return;
-  const resp = await sheetsClient.spreadsheets.values.append({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${SESSIONS_SHEET_NAME}!A:A`,
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [[entry.startedAt, entry.levelTier == null ? '' : entry.levelTier]] }
-  });
-  // 從回傳的 updatedRange（例如 "Sessions!A5:B5"）解析出實際寫入的列號，之後補等級時才知道要更新哪一列
-  const range = resp.data.updates && resp.data.updates.updatedRange;
-  const m = range && range.match(/![A-Z]+(\d+)/);
-  if (m) entry.rowIndex = Number(m[1]);
-}
-
-async function updateSessionLevelInSheet(entry) {
-  if (!sheetsEnabled || !entry.rowIndex) return;
-  await sheetsClient.spreadsheets.values.update({
-    spreadsheetId: GOOGLE_SHEET_ID,
-    range: `${SESSIONS_SHEET_NAME}!B${entry.rowIndex}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [[entry.levelTier]] }
-  });
-}
-
-// 場次資料量很小（一場突襲大概只會新增一筆），不用像攻擊紀錄那樣批次處理，
-// 直接非同步寫回試算表就好，呼叫端不用等待、失敗也只是記錄檔案裡看得到 log
-function upsertRaidSessionIfNew(startedAt, levelTier) {
+// 場次資料量很小（一場突襲大概只會新增一筆），直接查、直接寫，
+// 呼叫端不用等待、失敗也只是記錄檔案裡看得到 log
+async function upsertRaidSessionIfNew(startedAt, levelTier) {
   if (!startedAt) return;
   const ts = new Date(startedAt).getTime();
   if (isNaN(ts)) return;
-  const dup = sessionsCache.find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
-  if (dup) {
-    if (dup.levelTier == null && typeof levelTier === 'number') {
-      dup.levelTier = levelTier;
-      updateSessionLevelInSheet(dup).catch(e => console.error('[sheets] 補上場次等級失敗:', e && e.message ? e.message : e));
-    }
-    return;
-  }
-  const newEntry = { startedAt, levelTier: (typeof levelTier === 'number') ? levelTier : null, rowIndex: null };
-  sessionsCache.push(newEntry);
-  appendSessionRow(newEntry).catch(e => console.error('[sheets] 新增場次失敗:', e && e.message ? e.message : e));
-}
-
-// 確保試算表裡有 Attacks、Sessions 兩個分頁，各自都有標題列（新建立的試算表只有
-// 預設的 Sheet1，要自己補上這兩個分頁；如果分頁已經存在就不去動裡面的資料）
-async function ensureHeaderRow(sheetName, header) {
-  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${sheetName}!A1:A1` });
-  if (!resp.data.values || resp.data.values.length === 0) {
-    await sheetsClient.spreadsheets.values.update({
-      spreadsheetId: GOOGLE_SHEET_ID, range: `${sheetName}!A1`,
-      valueInputOption: 'RAW', requestBody: { values: [header] }
-    });
-  }
-}
-
-async function ensureSheetTabsExist() {
-  const meta = await sheetsClient.spreadsheets.get({ spreadsheetId: GOOGLE_SHEET_ID });
-  const existingTitles = (meta.data.sheets || []).map(s => s.properties.title);
-  const toAdd = [ATTACKS_SHEET_NAME, SESSIONS_SHEET_NAME].filter(name => !existingTitles.includes(name));
-  if (toAdd.length > 0) {
-    await sheetsClient.spreadsheets.batchUpdate({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      requestBody: { requests: toAdd.map(title => ({ addSheet: { properties: { title } } })) }
-    });
-  }
-  await ensureHeaderRow(ATTACKS_SHEET_NAME, ATTACKS_HEADER);
-  await ensureHeaderRow(SESSIONS_SHEET_NAME, SESSIONS_HEADER);
-}
-
-async function loadAttacksFromSheet() {
-  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${ATTACKS_SHEET_NAME}!A2:R` });
-  const rows = resp.data.values || [];
-  attacksCache = rows.map(rowToAttack);
-  attacksDedupSet = new Set(rows.map(r => r[0]));
-}
-
-async function loadSessionsFromSheet() {
-  const resp = await sheetsClient.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEET_ID, range: `${SESSIONS_SHEET_NAME}!A2:B` });
-  const rows = resp.data.values || [];
-  sessionsCache = rows.map((r, i) => ({
-    startedAt: r[0],
-    levelTier: (r[1] === '' || r[1] === undefined) ? null : Number(r[1]),
-    rowIndex: i + 2 // +2：第 1 列是標題列，資料從第 2 列開始
-  }));
-}
-
-// 開機時把整份試算表讀進記憶體；一定要在 startWatcher() 之前跑完，不然突襲期間
-// 剛好收到即時攻擊、跟這裡的初始化讀取同時進行，會被 loadAttacksFromSheet 整批
-// 覆蓋蓋掉記憶體裡剛收到的新資料
-async function initGoogleSheetsStore() {
-  if (!sheetsEnabled) return;
   try {
-    await ensureSheetTabsExist();
-    await loadAttacksFromSheet();
-    await loadSessionsFromSheet();
-    console.log(`[sheets] 初始化完成，讀到 ${attacksCache.length} 筆攻擊紀錄、${sessionsCache.length} 個場次`);
+    await dbReady;
+    const sessions = await getManualRaidSessions();
+    const dup = sessions.find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
+    if (dup) {
+      if (dup.levelTier == null && typeof levelTier === 'number') {
+        await db.execute({ sql: 'UPDATE manual_raid_sessions SET level_tier = ? WHERE started_at = ?', args: [levelTier, dup.startedAt] });
+      }
+      return;
+    }
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO manual_raid_sessions (started_at, level_tier) VALUES (?, ?)',
+      args: [startedAt, (typeof levelTier === 'number') ? levelTier : null]
+    });
   } catch (e) {
-    console.error('[sheets] 初始化失敗，攻擊紀錄暫時改成只存在記憶體裡:', e && e.message ? e.message : e);
+    console.error('[turso] 新增/更新場次失敗:', e && e.message ? e.message : e);
   }
-  setInterval(flushPendingAttackRows, ATTACK_FLUSH_INTERVAL_MS);
 }
 
 /* ══════════════════════════════════════════════════════════
-   額外的自動備份：定期把目前的攻擊紀錄整份寫進 GitHub repo 裡的一個
-   JSON 檔案（用同一個檔案路徑覆蓋，每次的版本都留在 git 歷史紀錄裡，
-   等於自動有時間軸備份）。這是 Google 試算表之外「再多一層」的保險，
-   就算試算表那邊出問題，repo 裡還有一份最近的完整資料可以救回來。
+   額外的自動備份（選用，不設定也完全沒問題）：定期把目前的攻擊紀錄
+   整份寫進 GitHub repo 裡的一個 JSON 檔案（用同一個檔案路徑覆蓋，
+   每次的版本都留在 git 歷史紀錄裡，等於自動有時間軸備份）。這是
+   Turso 資料庫之外「再多一層」的保險，就算 Turso 那邊出問題，repo
+   裡還有一份最近的完整資料可以救回來。
+   ⚠️ 這裡面會有玩家名稱、傷害數字等資料，GITHUB_BACKUP_REPO 一定要
+   指到一個私人（private）repo，不要指到公開的網站 repo，不然攻擊
+   紀錄會變成任何人都看得到。
    需要 GITHUB_BACKUP_TOKEN（有 repo 內容讀寫權限的 GitHub Personal
    Access Token）、GITHUB_BACKUP_REPO（格式 owner/repo）兩個環境變數，
    沒設定就不會執行，不影響其他功能。
@@ -450,7 +414,7 @@ const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
 const GITHUB_BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 每小時備份一次
 const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
 if (!githubBackupEnabled) {
-  console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Google 試算表還是照常運作，這只是多一層保險）。');
+  console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Turso 資料庫還是照常運作，這只是多一層保險，可以不設定）。');
 }
 
 async function backupAttackLogToGitHub() {
@@ -473,9 +437,10 @@ async function backupAttackLogToGitHub() {
       return;
     }
 
+    const attacks = await getAllAttacks();
     const backup = {
-      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log', exportedAt: new Date().toISOString(), count: attacksCache.length },
-      attacks: attacksCache
+      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log', exportedAt: new Date().toISOString(), count: attacks.length },
+      attacks
     };
     const content = Buffer.from(JSON.stringify(backup, null, 2)).toString('base64');
 
@@ -483,7 +448,7 @@ async function backupAttackLogToGitHub() {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: `Automated raid attack log backup (${attacksCache.length} records)`,
+        message: `Automated raid attack log backup (${attacks.length} records)`,
         content,
         branch: GITHUB_BACKUP_BRANCH,
         sha
@@ -493,7 +458,7 @@ async function backupAttackLogToGitHub() {
       console.error('[github-backup] 寫入備份檔案失敗:', putResp.status, await putResp.text());
       return;
     }
-    console.log(`[github-backup] 已把 ${attacksCache.length} 筆攻擊紀錄備份進 GitHub repo`);
+    console.log(`[github-backup] 已把 ${attacks.length} 筆攻擊紀錄備份進 GitHub repo`);
   } catch (e) {
     console.error('[github-backup] 備份失敗:', e && e.message ? e.message : e);
   }
@@ -1026,19 +991,17 @@ function startWatcher() {
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
 
-// 一定要先把試算表裡的舊資料讀進記憶體，才能開始連線收即時攻擊事件——
-// 不然剛好同時發生的話，讀取會用舊資料整批蓋掉這段時間收到的新攻擊
-initGoogleSheetsStore().then(() => {
-  startWatcher();
-  if (githubBackupEnabled) {
-    backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一小時
-    setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
-  }
-});
+// Turso 版不用像試算表那樣等整份資料讀進記憶體才能開始收即時攻擊——
+// 每個查詢函式自己會 await dbReady 確保資料表存在，直接啟動就好
+startWatcher();
+if (githubBackupEnabled) {
+  backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一小時
+  setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
+}
 
-app.get('/full-attack-log', (req, res) => {
+app.get('/full-attack-log', async (req, res) => {
   res.json({
-    attacks: getAllAttacks(),
+    attacks: await getAllAttacks(),
     currentBoss: {
       name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
       enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
@@ -1047,8 +1010,8 @@ app.get('/full-attack-log', (req, res) => {
   });
 });
 
-app.get('/manual-raid-sessions', (req, res) => {
-  res.json({ sessions: getManualRaidSessions() });
+app.get('/manual-raid-sessions', async (req, res) => {
+  res.json({ sessions: await getManualRaidSessions() });
 });
 
 function fmtNum(n) {
@@ -1057,8 +1020,8 @@ function fmtNum(n) {
   return String(n);
 }
 
-app.get('/full-attack-log/summary', (req, res) => {
-  const attacks = getAllAttacks();
+app.get('/full-attack-log/summary', async (req, res) => {
+  const attacks = await getAllAttacks();
   const totalDamage = attacks.reduce((s, a) => s + (a.totalDamage || 0), 0);
   const playerSet = new Set(attacks.map(a => a.player));
   res.send(`
@@ -1094,14 +1057,13 @@ app.post('/full-attack-log/clear', async (req, res) => {
 });
 
 // 給網頁「匯入攻擊紀錄」按鈕用：把使用者上傳的 JSON 檔案裡的攻擊紀錄併回資料庫，
-// 靠 insertAttack 本身的 dedup 邏輯擋掉已經有的紀錄，重複匯入同一份檔案也不會有問題
-app.post('/full-attack-log/import', (req, res) => {
+// 靠資料庫的 UNIQUE 限制擋掉已經有的紀錄，重複匯入同一份檔案也不會有問題
+app.post('/full-attack-log/import', async (req, res) => {
   const attacks = (req.body && Array.isArray(req.body.attacks)) ? req.body.attacks : null;
   if (!attacks) return res.status(400).json({ error: 'missing attacks array' });
-  const before = attacksCache.length;
-  attacks.forEach(insertAttack);
-  const imported = attacksCache.length - before;
-  res.json({ ok: true, imported, total: attacksCache.length });
+  const imported = await insertAttacksBatch(attacks);
+  const total = (await getAllAttacks()).length;
+  res.json({ ok: true, imported, total });
 });
 
 app.get('/cycle-summaries', (req, res) => {

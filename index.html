@@ -6779,9 +6779,7 @@
                 // 每次重新打開面板，一律先重設回「預設顯示最新場次」，不會記住上次關掉面板前
                 // 選到的舊場次——避免使用者上次點過舊場次後，下次打開面板還停留在那場舊資料
                 if (id === 'attacklog') {
-                    raidSessionFilter = null;
-                    document.getElementById('raid-session-active-bar').style.display = 'none';
-                    openAttackLogPanel();
+                    openAttackLogPanel(); // 這裡面會自己重設回最新場次並更新反白/標籤
                 }
                 if (id === 'topdecks') {
                     topDecksSessionFilter = null;
@@ -6806,6 +6804,18 @@
         // 或關掉面板再打開一次。
         async function openAttackLogPanel() {
             await ensureServerRaidDataFresh();
+            // 明確把 raidSessionFilter 指到「最新場次」：排行榜本來沒選任何場次時就已經是
+            // 顯示最新場次的資料了，但畫面上不會反白任何按鈕、也不會顯示「目前顯示」，
+            // 會讓人誤以為沒有自動選取。這裡直接比照使用者手動點選最新場次的效果。
+            const sessions = buildRaidSessions();
+            if (sessions.length > 0) {
+                raidSessionFilter = sessions[0];
+                document.getElementById('raid-session-active-bar').style.display = 'flex';
+                document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(sessions[0])}`;
+            } else {
+                raidSessionFilter = null;
+                document.getElementById('raid-session-active-bar').style.display = 'none';
+            }
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
             checkLegacyRaidFullLogButton();

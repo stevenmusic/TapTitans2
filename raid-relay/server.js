@@ -18,7 +18,8 @@ const { createClient } = require('@libsql/client');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// 預設 100KB 太小了——匯入舊資料時，一次會送好幾千筆攻擊紀錄過來，輕鬆超過這個限制
+app.use(express.json({ limit: '25mb' }));
 
 const RAID_REST_BASE = 'https://tt2-public.gamehivegames.com';
 

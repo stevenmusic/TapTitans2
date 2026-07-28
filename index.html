@@ -5368,33 +5368,12 @@
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
         /* ══════════════════════════════════════════════════════════
-           背景自動更新（攻擊紀錄面板每 20 秒、突襲狀態主畫面每 20 秒）不應該在
-           使用者正在滑動或操作網頁的時候，突然重畫畫面把手感打斷。這裡記錄「最近
-           一次滑動/觸控/點擊」的時間，背景更新要重畫畫面前先檢查一下：如果使用者
-           剛好還在動，就先跳過這次，改成排一個等安靜下來才補做的重畫，資料不會遺失，
-           只是畫面更新會延後到手指停下來之後。
+           背景定期同步（攻擊紀錄面板每 20 秒、突襲狀態主畫面每 20 秒）只負責把
+           資料抓新、存進變數裡，不會自動重畫畫面——不管使用者是在滑動、還是只是
+           停在原地看著畫面內容，背景同步都不應該偷偷把畫面換掉、打斷正在瀏覽的
+           內容。真正重畫畫面只會發生在使用者自己觸發的動作：打開面板、切換場次、
+           按下連線、或重新整理網頁。背景同步下面用「silent」參數控制要不要重畫。
            ══════════════════════════════════════════════════════════ */
-        let raidLastUserInteractionAt = 0;
-        const RAID_USER_INTERACTION_QUIET_MS = 1200;
-        ['scroll', 'touchstart', 'touchmove', 'wheel', 'pointerdown'].forEach(evt => {
-            window.addEventListener(evt, () => { raidLastUserInteractionAt = Date.now(); }, { passive: true, capture: true });
-        });
-        function isRaidUserActivelyInteracting() {
-            return (Date.now() - raidLastUserInteractionAt) < RAID_USER_INTERACTION_QUIET_MS;
-        }
-        const raidQuietRenderTimers = new Map(); // renderFn -> 排隊中的 setTimeout id，避免同一個更新重複排好幾個
-        function scheduleRaidQuietRender(renderFn) {
-            if (!isRaidUserActivelyInteracting()) {
-                renderFn();
-                return;
-            }
-            if (raidQuietRenderTimers.has(renderFn)) return; // 已經排過了，不用重複排
-            const timerId = setTimeout(() => {
-                raidQuietRenderTimers.delete(renderFn);
-                scheduleRaidQuietRender(renderFn); // 還在動就繼續等，安靜了就真的執行
-            }, RAID_USER_INTERACTION_QUIET_MS);
-            raidQuietRenderTimers.set(renderFn, timerId);
-        }
 
         function loadRaidTokens() {
             // 沒填過 Token 的裝置（第一次打開）直接預設用《亞瑟斯》這組，
@@ -5866,8 +5845,12 @@
         // 不會整包抓全部場次——場次資料量大了之後整包抓很慢，畫面預設只需要看最新一場，
         // 舊場次要看的時候才由 ensureSessionAttacksLoaded() 另外抓。
         // 成功拿到資料後順便合併備份一份到 localStorage；失敗就保留原本記憶體裡的舊資料，
-        // 呼叫端自己決定要不要提示使用者「連不到伺服器」
-        async function fetchServerRaidData(relayUrl) {
+        // 呼叫端自己決定要不要提示使用者「連不到伺服器」。
+        // silent=true：只更新變數（serverAttackLogCache/raidState/raidRecentAttacks 等），
+        // 不會呼叫任何 render 函式重畫畫面——背景定期同步要用這個模式，避免打斷使用者
+        // 正在看的畫面內容；使用者自己觸發的動作（打開面板、切換場次、按連線）才需要
+        // 立刻看到結果，維持預設（silent 沒帶或為 false）會照常重畫。
+        async function fetchServerRaidData(relayUrl, silent) {
             const [logResp, summaryResp] = await Promise.all([
                 fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`),
                 fetch(`${relayUrl}${raidWatcherPathPrefix()}/raid-sessions-summary`)
@@ -5889,9 +5872,7 @@
                     const derived = deriveRecentAttacksFromLog(data.attacks);
                     if (derived.length > 0) {
                         raidRecentAttacks = mergeRecentAttacks(raidRecentAttacks, derived);
-                        // 資料先更新沒關係，但畫面重畫要避開使用者正在滑動/操作的當下，
-                        // 不然背景更新會把瀏覽體驗打斷
-                        scheduleRaidQuietRender(renderRaidRecentAttacks);
+                        if (!silent) renderRaidRecentAttacks();
                     }
                 }
 
@@ -5913,7 +5894,7 @@
                         killMaxHp: cb.killMaxHp,
                         updatedAt: Date.now()
                     };
-                    scheduleRaidQuietRender(renderRaidStatus); // 避開使用者正在滑動/操作的當下再重畫
+                    if (!silent) renderRaidStatus();
                 }
             }
         }
@@ -5939,12 +5920,12 @@
 
         // 面板要顯示資料前，先確保資料是最新的（示範模式除外）：
         // 優先跟伺服器要最新資料；連不到伺服器就退回這台瀏覽器上次備份到的資料，
-        // 至少不會整個顯示空白
-        async function ensureServerRaidDataFresh() {
+        // 至少不會整個顯示空白。silent 原樣往下傳給 fetchServerRaidData。
+        async function ensureServerRaidDataFresh(silent) {
             if (raidLogDemoActive) return;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                await fetchServerRaidData(relayUrl);
+                await fetchServerRaidData(relayUrl, silent);
             } catch (e) {
                 serverAttackLogCache = loadRaidFullLogBackup(); // 離線/伺服器連不上時，退回本機備份
             }
@@ -6865,39 +6846,17 @@
             startAttackLogAutoRefresh();
         }
 
-        // 舊場次是已經打完的歷史資料、不會再變動，所以背景更新只在「目前顯示的正好是
-        // 最新場次」時才會重畫排行榜；正在看舊場次時完全不會動，不會打斷正在瀏覽的內容。
-        // 玩家配卡明細的展開狀態改用名字記錄（raidLogExpandedPlayers），重畫排行榜時
-        // 會照原樣還原展開狀態，不會像以前一樣被強制收合。
+        // 背景只靜默把資料抓新（存進 serverAttackLogCache/serverSessionsSummary/
+        // sessionAttacksCache），不會自動重畫排行榜或場次選單——不管使用者是在滑動
+        // 還是單純停在原地看內容，都不應該被背景同步打斷。真正看到更新後的畫面，
+        // 要等使用者自己重新打開面板、切換場次，或重新整理網頁。
         const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
         let attackLogAutoRefreshTimer = null;
 
-        // 用共用變數（而不是每次 tick 都建一個新的匿名函式）記住「這次要換上的最新場次」，
-        // 這樣 scheduleRaidQuietRender 才能靠函式參照正確判斷「已經排過一次了，不用重複排」
-        let attackLogAutoRefreshPendingLatest = null;
-        function renderAttackLogAutoRefreshTick() {
-            const latest = attackLogAutoRefreshPendingLatest;
-            if (!latest) return;
-            raidSessionFilter = latest;
-            document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(latest)}`;
-            renderRaidSessionMenu();
-            renderRaidLogQueryResult();
-        }
-
         function startAttackLogAutoRefresh() {
             stopAttackLogAutoRefresh();
-            attackLogAutoRefreshTimer = setInterval(async () => {
-                const viewingStart = raidSessionFilter ? raidSessionFilter.startedAt : null;
-                await ensureServerRaidDataFresh();
-                const sessions = buildRaidSessions();
-                const latest = sessions[0];
-                if (!latest) return;
-                // 只有目前顯示的就是最新場次時才需要更新（有新的一刀進來、筆數/排行會變動）
-                if (viewingStart === latest.startedAt) {
-                    attackLogAutoRefreshPendingLatest = latest;
-                    // 避開使用者正在滑動/操作的當下再重畫，不然背景更新會把瀏覽體驗打斷
-                    scheduleRaidQuietRender(renderAttackLogAutoRefreshTick);
-                }
+            attackLogAutoRefreshTimer = setInterval(() => {
+                ensureServerRaidDataFresh(true); // silent：只更新資料，不重畫畫面
             }, ATTACK_LOG_AUTO_REFRESH_MS);
         }
 
@@ -7560,8 +7519,12 @@
             startRaidLogAutoSync(relayUrl);
         }
 
-        // 網頁開著的期間，每隔一段時間就去問伺服器有沒有新的攻擊紀錄，
-        // 不用等重新連線才更新——這樣網頁開著就能持續跟真實遊戲進度同步
+        // 網頁開著的期間，每隔一段時間就去問伺服器有沒有新的攻擊紀錄，讓資料不會放到過期
+        // ——但這只是「背景把資料抓新」，不會自動重畫畫面（silent），不然單純時間到就重畫
+        // 會在使用者沒有任何操作、只是停在原地看內容時，也把畫面換掉、打斷閱讀。
+        // 畫面真正更新的時機是：①即時連線收到真的有新攻擊事件推播進來（renderRaidStatus
+        // 在 watcherHandleRaidSnapshot 那邊會直接被呼叫，這是「真的發生事情」才更新，
+        // 不是背景輪詢），②使用者自己做了某個動作（打開面板、切換場次、重新整理網頁）。
         const RAID_LOG_SYNC_INTERVAL_MS = 20000; // 每 20 秒同步一次
         let raidLogSyncTimer = null;
 
@@ -7572,7 +7535,7 @@
                     stopRaidLogAutoSync();
                     return;
                 }
-                fetchServerRaidData(relayUrl);
+                fetchServerRaidData(relayUrl, true); // silent：只更新資料，不重畫畫面
             }, RAID_LOG_SYNC_INTERVAL_MS);
         }
 

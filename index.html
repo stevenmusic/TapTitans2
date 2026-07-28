@@ -5367,6 +5367,35 @@
         const RAID_RECENT_MAX = 15;
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
+        /* ══════════════════════════════════════════════════════════
+           背景自動更新（攻擊紀錄面板每 20 秒、突襲狀態主畫面每 20 秒）不應該在
+           使用者正在滑動或操作網頁的時候，突然重畫畫面把手感打斷。這裡記錄「最近
+           一次滑動/觸控/點擊」的時間，背景更新要重畫畫面前先檢查一下：如果使用者
+           剛好還在動，就先跳過這次，改成排一個等安靜下來才補做的重畫，資料不會遺失，
+           只是畫面更新會延後到手指停下來之後。
+           ══════════════════════════════════════════════════════════ */
+        let raidLastUserInteractionAt = 0;
+        const RAID_USER_INTERACTION_QUIET_MS = 1200;
+        ['scroll', 'touchstart', 'touchmove', 'wheel', 'pointerdown'].forEach(evt => {
+            window.addEventListener(evt, () => { raidLastUserInteractionAt = Date.now(); }, { passive: true, capture: true });
+        });
+        function isRaidUserActivelyInteracting() {
+            return (Date.now() - raidLastUserInteractionAt) < RAID_USER_INTERACTION_QUIET_MS;
+        }
+        const raidQuietRenderTimers = new Map(); // renderFn -> 排隊中的 setTimeout id，避免同一個更新重複排好幾個
+        function scheduleRaidQuietRender(renderFn) {
+            if (!isRaidUserActivelyInteracting()) {
+                renderFn();
+                return;
+            }
+            if (raidQuietRenderTimers.has(renderFn)) return; // 已經排過了，不用重複排
+            const timerId = setTimeout(() => {
+                raidQuietRenderTimers.delete(renderFn);
+                scheduleRaidQuietRender(renderFn); // 還在動就繼續等，安靜了就真的執行
+            }, RAID_USER_INTERACTION_QUIET_MS);
+            raidQuietRenderTimers.set(renderFn, timerId);
+        }
+
         function loadRaidTokens() {
             // 沒填過 Token 的裝置（第一次打開）直接預設用《亞瑟斯》這組，
             // 讓 autoConnectRaidOnLoad() 一進頁面就能自動連線，不用先按公會按鈕
@@ -5860,7 +5889,9 @@
                     const derived = deriveRecentAttacksFromLog(data.attacks);
                     if (derived.length > 0) {
                         raidRecentAttacks = mergeRecentAttacks(raidRecentAttacks, derived);
-                        renderRaidRecentAttacks();
+                        // 資料先更新沒關係，但畫面重畫要避開使用者正在滑動/操作的當下，
+                        // 不然背景更新會把瀏覽體驗打斷
+                        scheduleRaidQuietRender(renderRaidRecentAttacks);
                     }
                 }
 
@@ -5882,7 +5913,7 @@
                         killMaxHp: cb.killMaxHp,
                         updatedAt: Date.now()
                     };
-                    renderRaidStatus();
+                    scheduleRaidQuietRender(renderRaidStatus); // 避開使用者正在滑動/操作的當下再重畫
                 }
             }
         }
@@ -6841,6 +6872,18 @@
         const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
         let attackLogAutoRefreshTimer = null;
 
+        // 用共用變數（而不是每次 tick 都建一個新的匿名函式）記住「這次要換上的最新場次」，
+        // 這樣 scheduleRaidQuietRender 才能靠函式參照正確判斷「已經排過一次了，不用重複排」
+        let attackLogAutoRefreshPendingLatest = null;
+        function renderAttackLogAutoRefreshTick() {
+            const latest = attackLogAutoRefreshPendingLatest;
+            if (!latest) return;
+            raidSessionFilter = latest;
+            document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(latest)}`;
+            renderRaidSessionMenu();
+            renderRaidLogQueryResult();
+        }
+
         function startAttackLogAutoRefresh() {
             stopAttackLogAutoRefresh();
             attackLogAutoRefreshTimer = setInterval(async () => {
@@ -6851,10 +6894,9 @@
                 if (!latest) return;
                 // 只有目前顯示的就是最新場次時才需要更新（有新的一刀進來、筆數/排行會變動）
                 if (viewingStart === latest.startedAt) {
-                    raidSessionFilter = latest;
-                    document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(latest)}`;
-                    renderRaidSessionMenu();
-                    renderRaidLogQueryResult();
+                    attackLogAutoRefreshPendingLatest = latest;
+                    // 避開使用者正在滑動/操作的當下再重畫，不然背景更新會把瀏覽體驗打斷
+                    scheduleRaidQuietRender(renderAttackLogAutoRefreshTick);
                 }
             }, ATTACK_LOG_AUTO_REFRESH_MS);
         }

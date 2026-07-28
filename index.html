@@ -2457,7 +2457,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .raid-recent-part { flex-shrink: 0; color: #757575; white-space: nowrap; }
+        .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         .raid-recent-part.layer-body { color: #00838f; }
         .raid-recent-dmg { flex-shrink: 0; font-weight: 700; color: #c62828; white-space: nowrap; }
         .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
@@ -5854,6 +5854,14 @@
                     mergeIntoRaidFullLogBackup(data.attacks); // 雙重保險：合併備份到本機，絕對不主動清空
                     // 這批資料就是最新一場的內容，順便存進場次快取，選到最新這場就不用再抓一次
                     if (serverSessionsSummary[0]) sessionAttacksCache.set(serverSessionsSummary[0].startedAt, data.attacks);
+                    // 「最近攻擊」跑馬燈也一併用伺服器 24 小時背景側錄的紀錄更新，不是只能靠
+                    // 這台瀏覽器自己即時連線收到的推播事件才會有資料——這樣不管剛打開網頁、
+                    // 還是離開一陣子沒看，都能立刻看到伺服器已經記到的真實最新紀錄
+                    const derived = deriveRecentAttacksFromLog(data.attacks);
+                    if (derived.length > 0) {
+                        raidRecentAttacks = mergeRecentAttacks(raidRecentAttacks, derived);
+                        renderRaidRecentAttacks();
+                    }
                 }
 
                 const cb = data.currentBoss;
@@ -7767,6 +7775,47 @@
         function pushRaidRecentAttack(playerName, partKey, layer, dmg) {
             raidRecentAttacks.unshift({ player: playerName, part: partKey, layer: layer, dmg: dmg, ts: Date.now() });
             if (raidRecentAttacks.length > RAID_RECENT_MAX) raidRecentAttacks.length = RAID_RECENT_MAX;
+        }
+
+        // 把伺服器（24 小時背景側錄）的完整攻擊紀錄換算成「最近攻擊」跑馬燈需要的格式：
+        // 取最新的幾筆，每筆挑「傷害最高的部位」當代表顯示，邏輯跟即時連線時
+        // pushRaidRecentAttack 挑最高單一命中的方式一致（只是這裡用的是伺服器記錄的
+        // 各部位加總傷害，不是逐張卡片的命中明細，數字可能會有些微差異）
+        function deriveRecentAttacksFromLog(attacks) {
+            if (!Array.isArray(attacks) || attacks.length === 0) return [];
+            return attacks.slice()
+                .sort((a, b) => b.ts - a.ts)
+                .slice(0, RAID_RECENT_MAX)
+                .map(a => {
+                    const partsArr = Array.isArray(a.parts) ? a.parts : [];
+                    let top = null;
+                    partsArr.forEach(p => { if (!top || p.damage > top.damage) top = p; });
+                    return {
+                        player: a.player,
+                        part: top ? top.part : null,
+                        layer: (top && top.layer === 'body') ? 'body' : 'armor',
+                        dmg: top ? top.damage : a.totalDamage,
+                        ts: a.ts
+                    };
+                });
+        }
+
+        // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，用時間+玩家+部位去重，
+        // 保留最新的 RAID_RECENT_MAX 筆——避免每 20 秒的背景同步把即時推播剛加進來、
+        // 伺服器那邊還沒寫完的最新一筆蓋掉不見
+        function mergeRecentAttacks(existing, incoming) {
+            const merged = [...(existing || []), ...(incoming || [])];
+            merged.sort((a, b) => b.ts - a.ts);
+            const seen = new Set();
+            const result = [];
+            for (const item of merged) {
+                const key = `${item.ts}_${item.player}_${item.part}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                result.push(item);
+                if (result.length >= RAID_RECENT_MAX) break;
+            }
+            return result;
         }
 
         function renderRaidRecentAttacks() {

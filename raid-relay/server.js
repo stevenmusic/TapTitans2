@@ -1006,7 +1006,24 @@ function watcherHandleRaidSnapshot(payload) {
     watcherSpawnSequence = spawnSeq;
     watcherBossTotal = spawnSeq.length;
   }
-  if (Array.isArray(titans) && titans.length > 0) watcherRaidTitans = titans;
+  if (Array.isArray(titans) && titans.length > 0) {
+    watcherRaidTitans = titans;
+    // 補救：伺服器重啟後（例如剛從 Render 暫停恢復），如果第一個進來的是 attack 事件
+    // 而不是這種場次快照事件，watcherHandleAttack 那邊會因為 watcherRaidTitans 還是空的，
+    // 查不到滿血值，killMaxHp 只好先掛 0（血量%就會變成 0.0%、圖示也會找不到王名對應）。
+    // 這裡拿到完整的 titans 清單後，如果發現目前這隻王的滿血值還是 0，回頭把它補上，
+    // 不用一直卡著直到這隻王死掉、換下一隻王才會自動修正。
+    if (watcherKillMaxHp === 0 && watcherCurrentEnemyId) {
+      const titan = titans.find(t => t.enemy_id === watcherCurrentEnemyId);
+      if (titan && titan.total_hp) {
+        watcherKillMaxHp = titan.total_hp;
+        if (!watcherBossCurrentHp) watcherBossCurrentHp = watcherKillMaxHp;
+        if (!watcherBossName || watcherBossName === '—') watcherBossName = titan.enemy_name || watcherBossName;
+        saveCurrentBossState();
+        console.log('[watcher] 補回目前王的滿血值:', watcherBossName, watcherKillMaxHp);
+      }
+    }
+  }
 }
 
 function watcherHandleAttack(payload) {

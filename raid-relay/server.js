@@ -452,15 +452,23 @@ async function getDistinctPlayers() {
 async function getRecentAttacksLight(limit) {
   const sorted = cacheAllAttacksSorted();
   return sorted.slice(Math.max(0, sorted.length - limit)).reverse().map((a) => {
+    // 一次攻擊可能同時打到好幾個不同部位，列出這次攻擊命中的所有部位（去重），
+    // 傷害用這次攻擊的總傷害（total_damage），不是只挑其中一個部位的數字
     const partsArr = Array.isArray(a.parts) ? a.parts : [];
-    let top = null;
-    partsArr.forEach((p) => { if (!top || p.damage > top.damage) top = p; });
+    const seen = new Set();
+    const parts = [];
+    partsArr.forEach((p) => {
+      const layer = (p.layer === 'body') ? 'body' : 'armor';
+      const key = `${p.part}_${layer}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      parts.push({ part: p.part, layer });
+    });
     return {
       ts: a.ts,
       player: a.player,
-      part: top ? top.part : null,
-      layer: (top && top.layer === 'body') ? 'body' : 'armor',
-      dmg: top ? top.damage : a.totalDamage
+      parts,
+      dmg: a.totalDamage
     };
   });
 }

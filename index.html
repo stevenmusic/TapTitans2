@@ -5363,7 +5363,7 @@
         const RAID_LAST_BOSS_REPEAT_MS = 5 * 60 * 1000; // 條件持續成立時，每 5 分鐘重新提醒一次（比技能提醒更急迫）
         const RAID_SKILL_REMINDER_GRACE_MS = 5000; // 換王後這段時間內，先不發瘋狂無效／凱旋行軍通知，避免跟換王通知混在一起
         const RAID_SKILL_REMINDER_REPEAT_MS = 30 * 60 * 1000; // 同一狀態持續 30 分鐘才會重新通知
-        let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, part, layer, dmg }
+        let raidRecentAttacks = []; // 最近攻擊紀錄：{ player, parts: [{part, layer}], dmg, ts }（parts 是這次攻擊命中的所有部位，dmg 是這次攻擊的總傷害）
         const RAID_RECENT_MAX = 15;
         const RAID_DEMO_PLAYER_NAMES = ['小明', '阿強', 'Luna', '戰隊長', '小美', 'Ray', '阿宏', 'Kiki', '小白', 'Max'];
 
@@ -5568,7 +5568,11 @@
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
-        const RAID_AUTO_RECONNECT_DELAY = 60000; // 斷線後幾秒自動重連（原本 6 秒，中繼伺服器不穩/掛掉時會一直狂連，改成 1 分鐘一次）
+        // 斷線後幾秒自動重連。之前懷疑這個跟 Render 流量爆量有關，一度拉長到 60 秒，
+        // 後來查出真正原因是 GitHub 備份每分鐘整包重傳全部歷史紀錄（已修好），
+        // 跟這個重連間隔完全無關——重連本身的流量小到可以忽略，改回快速重連，
+        // 斷線後能盡快恢復即時追蹤
+        const RAID_AUTO_RECONNECT_DELAY = 6000;
 
         function scheduleRaidAutoReconnect() {
             clearTimeout(raidAutoReconnectTimer);
@@ -5774,11 +5778,21 @@
                 (cd.damage_log || []).forEach(d => dmgEntries.push(d));
             });
             if (dmgEntries.length > 0) {
-                const top = dmgEntries.reduce((a, b) => (b.value > a.value ? b : a));
-                const { layer, loc } = apiSplitPartId(top.id);
+                // 一次攻擊可能同時打到好幾個不同部位（多張卡片各打各的），把命中的部位
+                // 全部收集起來（去重），而不是只挑傷害最高的那一個部位當代表
+                const hitParts = [];
+                const seenParts = new Set();
+                dmgEntries.forEach(d => {
+                    const { layer, loc } = apiSplitPartId(d.id);
+                    if (!loc) return;
+                    const key = `${loc}_${layer}`;
+                    if (seenParts.has(key)) return;
+                    seenParts.add(key);
+                    hitParts.push({ part: loc, layer: layer === 'body' ? 'body' : 'armor' });
+                });
                 const totalDmg = dmgEntries.reduce((s, d) => s + d.value, 0);
                 const playerName = (payload.player && payload.player.name) || '?';
-                pushRaidRecentAttack(playerName, loc, layer === 'body' ? 'body' : 'armor', totalDmg);
+                pushRaidRecentAttack(playerName, hitParts, totalDmg);
             }
 
             // 完整攻擊紀錄不再由瀏覽器自己記，改成完全信任伺服器 24 小時背景側錄寫進資料庫的那份，
@@ -7794,17 +7808,16 @@
             raidLastBossLowNotifiedAt = 0; // 每隻新王出現都重新計算「是否最後一隻且血量偏低」
         }
 
-        /* 最近攻擊：記錄「誰打了哪個部位的哪一層、造成多少傷害」，最多保留 RAID_RECENT_MAX 筆，
-           真實 API 接上後，attack 事件的 player.name + damage_log 會取代這裡的示範資料來源 */
-        function pushRaidRecentAttack(playerName, partKey, layer, dmg) {
-            raidRecentAttacks.unshift({ player: playerName, part: partKey, layer: layer, dmg: dmg, ts: Date.now() });
+        /* 最近攻擊：記錄「誰打了哪些部位、造成多少總傷害」，最多保留 RAID_RECENT_MAX 筆。
+           一次攻擊可能同時命中好幾個不同部位（多張卡片各打各的），parts 是這次攻擊命中的
+           所有部位清單 [{part, layer}]（已去重），dmg 是這次攻擊的總傷害，不是單一部位的數字 */
+        function pushRaidRecentAttack(playerName, parts, dmg) {
+            raidRecentAttacks.unshift({ player: playerName, parts: parts || [], dmg: dmg, ts: Date.now() });
             if (raidRecentAttacks.length > RAID_RECENT_MAX) raidRecentAttacks.length = RAID_RECENT_MAX;
         }
 
         // 把伺服器（24 小時背景側錄）的完整攻擊紀錄換算成「最近攻擊」跑馬燈需要的格式：
-        // 取最新的幾筆，每筆挑「傷害最高的部位」當代表顯示，邏輯跟即時連線時
-        // pushRaidRecentAttack 挑最高單一命中的方式一致（只是這裡用的是伺服器記錄的
-        // 各部位加總傷害，不是逐張卡片的命中明細，數字可能會有些微差異）
+        // 取最新的幾筆，每筆列出這次攻擊命中的所有部位（去重），傷害用這次攻擊的總傷害
         function deriveRecentAttacksFromLog(attacks) {
             if (!Array.isArray(attacks) || attacks.length === 0) return [];
             return attacks.slice()
@@ -7812,19 +7825,19 @@
                 .slice(0, RAID_RECENT_MAX)
                 .map(a => {
                     const partsArr = Array.isArray(a.parts) ? a.parts : [];
-                    let top = null;
-                    partsArr.forEach(p => { if (!top || p.damage > top.damage) top = p; });
-                    return {
-                        player: a.player,
-                        part: top ? top.part : null,
-                        layer: (top && top.layer === 'body') ? 'body' : 'armor',
-                        dmg: top ? top.damage : a.totalDamage,
-                        ts: a.ts
-                    };
+                    const seen = new Set();
+                    const parts = [];
+                    partsArr.forEach(p => {
+                        const key = `${p.part}_${p.layer}`;
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        parts.push({ part: p.part, layer: p.layer === 'body' ? 'body' : 'armor' });
+                    });
+                    return { player: a.player, parts, dmg: a.totalDamage, ts: a.ts };
                 });
         }
 
-        // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，用時間+玩家+部位去重，
+        // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，用時間+玩家去重，
         // 保留最新的 RAID_RECENT_MAX 筆——避免每 20 秒的背景同步把即時推播剛加進來、
         // 伺服器那邊還沒寫完的最新一筆蓋掉不見
         function mergeRecentAttacks(existing, incoming) {
@@ -7833,7 +7846,7 @@
             const seen = new Set();
             const result = [];
             for (const item of merged) {
-                const key = `${item.ts}_${item.player}_${item.part}`;
+                const key = `${item.ts}_${item.player}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
                 result.push(item);
@@ -7850,15 +7863,18 @@
                 return;
             }
             listEl.innerHTML = raidRecentAttacks.map(a => {
-                const layerLabel = a.layer === 'armor' ? t('raidLayerArmor') : t('raidLayerBody');
-                const layerCls = a.layer === 'armor' ? 'layer-armor' : 'layer-body';
+                const parts = Array.isArray(a.parts) ? a.parts : [];
+                const hasBody = parts.some(p => p.layer === 'body');
+                const layerLabel = hasBody ? t('raidLayerBody') : t('raidLayerArmor');
+                const layerCls = hasBody ? 'layer-body' : 'layer-armor';
+                const partLabel = raidPartShortCombined(parts);
                 const d = new Date(a.ts);
                 const pad = n => String(n).padStart(2, '0');
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 return `
                     <div class="raid-recent-item">
                         <span class="raid-recent-player">${timeStr} ${escapeHtml(a.player)}</span>
-                        <span class="raid-recent-part ${layerCls}">${raidPartLabel(a.part)} · ${layerLabel}</span>
+                        <span class="raid-recent-part ${layerCls}">${escapeHtml(partLabel)} · ${layerLabel}</span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');
@@ -7896,7 +7912,7 @@
 
             if (hitLayer) {
                 const demoPlayer = RAID_DEMO_PLAYER_NAMES[Math.floor(Math.random() * RAID_DEMO_PLAYER_NAMES.length)];
-                pushRaidRecentAttack(demoPlayer, targetKey, hitLayer, dmg);
+                pushRaidRecentAttack(demoPlayer, [{ part: targetKey, layer: hitLayer }], dmg);
             }
 
             raidState.currentHp = Object.values(raidState.parts).reduce((s, p) => s + p.armor + p.body, 0);
@@ -8035,6 +8051,39 @@
         function raidPartLabel(key) {
             const def = RAID_PARTS.find(p => p.key === key);
             return def ? t(def.label) : key;
+        }
+
+        // 「最近攻擊」列表專用的簡短部位標示：跟部位血量格子用的 raidPartLabel（頭部/
+        // 左肩/右肩…）不一樣，這裡刻意不分左右、只顯示一個字（頭/肚/肩/手/腳），
+        // 一次攻擊如果打到好幾個不同部位，就把簡稱串在一起（例如「頭肚」），
+        // 傷害則是這次攻擊命中所有部位的加總，不是只挑其中一個部位的數字
+        const RAID_PART_SHORT_ORDER = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+        const RAID_PART_SHORT_ZH = {
+            Head: '頭', ChestUpper: '肚',
+            ArmUpperLeft: '肩', ArmUpperRight: '肩',
+            HandLeft: '手', HandRight: '手',
+            LegUpperLeft: '腳', LegUpperRight: '腳'
+        };
+        const RAID_PART_SHORT_EN = {
+            Head: 'Hd', ChestUpper: 'Bd',
+            ArmUpperLeft: 'Sh', ArmUpperRight: 'Sh',
+            HandLeft: 'Hn', HandRight: 'Hn',
+            LegUpperLeft: 'Ft', LegUpperRight: 'Ft'
+        };
+        // parts: [{part, layer}] 這次攻擊命中的所有部位（可能重複打到同一個簡稱分類，例如左肩右肩都算「肩」，會自動去重）
+        function raidPartShortCombined(parts) {
+            if (!Array.isArray(parts) || parts.length === 0) return '';
+            const isEn = currentLang === 'en';
+            const map = isEn ? RAID_PART_SHORT_EN : RAID_PART_SHORT_ZH;
+            const hitKeys = new Set(parts.map(p => p.part));
+            const shorts = [];
+            const seen = new Set();
+            RAID_PART_SHORT_ORDER.forEach((key) => {
+                if (!hitKeys.has(key)) return;
+                const short = map[key];
+                if (short && !seen.has(short)) { seen.add(short); shorts.push(short); }
+            });
+            return shorts.join(isEn ? '/' : '');
         }
 
         /* Boss 圖示：圖片放在 images/raid-bosses/{王名}.png（例如 Lojak.png），

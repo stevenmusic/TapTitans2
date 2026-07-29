@@ -403,12 +403,17 @@ async function hydrateAttacksCacheFromDb() {
 
 // 即時突襲事件用：不用等待也不用管結果，內部自己 catch，呼叫端不需要 await
 async function insertAttack(entry) {
+  // 先寫進記憶體快取（同步、immediate），不用等 Turso 網路來回——
+  // 這樣「最近攻擊」跑馬燈跟 /recent-attacks 才不會比即時推播晚一拍才看到這筆。
+  // 如果等一下 Turso 真的寫失敗（或判定是重複），再把這筆從快取撤銷。
+  const addedToCache = cacheAddAttack(entry);
   try {
     await dbReady;
     const result = await db.execute({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(entry) });
-    if (result.rowsAffected > 0) cacheAddAttack(entry);
+    if (result.rowsAffected === 0 && addedToCache) attacksByDedupKey.delete(attackDedupKey(entry));
     return result.rowsAffected > 0;
   } catch (e) {
+    if (addedToCache) attacksByDedupKey.delete(attackDedupKey(entry));
     console.error('[turso] 寫入攻擊紀錄失敗:', e && e.message ? e.message : e);
     return false;
   }
@@ -468,7 +473,8 @@ async function getRecentAttacksLight(limit) {
       ts: a.ts,
       player: a.player,
       parts,
-      dmg: a.totalDamage
+      dmg: a.totalDamage,
+      dedupKey: attackDedupKey(a)
     };
   });
 }

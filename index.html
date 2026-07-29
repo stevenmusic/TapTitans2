@@ -5780,19 +5780,15 @@
             if (dmgEntries.length > 0) {
                 // 一次攻擊可能同時打到好幾個不同部位（多張卡片各打各的），把命中的部位
                 // 全部收集起來（去重），而不是只挑傷害最高的那一個部位當代表
-                const hitParts = [];
-                const seenParts = new Set();
-                dmgEntries.forEach(d => {
+                const hitParts = dedupHitParts(dmgEntries.map(d => {
                     const { layer, loc } = apiSplitPartId(d.id);
-                    if (!loc) return;
-                    const key = `${loc}_${layer}`;
-                    if (seenParts.has(key)) return;
-                    seenParts.add(key);
-                    hitParts.push({ part: loc, layer: layer === 'body' ? 'body' : 'armor' });
-                });
+                    return { part: loc, layer };
+                }));
                 const totalDmg = dmgEntries.reduce((s, d) => s + d.value, 0);
                 const playerName = (payload.player && payload.player.name) || '?';
-                pushRaidRecentAttack(playerName, hitParts, totalDmg);
+                const attackDatetime = payload.attack_log && payload.attack_log.attack_datetime;
+                const dedupKey = attackDatetime ? `${attackDatetime}_${playerName}` : null;
+                pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey);
             }
 
             // 完整攻擊紀錄不再由瀏覽器自己記，改成完全信任伺服器 24 小時背景側錄寫進資料庫的那份，
@@ -6261,18 +6257,14 @@
         // 示範模式專用：從整包攻擊紀錄自己算場次分組（沿用原本的回溯歸類邏輯）。
         // 真實模式改成直接讀伺服器算好的 serverSessionsSummary，不會走到這個函式，
         // 因為完整紀錄現在不會整包留在瀏覽器裡（要節省載入時間）
-        function computeSessionsFromAttacks(log, manualSessions) {
-            // 已知場次開始時間跟等級，來源有兩種：① 有即時連線時記錄下來的 raidStartedAt 標記，
-            // ② 使用者事後手動告訴我的場次時間；兩者合併，由早到晚排序，
-            // 等一下用來判斷舊資料應該落在哪一場的時間區間裡
+        function computeSessionsFromAttacks(log) {
+            // 已知場次開始時間跟等級：從有即時連線時記錄下來的 raidStartedAt 標記收集，
+            // 由早到晚排序，等一下用來判斷舊資料應該落在哪一場的時間區間裡
             const startToLevel = new Map(); // raidStartedAt -> levelTier
             log.forEach(a => {
                 if (a.raidStartedAt && !startToLevel.has(a.raidStartedAt)) {
                     startToLevel.set(a.raidStartedAt, a.raidLevelTier);
                 }
-            });
-            (manualSessions || []).forEach(s => {
-                if (!startToLevel.has(s.startedAt)) startToLevel.set(s.startedAt, s.levelTier);
             });
             const rawStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
 
@@ -6335,7 +6327,7 @@
         // 沒被選過的舊場次這裡的 attacks 會是空陣列（畫面只需要顯示筆數，不會拿去算排行榜），
         // 這樣網頁一開始只需要抓最新一場的資料，不用整包歷史紀錄都載入，加快載入速度
         function buildRaidSessions() {
-            if (raidLogDemoActive) return computeSessionsFromAttacks(raidLogDemoData.slice(), []);
+            if (raidLogDemoActive) return computeSessionsFromAttacks(raidLogDemoData.slice());
             return serverSessionsSummary.map(s => ({
                 startedAt: s.startedAt,
                 levelTier: s.levelTier,
@@ -7808,11 +7800,32 @@
             raidLastBossLowNotifiedAt = 0; // 每隻新王出現都重新計算「是否最後一隻且血量偏低」
         }
 
+        // 「命中部位去重」是三個資料來源（即時推播、完整記錄回推、伺服器輕量端點）
+        // 都要做的同一件事：把原始的命中清單轉成 [{part, layer}]，同一個部位同一層
+        // 只留一筆。這裡只留一份共用邏輯給即時推播／完整記錄回推兩個用戶端來源用
+        // （伺服器輕量端點是獨立的 Node 執行環境，沒辦法直接載入同一份 JS，
+        // 但邏輯完全對應 server.js 的 getRecentAttacksLight，改動時兩邊要一起看）。
+        function dedupHitParts(rawParts) {
+            const seen = new Set();
+            const parts = [];
+            (rawParts || []).forEach(({ part, layer }) => {
+                if (!part) return;
+                const normalizedLayer = layer === 'body' ? 'body' : 'armor';
+                const key = `${part}_${normalizedLayer}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                parts.push({ part, layer: normalizedLayer });
+            });
+            return parts;
+        }
+
         /* 最近攻擊：記錄「誰打了哪些部位、造成多少總傷害」，最多保留 RAID_RECENT_MAX 筆。
            一次攻擊可能同時命中好幾個不同部位（多張卡片各打各的），parts 是這次攻擊命中的
-           所有部位清單 [{part, layer}]（已去重），dmg 是這次攻擊的總傷害，不是單一部位的數字 */
-        function pushRaidRecentAttack(playerName, parts, dmg) {
-            raidRecentAttacks.unshift({ player: playerName, parts: parts || [], dmg: dmg, ts: Date.now() });
+           所有部位清單 [{part, layer}]（已去重），dmg 是這次攻擊的總傷害，不是單一部位的數字。
+           dedupKey 是這次攻擊真正的識別碼（attackDatetime_player，跟伺服器 attackDedupKey
+           算法一致），有這個真正的鍵，mergeRecentAttacks 才不用只靠時間+傷害去猜是不是同一筆 */
+        function pushRaidRecentAttack(playerName, parts, dmg, dedupKey) {
+            raidRecentAttacks.unshift({ player: playerName, parts: parts || [], dmg: dmg, ts: Date.now(), dedupKey: dedupKey || null });
             if (raidRecentAttacks.length > RAID_RECENT_MAX) raidRecentAttacks.length = RAID_RECENT_MAX;
         }
 
@@ -7823,38 +7836,34 @@
             return attacks.slice()
                 .sort((a, b) => b.ts - a.ts)
                 .slice(0, RAID_RECENT_MAX)
-                .map(a => {
-                    const partsArr = Array.isArray(a.parts) ? a.parts : [];
-                    const seen = new Set();
-                    const parts = [];
-                    partsArr.forEach(p => {
-                        const key = `${p.part}_${p.layer}`;
-                        if (seen.has(key)) return;
-                        seen.add(key);
-                        parts.push({ part: p.part, layer: p.layer === 'body' ? 'body' : 'armor' });
-                    });
-                    return { player: a.player, parts, dmg: a.totalDamage, ts: a.ts };
-                });
+                .map(a => ({
+                    player: a.player,
+                    parts: dedupHitParts(a.parts),
+                    dmg: a.totalDamage,
+                    ts: a.ts,
+                    dedupKey: `${a.attackDatetime || a.ts}_${a.player}`
+                }));
         }
 
-        // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，用時間+玩家去重，
-        // 保留最新的 RAID_RECENT_MAX 筆——避免每 20 秒的背景同步把即時推播剛加進來、
-        // 伺服器那邊還沒寫完的最新一筆蓋掉不見
-        // 即時推播的時間戳記是「瀏覽器收到事件當下」的 Date.now()，伺服器輕量端點
-        // 回傳的時間戳記是「資料庫記錄」的時間，同一次攻擊經由兩個來源進來，這兩個
-        // 時間不會完全相等（差個幾百毫秒到幾秒都正常），不能只用時間戳記完全比對來去重，
-        // 不然會出現同一次攻擊被兩個來源各顯示一行、內容看起來一模一樣的重複列
+        // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，保留最新的 RAID_RECENT_MAX
+        // 筆——避免背景同步把即時推播剛加進來、伺服器那邊還沒寫完的最新一筆蓋掉不見。
+        // 優先用 dedupKey（attackDatetime_player，三個來源都會帶）判斷是不是同一次攻擊；
+        // 少數沒有 dedupKey 的情況（例如遊戲 API 這次事件剛好沒帶 attack_datetime）才退回
+        // 用「玩家+傷害+時間相近（8 秒內）」當備援判斷，不是主要判斷方式
         const RAID_RECENT_DEDUP_WINDOW_MS = 8000;
         function mergeRecentAttacks(existing, incoming) {
             const merged = [...(existing || []), ...(incoming || [])];
             merged.sort((a, b) => b.ts - a.ts);
             const kept = [];
+            const seenKeys = new Set();
             for (const item of merged) {
-                // 同一位玩家、傷害數字一樣、時間又很相近（8 秒內），視為同一次攻擊
-                // 被兩個來源重複記錄，只留一筆；玩家一樣但傷害不同，或時間差太遠，
-                // 才會當成兩次不同的攻擊都保留
-                const isDup = kept.some(k => k.player === item.player && k.dmg === item.dmg && Math.abs(k.ts - item.ts) < RAID_RECENT_DEDUP_WINDOW_MS);
-                if (isDup) continue;
+                if (item.dedupKey) {
+                    if (seenKeys.has(item.dedupKey)) continue;
+                    seenKeys.add(item.dedupKey);
+                } else {
+                    const isDup = kept.some(k => !k.dedupKey && k.player === item.player && k.dmg === item.dmg && Math.abs(k.ts - item.ts) < RAID_RECENT_DEDUP_WINDOW_MS);
+                    if (isDup) continue;
+                }
                 kept.push(item);
                 if (kept.length >= RAID_RECENT_MAX) break;
             }

@@ -5876,25 +5876,51 @@
                     }
                 }
 
-                const cb = data.currentBoss;
-                if (cb && cb.hasReceivedAttack && cb.parts && Object.keys(cb.parts).length > 0) {
-                    // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
-                    // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
-                    apiHasReceivedAttack = true;
-                    apiCurrentEnemyId = cb.enemyId || null;
-                    raidBossOrdinal = cb.ordinal || 1;
-                    apiBossTotal = cb.total || 6;
-                    raidState = {
-                        bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
-                        bossName: cb.name || '—',
-                        bossOrdinal: cb.ordinal || 1,
-                        parts: cb.parts,
-                        maxHp: cb.killMaxHp,
-                        currentHp: typeof cb.bossCurrentHp === 'number' ? cb.bossCurrentHp : sumBodyHp(cb.parts),
-                        killMaxHp: cb.killMaxHp,
-                        updatedAt: Date.now()
-                    };
-                    if (!silent) renderRaidStatus();
+                applyCurrentBossPayload(data.currentBoss, silent);
+            }
+        }
+
+        // 把伺服器回傳的「目前王狀態」套用到畫面上，heavy（fetchServerRaidData）跟
+        // light（fetchRaidLiveEssentials）兩條路徑共用同一份邏輯
+        function applyCurrentBossPayload(cb, silent) {
+            if (!cb || !cb.hasReceivedAttack || !cb.parts || Object.keys(cb.parts).length === 0) return;
+            // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
+            // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
+            apiHasReceivedAttack = true;
+            apiCurrentEnemyId = cb.enemyId || null;
+            raidBossOrdinal = cb.ordinal || 1;
+            apiBossTotal = cb.total || 6;
+            raidState = {
+                bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
+                bossName: cb.name || '—',
+                bossOrdinal: cb.ordinal || 1,
+                parts: cb.parts,
+                maxHp: cb.killMaxHp,
+                currentHp: typeof cb.bossCurrentHp === 'number' ? cb.bossCurrentHp : sumBodyHp(cb.parts),
+                killMaxHp: cb.killMaxHp,
+                updatedAt: Date.now()
+            };
+            if (!silent) renderRaidStatus();
+        }
+
+        // 背景定期同步「一定」要走這支輕量版：只跟伺服器要王血量狀態＋最近幾筆攻擊，
+        // 完全不會碰到整場攻擊紀錄（可能上千筆、每筆帶卡片/傷害明細，整包傳輸很吃頻寬）。
+        // Render 的免費方案月流量只有 5GB，之前背景同步每隔幾十秒就整場攻擊紀錄全部
+        // 傳輸一次，帳號因此被停用過一次，所以背景同步不能再呼叫 fetchServerRaidData，
+        // 一律呼叫這支。真正需要整場資料（打開攻擊紀錄面板、切換場次、匯出）才呼叫
+        // fetchServerRaidData／ensureServerRaidDataFresh。
+        async function fetchRaidLiveEssentials(relayUrl) {
+            const [bossResp, recentResp] = await Promise.all([
+                fetch(`${relayUrl}${raidWatcherPathPrefix()}/current-boss-status`),
+                fetch(`${relayUrl}${raidWatcherPathPrefix()}/recent-attacks?limit=${RAID_RECENT_MAX}`)
+            ]);
+            if (bossResp.ok) {
+                applyCurrentBossPayload(await bossResp.json(), true); // 一律 silent，不主動重畫畫面
+            }
+            if (recentResp.ok) {
+                const data = await recentResp.json();
+                if (Array.isArray(data.attacks) && data.attacks.length > 0) {
+                    raidRecentAttacks = mergeRecentAttacks(raidRecentAttacks, data.attacks);
                 }
             }
         }
@@ -6823,9 +6849,12 @@
             }
         }
 
-        // 攻擊紀錄面板：打開的時候跟伺服器要一次最新資料再畫出來，開著的期間也會定期
-        // 背景更新（見 startAttackLogAutoRefresh）。展開中的玩家配卡明細是用玩家名稱記錄
-        // （raidLogExpandedPlayers），背景更新重畫排行榜不會把它們強制收合。
+        // 攻擊紀錄面板：打開的時候跟伺服器要一次最新資料再畫出來。
+        // 面板開著的期間「不會」再背景定期重抓整場資料——這支要抓的是整場攻擊紀錄
+        // （可能上千筆、每筆帶卡片明細），拿來背景輪詢很吃 Render 的月流量額度
+        // （Render 免費方案帳號已經因此被停用過一次）。反正背景輪詢本來就是 silent、
+        // 不會重畫畫面，留著只是白白浪費流量，乾脆拿掉；資料要更新，重新打開面板、
+        // 切換場次，或重新整理網頁就會拿到最新的。
         async function openAttackLogPanel() {
             await ensureServerRaidDataFresh();
             // 明確把 raidSessionFilter 指到「最新場次」：排行榜本來沒選任何場次時就已經是
@@ -6843,29 +6872,11 @@
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
             checkLegacyRaidFullLogButton();
-            startAttackLogAutoRefresh();
         }
 
-        // 背景只靜默把資料抓新（存進 serverAttackLogCache/serverSessionsSummary/
-        // sessionAttacksCache），不會自動重畫排行榜或場次選單——不管使用者是在滑動
-        // 還是單純停在原地看內容，都不應該被背景同步打斷。真正看到更新後的畫面，
-        // 要等使用者自己重新打開面板、切換場次，或重新整理網頁。
-        const ATTACK_LOG_AUTO_REFRESH_MS = 20000;
-        let attackLogAutoRefreshTimer = null;
-
-        function startAttackLogAutoRefresh() {
-            stopAttackLogAutoRefresh();
-            attackLogAutoRefreshTimer = setInterval(() => {
-                ensureServerRaidDataFresh(true); // silent：只更新資料，不重畫畫面
-            }, ATTACK_LOG_AUTO_REFRESH_MS);
-        }
-
-        function stopAttackLogAutoRefresh() {
-            if (attackLogAutoRefreshTimer) {
-                clearInterval(attackLogAutoRefreshTimer);
-                attackLogAutoRefreshTimer = null;
-            }
-        }
+        // 留著這兩個空殼函式，避免其他地方（例如切換面板時）呼叫到還沒定義的函式而報錯
+        function startAttackLogAutoRefresh() {}
+        function stopAttackLogAutoRefresh() {}
 
         /* ══════════════════════════════════════════════════════════
            漏打名單：以同一套「突襲開始時間、12 小時一輪」邏輯，
@@ -7525,7 +7536,12 @@
         // 畫面真正更新的時機是：①即時連線收到真的有新攻擊事件推播進來（renderRaidStatus
         // 在 watcherHandleRaidSnapshot 那邊會直接被呼叫，這是「真的發生事情」才更新，
         // 不是背景輪詢），②使用者自己做了某個動作（打開面板、切換場次、重新整理網頁）。
-        const RAID_LOG_SYNC_INTERVAL_MS = 20000; // 每 20 秒同步一次
+        //
+        // ⚠️ 這裡一定要呼叫輕量版的 fetchRaidLiveEssentials，不要呼叫 fetchServerRaidData——
+        // 後者會把整場攻擊紀錄（可能上千筆、每筆帶卡片明細）整包傳輸，Render 免費方案
+        // 一個月只有 5GB 流量，背景每 30 秒對每個開著網頁的人都傳一次整場資料，很快就會
+        // 把額度用完、帳號被停用（這件事已經真實發生過一次）。
+        const RAID_LOG_SYNC_INTERVAL_MS = 30000; // 每 30 秒同步一次（只是輕量資料，拉長也沒差）
         let raidLogSyncTimer = null;
 
         function startRaidLogAutoSync(relayUrl) {
@@ -7535,7 +7551,7 @@
                     stopRaidLogAutoSync();
                     return;
                 }
-                fetchServerRaidData(relayUrl, true); // silent：只更新資料，不重畫畫面
+                fetchRaidLiveEssentials(relayUrl); // 輕量版，只更新王血量＋最近攻擊
             }, RAID_LOG_SYNC_INTERVAL_MS);
         }
 

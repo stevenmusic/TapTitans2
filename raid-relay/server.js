@@ -402,6 +402,37 @@ async function getDistinctPlayers() {
   }
 }
 
+// 輕量版「最近攻擊」：只挑最後 N 筆、只查 ts/player/parts/total_damage 四個欄位，
+// 不會像 rowToAttack 一樣把 cards/card_damage 整包 JSON 都撈出來——這個給前端「最近攻擊」
+// 跑馬燈跟背景定期同步用，一整場攻擊紀錄可能有上千筆、每筆都帶卡片明細，整包傳輸
+// 非常浪費頻寬，這裡在伺服器端就先把每筆挑好「傷害最高的部位」，只回傳畫面真正用得到的
+// 幾個欄位，大幅縮小回應大小
+async function getRecentAttacksLight(limit) {
+  try {
+    await dbReady;
+    const result = await db.execute({
+      sql: 'SELECT ts, player, parts, total_damage FROM attacks ORDER BY ts DESC LIMIT ?',
+      args: [limit]
+    });
+    return result.rows.map((row) => {
+      let partsArr = [];
+      try { partsArr = JSON.parse(row.parts || '[]'); } catch (e) { partsArr = []; }
+      let top = null;
+      partsArr.forEach((p) => { if (!top || p.damage > top.damage) top = p; });
+      return {
+        ts: Number(row.ts) || 0,
+        player: row.player,
+        part: top ? top.part : null,
+        layer: (top && top.layer === 'body') ? 'body' : 'armor',
+        dmg: top ? top.damage : (Number(row.total_damage) || 0)
+      };
+    });
+  } catch (e) {
+    console.error('[turso] 讀取最近攻擊（輕量版）失敗:', e && e.message ? e.message : e);
+    return [];
+  }
+}
+
 async function clearAllAttacks() {
   try {
     await dbReady;
@@ -1162,15 +1193,22 @@ restoreAttackLogFromGitHubBackup().then(() => {
   }
 });
 
-// 預設（沒有帶 session 參數）只回傳「最新一場」的攻擊紀錄，不是全部場次整包回傳——
-// 場次資料量大了之後整包抓很慢，網頁需要看舊場次時才會另外帶 session 參數再抓一次；
-// 想要「全部場次合併」的完整資料（例如備份、匯出）才需要帶 all=true
-app.get('/full-attack-log', async (req, res) => {
-  const currentBoss = {
+function buildCurrentBossPayload() {
+  return {
     name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
     enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
     bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
   };
+}
+
+// 預設（沒有帶 session 參數）只回傳「最新一場」的攻擊紀錄，不是全部場次整包回傳——
+// 場次資料量大了之後整包抓很慢，網頁需要看舊場次時才會另外帶 session 參數再抓一次；
+// 想要「全部場次合併」的完整資料（例如備份、匯出）才需要帶 all=true。
+// 注意：這支是「重」的端點（整場攻擊紀錄，每筆都含卡片/傷害明細），只給使用者主動
+// 觸發的動作用（打開面板、切換場次、匯出）；背景定期同步請改打下面的輕量版端點，
+// 不要整場資料每隔幾十秒就傳一次，會很快把 Render 的月流量額度用完。
+app.get('/full-attack-log', async (req, res) => {
+  const currentBoss = buildCurrentBossPayload();
 
   if (req.query.all === 'true') {
     return res.json({ attacks: await getAllAttacks(), currentBoss });
@@ -1182,6 +1220,21 @@ app.get('/full-attack-log', async (req, res) => {
     : sessions[0]; // 沒指定就是最新一場
   const attacks = target ? await getAttacksInRange(target.rangeStartTs, target.rangeEndTs) : [];
   res.json({ attacks, currentBoss });
+});
+
+// 輕量版：只回傳目前王的血量/部位狀態，完全不碰攻擊紀錄資料表，回應體積是固定的
+// 幾百 bytes（不會隨攻擊紀錄筆數增加而變大）。背景定期同步只需要這個就能畫王血量條，
+// 不需要整場攻擊紀錄。
+app.get('/current-boss-status', (req, res) => {
+  res.json(buildCurrentBossPayload());
+});
+
+// 輕量版「最近攻擊」：只回傳最後幾筆、且每筆只有畫面真正用得到的欄位，
+// 不含卡片/傷害明細——見 getRecentAttacksLight 的說明。limit 上限 50，避免被濫用
+// 帶一個超大數字又變回整包傳輸。
+app.get('/recent-attacks', async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 50);
+  res.json({ attacks: await getRecentAttacksLight(limit) });
 });
 
 app.get('/raid-sessions-summary', async (req, res) => {

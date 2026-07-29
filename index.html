@@ -7840,19 +7840,25 @@
         // 合併「即時推播收到的」跟「伺服器紀錄算出來的」最近攻擊，用時間+玩家去重，
         // 保留最新的 RAID_RECENT_MAX 筆——避免每 20 秒的背景同步把即時推播剛加進來、
         // 伺服器那邊還沒寫完的最新一筆蓋掉不見
+        // 即時推播的時間戳記是「瀏覽器收到事件當下」的 Date.now()，伺服器輕量端點
+        // 回傳的時間戳記是「資料庫記錄」的時間，同一次攻擊經由兩個來源進來，這兩個
+        // 時間不會完全相等（差個幾百毫秒到幾秒都正常），不能只用時間戳記完全比對來去重，
+        // 不然會出現同一次攻擊被兩個來源各顯示一行、內容看起來一模一樣的重複列
+        const RAID_RECENT_DEDUP_WINDOW_MS = 8000;
         function mergeRecentAttacks(existing, incoming) {
             const merged = [...(existing || []), ...(incoming || [])];
             merged.sort((a, b) => b.ts - a.ts);
-            const seen = new Set();
-            const result = [];
+            const kept = [];
             for (const item of merged) {
-                const key = `${item.ts}_${item.player}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                result.push(item);
-                if (result.length >= RAID_RECENT_MAX) break;
+                // 同一位玩家、傷害數字一樣、時間又很相近（8 秒內），視為同一次攻擊
+                // 被兩個來源重複記錄，只留一筆；玩家一樣但傷害不同，或時間差太遠，
+                // 才會當成兩次不同的攻擊都保留
+                const isDup = kept.some(k => k.player === item.player && k.dmg === item.dmg && Math.abs(k.ts - item.ts) < RAID_RECENT_DEDUP_WINDOW_MS);
+                if (isDup) continue;
+                kept.push(item);
+                if (kept.length >= RAID_RECENT_MAX) break;
             }
-            return result;
+            return kept;
         }
 
         function renderRaidRecentAttacks() {

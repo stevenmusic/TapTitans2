@@ -7773,11 +7773,11 @@
             raidLastBossLowNotifiedAt = 0; // 每隻新王出現都重新計算「是否最後一隻且血量偏低」
         }
 
-        // 「命中部位去重」是三個資料來源（即時推播、完整記錄回推、伺服器輕量端點）
-        // 都要做的同一件事：把原始的命中清單轉成 [{part, layer}]，同一個部位同一層
-        // 只留一筆。這裡只留一份共用邏輯給即時推播／完整記錄回推兩個用戶端來源用
-        // （伺服器輕量端點是獨立的 Node 執行環境，沒辦法直接載入同一份 JS，
-        // 但邏輯完全對應 server.js 的 getRecentAttacksLight，改動時兩邊要一起看）。
+        // 「命中部位去重」只有處理原始命中清單（一次攻擊可能同時打中好幾張卡片、
+        // 部位會重複）的地方才需要——目前只剩即時推播這個來源會拿到這種原始資料。
+        // 伺服器那邊的攻擊紀錄（/full-attack-log、/recent-attacks）已經在寫入快取
+        // 的當下就去重過了（server.js 的 rowToAttack/normalizeAttackForCache），
+        // 所以這裡讀伺服器資料的地方不用再重複過濾一次。
         function dedupHitParts(rawParts) {
             const seen = new Set();
             const parts = [];
@@ -7803,7 +7803,7 @@
         }
 
         // 把伺服器（24 小時背景側錄）的完整攻擊紀錄換算成「最近攻擊」跑馬燈需要的格式：
-        // 取最新的幾筆，每筆列出這次攻擊命中的所有部位（去重），傷害用這次攻擊的總傷害
+        // 取最新的幾筆，傷害用這次攻擊的總傷害。parts 直接沿用，伺服器那邊已經去重過了
         function deriveRecentAttacksFromLog(attacks) {
             if (!Array.isArray(attacks) || attacks.length === 0) return [];
             return attacks.slice()
@@ -7811,7 +7811,7 @@
                 .slice(0, RAID_RECENT_MAX)
                 .map(a => ({
                     player: a.player,
-                    parts: dedupHitParts(a.parts),
+                    parts: a.parts || [],
                     dmg: a.totalDamage,
                     ts: a.ts,
                     dedupKey: `${a.attackDatetime || a.ts}_${a.player}`

@@ -316,6 +316,24 @@ function attackInsertArgs(entry) {
   ];
 }
 
+// 一次攻擊命中的部位清單去重（同一部位+同一層只留第一筆）。這是攻擊紀錄唯一
+// 該做這個過濾的地方——不管資料是即時側錄、匯入 JSON、還是從 Turso 讀回來的，
+// 只要通過 rowToAttack() 或 normalizeAttackForCache() 進到快取，就保證乾淨，
+// 之後任何讀取端（/recent-attacks、/full-attack-log…）都不用再自己過濾一次。
+function dedupPartsList(rawParts) {
+  const seen = new Set();
+  const parts = [];
+  (rawParts || []).forEach((p) => {
+    if (!p || !p.part) return;
+    const layer = (p.layer === 'body') ? 'body' : 'armor';
+    const key = `${p.part}_${layer}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    parts.push({ part: p.part, layer });
+  });
+  return parts;
+}
+
 function rowToAttack(row) {
   return {
     ts: Number(row.ts) || 0,
@@ -333,7 +351,7 @@ function rowToAttack(row) {
     cards: JSON.parse(row.cards || '[]'),
     cardDamage: JSON.parse(row.card_damage || '{}'),
     tapDamage: Number(row.tap_damage) || 0,
-    parts: JSON.parse(row.parts || '[]'),
+    parts: dedupPartsList(JSON.parse(row.parts || '[]')),
     totalDamage: Number(row.total_damage) || 0
   };
 }
@@ -367,7 +385,7 @@ function normalizeAttackForCache(entry) {
     cards: entry.cards || [],
     cardDamage: entry.cardDamage || {},
     tapDamage: entry.tapDamage || 0,
-    parts: entry.parts || [],
+    parts: dedupPartsList(entry.parts),
     totalDamage: entry.totalDamage || 0
   };
 }
@@ -453,30 +471,17 @@ async function getDistinctPlayers() {
 }
 
 // 輕量版「最近攻擊」：只挑最後 N 筆、只回傳畫面用得到的欄位（不含卡片明細），
-// 給前端「最近攻擊」跑馬燈跟背景定期同步用
+// 給前端「最近攻擊」跑馬燈跟背景定期同步用。parts 不用再過濾一次——
+// 快取裡的資料經過 rowToAttack()/normalizeAttackForCache() 早就保證去重過了
 async function getRecentAttacksLight(limit) {
   const sorted = cacheAllAttacksSorted();
-  return sorted.slice(Math.max(0, sorted.length - limit)).reverse().map((a) => {
-    // 一次攻擊可能同時打到好幾個不同部位，列出這次攻擊命中的所有部位（去重），
-    // 傷害用這次攻擊的總傷害（total_damage），不是只挑其中一個部位的數字
-    const partsArr = Array.isArray(a.parts) ? a.parts : [];
-    const seen = new Set();
-    const parts = [];
-    partsArr.forEach((p) => {
-      const layer = (p.layer === 'body') ? 'body' : 'armor';
-      const key = `${p.part}_${layer}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      parts.push({ part: p.part, layer });
-    });
-    return {
-      ts: a.ts,
-      player: a.player,
-      parts,
-      dmg: a.totalDamage,
-      dedupKey: attackDedupKey(a)
-    };
-  });
+  return sorted.slice(Math.max(0, sorted.length - limit)).reverse().map((a) => ({
+    ts: a.ts,
+    player: a.player,
+    parts: a.parts,
+    dmg: a.totalDamage,
+    dedupKey: attackDedupKey(a)
+  }));
 }
 
 // 場次開始時間差在這範圍內視為同一場（跟前端 RAID_SESSION_MATCH_MS 邏輯一致）

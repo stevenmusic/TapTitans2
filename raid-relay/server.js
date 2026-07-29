@@ -338,11 +338,75 @@ function rowToAttack(row) {
   };
 }
 
+/* ══════════════════════════════════════════════════════════
+   記憶體快取：鏡射 Turso 的 attacks 表。
+   之前每個讀取功能（/full-attack-log、/raid-sessions-summary、/recent-attacks、
+   背景定期同步…）都直接查 Turso，開著網頁的人越多、背景同步越頻繁，就要付出
+   越多次網路查詢——這些查詢本身也算 Render 的「Service-Initiated」流量，是
+   造成月流量爆掉的原因之一。攻擊紀錄單筆頂多幾百 bytes，全部留在記憶體裡完全
+   負擔得起，所以改成：開機時把 Turso 現有資料一次讀進記憶體，之後每筆新攻擊
+   「同時」寫進 Turso（真正持久化，重開機不會不見）跟這份記憶體快取；所有「讀」
+   的操作一律只讀記憶體，不再連去 Turso查詢——讀取變成 0 網路成本。
+   ══════════════════════════════════════════════════════════ */
+const attacksByDedupKey = new Map(); // dedupKey -> 攻擊紀錄物件（跟 rowToAttack() 輸出同樣的形狀）
+
+function normalizeAttackForCache(entry) {
+  return {
+    ts: Number(entry.ts) || 0,
+    attackDatetime: entry.attackDatetime || null,
+    cycle: (typeof entry.cycle === 'number') ? entry.cycle : null,
+    raidStartedAt: entry.raidStartedAt || null,
+    raidLevelTier: (typeof entry.raidLevelTier === 'number') ? entry.raidLevelTier : null,
+    player: entry.player,
+    playerCode: entry.playerCode || null,
+    raidLevel: (typeof entry.raidLevel === 'number') ? entry.raidLevel : null,
+    attacksRemaining: (typeof entry.attacksRemaining === 'number') ? entry.attacksRemaining : null,
+    boss: entry.boss || null,
+    bossOrdinal: entry.bossOrdinal || null,
+    bossTotal: entry.bossTotal || null,
+    cards: entry.cards || [],
+    cardDamage: entry.cardDamage || {},
+    tapDamage: entry.tapDamage || 0,
+    parts: entry.parts || [],
+    totalDamage: entry.totalDamage || 0
+  };
+}
+
+// 加進快取，跟資料庫的 INSERT OR IGNORE 邏輯一致：dedupKey 已經存在就不重複加，
+// 回傳這筆是不是「真的新加入」的，給呼叫端統計「匯入了幾筆新資料」用
+function cacheAddAttack(entry) {
+  const key = attackDedupKey(entry);
+  if (attacksByDedupKey.has(key)) return false;
+  attacksByDedupKey.set(key, normalizeAttackForCache(entry));
+  return true;
+}
+
+function cacheAllAttacksSorted() {
+  return [...attacksByDedupKey.values()].sort((a, b) => a.ts - b.ts);
+}
+
+// 開機時把 Turso 現有資料一次讀進快取——這是唯一一次「為了讀」去查 Turso，
+// 之後所有讀取都只讀這份記憶體快取
+async function hydrateAttacksCacheFromDb() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT * FROM attacks');
+    result.rows.forEach((row) => {
+      const attack = rowToAttack(row);
+      attacksByDedupKey.set(attackDedupKey(attack), attack);
+    });
+    console.log(`[cache] 已從 Turso 載入 ${attacksByDedupKey.size} 筆攻擊紀錄到記憶體快取`);
+  } catch (e) {
+    console.error('[cache] 從 Turso 載入攻擊紀錄快取失敗:', e && e.message ? e.message : e);
+  }
+}
+
 // 即時突襲事件用：不用等待也不用管結果，內部自己 catch，呼叫端不需要 await
 async function insertAttack(entry) {
   try {
     await dbReady;
     const result = await db.execute({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(entry) });
+    if (result.rowsAffected > 0) cacheAddAttack(entry);
     return result.rowsAffected > 0;
   } catch (e) {
     console.error('[turso] 寫入攻擊紀錄失敗:', e && e.message ? e.message : e);
@@ -356,87 +420,56 @@ async function insertAttacksBatch(entries) {
   try {
     await dbReady;
     const results = await db.batch(entries.map(e => ({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(e) })), 'write');
-    return results.filter(r => r.rowsAffected > 0).length;
+    let imported = 0;
+    results.forEach((r, i) => {
+      if (r.rowsAffected > 0 && cacheAddAttack(entries[i])) imported++;
+    });
+    return imported;
   } catch (e) {
     console.error('[turso] 批次匯入攻擊紀錄失敗:', e && e.message ? e.message : e);
     return 0;
   }
 }
 
+// 以下讀取全部改讀記憶體快取，不再查詢 Turso（維持 async 只是不用動到呼叫端）
 async function getAllAttacks() {
-  try {
-    await dbReady;
-    const result = await db.execute('SELECT * FROM attacks ORDER BY ts ASC');
-    return result.rows.map(rowToAttack);
-  } catch (e) {
-    console.error('[turso] 讀取攻擊紀錄失敗:', e && e.message ? e.message : e);
-    return [];
-  }
+  return cacheAllAttacksSorted();
 }
 
 // 只抓某個時間範圍內的攻擊紀錄（用來「只載入目前選的那一場」，不用每次都整包全抓）
 // endTsExclusive 是 null 代表沒有上限（用在最新一場，還沒有「下一場」可以當上限）
 async function getAttacksInRange(startTs, endTsExclusive) {
-  try {
-    await dbReady;
-    const result = (endTsExclusive == null)
-      ? await db.execute({ sql: 'SELECT * FROM attacks WHERE ts >= ? ORDER BY ts ASC', args: [startTs] })
-      : await db.execute({ sql: 'SELECT * FROM attacks WHERE ts >= ? AND ts < ? ORDER BY ts ASC', args: [startTs, endTsExclusive] });
-    return result.rows.map(rowToAttack);
-  } catch (e) {
-    console.error('[turso] 讀取指定範圍攻擊紀錄失敗:', e && e.message ? e.message : e);
-    return [];
-  }
+  return cacheAllAttacksSorted().filter(a => a.ts >= startTs && (endTsExclusive == null || a.ts < endTsExclusive));
 }
 
-// 只抓出現過的玩家名字（給漏打名單的「全部成員名單」比對用），
-// 只選一個欄位，比整包攻擊紀錄輕量很多
+// 只抓出現過的玩家名字（給漏打名單的「全部成員名單」比對用）
 async function getDistinctPlayers() {
-  try {
-    await dbReady;
-    const result = await db.execute('SELECT DISTINCT player FROM attacks');
-    return result.rows.map(r => r.player);
-  } catch (e) {
-    console.error('[turso] 讀取玩家名單失敗:', e && e.message ? e.message : e);
-    return [];
-  }
+  return [...new Set([...attacksByDedupKey.values()].map(a => a.player))];
 }
 
-// 輕量版「最近攻擊」：只挑最後 N 筆、只查 ts/player/parts/total_damage 四個欄位，
-// 不會像 rowToAttack 一樣把 cards/card_damage 整包 JSON 都撈出來——這個給前端「最近攻擊」
-// 跑馬燈跟背景定期同步用，一整場攻擊紀錄可能有上千筆、每筆都帶卡片明細，整包傳輸
-// 非常浪費頻寬，這裡在伺服器端就先把每筆挑好「傷害最高的部位」，只回傳畫面真正用得到的
-// 幾個欄位，大幅縮小回應大小
+// 輕量版「最近攻擊」：只挑最後 N 筆、只回傳畫面用得到的欄位（不含卡片明細），
+// 給前端「最近攻擊」跑馬燈跟背景定期同步用
 async function getRecentAttacksLight(limit) {
-  try {
-    await dbReady;
-    const result = await db.execute({
-      sql: 'SELECT ts, player, parts, total_damage FROM attacks ORDER BY ts DESC LIMIT ?',
-      args: [limit]
-    });
-    return result.rows.map((row) => {
-      let partsArr = [];
-      try { partsArr = JSON.parse(row.parts || '[]'); } catch (e) { partsArr = []; }
-      let top = null;
-      partsArr.forEach((p) => { if (!top || p.damage > top.damage) top = p; });
-      return {
-        ts: Number(row.ts) || 0,
-        player: row.player,
-        part: top ? top.part : null,
-        layer: (top && top.layer === 'body') ? 'body' : 'armor',
-        dmg: top ? top.damage : (Number(row.total_damage) || 0)
-      };
-    });
-  } catch (e) {
-    console.error('[turso] 讀取最近攻擊（輕量版）失敗:', e && e.message ? e.message : e);
-    return [];
-  }
+  const sorted = cacheAllAttacksSorted();
+  return sorted.slice(Math.max(0, sorted.length - limit)).reverse().map((a) => {
+    const partsArr = Array.isArray(a.parts) ? a.parts : [];
+    let top = null;
+    partsArr.forEach((p) => { if (!top || p.damage > top.damage) top = p; });
+    return {
+      ts: a.ts,
+      player: a.player,
+      part: top ? top.part : null,
+      layer: (top && top.layer === 'body') ? 'body' : 'armor',
+      dmg: top ? top.damage : a.totalDamage
+    };
+  });
 }
 
 async function clearAllAttacks() {
   try {
     await dbReady;
     await db.execute('DELETE FROM attacks');
+    attacksByDedupKey.clear();
   } catch (e) {
     console.error('[turso] 清空攻擊紀錄失敗:', e && e.message ? e.message : e);
   }
@@ -472,8 +505,11 @@ function parseRaidSessionTsServer(s) {
    10 分鐘內視為同一場合併，沒有標記的舊資料再用時間範圍去對應到最接近的場次。
    ══════════════════════════════════════════════════════════ */
 async function computeSessionSummary() {
-  await dbReady;
-  const lightRows = (await db.execute('SELECT ts, raid_started_at, raid_level_tier FROM attacks')).rows;
+  // 改讀記憶體快取，不再查詢 Turso；欄位名稱維持跟舊版 SQL 查詢結果一樣的
+  // snake_case（raid_started_at/raid_level_tier），下面的邏輯才不用跟著改
+  const lightRows = [...attacksByDedupKey.values()].map(a => ({
+    ts: a.ts, raid_started_at: a.raidStartedAt, raid_level_tier: a.raidLevelTier
+  }));
   const manualSessions = await getManualRaidSessions();
 
   const startToLevel = new Map();
@@ -553,32 +589,58 @@ async function upsertRaidSessionIfNew(startedAt, levelTier) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   額外的自動備份（選用，不設定也完全沒問題）：定期把目前的攻擊紀錄
-   整份寫進 GitHub repo 裡的一個 JSON 檔案（用同一個檔案路徑覆蓋，
-   每次的版本都留在 git 歷史紀錄裡，等於自動有時間軸備份）。這是
-   Turso 資料庫之外「再多一層」的保險，就算 Turso 那邊出問題，repo
-   裡還有一份最近的完整資料可以救回來。
+   額外的自動備份（選用，不設定也完全沒問題）：定期把攻擊紀錄寫進 GitHub repo，
+   這是 Turso 資料庫之外「再多一層」的保險，就算 Turso 那邊出問題，repo 裡還有
+   資料可以救回來。
    ⚠️ 這裡面會有玩家名稱、傷害數字等資料，GITHUB_BACKUP_REPO 一定要
    指到一個私人（private）repo，不要指到公開的網站 repo，不然攻擊
    紀錄會變成任何人都看得到。
    需要 GITHUB_BACKUP_TOKEN（有 repo 內容讀寫權限的 GitHub Personal
    Access Token）、GITHUB_BACKUP_REPO（格式 owner/repo）兩個環境變數，
    沒設定就不會執行，不影響其他功能。
+
+   ⚠️ 設計改版說明（修正實際發生過的頻寬爆量事故）：
+   舊版是「每 60 秒把全部歷史攻擊紀錄整包重傳、覆蓋同一個檔案」，隨著紀錄越
+   累積越多，單次備份也越來越肥（實測 3266 筆時單次就要傳輸超過 2MB），而且
+   就算資料完全沒變化也照樣每分鐘重傳一次——這是造成 Render 月流量 5GB 額度
+   在短短几天內被用光、帳號被停用的主要原因。
+   新版改成：① 只備份「今天（UTC）」新增的紀錄到當天專屬的檔案，檔案大小只跟
+   當天的攻擊量成正比，不會隨著歷史總筆數一直長大；② 如果今天的資料跟上次備份
+   時完全一樣（沒有新攻擊），直接跳過，不會浪費任何流量；③ 備份間隔大幅拉長。
    ══════════════════════════════════════════════════════════ */
 const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
 const GITHUB_BACKUP_REPO = process.env.GITHUB_BACKUP_REPO || '';
-const GITHUB_BACKUP_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json';
+const GITHUB_BACKUP_DIR = process.env.GITHUB_BACKUP_DIR || 'raid-relay/backups/daily'; // 按日分檔的資料夾
+const GITHUB_BACKUP_LEGACY_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json'; // 改版前的舊檔案，只用來相容還原
 const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
-const GITHUB_BACKUP_INTERVAL_MS = 60 * 1000; // 每 60 秒備份一次（在 GitHub 濫用防護的安全範圍內，不要調更短）
+// 現在單次備份只有「今天」的資料、且沒變化會直接跳過，負擔小很多，
+// 預設拉長到 30 分鐘一次也綽綽有餘；不放心可以用環境變數調整
+const GITHUB_BACKUP_INTERVAL_MS = Number(process.env.GITHUB_BACKUP_INTERVAL_MS) || 30 * 60 * 1000;
 const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
 if (!githubBackupEnabled) {
   console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Turso 資料庫還是照常運作，這只是多一層保險，可以不設定）。');
 }
 
+function utcDateStr(ts) {
+  return new Date(ts).toISOString().slice(0, 10); // YYYY-MM-DD（UTC）
+}
+function githubBackupPathForDate(dateStr) {
+  return `${GITHUB_BACKUP_DIR}/${dateStr}.json`;
+}
+
+// 記錄「上次備份時，今天的資料簽章」，簽章沒變就代表今天完全沒有新攻擊，
+// 直接跳過整次備份（連 GET 都不用打），大幅減少沒事發生時的流量浪費
+let lastGithubBackupSignature = null;
+
 async function backupAttackLogToGitHub() {
   if (!githubBackupEnabled) return;
   try {
-    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_PATH}`;
+    const todayStr = utcDateStr(Date.now());
+    const todaysAttacks = cacheAllAttacksSorted().filter(a => utcDateStr(a.ts) === todayStr);
+    const signature = `${todayStr}:${todaysAttacks.length}:${todaysAttacks.length ? todaysAttacks[todaysAttacks.length - 1].ts : 0}`;
+    if (signature === lastGithubBackupSignature) return; // 今天的資料跟上次備份完全一樣，不用再打 GitHub API
+
+    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${githubBackupPathForDate(todayStr)}`;
     const headers = {
       Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
       Accept: 'application/vnd.github+json',
@@ -595,10 +657,9 @@ async function backupAttackLogToGitHub() {
       return;
     }
 
-    const attacks = await getAllAttacks();
     const backup = {
-      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log', exportedAt: new Date().toISOString(), count: attacks.length },
-      attacks
+      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log-daily', date: todayStr, exportedAt: new Date().toISOString(), count: todaysAttacks.length },
+      attacks: todaysAttacks
     };
     const content = Buffer.from(JSON.stringify(backup, null, 2)).toString('base64');
 
@@ -606,7 +667,7 @@ async function backupAttackLogToGitHub() {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: `Automated raid attack log backup (${attacks.length} records)`,
+        message: `Daily raid attack log backup ${todayStr} (${todaysAttacks.length} records)`,
         content,
         branch: GITHUB_BACKUP_BRANCH,
         sha
@@ -616,42 +677,77 @@ async function backupAttackLogToGitHub() {
       console.error('[github-backup] 寫入備份檔案失敗:', putResp.status, await putResp.text());
       return;
     }
-    console.log(`[github-backup] 已把 ${attacks.length} 筆攻擊紀錄備份進 GitHub repo`);
+    lastGithubBackupSignature = signature;
+    console.log(`[github-backup] 已把 ${todayStr} 當天 ${todaysAttacks.length} 筆攻擊紀錄備份進 GitHub repo`);
   } catch (e) {
     console.error('[github-backup] 備份失敗:', e && e.message ? e.message : e);
   }
 }
 
-// 開機時自動把 GitHub 備份檔案裡的資料讀回資料庫——不管是重新部署、還是 Render
-// 免費方案閒置超過 15 分鐘自動休眠又醒來，只要資料庫是空的（或缺一部分），這裡都會
-// 自動補回最近一次備份的內容。用 insertAttacksBatch 的 dedup 機制，就算資料庫裡
-// 已經有一部分資料，重複匯入也不會出問題，只會把缺少的部分補回來，不會產生重複紀錄
+// 開機時自動把 GitHub 備份的資料讀回資料庫——不管是重新部署、還是 Render
+// 免費方案閒置休眠醒來、或帳號被停用又恢復，只要資料庫是空的（或缺一部分），
+// 這裡都會自動補回來。用 insertAttacksBatch 的 dedup 機制，就算資料庫裡
+// 已經有一部分資料，重複匯入也不會出問題，只會把缺少的部分補回來。
+// 先讀「按日分檔」資料夾（新版），再相容讀一次改版前的舊單一檔案（如果按日分檔
+// 那邊完全沒補到任何資料，通常代表這是第一次用新版、歷史資料還在舊檔案裡）。
 async function restoreAttackLogFromGitHubBackup() {
   if (!githubBackupEnabled) return;
+  const headers = {
+    Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
+    Accept: 'application/vnd.github+json'
+  };
+  let totalImported = 0;
   try {
-    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_PATH}`;
-    const headers = {
-      Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
-      Accept: 'application/vnd.github+json'
-    };
-    const resp = await fetch(`${apiUrl}?ref=${GITHUB_BACKUP_BRANCH}`, { headers });
-    if (resp.status === 404) {
-      console.log('[github-backup] repo 裡還沒有備份檔案，略過開機還原');
-      return;
+    const dirUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_DIR}?ref=${GITHUB_BACKUP_BRANCH}`;
+    const dirResp = await fetch(dirUrl, { headers });
+    if (dirResp.ok) {
+      const entries = await dirResp.json();
+      if (Array.isArray(entries)) {
+        for (const entry of entries) {
+          if (!entry.name || !entry.name.endsWith('.json') || !entry.url) continue;
+          try {
+            const fileResp = await fetch(entry.url, { headers });
+            if (!fileResp.ok) continue;
+            const fileData = await fileResp.json();
+            const content = Buffer.from(fileData.content, 'base64').toString('utf8');
+            const parsed = JSON.parse(content);
+            const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
+            if (attacks.length > 0) totalImported += await insertAttacksBatch(attacks);
+          } catch (e) {
+            console.error(`[github-backup] 讀取每日備份檔案 ${entry.name} 失敗:`, e && e.message ? e.message : e);
+          }
+        }
+      }
+      console.log(`[github-backup] 開機還原（按日分檔）：補回了 ${totalImported} 筆資料庫裡缺少的紀錄`);
+    } else if (dirResp.status !== 404) {
+      console.error('[github-backup] 讀取每日備份資料夾失敗:', dirResp.status, await dirResp.text());
     }
-    if (!resp.ok) {
-      console.error('[github-backup] 開機還原時讀取備份檔案失敗:', resp.status, await resp.text());
-      return;
-    }
-    const data = await resp.json();
-    const content = Buffer.from(data.content, 'base64').toString('utf8');
-    const parsed = JSON.parse(content);
-    const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
-    if (attacks.length === 0) return;
-    const imported = await insertAttacksBatch(attacks);
-    console.log(`[github-backup] 開機還原：備份檔案裡有 ${attacks.length} 筆，補回了 ${imported} 筆資料庫裡缺少的紀錄`);
   } catch (e) {
-    console.error('[github-backup] 開機還原失敗:', e && e.message ? e.message : e);
+    console.error('[github-backup] 開機還原（按日分檔）失敗:', e && e.message ? e.message : e);
+  }
+
+  // 相容舊版：只有在按日分檔完全沒補到資料時才嘗試（避免每次開機都白跑一次舊檔案）
+  if (totalImported === 0) {
+    try {
+      const legacyUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_LEGACY_PATH}?ref=${GITHUB_BACKUP_BRANCH}`;
+      const legacyResp = await fetch(legacyUrl, { headers });
+      if (legacyResp.status === 404) {
+        console.log('[github-backup] 沒有舊版備份檔案可還原，略過');
+      } else if (!legacyResp.ok) {
+        console.error('[github-backup] 讀取舊版備份檔案失敗:', legacyResp.status, await legacyResp.text());
+      } else {
+        const data = await legacyResp.json();
+        const content = Buffer.from(data.content, 'base64').toString('utf8');
+        const parsed = JSON.parse(content);
+        const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
+        if (attacks.length > 0) {
+          const imported = await insertAttacksBatch(attacks);
+          console.log(`[github-backup] 開機還原（相容舊版單一檔案）：補回了 ${imported} 筆資料庫裡缺少的紀錄`);
+        }
+      }
+    } catch (e) {
+      console.error('[github-backup] 開機還原（相容舊版）失敗:', e && e.message ? e.message : e);
+    }
   }
 }
 
@@ -1199,16 +1295,19 @@ function startWatcher() {
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
 
-// 開機時先把 GitHub 備份的資料還原回資料庫，確保不管上次是怎麼重啟的
-// （重新部署、Render 免費方案閒置休眠醒來、程式當機…），資料都能自動補回來，
-// 不用等資料庫自己重新累積、也不用人工匯入
-restoreAttackLogFromGitHubBackup().then(() => {
+// 開機順序：① 先把 Turso 現有資料一次讀進記憶體快取（之後讀取都不會再查 Turso）；
+// ② 把 GitHub 備份的資料還原回資料庫＋快取，確保不管上次是怎麼重啟的（重新部署、
+// Render 免費方案閒置休眠醒來、帳號被停用又恢復…），資料都能自動補回來；
+// ③ 開始 24 小時背景側錄；④ 啟動定期備份。
+(async () => {
+  await hydrateAttacksCacheFromDb();
+  await restoreAttackLogFromGitHubBackup();
   startWatcher();
   if (githubBackupEnabled) {
     backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一輪
     setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);
   }
-});
+})();
 
 function buildCurrentBossPayload() {
   return {

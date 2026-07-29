@@ -5568,7 +5568,7 @@
         let apiHasReceivedAttack = false; // 是否已經收到過至少一筆真實的 attack 事件（sub_cycle 只是預覽，不算數）
         let raidConnState = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
         let raidAutoReconnectTimer = null;
-        const RAID_AUTO_RECONNECT_DELAY = 6000; // 斷線後幾秒自動重連
+        const RAID_AUTO_RECONNECT_DELAY = 60000; // 斷線後幾秒自動重連（原本 6 秒，中繼伺服器不穩/掛掉時會一直狂連，改成 1 分鐘一次）
 
         function scheduleRaidAutoReconnect() {
             clearTimeout(raidAutoReconnectTimer);
@@ -7637,10 +7637,13 @@
             setRaidConnectStatus('連線中繼伺服器中...', '');
 
             // 連到自己的中繼伺服器（一般連線，沒有header限制），
-            // 再請中繼伺服器代為連線GameHive並轉發事件（事件名稱前面會加上 raid: 前綴）
+            // 再請中繼伺服器代為連線GameHive並轉發事件（事件名稱前面會加上 raid: 前綴）。
+            // 關掉 Socket.IO 內建的自動重連（reconnection: false），只靠下面自己的
+            // scheduleRaidAutoReconnect 這一套重連機制——避免兩套重連邏輯同時運作，
+            // 一失敗就疊加變成每幾秒就狂連一次，中繼伺服器不穩時反而越打越忙。
             raidSocket = io(relayUrl, {
                 transports: ['websocket'],
-                reconnectionAttempts: 10,
+                reconnection: false,
                 autoConnect: true
             });
 

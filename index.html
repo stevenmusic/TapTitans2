@@ -3210,7 +3210,6 @@
                     </div>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
                     <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
-                    <button class="btn-backup" style="margin-top:8px; width:100%; background:#f7e8e8; color:#8e3a3a;" onclick="clearRaidFullLog()">🗑️ 清空攻擊紀錄</button>
                 </div>
 
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
@@ -7432,32 +7431,6 @@
                 await submitAttacksForImport(attacks, '這台裝置上');
             } catch (err) {
                 alert('匯入失敗，請確認網路連線後再試一次：' + (err && err.message ? err.message : String(err)));
-            }
-        }
-
-        async function clearRaidFullLog() {
-            // 攻擊紀錄現在是伺服器上「全公會共用」的資料庫，不是只清自己瀏覽器的快取，
-            // 清空之後所有人都看不到舊紀錄，所以警語要講清楚。
-            // 注意：這裡故意不動 localStorage 的本機備份（RAID_FULL_LOG_BACKUP_KEY），
-            // 雙重保險的意義就在於萬一不小心清錯，這台瀏覽器上還留著最近一次的備份可以救援
-            if (!confirm('確定要清空「全公會共用」的攻擊紀錄資料庫嗎？這個動作無法復原，清空後所有人都看不到舊紀錄（這台瀏覽器上的本機備份不會被清掉）。')) return;
-            try {
-                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/clear`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: true })
-                });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                serverAttackLogCache = [];
-                serverSessionsSummary = [];
-                serverAllPlayersCache = [];
-                sessionAttacksCache = new Map();
-                const resultWrap = document.getElementById('raid-log-query-result');
-                if (resultWrap) resultWrap.style.display = 'none';
-                showPlayerCopyToastLike('已清空攻擊紀錄');
-            } catch (e) {
-                alert('清空失敗，請確認網路連線後再試一次：' + (e && e.message ? e.message : String(e)));
             }
         }
 

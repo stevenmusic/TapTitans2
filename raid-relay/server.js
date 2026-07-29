@@ -479,16 +479,6 @@ async function getRecentAttacksLight(limit) {
   });
 }
 
-async function clearAllAttacks() {
-  try {
-    await dbReady;
-    await db.execute('DELETE FROM attacks');
-    attacksByDedupKey.clear();
-  } catch (e) {
-    console.error('[turso] 清空攻擊紀錄失敗:', e && e.message ? e.message : e);
-  }
-}
-
 // 場次開始時間差在這範圍內視為同一場（跟前端 RAID_SESSION_MATCH_MS 邏輯一致）
 const RAID_SESSION_MATCH_MS = 10 * 60 * 1000;
 
@@ -1459,28 +1449,6 @@ app.get('/full-attack-log/summary', async (req, res) => {
       <p><b>參與人數：</b>${playerSet.size}</p>
     </body></html>
   `);
-});
-
-app.get('/full-attack-log/clear', async (req, res) => {
-  if (req.query.confirm !== 'yes') {
-    return res.send(`
-      <html><body style="font-family:sans-serif; padding:24px; text-align:center;">
-        <p style="font-size:18px;">確定要清空完整攻擊紀錄嗎？這是所有人共用的資料庫，清空後全公會都看不到舊紀錄。<br>請先確認已經在網頁上查詢/備份過了。</p>
-        <a href="/full-attack-log/clear?confirm=yes" style="display:inline-block; margin-top:16px; padding:12px 24px; background:#c62828; color:white; border-radius:8px; text-decoration:none;">確定清空</a>
-      </body></html>
-    `);
-  }
-  await clearAllAttacks();
-  res.send('<html><body style="font-family:sans-serif; padding:24px; text-align:center;">✓ 已清空</body></html>');
-});
-
-// 給網頁上「🗑️ 清空攻擊紀錄」按鈕用的 API 版本（同一個資料庫，清掉的是全公會共用的紀錄）
-app.post('/full-attack-log/clear', async (req, res) => {
-  if (!(req.body && req.body.confirm === true)) {
-    return res.status(400).json({ error: 'missing confirm' });
-  }
-  await clearAllAttacks();
-  res.json({ ok: true });
 });
 
 // 給網頁「匯入攻擊紀錄」按鈕用：把使用者上傳的 JSON 檔案裡的攻擊紀錄併回資料庫，

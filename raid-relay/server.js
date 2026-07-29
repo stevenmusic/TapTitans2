@@ -1193,6 +1193,42 @@ app.get('/raid-players', async (req, res) => {
   res.json({ players: await getDistinctPlayers() });
 });
 
+// 診斷用：列出這支伺服器本機硬碟（Render 上的容器檔案系統，不是 Turso）裡，
+// 這支程式自己會用到的檔案／資料夾各佔多少空間。攻擊紀錄本身早就都存在 Turso
+// （跟這台伺服器完全分開的雲端資料庫），不會出現在這裡；這裡列出來的都是還留在
+// 本機的小檔案（王血量暫存、推播訂閱清單、每輪總結），用來排查「硬碟空間被什麼佔滿」
+function dirSizeBytes(p) {
+  let total = 0;
+  const stat = fs.statSync(p);
+  if (!stat.isDirectory()) return stat.size;
+  fs.readdirSync(p).forEach((name) => {
+    const full = path.join(p, name);
+    try {
+      const st = fs.lstatSync(full);
+      if (st.isSymbolicLink()) return; // 不追蹤符號連結，避免意外繞出容器範圍
+      total += st.isDirectory() ? dirSizeBytes(full) : st.size;
+    } catch (e) { /* 中途檔案被刪掉之類的競態問題，略過這個項目就好 */ }
+  });
+  return total;
+}
+app.get('/disk-usage', (req, res) => {
+  const targets = ['current_boss_state.json', 'cycle_summaries.json', 'push_subscriptions.json', 'watcher_data', 'node_modules', '.git', '.'];
+  const result = {};
+  targets.forEach((name) => {
+    const full = path.join(__dirname, name);
+    try {
+      result[name] = fs.existsSync(full) ? dirSizeBytes(full) : null; // null = 這個檔案/資料夾不存在
+    } catch (e) {
+      result[name] = `讀取失敗: ${e && e.message ? e.message : e}`;
+    }
+  });
+  const mb = (n) => (typeof n === 'number' ? `${(n / 1024 / 1024).toFixed(2)} MB` : n);
+  res.json({
+    bytes: result,
+    readable: Object.fromEntries(Object.entries(result).map(([k, v]) => [k, mb(v)]))
+  });
+});
+
 app.get('/manual-raid-sessions', async (req, res) => {
   res.json({ sessions: await getManualRaidSessions() });
 });

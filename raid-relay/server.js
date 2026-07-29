@@ -621,9 +621,12 @@ const GITHUB_BACKUP_REPO = process.env.GITHUB_BACKUP_REPO || '';
 const GITHUB_BACKUP_DIR = process.env.GITHUB_BACKUP_DIR || 'raid-relay/backups/daily'; // 按日分檔的資料夾
 const GITHUB_BACKUP_LEGACY_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json'; // 改版前的舊檔案，只用來相容還原
 const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
-// 現在單次備份只有「今天」的資料、且沒變化會直接跳過，負擔小很多，
-// 預設拉長到 30 分鐘一次也綽綽有餘；不放心可以用環境變數調整
-const GITHUB_BACKUP_INTERVAL_MS = Number(process.env.GITHUB_BACKUP_INTERVAL_MS) || 30 * 60 * 1000;
+// 現在單次備份只有「今天」的資料、且沒變化會直接跳過，負擔小很多——實測估算：
+// 就算每天都是滿檔 1000 筆攻擊的忙碌日子，每小時備份一次一整個月累積下來也只有
+// 大約 278MB（不到 Render/GitHub 額度的 6%），4 小時一次約 78MB，8 小時一次約
+// 44MB，三種頻率都非常安全。預設用 1 小時，想要更保守可以用環境變數調整成
+// 4 * 60 * 60 * 1000（4 小時）或 8 * 60 * 60 * 1000（8 小時）
+const GITHUB_BACKUP_INTERVAL_MS = Number(process.env.GITHUB_BACKUP_INTERVAL_MS) || 60 * 60 * 1000;
 const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
 if (!githubBackupEnabled) {
   console.warn('尚未設定 GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO，攻擊紀錄不會自動備份進 GitHub repo（Turso 資料庫還是照常運作，這只是多一層保險，可以不設定）。');

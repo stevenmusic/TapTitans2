@@ -608,23 +608,26 @@ async function upsertRaidSessionIfNew(startedAt, levelTier) {
    沒設定就不會執行，不影響其他功能。
 
    ⚠️ 設計改版說明（修正實際發生過的頻寬爆量事故）：
-   舊版是「每 60 秒把全部歷史攻擊紀錄整包重傳、覆蓋同一個檔案」，隨著紀錄越
-   累積越多，單次備份也越來越肥（實測 3266 筆時單次就要傳輸超過 2MB），而且
-   就算資料完全沒變化也照樣每分鐘重傳一次——這是造成 Render 月流量 5GB 額度
-   在短短几天內被用光、帳號被停用的主要原因。
-   新版改成：① 只備份「今天（UTC）」新增的紀錄到當天專屬的檔案，檔案大小只跟
-   當天的攻擊量成正比，不會隨著歷史總筆數一直長大；② 如果今天的資料跟上次備份
-   時完全一樣（沒有新攻擊），直接跳過，不會浪費任何流量；③ 備份間隔大幅拉長。
+   最早的版本是「每 60 秒把全部歷史攻擊紀錄整包重傳、覆蓋同一個檔案」，隨著
+   紀錄越累積越多，單次備份也越來越肥（實測 3266 筆時單次就要傳輸超過 2MB），
+   而且就算資料完全沒變化也照樣每分鐘重傳一次——這是造成 Render 月流量 5GB
+   額度在短短几天內被用光、帳號被停用的主要原因。
+   後來改成「按日分檔」，但還是「這一整天目前累積的所有紀錄」整包覆蓋同一個
+   檔案，隨著這一天過去、紀錄越打越多，還是會被重複上傳好幾次（例如一天內
+   備份 24 次，越晚的幾次都要重傳當天從頭到現在的全部資料）。
+   現在改成真正的「只上傳這次新增的部分」：每次備份都是把「上次備份之後才
+   新增的攻擊紀錄」寫成一個全新的小檔案（不是覆蓋既有檔案），舊的增量檔案
+   永遠不會被重新上傳——同一筆攻擊紀錄一輩子只會被傳輸一次。因為是建立新
+   檔案而不是更新既有檔案，也不需要像以前一樣先 GET 查詢 sha，少一次網路
+   來回。
    ══════════════════════════════════════════════════════════ */
 const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
 const GITHUB_BACKUP_REPO = process.env.GITHUB_BACKUP_REPO || '';
-const GITHUB_BACKUP_DIR = process.env.GITHUB_BACKUP_DIR || 'raid-relay/backups/daily'; // 按日分檔的資料夾
+const GITHUB_BACKUP_DIR = process.env.GITHUB_BACKUP_DIR || 'raid-relay/backups/daily'; // 按日分檔的資料夾（裡面是日期子資料夾，每個子資料夾裝當天的增量小檔案）
 const GITHUB_BACKUP_LEGACY_PATH = process.env.GITHUB_BACKUP_PATH || 'raid-relay/backups/attack-log-latest.json'; // 改版前的舊檔案，只用來相容還原
 const GITHUB_BACKUP_BRANCH = process.env.GITHUB_BACKUP_BRANCH || 'main';
-// 現在單次備份只有「今天」的資料、且沒變化會直接跳過，負擔小很多——實測估算：
-// 就算每天都是滿檔 1000 筆攻擊的忙碌日子，每小時備份一次一整個月累積下來也只有
-// 大約 278MB（不到 Render/GitHub 額度的 6%），4 小時一次約 78MB，8 小時一次約
-// 44MB，三種頻率都非常安全。預設用 1 小時，想要更保守可以用環境變數調整成
+// 現在每次備份只傳「這次新增的部分」，負擔非常小、不會隨時間或歷史總筆數
+// 增加而變肥，預設 1 小時一次很安全；不放心可以用環境變數調整成
 // 4 * 60 * 60 * 1000（4 小時）或 8 * 60 * 60 * 1000（8 小時）
 const GITHUB_BACKUP_INTERVAL_MS = Number(process.env.GITHUB_BACKUP_INTERVAL_MS) || 60 * 60 * 1000;
 const githubBackupEnabled = Boolean(GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_REPO);
@@ -635,42 +638,31 @@ if (!githubBackupEnabled) {
 function utcDateStr(ts) {
   return new Date(ts).toISOString().slice(0, 10); // YYYY-MM-DD（UTC）
 }
-function githubBackupPathForDate(dateStr) {
-  return `${GITHUB_BACKUP_DIR}/${dateStr}.json`;
-}
 
-// 記錄「上次備份時，今天的資料簽章」，簽章沒變就代表今天完全沒有新攻擊，
-// 直接跳過整次備份（連 GET 都不用打），大幅減少沒事發生時的流量浪費
-let lastGithubBackupSignature = null;
+// 記錄「已經備份過的攻擊紀錄」，每次備份只找還沒備份過的（新增的）部分——
+// 不管開機後過了多久、資料庫累積了多少歷史紀錄，只要備份過就不會再重傳第二次
+const backedUpDedupKeys = new Set();
 
 async function backupAttackLogToGitHub() {
   if (!githubBackupEnabled) return;
   try {
-    const todayStr = utcDateStr(Date.now());
-    const todaysAttacks = cacheAllAttacksSorted().filter(a => utcDateStr(a.ts) === todayStr);
-    const signature = `${todayStr}:${todaysAttacks.length}:${todaysAttacks.length ? todaysAttacks[todaysAttacks.length - 1].ts : 0}`;
-    if (signature === lastGithubBackupSignature) return; // 今天的資料跟上次備份完全一樣，不用再打 GitHub API
+    const newAttacks = cacheAllAttacksSorted().filter(a => !backedUpDedupKeys.has(attackDedupKey(a)));
+    if (newAttacks.length === 0) return; // 完全沒有新資料，連一次 API 都不用打
 
-    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${githubBackupPathForDate(todayStr)}`;
+    const todayStr = utcDateStr(Date.now());
+    // 每次都是「新增一個檔案」，不是覆蓋既有檔案，所以不用先 GET 查 sha，
+    // 也不會把之前已經備份過的資料重新傳一次——只傳這次真正新增的部分
+    const fileName = `${GITHUB_BACKUP_DIR}/${todayStr}/${Date.now()}.json`;
+    const apiUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${fileName}`;
     const headers = {
       Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
       Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json'
     };
 
-    // 更新既有檔案一定要帶原本的 sha，所以先查一次；檔案還不存在的話會是 404，這是正常現象
-    let sha;
-    const getResp = await fetch(`${apiUrl}?ref=${GITHUB_BACKUP_BRANCH}`, { headers });
-    if (getResp.ok) {
-      sha = (await getResp.json()).sha;
-    } else if (getResp.status !== 404) {
-      console.error('[github-backup] 查詢現有備份檔案失敗:', getResp.status, await getResp.text());
-      return;
-    }
-
     const backup = {
-      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log-daily', date: todayStr, exportedAt: new Date().toISOString(), count: todaysAttacks.length },
-      attacks: todaysAttacks
+      _meta: { app: 'TT2 Toolkit', type: 'raid-attack-log-increment', date: todayStr, exportedAt: new Date().toISOString(), count: newAttacks.length },
+      attacks: newAttacks
     };
     const content = Buffer.from(JSON.stringify(backup, null, 2)).toString('base64');
 
@@ -678,18 +670,17 @@ async function backupAttackLogToGitHub() {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: `Daily raid attack log backup ${todayStr} (${todaysAttacks.length} records)`,
+        message: `Incremental raid attack log backup ${todayStr} (+${newAttacks.length} records)`,
         content,
-        branch: GITHUB_BACKUP_BRANCH,
-        sha
+        branch: GITHUB_BACKUP_BRANCH
       })
     });
     if (!putResp.ok) {
       console.error('[github-backup] 寫入備份檔案失敗:', putResp.status, await putResp.text());
       return;
     }
-    lastGithubBackupSignature = signature;
-    console.log(`[github-backup] 已把 ${todayStr} 當天 ${todaysAttacks.length} 筆攻擊紀錄備份進 GitHub repo`);
+    newAttacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
+    console.log(`[github-backup] 已把新增的 ${newAttacks.length} 筆攻擊紀錄備份進 GitHub repo（${fileName}）`);
   } catch (e) {
     console.error('[github-backup] 備份失敗:', e && e.message ? e.message : e);
   }
@@ -699,8 +690,31 @@ async function backupAttackLogToGitHub() {
 // 免費方案閒置休眠醒來、或帳號被停用又恢復，只要資料庫是空的（或缺一部分），
 // 這裡都會自動補回來。用 insertAttacksBatch 的 dedup 機制，就算資料庫裡
 // 已經有一部分資料，重複匯入也不會出問題，只會把缺少的部分補回來。
-// 先讀「按日分檔」資料夾（新版），再相容讀一次改版前的舊單一檔案（如果按日分檔
-// 那邊完全沒補到任何資料，通常代表這是第一次用新版、歷史資料還在舊檔案裡）。
+// 讀取單一備份檔案內容，插入資料庫，並把每一筆都記進 backedUpDedupKeys——
+// 這樣開機還原完成後，這次開機第一次背景備份才不會誤以為這些舊資料全部都是
+// 「新增的」而整批重傳一次
+async function restoreOneGithubBackupFile(fileUrl, headers, label) {
+  try {
+    const fileResp = await fetch(fileUrl, { headers });
+    if (!fileResp.ok) return 0;
+    const fileData = await fileResp.json();
+    const content = Buffer.from(fileData.content, 'base64').toString('utf8');
+    const parsed = JSON.parse(content);
+    const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
+    if (attacks.length === 0) return 0;
+    const imported = await insertAttacksBatch(attacks);
+    attacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
+    return imported;
+  } catch (e) {
+    console.error(`[github-backup] 讀取備份檔案 ${label} 失敗:`, e && e.message ? e.message : e);
+    return 0;
+  }
+}
+
+// 先讀「按日分檔」資料夾（新版：日期子資料夾底下是一個個增量小檔案；
+// 也相容中間版本留下的「日期.json」單一檔案），再相容還原最早版本的舊單一
+// 檔案（只有在按日分檔那邊完全沒補到任何資料時才嘗試，通常代表這是第一次
+// 用新版、歷史資料還在最早的舊檔案裡）。
 async function restoreAttackLogFromGitHubBackup() {
   if (!githubBackupEnabled) return;
   const headers = {
@@ -715,17 +729,24 @@ async function restoreAttackLogFromGitHubBackup() {
       const entries = await dirResp.json();
       if (Array.isArray(entries)) {
         for (const entry of entries) {
-          if (!entry.name || !entry.name.endsWith('.json') || !entry.url) continue;
-          try {
-            const fileResp = await fetch(entry.url, { headers });
-            if (!fileResp.ok) continue;
-            const fileData = await fileResp.json();
-            const content = Buffer.from(fileData.content, 'base64').toString('utf8');
-            const parsed = JSON.parse(content);
-            const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
-            if (attacks.length > 0) totalImported += await insertAttacksBatch(attacks);
-          } catch (e) {
-            console.error(`[github-backup] 讀取每日備份檔案 ${entry.name} 失敗:`, e && e.message ? e.message : e);
+          if (!entry.name || !entry.url) continue;
+          if (entry.type === 'dir') {
+            // 新版：日期子資料夾，裡面是一個個增量小檔案
+            try {
+              const subResp = await fetch(entry.url, { headers });
+              if (!subResp.ok) continue;
+              const subEntries = await subResp.json();
+              if (!Array.isArray(subEntries)) continue;
+              for (const fileEntry of subEntries) {
+                if (!fileEntry.name || !fileEntry.name.endsWith('.json') || !fileEntry.url) continue;
+                totalImported += await restoreOneGithubBackupFile(fileEntry.url, headers, `${entry.name}/${fileEntry.name}`);
+              }
+            } catch (e) {
+              console.error(`[github-backup] 讀取日期資料夾 ${entry.name} 失敗:`, e && e.message ? e.message : e);
+            }
+          } else if (entry.name.endsWith('.json')) {
+            // 相容中間版本：日期.json 單一檔案直接放在這個資料夾底下
+            totalImported += await restoreOneGithubBackupFile(entry.url, headers, entry.name);
           }
         }
       }
@@ -737,7 +758,7 @@ async function restoreAttackLogFromGitHubBackup() {
     console.error('[github-backup] 開機還原（按日分檔）失敗:', e && e.message ? e.message : e);
   }
 
-  // 相容舊版：只有在按日分檔完全沒補到資料時才嘗試（避免每次開機都白跑一次舊檔案）
+  // 相容最早的版本：只有在按日分檔完全沒補到資料時才嘗試（避免每次開機都白跑一次舊檔案）
   if (totalImported === 0) {
     try {
       const legacyUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_LEGACY_PATH}?ref=${GITHUB_BACKUP_BRANCH}`;
@@ -753,6 +774,7 @@ async function restoreAttackLogFromGitHubBackup() {
         const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
         if (attacks.length > 0) {
           const imported = await insertAttacksBatch(attacks);
+          attacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
           console.log(`[github-backup] 開機還原（相容舊版單一檔案）：補回了 ${imported} 筆資料庫裡缺少的紀錄`);
         }
       }

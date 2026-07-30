@@ -801,10 +801,6 @@ let watcherReconnectTimer = null;
 let watcherRaidTitans = [];
 let watcherSpawnSequence = [];
 
-// 暫時的除錯用途：研究詛咒盔甲顏色資料在原始封包裡到底放在哪個欄位，
-// 記住每種事件類型「最近一次收到」的完整原始 payload，方便直接打 /debug/watcher-raw
-// 看實際長什麼樣子。找到欄位、接好顏色顯示之後這段連同下面的 debug 端點應該要拿掉。
-const watcherDebugRawPayloads = {};
 let cycleSummaries = readJsonSafe(CYCLE_SUMMARIES_PATH, []);
 let pushSubscriptions = readJsonSafe(SUBSCRIPTIONS_PATH, []);
 
@@ -1157,6 +1153,23 @@ function splitPartId(partId) {
   return { layer: null, loc: null };
 }
 
+// 從場次快照事件（sub_start/start/sub_cycle/cycle_reset）帶的 titan.parts 完整定義，
+// 建出每個部位的盔甲/肉體血量上限＋詛咒狀態。詛咒（cursed）是 GameHive API 直接
+// 回傳的欄位，只有這種快照事件才有帶（攻擊事件裡的 raid_state.current.parts
+// 只有 current_hp，沒有這些欄位），所以只能在這裡建，沒辦法每次攻擊都更新
+function buildPartStatusFromTitan(titan) {
+  const status = {};
+  (titan.parts || []).forEach((p) => {
+    const { layer, loc } = splitPartId(p.part_id);
+    if (!loc) return;
+    if (!status[loc]) status[loc] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0, cursed: false };
+    if (layer === 'armor') { status[loc].armorMax = p.total_hp; status[loc].armor = p.current_hp; }
+    else if (layer === 'body') { status[loc].bodyMax = p.total_hp; status[loc].body = p.current_hp; }
+    if (p.cursed) status[loc].cursed = true;
+  });
+  return status;
+}
+
 function watcherHandleRaidSnapshot(payload) {
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
@@ -1187,6 +1200,10 @@ function watcherHandleRaidSnapshot(payload) {
         watcherKillMaxHp = titan.total_hp;
         if (!watcherBossCurrentHp) watcherBossCurrentHp = watcherKillMaxHp;
         if (!watcherBossName || watcherBossName === '—') watcherBossName = titan.enemy_name || watcherBossName;
+        // 這種情況代表重啟後第一個進來的是 attack 事件（見上面的說明），
+        // watcherPartStatus 當時只靠攻擊事件建出來，沒有盔甲/肉體上限跟詛咒狀態，
+        // 現在拿到完整的 titan.parts 定義了，直接整個重建一次補齊
+        watcherPartStatus = buildPartStatusFromTitan(titan);
         saveCurrentBossState();
         console.log('[watcher] 補回目前王的滿血值:', watcherBossName, watcherKillMaxHp);
       }
@@ -1211,16 +1228,7 @@ function watcherHandleAttack(payload) {
     watcherBossName = (titan && titan.enemy_name) || watcherSpawnSequence[ordinal - 1] || '—';
     watcherKillMaxHp = (titan && titan.total_hp) || 0;
     watcherBossCurrentHp = watcherKillMaxHp; // 換新王，滿血重置
-    watcherPartStatus = {};
-    if (titan) {
-      (titan.parts || []).forEach((p) => {
-        const { layer, loc } = splitPartId(p.part_id);
-        if (!loc) return;
-        if (!watcherPartStatus[loc]) watcherPartStatus[loc] = { armor: 0, armorMax: 0, body: 0, bodyMax: 0 };
-        if (layer === 'armor') { watcherPartStatus[loc].armorMax = p.total_hp; watcherPartStatus[loc].armor = p.current_hp; }
-        else if (layer === 'body') { watcherPartStatus[loc].bodyMax = p.total_hp; watcherPartStatus[loc].body = p.current_hp; }
-      });
-    }
+    watcherPartStatus = titan ? buildPartStatusFromTitan(titan) : {};
     watcherBossChangedAt = Date.now();
     watcherLastSkillReminder = 'none';
     if (!isFirstBoss) {
@@ -1365,7 +1373,6 @@ function startWatcher() {
   watcherSocket.on('attack', watcherHandleAttack);
   watcherSocket.on('end', handleWatcherRaidEnd('end'));
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
-  watcherSocket.onAny((eventName, payload) => { watcherDebugRawPayloads[eventName] = payload; });
 }
 
 // 開機順序：① 先把 Turso 現有資料一次讀進記憶體快取（之後讀取都不會再查 Turso）；
@@ -1469,13 +1476,6 @@ app.get('/disk-usage', (req, res) => {
     bytes: result,
     readable: Object.fromEntries(Object.entries(result).map(([k, v]) => [k, mb(v)]))
   });
-});
-
-// 暫時的除錯用端點：研究詛咒盔甲顏色資料在遊戲原始封包裡到底放在哪個欄位，
-// 直接看每種事件類型最近一次收到的完整原始資料（見上面的 watcherDebugRawPayloads）。
-// 找到欄位、接好顏色顯示之後這支端點連同 watcherDebugRawPayloads 應該要拿掉
-app.get('/debug/watcher-raw', (req, res) => {
-  res.json(watcherDebugRawPayloads);
 });
 
 app.get('/manual-raid-sessions', async (req, res) => {

@@ -8187,16 +8187,19 @@
                         `;
                     } else {
                         // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體。
-                        // 不再用文字標「盔甲／肉體」，改用背景顏色區分（盔甲＝灰、肉體＝跟肉體血條同色的青），
-                        // 並依剩餘百分比從左邊填滿背景，一眼就能看出這個部位還剩多少
+                        // 不再用文字標「盔甲／肉體」，改用背景顏色區分（盔甲＝灰、肉體＝跟肉體血條同色的青，
+                        // 被詛咒的盔甲＝紫），並依剩餘百分比從左邊填滿背景，一眼就能看出這個部位還剩多少。
+                        // 詛咒（cursed）是遊戲API直接回傳的欄位（見伺服器 buildPartStatusFromTitan），
+                        // 只在盔甲還在的時候顯示——盔甲被打穿之後詛咒就沒有意義了
                         const activeLayer = p.armor > 0 ? 'armor' : 'body';
                         const activeValue = p.armor > 0 ? p.armor : p.body;
                         const activeMax = p.armor > 0 ? p.armorMax : p.bodyMax;
                         const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
-                        const fillColor = activeLayer === 'armor' ? 'rgba(120,120,132,0.30)' : 'rgba(0,172,193,0.30)';
+                        const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
+                        const fillColor = isCursedArmor ? 'rgba(142,68,173,0.35)' : (activeLayer === 'armor' ? 'rgba(120,120,132,0.30)' : 'rgba(0,172,193,0.30)');
                         cell.style.background = `linear-gradient(to right, ${fillColor} ${pct}%, #ffffff ${pct}%)`;
                         cell.innerHTML = `
-                            <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                            <div class="raid-part-name">${isCursedArmor ? '🔮 ' : ''}${raidPartLabel(def.key)}</div>
                             <div class="raid-part-hp">${formatNum(activeValue)}</div>
                         `;
                     }

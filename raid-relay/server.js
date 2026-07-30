@@ -75,6 +75,12 @@ const sharedConnections = new Map();
 
 function connectSharedGameSocket(entry) {
   if (entry.stopped) return;
+  // 重連前先把舊的 socket 徹底清乾淨（跟 startWatcher() 的寫法一致）——
+  // 不然舊 socket 殘留的事件監聽器還在，理論上可能重複轉發事件給訂閱的瀏覽器
+  if (entry.gameSocket) {
+    entry.gameSocket.removeAllListeners();
+    entry.gameSocket.disconnect();
+  }
   entry.gameSocket = ioClient('https://tt2-public.gamehivegames.com/raid', {
     path: '/api/socket.io',
     transports: ['websocket'],
@@ -862,7 +868,12 @@ app.get('/push/vapid-public-key', (req, res) => {
 });
 app.post('/push/subscribe', (req, res) => {
   const subscription = req.body;
-  if (!subscription || !subscription.endpoint) return res.status(400).json({ error: 'invalid subscription' });
+  // 訂閱資料一定要有 endpoint 跟 keys.p256dh/auth，缺任何一個 webpush.sendNotification
+  // 都會直接丟錯（連 HTTP 請求都送不出去，err 不會帶 statusCode），
+  // 這種訂閱留在清單裡只會讓每次推播都白白重試、永遠失敗，先在這裡擋掉
+  if (!subscription || !subscription.endpoint || !subscription.keys || !subscription.keys.p256dh || !subscription.keys.auth) {
+    return res.status(400).json({ error: 'invalid subscription' });
+  }
   if (!pushSubscriptions.some(s => s.endpoint === subscription.endpoint)) {
     pushSubscriptions.push(subscription);
     savePushSubscriptions();
@@ -876,22 +887,28 @@ app.post('/push/unsubscribe', (req, res) => {
   res.json({ ok: true });
 });
 
+// 推播服務回這些狀態碼代表訂閱本身永久失效（過期、被瀏覽器取消、或請求格式錯誤），
+// 不是網路暫時性問題，才需要從清單裡移除，避免每次推播都重試一筆註定失敗的訂閱
+const PUSH_PERMANENT_FAILURE_CODES = new Set([400, 401, 403, 404, 410]);
 async function sendPushToAll(title, body, tag) {
   if (tag === 'tt2-skill-reminder') sendLineMessage(`${title}\n${body}`, true); // 技能提醒用 @All 提及全部成員
   if (!pushEnabled || pushSubscriptions.length === 0) return;
   const payload = JSON.stringify({ title, body, tag });
+  // 同時送給所有訂閱者，不要一個一個等——訂閱數一多，前面卡一個慢的
+  // 會拖累後面每一個人收到通知的時間
+  const results = await Promise.allSettled(pushSubscriptions.map((sub) => webpush.sendNotification(sub, payload)));
   const stillValid = [];
-  for (const sub of pushSubscriptions) {
-    try {
-      await webpush.sendNotification(sub, payload);
-      stillValid.push(sub);
-    } catch (err) {
-      if (err.statusCode !== 410 && err.statusCode !== 404) {
-        console.error('推播失敗:', err.statusCode, err.message);
-        stillValid.push(sub);
-      }
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      stillValid.push(pushSubscriptions[i]);
+      return;
     }
-  }
+    const err = result.reason;
+    if (!PUSH_PERMANENT_FAILURE_CODES.has(err && err.statusCode)) {
+      console.error('推播失敗:', err && err.statusCode, err && err.message);
+      stillValid.push(pushSubscriptions[i]);
+    }
+  });
   if (stillValid.length !== pushSubscriptions.length) {
     pushSubscriptions = stillValid;
     savePushSubscriptions();
@@ -900,9 +917,13 @@ async function sendPushToAll(title, body, tag) {
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 const LINE_GROUP_ID = process.env.LINE_GROUP_ID || '';
-const lineEnabled = Boolean(LINE_CHANNEL_ACCESS_TOKEN && LINE_GROUP_ID);
+// LINE 功能暫時整個關閉（用不到，而且 webhook 沒有簽章驗證，放著開會被冒充呼叫、
+// 白白燒 Claude API 額度）。之後要重新啟用的話，先把下面這行改回
+// Boolean(LINE_CHANNEL_ACCESS_TOKEN && LINE_GROUP_ID)，並且務必先幫 /line/webhook
+// 加上 x-line-signature 驗證再開放
+const lineEnabled = false;
 if (!lineEnabled) {
-  console.warn('尚未設定 LINE_CHANNEL_ACCESS_TOKEN / LINE_GROUP_ID，LINE 群組推播停用。');
+  console.warn('LINE 功能目前手動關閉（群組推播＋問答機器人皆停用）。');
 }
 async function sendLineMessage(text, mentionAll) {
   if (!lineEnabled) return;
@@ -1040,6 +1061,13 @@ async function replyLineMessage(replyToken, messages) {
 }
 
 app.post('/line/webhook', (req, res) => {
+  // LINE 功能暫時整個關閉（見上面的 lineEnabled）。這裡也要擋，因為原本收到訊息
+  // 就會呼叫真正付費的 Claude API（askClaudeAboutToolkit），而這支 webhook 又沒有
+  // x-line-signature 簽章驗證——放著不擋的話，任何人偽造 LINE 的 request 就能
+  // 免費消耗 Claude API 額度。要重新啟用，先把 lineEnabled 改回來，並且務必先
+  // 幫這裡加上 channel secret 簽章驗證再開放
+  if (!lineEnabled) return res.sendStatus(200);
+
   ((req.body && req.body.events) || []).forEach((evt) => {
     const groupId = evt.source && evt.source.groupId;
     if (groupId) console.log(`[LINE] 收到群組訊息，Group ID 是：${groupId}`);
@@ -1456,14 +1484,34 @@ app.get('/full-attack-log/summary', async (req, res) => {
   `);
 });
 
+// 這支 endpoint 沒有登入驗證（故意的——公會裡任何人都要能方便匯入自己手上的
+// 備份檔，不想加密碼把人擋在外面）。但也因為這樣，網址又寫死在公開的網頁原始碼裡，
+// 任何人都能直接呼叫，所以在寫進資料庫之前，至少要擋掉「一次塞爆記憶體」跟
+// 「格式壞到讓 Turso 直接噴例外」這兩種情況——不是要防身分冒充，是防資料炸彈。
+const IMPORT_MAX_ATTACKS_PER_REQUEST = 5000;
+const IMPORT_MAX_PLAYER_NAME_LEN = 60;
+function sanitizeImportedAttack(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (typeof entry.player !== 'string' || !entry.player.trim() || entry.player.length > IMPORT_MAX_PLAYER_NAME_LEN) return null;
+  const ts = Number(entry.ts);
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  const totalDamage = Number(entry.totalDamage);
+  if (!Number.isFinite(totalDamage) || totalDamage < 0) return null;
+  return entry;
+}
+
 // 給網頁「匯入攻擊紀錄」按鈕用：把使用者上傳的 JSON 檔案裡的攻擊紀錄併回資料庫，
 // 靠資料庫的 UNIQUE 限制擋掉已經有的紀錄，重複匯入同一份檔案也不會有問題
 app.post('/full-attack-log/import', async (req, res) => {
-  const attacks = (req.body && Array.isArray(req.body.attacks)) ? req.body.attacks : null;
-  if (!attacks) return res.status(400).json({ error: 'missing attacks array' });
+  const rawAttacks = (req.body && Array.isArray(req.body.attacks)) ? req.body.attacks : null;
+  if (!rawAttacks) return res.status(400).json({ error: 'missing attacks array' });
+  if (rawAttacks.length > IMPORT_MAX_ATTACKS_PER_REQUEST) {
+    return res.status(400).json({ error: `一次最多匯入 ${IMPORT_MAX_ATTACKS_PER_REQUEST} 筆，請分批匯入` });
+  }
+  const attacks = rawAttacks.map(sanitizeImportedAttack).filter(Boolean);
   const imported = await insertAttacksBatch(attacks);
   const total = (await getAllAttacks()).length;
-  res.json({ ok: true, imported, total });
+  res.json({ ok: true, imported, total, skipped: rawAttacks.length - attacks.length });
 });
 
 app.get('/cycle-summaries', (req, res) => {
@@ -1486,4 +1534,13 @@ app.get('/cycle-summaries/view', (req, res) => {
       ${rows || '<p>目前還沒有任何一輪結束過</p>'}
     </body></html>
   `);
+});
+
+// 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的
+// stack trace（含檔案路徑、套件版本）直接回給客戶端。一定要放在所有路由最後面，
+// Express 才會在任何路由裡的例外丟出來時走到這裡
+app.use((err, req, res, next) => {
+  console.error('[express] 未預期的錯誤:', err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'internal server error' });
 });

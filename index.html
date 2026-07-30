@@ -3110,8 +3110,6 @@
                         <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%;">🔔 開啟通知</button>
                         <button class="btn-raid-tool" onclick="subscribeBackgroundPush()" style="width:100%; margin-top:6px;">📡 開啟背景推播（不用開網頁）</button>
                         <div id="push-subscribe-status" style="font-size:11px; color:#8a7a6a; margin-top:4px;"></div>
-                        <button class="btn-raid-tool" onclick="registerBackgroundWatcher()" style="width:100%; margin-top:6px; display:none;">🛰️ 註冊 24 小時背景側錄</button>
-                        <div id="watcher-register-status" style="font-size:11px; color:#8a7a6a; margin-top:4px; display:none;"></div>
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
                         </div>
@@ -5332,7 +5330,6 @@
            ══════════════════════════════════════════════════════════ */
         const RAID_APP_TOKEN_KEY = 'tt2_raid_app_token';
         const RAID_PLAYER_TOKEN_KEY = 'tt2_raid_player_token';
-        const RAID_WATCHER_ID_KEY = 'tt2_raid_watcher_id'; // 自己註冊的背景側錄 id，跟公會綁定，存在本機
         const RAID_GUILD_PROFILES_KEY = 'tt2_raid_guild_profiles';
         const RAID_DEFAULT_RELAY_URL = 'https://taptitans2.onrender.com';
         const RAID_GUILD_PROFILE_SLOTS = 6; // 1 個預設「《亞瑟斯》」+ 5 個空白公會欄位
@@ -5861,8 +5858,8 @@
         // 立刻看到結果，維持預設（silent 沒帶或為 false）會照常重畫。
         async function fetchServerRaidData(relayUrl, silent) {
             const [logResp, summaryResp] = await Promise.all([
-                fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log`),
-                fetch(`${relayUrl}${raidWatcherPathPrefix()}/raid-sessions-summary`)
+                fetch(`${relayUrl}/full-attack-log`),
+                fetch(`${relayUrl}/raid-sessions-summary`)
             ]);
             if (summaryResp.ok) {
                 const data = await summaryResp.json();
@@ -5920,8 +5917,8 @@
         // fetchServerRaidData／ensureServerRaidDataFresh。
         async function fetchRaidLiveEssentials(relayUrl) {
             const [bossResp, recentResp] = await Promise.all([
-                fetch(`${relayUrl}${raidWatcherPathPrefix()}/current-boss-status`),
-                fetch(`${relayUrl}${raidWatcherPathPrefix()}/recent-attacks?limit=${RAID_RECENT_MAX}`)
+                fetch(`${relayUrl}/current-boss-status`),
+                fetch(`${relayUrl}/recent-attacks?limit=${RAID_RECENT_MAX}`)
             ]);
             if (bossResp.ok) {
                 applyCurrentBossPayload(await bossResp.json(), true); // 一律 silent，不主動重畫畫面
@@ -5941,7 +5938,7 @@
             if (raidLogDemoActive) return []; // 示範模式的場次資料在 buildRaidSessions() 裡已經算好，不會走到這裡
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log?session=${encodeURIComponent(startedAt)}`);
+                const resp = await fetch(`${relayUrl}/full-attack-log?session=${encodeURIComponent(startedAt)}`);
                 if (!resp.ok) return [];
                 const data = await resp.json();
                 const attacks = Array.isArray(data.attacks) ? data.attacks : [];
@@ -5974,7 +5971,7 @@
             if (!forceRefresh && serverAllPlayersCache.length > 0) return;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/raid-players`);
+                const resp = await fetch(`${relayUrl}/raid-players`);
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (Array.isArray(data.players)) serverAllPlayersCache = data.players;
@@ -7319,7 +7316,7 @@
             let attacks = serverAttackLogCache;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log?all=true`);
+                const resp = await fetch(`${relayUrl}/full-attack-log?all=true`);
                 if (resp.ok) {
                     const data = await resp.json();
                     if (Array.isArray(data.attacks)) attacks = data.attacks;
@@ -7353,7 +7350,7 @@
         // 重複匯入同一批資料也不會出問題），匯入功能、舊版資料救援功能共用這段邏輯
         async function submitAttacksForImport(attacks, sourceLabel) {
             const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-            const resp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/full-attack-log/import`, {
+            const resp = await fetch(`${relayUrl}/full-attack-log/import`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ attacks })
@@ -7538,43 +7535,6 @@
             if (raidLogSyncTimer) {
                 clearInterval(raidLogSyncTimer);
                 raidLogSyncTimer = null;
-            }
-        }
-
-        // 如果這個瀏覽器有自己註冊過背景側錄，就用 /watchers/{id}/... 這組專屬端點；
-        // 沒有的話（例如你自己這台，用的是環境變數設定的那組），就用舊版相容端點
-        function raidWatcherPathPrefix() {
-            const watcherId = localStorage.getItem(RAID_WATCHER_ID_KEY);
-            return watcherId ? `/watchers/${watcherId}` : '';
-        }
-
-        async function registerBackgroundWatcher() {
-            const relayUrl = document.getElementById('raid-relay-url-input').value.trim().replace(/\/$/, '');
-            const appToken = document.getElementById('raid-app-token-input').value.trim();
-            const playerToken = document.getElementById('raid-player-token-input').value.trim();
-            const statusEl = document.getElementById('watcher-register-status');
-            if (!relayUrl || !appToken || !playerToken) {
-                alert('請先填好中繼伺服器網址、Application Token、Player Token');
-                return;
-            }
-            statusEl.textContent = '註冊中…';
-            try {
-                const resp = await fetch(`${relayUrl}/watchers/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ appToken, playerToken })
-                });
-                const data = await resp.json();
-                if (!resp.ok || !data.watcherId) {
-                    statusEl.textContent = '註冊失敗：' + (data.error || ('HTTP ' + resp.status));
-                    return;
-                }
-                localStorage.setItem(RAID_WATCHER_ID_KEY, data.watcherId);
-                statusEl.textContent = data.alreadyRegistered
-                    ? '✓ 這組 Token 已經註冊過背景側錄了，繼續使用中'
-                    : '✓ 註冊成功！伺服器已經開始 24 小時側錄你的公會';
-            } catch (e) {
-                statusEl.textContent = '註冊失敗：' + (e && e.message ? e.message : String(e));
             }
         }
 
@@ -8345,7 +8305,7 @@
                 const swReg = await navigator.serviceWorker.register('sw.js');
                 await navigator.serviceWorker.ready;
 
-                const keyResp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/push/vapid-public-key`);
+                const keyResp = await fetch(`${relayUrl}/push/vapid-public-key`);
                 const keyData = await keyResp.json();
                 if (!keyData.enabled || !keyData.publicKey) {
                     setPushStatusText('中繼伺服器尚未設定推播金鑰，請聯絡開發者');
@@ -8360,7 +8320,7 @@
                     });
                 }
 
-                const saveResp = await fetch(`${relayUrl}${raidWatcherPathPrefix()}/push/subscribe`, {
+                const saveResp = await fetch(`${relayUrl}/push/subscribe`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(subscription)

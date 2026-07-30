@@ -2413,6 +2413,7 @@
             line-height: 1.4;
         }
         .raid-part-hp { font-size: 10px; font-weight: 800; color: #4a2020; white-space: nowrap; text-align: center; display: block; }
+        .raid-part-hp.is-banned { color: #e53935; }
 
         .raid-updated-at {
             width: 100%;
@@ -3165,7 +3166,7 @@
                     <div class="raid-target-banner" id="raid-target-banner"></div>
 
                     <div class="raid-parts-legend">
-                        <span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>　<span class="raid-parts-legend-swatch cursed"></span><span data-i18n="raidLayerCursed">詛咒盔甲</span>
+                        <span class="raid-parts-legend-swatch cursed"></span><span data-i18n="raidLayerCursed">詛咒盔甲</span>　<span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>
                     </div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
@@ -8190,9 +8191,7 @@
                         // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體。
                         // 不再用文字標「盔甲／肉體」，改用背景顏色區分（盔甲＝灰、肉體＝跟肉體血條同色的青，
                         // 被詛咒的盔甲＝紫），並依剩餘百分比從左邊填滿背景，一眼就能看出這個部位還剩多少。
-                        // 邊框＋光暈也跟著用同一組顏色（更明顯）。只有「禁打」（幹部手動標記，紅框＋✗）
-                        // 這個人工標記才保留原本專屬顏色不被蓋掉——「優先打」是只要還有盔甲就自動成立的
-                        // 標記，幾乎每一格都會有，蓋掉它換成盔甲/肉體/詛咒的顏色反而資訊量更大
+                        // 邊框＋光暈也跟著用同一組顏色（更明顯）。
                         // 詛咒（cursed）是遊戲API直接回傳的欄位（見伺服器 buildPartStatusFromTitan），
                         // 只在盔甲還在的時候顯示——盔甲被打穿之後詛咒就沒有意義了
                         const activeLayer = p.armor > 0 ? 'armor' : 'body';
@@ -8201,15 +8200,22 @@
                         const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
                         const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
                         const themeColor = isCursedArmor ? '142,68,173' : (activeLayer === 'armor' ? '120,120,132' : '0,172,193');
-                        cell.style.background = `linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%)`;
-                        if (!isBanned) {
+                        if (isBanned) {
+                            // 禁打是幹部手動標記的最高優先級——不需要盔甲/肉體/詛咒的色塊跟邊框，
+                            // 保留原本專屬的紅框＋✗，血量數字直接標紅提醒不要打這個部位
+                            cell.innerHTML = `
+                                <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                                <div class="raid-part-hp is-banned">${formatNum(activeValue)}</div>
+                            `;
+                        } else {
+                            cell.style.background = `linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%)`;
                             cell.style.borderColor = `rgb(${themeColor})`;
                             cell.style.boxShadow = `0 0 6px rgba(${themeColor},0.55)`;
+                            cell.innerHTML = `
+                                <div class="raid-part-name">${raidPartLabel(def.key)}</div>
+                                <div class="raid-part-hp">${formatNum(activeValue)}</div>
+                            `;
                         }
-                        cell.innerHTML = `
-                            <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                            <div class="raid-part-hp">${formatNum(activeValue)}</div>
-                        `;
                     }
                     rowEl.appendChild(cell);
                 });

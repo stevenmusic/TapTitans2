@@ -2364,6 +2364,7 @@
         }
         .raid-parts-legend-swatch.armor { background: rgba(120,120,132,0.55); }
         .raid-parts-legend-swatch.body { background: rgba(0,172,193,0.55); }
+        .raid-parts-legend-swatch.cursed { background: rgba(142,68,173,0.55); }
 
         .raid-parts-grid {
             width: 100%;
@@ -3164,7 +3165,7 @@
                     <div class="raid-target-banner" id="raid-target-banner"></div>
 
                     <div class="raid-parts-legend">
-                        <span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>
+                        <span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>　<span class="raid-parts-legend-swatch cursed"></span><span data-i18n="raidLayerCursed">詛咒盔甲</span>
                     </div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
@@ -3328,7 +3329,7 @@
                 raidPartArmR: '右肩', raidPartArmL: '左肩',
                 raidPartLegR: '右腳', raidPartLegL: '左腳',
                 raidPartHandR: '右手', raidPartHandL: '左手',
-                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
+                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊',
                 raidTargetSkeletonLabel: '🦴 全身部位已無盔甲與肉體，即將擊殺',
                 raidUpdatedAt: '最後更新',
@@ -3494,7 +3495,7 @@
                 raidPartArmR: 'R.Arm', raidPartArmL: 'L.Arm',
                 raidPartLegR: 'R.Foot', raidPartLegL: 'L.Foot',
                 raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
-                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
+                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked',
                 raidTargetSkeletonLabel: '🦴 All parts have no armor or body left — boss is about to die',
                 raidUpdatedAt: 'Last updated',
@@ -8189,6 +8190,9 @@
                         // 只顯示目前有效的那一層：盔甲還沒破就只顯示盔甲，盔甲破了才顯示肉體。
                         // 不再用文字標「盔甲／肉體」，改用背景顏色區分（盔甲＝灰、肉體＝跟肉體血條同色的青，
                         // 被詛咒的盔甲＝紫），並依剩餘百分比從左邊填滿背景，一眼就能看出這個部位還剩多少。
+                        // 邊框＋光暈也跟著用同一組顏色（更明顯）。只有「禁打」（幹部手動標記，紅框＋✗）
+                        // 這個人工標記才保留原本專屬顏色不被蓋掉——「優先打」是只要還有盔甲就自動成立的
+                        // 標記，幾乎每一格都會有，蓋掉它換成盔甲/肉體/詛咒的顏色反而資訊量更大
                         // 詛咒（cursed）是遊戲API直接回傳的欄位（見伺服器 buildPartStatusFromTitan），
                         // 只在盔甲還在的時候顯示——盔甲被打穿之後詛咒就沒有意義了
                         const activeLayer = p.armor > 0 ? 'armor' : 'body';
@@ -8196,10 +8200,14 @@
                         const activeMax = p.armor > 0 ? p.armorMax : p.bodyMax;
                         const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
                         const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
-                        const fillColor = isCursedArmor ? 'rgba(142,68,173,0.35)' : (activeLayer === 'armor' ? 'rgba(120,120,132,0.30)' : 'rgba(0,172,193,0.30)');
-                        cell.style.background = `linear-gradient(to right, ${fillColor} ${pct}%, #ffffff ${pct}%)`;
+                        const themeColor = isCursedArmor ? '142,68,173' : (activeLayer === 'armor' ? '120,120,132' : '0,172,193');
+                        cell.style.background = `linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%)`;
+                        if (!isBanned) {
+                            cell.style.borderColor = `rgb(${themeColor})`;
+                            cell.style.boxShadow = `0 0 6px rgba(${themeColor},0.55)`;
+                        }
                         cell.innerHTML = `
-                            <div class="raid-part-name">${isCursedArmor ? '🔮 ' : ''}${raidPartLabel(def.key)}</div>
+                            <div class="raid-part-name">${raidPartLabel(def.key)}</div>
                             <div class="raid-part-hp">${formatNum(activeValue)}</div>
                         `;
                     }

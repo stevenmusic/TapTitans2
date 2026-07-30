@@ -322,21 +322,26 @@ function attackInsertArgs(entry) {
   ];
 }
 
-// 一次攻擊命中的部位清單去重（同一部位+同一層只留第一筆）。這是攻擊紀錄唯一
-// 該做這個過濾的地方——不管資料是即時側錄、匯入 JSON、還是從 Turso 讀回來的，
-// 只要通過 rowToAttack() 或 normalizeAttackForCache() 進到快取，就保證乾淨，
-// 之後任何讀取端（/recent-attacks、/full-attack-log…）都不用再自己過濾一次。
+// 一次攻擊命中的部位清單去重（同一部位+同一層合併成一筆，傷害加總，不是只留第一筆
+// 就把其他筆的傷害丟掉）。這是攻擊紀錄唯一該做這個過濾的地方——不管資料是即時側錄、
+// 匯入 JSON、還是從 Turso 讀回來的，只要通過 rowToAttack() 或 normalizeAttackForCache()
+// 進到快取，就保證乾淨，之後任何讀取端（/recent-attacks、/full-attack-log…）都不用
+// 再自己過濾一次。damage 欄位一定要留著——攻擊紀錄面板的八部位傷害圖表要靠這個顯示
+// 每個部位個別的傷害數字，不是只用整次攻擊的總傷害。
 function dedupPartsList(rawParts) {
-  const seen = new Set();
-  const parts = [];
+  const byKey = new Map();
   (rawParts || []).forEach((p) => {
     if (!p || !p.part) return;
     const layer = (p.layer === 'body') ? 'body' : 'armor';
     const key = `${p.part}_${layer}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    parts.push({ part: p.part, layer });
+    const damage = Number(p.damage) || 0;
+    if (byKey.has(key)) {
+      byKey.get(key).damage += damage;
+    } else {
+      byKey.set(key, { part: p.part, layer, damage });
+    }
   });
+  const parts = [...byKey.values()];
   return parts;
 }
 

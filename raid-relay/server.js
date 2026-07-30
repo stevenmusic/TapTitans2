@@ -800,6 +800,11 @@ let watcherSocket = null;
 let watcherReconnectTimer = null;
 let watcherRaidTitans = [];
 let watcherSpawnSequence = [];
+
+// 暫時的除錯用途：研究詛咒盔甲顏色資料在原始封包裡到底放在哪個欄位，
+// 記住每種事件類型「最近一次收到」的完整原始 payload，方便直接打 /debug/watcher-raw
+// 看實際長什麼樣子。找到欄位、接好顏色顯示之後這段連同下面的 debug 端點應該要拿掉。
+const watcherDebugRawPayloads = {};
 let cycleSummaries = readJsonSafe(CYCLE_SUMMARIES_PATH, []);
 let pushSubscriptions = readJsonSafe(SUBSCRIPTIONS_PATH, []);
 
@@ -1360,6 +1365,7 @@ function startWatcher() {
   watcherSocket.on('attack', watcherHandleAttack);
   watcherSocket.on('end', handleWatcherRaidEnd('end'));
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
+  watcherSocket.onAny((eventName, payload) => { watcherDebugRawPayloads[eventName] = payload; });
 }
 
 // 開機順序：① 先把 Turso 現有資料一次讀進記憶體快取（之後讀取都不會再查 Turso）；
@@ -1463,6 +1469,13 @@ app.get('/disk-usage', (req, res) => {
     bytes: result,
     readable: Object.fromEntries(Object.entries(result).map(([k, v]) => [k, mb(v)]))
   });
+});
+
+// 暫時的除錯用端點：研究詛咒盔甲顏色資料在遊戲原始封包裡到底放在哪個欄位，
+// 直接看每種事件類型最近一次收到的完整原始資料（見上面的 watcherDebugRawPayloads）。
+// 找到欄位、接好顏色顯示之後這支端點連同 watcherDebugRawPayloads 應該要拿掉
+app.get('/debug/watcher-raw', (req, res) => {
+  res.json(watcherDebugRawPayloads);
 });
 
 app.get('/manual-raid-sessions', async (req, res) => {

@@ -2322,15 +2322,6 @@
         }
         .raid-target-banner b { font-weight: 800; }
         .raid-target-parts { margin-top: 3px; font-size: 12.5px; }
-        .raid-target-banned-note {
-            background: #fdecec;
-            border: 1px solid #f3b8b8;
-            color: #8e3a3a;
-            border-radius: 8px;
-            padding: 4px 8px;
-            margin-bottom: 6px;
-            font-size: 11px;
-        }
 
         /* 部位卡片右上角的紅色 X：跟遊戲畫面一樣，代表幹部標記「禁打」，是官方資料，不是猜的 */
         .raid-part-cell { position: relative; }
@@ -3316,7 +3307,6 @@
                 raidStatusDemoRunning: '🎬 示範模式中（假資料）',
                 raidEmptyState: '尚未有任何突襲資料，請先連線或使用示範模式',
                 raidTargetArmorLabel: '🛡️ 優先拆除盔甲，先打這些部位（其他部位的肉體先不要打）：',
-                raidTargetBannedLabel: '🚫 禁打',
                 raidTargetFocusLabel: '💧 盔甲已全破，目前肉體血量最多、建議集火：',
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
@@ -3482,7 +3472,6 @@
                 raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
                 raidEmptyState: 'No raid data yet. Connect or use Demo Mode to preview.',
                 raidTargetArmorLabel: '🛡️ Break armor first on these parts (avoid hitting body on other parts for now):',
-                raidTargetBannedLabel: '🚫 Banned',
                 raidTargetFocusLabel: '💧 All armor destroyed — focus this part (highest body HP):',
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
@@ -8105,18 +8094,16 @@
 
             const target = computeRaidTarget();
             const bannerEl = document.getElementById('raid-target-banner');
-            const bannedNote = raidBannedParts.length > 0
-                ? `<div class="raid-target-banned-note">${t('raidTargetBannedLabel')}丨<b>${raidBannedParts.map(raidPartLabel).join('、')}</b></div>`
-                : '';
+            // 禁打部位不用再另外顯示一行提示了——8個部位圖示本身已經會直接標紅「禁打」
             if (target.armoredParts.length > 0) {
                 bannerEl.className = 'raid-target-banner armor';
-                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
+                bannerEl.innerHTML = `<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
             } else if (!target.allBodyDepleted) {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
+                bannerEl.innerHTML = `<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
             } else {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `${bannedNote}<div>${t('raidTargetSkeletonLabel')}</div>`;
+                bannerEl.innerHTML = `<div>${t('raidTargetSkeletonLabel')}</div>`;
             }
 
             /* 瘋狂無效（紫球）：肉體暴露部位（盔甲已破、肉體尚存）≥6 個時通知

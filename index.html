@@ -7310,33 +7310,36 @@
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
 
-            const deckMap = new Map(); // "CardA|CardB|CardC"（排序後）-> { cards: [原始順序], count }
-            r.attacks.forEach(a => {
-                const names = (a.cards || []).map(c => c.name).filter(Boolean);
-                if (!names.includes(cardName)) return;
-                const key = [...names].sort().join('|');
-                if (!deckMap.has(key)) deckMap.set(key, { cards: names, count: 0 });
-                deckMap.get(key).count++;
-            });
-            const decks = [...deckMap.values()].sort((a, b) => b.count - a.count);
+            // 列出這位玩家「這場」每一次用到這張卡的紀錄（不是合併同組牌組只顯示一次），
+            // 因為每一次出牌的傷害、時間都不一樣，合併起來就沒辦法個別對照了
+            const instances = r.attacks
+                .filter(a => (a.cards || []).some(c => c.name === cardName))
+                .map(a => ({ cards: (a.cards || []).map(c => c.name).filter(Boolean), ts: a.ts, totalDamage: a.totalDamage }))
+                .sort((a, b) => b.ts - a.ts); // 最新的排最上面
 
             // 讓同一張卡固定出現在同一欄，方便一眼比對（跟「常用牌組」同一套排版邏輯）
-            const columnOf = assignDeckColumns(decks);
-            decks.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
+            const columnOf = assignDeckColumns(instances);
+            instances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
 
             const label = raidCardLabel(cardName);
             const body = document.getElementById('card-usage-detail-body');
             body.innerHTML = `
                 <div style="font-weight:700; font-size:14px; color:#4a3a2a; margin-bottom:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.player)} · ${escapeHtml(label)}</div>
                 <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${decks.map(d => `
-                        <div style="display:flex; gap:8px; justify-content:center; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                            ${d.cards.map(name => {
-                                const img = raidCardImage(name);
-                                return img
-                                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
-                                    : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
-                            }).join('')}
+                    ${instances.map(d => `
+                        <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                            <div style="display:flex; gap:6px; flex-shrink:0;">
+                                ${d.cards.map(name => {
+                                    const img = raidCardImage(name);
+                                    return img
+                                        ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
+                                        : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
+                                }).join('')}
+                            </div>
+                            <div style="flex:1; text-align:right;">
+                                <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
+                                <div style="font-size:10.5px; color:#a89a88; line-height:1.3;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
+                            </div>
                         </div>
                     `).join('')}
                 </div>

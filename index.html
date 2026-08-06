@@ -6409,13 +6409,30 @@
             // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
             // 否則回溯歸類進來的舊資料會因為欄位本身還是空的而被漏掉
             const log = raidSessionFilter ? raidSessionFilter.attacks : fullLog;
-            const keywordLower = (keyword || '').toLowerCase();
-            let playerNames = [...new Set(log.map(e => e.player))];
-            if (keywordLower) playerNames = playerNames.filter(name => name.toLowerCase().includes(keywordLower));
-            if (playerNames.length === 0) return [];
 
-            const ranked = playerNames.map(playerName => {
-                const attacks = log.filter(e => e.player === playerName).sort((a, b) => b.ts - a.ts); // 最新的排前面
+            // 用玩家編號（player_code）分組，不是用名稱——遊戲改名後名稱會變，
+            // 用名稱分組的話，改名前後的攻擊紀錄會被拆成兩個不同的人。極少數
+            // 沒有編號的舊資料（欄位還沒補齊之前留下來的）才退回用名稱識別。
+            const attacksByIdentity = new Map(); // identity -> attacks[]
+            const latestByIdentity = new Map(); // identity -> { ts, name }
+            log.forEach((a) => {
+                const identity = a.playerCode || a.player;
+                if (!attacksByIdentity.has(identity)) attacksByIdentity.set(identity, []);
+                attacksByIdentity.get(identity).push(a);
+                const latest = latestByIdentity.get(identity);
+                if (!latest || a.ts > latest.ts) latestByIdentity.set(identity, { ts: a.ts, name: a.player });
+            });
+
+            const keywordLower = (keyword || '').toLowerCase();
+            let identities = [...attacksByIdentity.keys()];
+            if (keywordLower) {
+                identities = identities.filter(id => latestByIdentity.get(id).name.toLowerCase().includes(keywordLower));
+            }
+            if (identities.length === 0) return [];
+
+            const ranked = identities.map(identity => {
+                const attacks = attacksByIdentity.get(identity).slice().sort((a, b) => b.ts - a.ts); // 最新的排前面
+                const playerName = latestByIdentity.get(identity).name; // 顯示用這個人「目前」的名字，不管改名前叫什麼
                 const totalDamage = attacks.reduce((s, a) => s + a.totalDamage, 0);
                 // RL 拿「最新一筆有記錄到的」代表：原本 RL 顯示在每筆攻擊卡片裡，
                 // 現在改放在玩家排行列，一個人一場通常只有一個 RL，取最新的就好
@@ -6958,36 +6975,49 @@
             // 根本不會出現在 attacks 裡、也就永遠不會被列進漏打名單。
             // 改成用「歷史所有場次曾經出現過的人」當作成員名單（伺服器 /raid-players 算好的，
             // 不用整包歷史攻擊紀錄載進來才能算），這樣就算某人這場 0 次攻擊，只要他是曾經
-            // 同步過紀錄的成員，也會被列出來（例如 0/18）
-            const rosterNames = raidLogDemoActive
-                ? [...new Set(raidLogDemoData.map(a => a.player))]
-                : serverAllPlayersCache;
-            const allPlayers = new Set(rosterNames);
+            // 同步過紀錄的成員，也會被列出來（例如 0/18）。
+            // 用玩家編號（player_code）當識別碼、不是名稱——遊戲改名後名稱會變，用名稱比對
+            // 的話，改名前的紀錄跟改名後的人對不起來，會多一個從沒出刀過的「幽靈成員」
+            const roster = raidLogDemoActive
+                ? (() => {
+                    const latest = new Map(); // identity -> { ts, name }
+                    raidLogDemoData.forEach(a => {
+                        const identity = a.playerCode || a.player;
+                        const prev = latest.get(identity);
+                        if (!prev || a.ts > prev.ts) latest.set(identity, { ts: a.ts, name: a.player });
+                    });
+                    return [...latest.entries()].map(([identity, v]) => ({ identity, name: v.name }));
+                })()
+                : serverAllPlayersCache.map(p => ({ identity: p.playerCode || p.name, name: p.name }));
+            const allPlayers = new Set(roster.map(r => r.identity));
+            const nameByIdentity = new Map(roster.map(r => [r.identity, r.name]));
+            const identityOf = (a) => a.playerCode || a.player;
 
             // 每個人在「這一場」的均傷（總傷害 ÷ 出刀次數；完全沒出刀就是 0），
             // 用來排序漏打名單——均傷高的排前面，方便公會長優先盯著本來很能打、卻漏刀的人
             const avgDamageByPlayer = new Map();
-            allPlayers.forEach((name) => {
-                const theirAttacks = attacks.filter(a => a.player === name);
+            allPlayers.forEach((identity) => {
+                const theirAttacks = attacks.filter(a => identityOf(a) === identity);
                 const total = theirAttacks.reduce((s, a) => s + a.totalDamage, 0);
-                avgDamageByPlayer.set(name, theirAttacks.length > 0 ? total / theirAttacks.length : 0);
+                avgDamageByPlayer.set(identity, theirAttacks.length > 0 ? total / theirAttacks.length : 0);
             });
 
             // 依輪次分組，先算出每個人「這一輪單獨」出了幾刀
-            const perRoundCounts = new Map(); // roundNo -> Map(player -> 這一輪出刀次數)
+            const perRoundCounts = new Map(); // roundNo -> Map(identity -> 這一輪出刀次數)
             attacks.forEach((a) => {
                 const roundNo = Math.max(1, Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1);
                 if (!perRoundCounts.has(roundNo)) perRoundCounts.set(roundNo, new Map());
                 const m = perRoundCounts.get(roundNo);
-                m.set(a.player, (m.get(a.player) || 0) + 1);
+                const identity = identityOf(a);
+                m.set(identity, (m.get(identity) || 0) + 1);
             });
 
             // 累計次數：第 N 輪顯示的是「從第 1 輪到第 N 輪」總共出了幾刀，
             // 對照的總次數也跟著累加（第 1 輪 6 次、第 2 輪 12 次、第 3 輪 18 次...），
             // 這樣才符合「這場突襲到目前為止，還缺幾刀」的概念，而不是只看單輪
             const ascendingRoundNos = [...perRoundCounts.keys()].sort((x, y) => x - y);
-            const runningTotal = new Map(); // player -> 累計到目前為止的出刀次數
-            const cumulativeByRound = new Map(); // roundNo -> Map(player -> 累計次數快照)
+            const runningTotal = new Map(); // identity -> 累計到目前為止的出刀次數
+            const cumulativeByRound = new Map(); // roundNo -> Map(identity -> 累計次數快照)
             ascendingRoundNos.forEach((roundNo) => {
                 const thisRoundCounts = perRoundCounts.get(roundNo);
                 allPlayers.forEach((p) => {
@@ -7004,7 +7034,7 @@
                 const maxSoFar = RAID_ATTACKS_PER_ROUND * roundNo; // 到這一輪為止，滿刀應該累計幾次
                 const cumCounts = cumulativeByRound.get(roundNo);
                 const missed = [...allPlayers]
-                    .map(name => ({ name, count: cumCounts.get(name) || 0, avg: avgDamageByPlayer.get(name) || 0 }))
+                    .map(identity => ({ name: nameByIdentity.get(identity), count: cumCounts.get(identity) || 0, avg: avgDamageByPlayer.get(identity) || 0 }))
                     .filter(p => p.count < maxSoFar)
                     .sort((a, b) => b.avg - a.avg); // 根據均傷排列：均傷高的排最前面
 

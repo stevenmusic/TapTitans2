@@ -476,9 +476,21 @@ async function getAttacksInRange(startTs, endTsExclusive) {
   return cacheAllAttacksSorted().filter(a => a.ts >= startTs && (endTsExclusive == null || a.ts < endTsExclusive));
 }
 
-// 只抓出現過的玩家名字（給漏打名單的「全部成員名單」比對用）
+// 抓出現過的玩家名單（給漏打名單的「全部成員名單」比對用）。用玩家編號
+// （player_code）判斷是不是同一個人，不是用名稱——遊戲改名後名稱會變，
+// 但編號不會變，不然改名前後會被當成兩個不同的人，漏打名單就會多一個
+// 「幽靈成員」（舊名字，其實早就沒人在用）。同一個編號回傳最新一次用過的名稱。
+// 極少數沒有編號的舊資料（欄位還沒補齊之前留下來的）才退回用名稱識別。
 async function getDistinctPlayers() {
-  return [...new Set([...attacksByDedupKey.values()].map(a => a.player))];
+  const latestByIdentity = new Map(); // identity -> { ts, name, playerCode }
+  [...attacksByDedupKey.values()].forEach((a) => {
+    const identity = a.playerCode || a.player;
+    const existing = latestByIdentity.get(identity);
+    if (!existing || a.ts > existing.ts) {
+      latestByIdentity.set(identity, { ts: a.ts, name: a.player, playerCode: a.playerCode || null });
+    }
+  });
+  return [...latestByIdentity.values()].map(v => ({ playerCode: v.playerCode, name: v.name }));
 }
 
 // 輕量版「最近攻擊」：只挑最後 N 筆、只回傳畫面用得到的欄位（不含卡片明細），
@@ -1491,7 +1503,7 @@ function fmtNum(n) {
 app.get('/full-attack-log/summary', async (req, res) => {
   const attacks = await getAllAttacks();
   const totalDamage = attacks.reduce((s, a) => s + (a.totalDamage || 0), 0);
-  const playerSet = new Set(attacks.map(a => a.player));
+  const playerSet = new Set(attacks.map(a => a.playerCode || a.player)); // 用編號算人數，改過名字不會重複算
   res.send(`
     <html><body style="font-family:sans-serif; padding:24px; line-height:1.8;">
       <h2>攻擊紀錄統計</h2>

@@ -6897,6 +6897,15 @@
             if (icon) icon.classList.add('is-spinning');
             try {
                 await ensureServerRaidDataFresh();
+                // ensureServerRaidDataFresh 抓回來的新資料會更新 sessionAttacksCache，
+                // 但如果目前有選場次（raidSessionFilter），它手上拿著的還是舊的場次物件、
+                // 裡面的 attacks 陣列是抓新資料「之前」那份參照，不會自動變新——
+                // 要重新從 buildRaidSessions() 拿一次同一場的最新物件換過去，排行榜/
+                // 攻擊次數才會真的更新（不然只有靠別的機制直接更新的「最近攻擊」跑馬燈會變新）
+                if (raidSessionFilter) {
+                    const refreshed = buildRaidSessions().find(s => s.startedAt === raidSessionFilter.startedAt);
+                    if (refreshed) raidSessionFilter = refreshed;
+                }
                 renderRaidSessionMenu();
                 renderRaidLogQueryResult();
             } finally {

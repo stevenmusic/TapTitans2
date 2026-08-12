@@ -6226,6 +6226,11 @@
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
 
+        // 場次選單只預設顯示最近 14 天，超過的收合起來，避免累積久了場次一多
+        // 選單要一直往下滑才滑得到最新那幾場。點「顯示更早的場次」才會全部展開
+        const RAID_SESSION_MENU_RECENT_DAYS = 14;
+        let raidSessionMenuShowOlder = false;
+
         // 把攻擊紀錄依「突襲開始時間」分組成一場一場，同一場的攻擊會有同樣的 raidStartedAt。
         // 沒有場次資訊的舊資料（這次更新之前記錄的）歸在最後一組「早期紀錄」。
         // 場次開始時間清單（含等級）現在完全由伺服器維護（server.js 的 24 小時背景側錄
@@ -6340,7 +6345,9 @@
         }
 
         // 攻擊紀錄上層的「場次選單」：列出每一場突襲（依開始時間+等級標示），
-        // 點一場就把下面原本的排行榜過濾成只顯示那一場的資料
+        // 點一場就把下面原本的排行榜過濾成只顯示那一場的資料。
+        // 只預設顯示最近 14 天內的場次，更早的收合在「顯示更早的場次」按鈕後面，
+        // 累積久了場次一多才不用一直往下滑才滑得到最新那幾場。
         function renderRaidSessionMenu() {
             const box = document.getElementById('raid-session-menu');
             const sessions = buildRaidSessions();
@@ -6350,15 +6357,48 @@
                 return;
             }
             box.style.display = 'block';
+
+            const cutoffTs = Date.now() - RAID_SESSION_MENU_RECENT_DAYS * 86400000;
+            const recentIdx = [];
+            const olderIdx = [];
+            sessions.forEach((s, i) => {
+                const isRecent = parseRaidSessionTs(s.startedAt) >= cutoffTs;
+                (isRecent ? recentIdx : olderIdx).push(i);
+            });
+
+            // 目前選到的場次如果剛好在「更早」那邊，自動展開，不然反白的按鈕會被藏起來看不到
+            if (raidSessionFilter && olderIdx.some(i => sessions[i].startedAt === raidSessionFilter.startedAt)) {
+                raidSessionMenuShowOlder = true;
+            }
+
+            const renderSessionBtn = (i) => {
+                const s = sessions[i];
+                const isActive = raidSessionFilter && raidSessionFilter.startedAt === s.startedAt;
+                return `
+                    <button onclick="selectRaidSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                        ${escapeHtml(formatSessionLabel(s))}
+                    </button>
+                `;
+            };
+
+            const olderToggleHtml = olderIdx.length === 0 ? '' : `
+                <button onclick="toggleRaidSessionMenuOlder()" style="width:100%; text-align:center; padding:7px 12px; border-radius:8px; border:1px dashed #d8c8a8; background:#fff; color:#8e6a3a; font-size:11.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                    ${raidSessionMenuShowOlder ? '▴ 收合更早的場次' : `▾ 顯示更早的場次（${olderIdx.length} 場）`}
+                </button>
+            `;
+
             box.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:6px;">
-                    ${sessions.map((s, i) => `
-                        <button onclick="selectRaidSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${raidSessionFilter && raidSessionFilter.startedAt === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
-                            ${escapeHtml(formatSessionLabel(s))}
-                        </button>
-                    `).join('')}
+                    ${recentIdx.map(renderSessionBtn).join('')}
+                    ${olderToggleHtml}
+                    ${raidSessionMenuShowOlder ? olderIdx.map(renderSessionBtn).join('') : ''}
                 </div>
             `;
+        }
+
+        function toggleRaidSessionMenuOlder() {
+            raidSessionMenuShowOlder = !raidSessionMenuShowOlder;
+            renderRaidSessionMenu();
         }
 
         async function selectRaidSession(idx) {
@@ -6870,6 +6910,7 @@
         // （Render 免費方案帳號已經因此被停用過一次）。資料要更新，重新打開面板、
         // 切換場次、按標題旁邊的「重新載入」按鈕，或重新整理網頁都可以拿到最新的。
         async function openAttackLogPanel() {
+            raidSessionMenuShowOlder = false; // 每次重新打開面板，場次選單一律重設回只顯示最近14天
             await ensureServerRaidDataFresh();
             // 明確把 raidSessionFilter 指到「最新場次」：排行榜本來沒選任何場次時就已經是
             // 顯示最新場次的資料了，但畫面上不會反白任何按鈕、也不會顯示「目前顯示」，

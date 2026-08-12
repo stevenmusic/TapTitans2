@@ -5765,27 +5765,104 @@
             }
             raidState.updatedAt = Date.now();
 
-            const dmgEntries = [];
-            ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach(cd => {
-                (cd.damage_log || []).forEach(d => dmgEntries.push(d));
-            });
-            if (dmgEntries.length > 0) {
-                // 一次攻擊可能同時打到好幾個不同部位（多張卡片各打各的），把命中的部位
-                // 全部收集起來（去重），而不是只挑傷害最高的那一個部位當代表
-                const hitParts = dedupHitParts(dmgEntries.map(d => {
+            // 每個部位「三層」各自的傷害（跟伺服器 watcherHandleAttack 算法一致，一次攻擊
+            // 可能同時打到好幾個不同部位，多張卡片各打各的，用 part+layer 當 key 加總），
+            // 每張卡片造成的總傷害（cards_damage 的 id 是卡片名稱；id 是 null/沒有 = 點擊傷害）。
+            // 「最近攻擊」跑馬燈、「攻擊紀錄」排行榜都是從這份資料衍生出來的，只算一次共用
+            const partTotals = {};
+            const cardDamageTotals = {}; // cardId -> damage；'__tap__' 代表點擊傷害
+            ((payload.attack_log && payload.attack_log.cards_damage) || []).forEach((cd) => {
+                const cardKey = cd.id || '__tap__';
+                (cd.damage_log || []).forEach((d) => {
                     const { layer, loc } = apiSplitPartId(d.id);
-                    return { part: loc, layer };
-                }));
-                const totalDmg = dmgEntries.reduce((s, d) => s + d.value, 0);
+                    const key = `${layer}_${loc}`;
+                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer || 'armor', damage: 0 };
+                    partTotals[key].damage += d.value;
+                    cardDamageTotals[cardKey] = (cardDamageTotals[cardKey] || 0) + d.value;
+                });
+            });
+            const hitParts = Object.values(partTotals); // 已經依 part+layer 去重過，damage 是加總後的
+            if (hitParts.length > 0) {
+                const totalDmg = hitParts.reduce((s, p) => s + p.damage, 0);
                 const playerName = (payload.player && payload.player.name) || '?';
                 const attackDatetime = payload.attack_log && payload.attack_log.attack_datetime;
                 const dedupKey = attackDatetime ? `${attackDatetime}_${playerName}` : null;
                 pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey);
+
+                // 網頁自己收到這筆即時攻擊事件時，順便直接補進「攻擊紀錄」排行榜的資料裡，
+                // 不用等使用者按重新載入。用的是這個事件本來就會收到的payload，不會多打
+                // 任何一次API、不會增加Render流量。只有在能確定這筆屬於目前已知的最新場次時
+                // 才會補上，避免場次歸屬猜錯；猜不出來就跳過，下次重新載入/開面板自然會補齊
+                const tapDamage = cardDamageTotals.__tap__ || 0;
+                const cardDamage = {};
+                Object.keys(cardDamageTotals).forEach((k) => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
+                const cards = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => ({ name: cl.id, level: cl.value }));
+                appendLiveAttackToRankingCache({
+                    attackDatetime, cycle: payload.cycle, playerName,
+                    playerCode: (payload.player && payload.player.player_code) || null,
+                    raidLevel: (payload.player && typeof payload.player.raid_level === 'number') ? payload.player.raid_level : null,
+                    attacksRemaining: (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null,
+                    cards, cardDamage, tapDamage, parts: hitParts, totalDamage: totalDmg, dedupKey
+                });
             }
 
-            // 完整攻擊紀錄不再由瀏覽器自己記，改成完全信任伺服器 24 小時背景側錄寫進資料庫的那份，
-            // 這裡只需要更新「最近攻擊」跑馬燈跟即時血量畫面
+            // 完整攻擊紀錄的「歷史資料」還是完全信任伺服器 24 小時背景側錄寫進資料庫的那份
+            // （重新載入/開面板都是跟伺服器要），這裡只是讓畫面上已經看得到的排行榜，
+            // 收到新攻擊事件時能立刻反映最新次數/傷害，不用等使用者自己按重新載入
             renderRaidStatus();
+        }
+
+        // 把即時攻擊事件補進「攻擊紀錄」排行榜快取——只有在這筆攻擊屬於目前已知的
+        // 最新場次（serverSessionsSummary[0]）時才會補上，這樣才知道要把它算進哪一場。
+        // 全新一場開打、我們還不知道場次資訊的極短暫空窗期就先跳過，不強行猜測，
+        // 下次重新載入/重新打開面板時會透過正常的伺服器查詢自然補齊，不會漏記。
+        function appendLiveAttackToRankingCache(a) {
+            if (raidLogDemoActive) return;
+            const latestSession = serverSessionsSummary[0];
+            if (!latestSession) return;
+            // 避免同一筆攻擊被算兩次：伺服器背景側錄跟這個瀏覽器自己的即時推播是兩條
+            // 獨立路徑，理論上下次重新載入時伺服器那份就會蓋過來，但重畫的空檔如果
+            // 剛好又收到一次同樣的事件（例如重連補送），用 dedupKey 擋掉
+            if (a.dedupKey && serverAttackLogCache.some(e => `${e.attackDatetime || e.ts}_${e.player}` === a.dedupKey)) return;
+
+            const entry = {
+                ts: Date.now(),
+                attackDatetime: a.attackDatetime || null,
+                cycle: (typeof a.cycle === 'number') ? a.cycle : null,
+                raidStartedAt: latestSession.startedAt,
+                raidLevelTier: latestSession.levelTier,
+                player: a.playerName,
+                playerCode: a.playerCode,
+                raidLevel: a.raidLevel,
+                attacksRemaining: a.attacksRemaining,
+                boss: raidState ? raidState.bossName : null,
+                bossOrdinal: raidBossOrdinal || null,
+                bossTotal: apiBossTotal || null,
+                cards: a.cards,
+                cardDamage: a.cardDamage,
+                tapDamage: a.tapDamage,
+                parts: a.parts,
+                totalDamage: a.totalDamage
+            };
+
+            serverAttackLogCache = [...serverAttackLogCache, entry];
+            sessionAttacksCache.set(latestSession.startedAt, serverAttackLogCache);
+            latestSession.attackCount = (latestSession.attackCount || 0) + 1;
+            if (raidSessionFilter && raidSessionFilter.startedAt === latestSession.startedAt) {
+                raidSessionFilter = { ...latestSession, attacks: serverAttackLogCache };
+            }
+            // 面板沒開著就不用重畫，純粹更新資料就好，下次打開面板自然就是最新的
+            const panel = document.getElementById('panel-attacklog');
+            if (panel && panel.style.display === 'block') {
+                renderRaidSessionMenu();
+                renderRaidLogQueryResult();
+                // 「目前顯示：M-xx丨...（N 筆攻擊）」這行不是 renderRaidSessionMenu/
+                // renderRaidLogQueryResult 畫的，要另外更新，不然筆數會停在舊的
+                if (raidSessionFilter && raidSessionFilter.startedAt === latestSession.startedAt) {
+                    const labelEl = document.getElementById('raid-session-active-label');
+                    if (labelEl) labelEl.textContent = `目前顯示：${formatSessionLabel(raidSessionFilter)}`;
+                }
+            }
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -7825,25 +7902,6 @@
             raidRecentAttacks = [];
             raidBossChangedAt = Date.now();
             raidLastBossLowNotifiedAt = 0; // 每隻新王出現都重新計算「是否最後一隻且血量偏低」
-        }
-
-        // 「命中部位去重」只有處理原始命中清單（一次攻擊可能同時打中好幾張卡片、
-        // 部位會重複）的地方才需要——目前只剩即時推播這個來源會拿到這種原始資料。
-        // 伺服器那邊的攻擊紀錄（/full-attack-log、/recent-attacks）已經在寫入快取
-        // 的當下就去重過了（server.js 的 rowToAttack/normalizeAttackForCache），
-        // 所以這裡讀伺服器資料的地方不用再重複過濾一次。
-        function dedupHitParts(rawParts) {
-            const seen = new Set();
-            const parts = [];
-            (rawParts || []).forEach(({ part, layer }) => {
-                if (!part) return;
-                const normalizedLayer = layer === 'body' ? 'body' : 'armor';
-                const key = `${part}_${normalizedLayer}`;
-                if (seen.has(key)) return;
-                seen.add(key);
-                parts.push({ part, layer: normalizedLayer });
-            });
-            return parts;
         }
 
         /* 最近攻擊：記錄「誰打了哪些部位、造成多少總傷害」，最多保留 RAID_RECENT_MAX 筆。

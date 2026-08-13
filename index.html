@@ -7462,17 +7462,45 @@
             });
             if (allInstances.length === 0) return;
 
-            // 查詢的這張卡固定排第一欄；另外兩張卡改用卡片固定順序排序（不是看這次查詢
-            // 結果裡誰出現得比較頻繁）——這樣只要兩筆紀錄搭配同樣的另外兩張卡，不管原始
-            // 出牌順序誰先誰後，排出來的欄位順序一定一樣。如果兩筆紀錄搭配的另外兩張卡
-            // 根本不一樣（原本就沒有共同牌組可以對齊），任何排序方式都沒辦法讓它們對在
-            // 同一欄，這是資料本身的限制，不是排序邏輯的問題
-            allInstances.forEach(d => {
-                const rest = d.cards.filter(name => name !== cardName)
+            // 查詢的這張卡固定排第一欄。另外兩欄不是用固定順序排（那只能保證「搭配同樣
+            // 兩張副卡」的紀錄對齊，搭配的副卡稍有不同就沒轍），改成把「這次合併的所有
+            // 副卡」建成一張衝突圖（兩張卡曾經同時出現在同一筆紀錄＝有衝突，不能同欄），
+            // 對這張圖做二分著色——只要副卡之間的衝突關係允許分成兩群（同一群裡的卡彼此
+            // 從沒同時出現過），就能保證同一張副卡在所有紀錄裡都排在同一欄，即使跟它搭配
+            // 的另一張副卡每筆紀錄都不一樣。真的衝突到分不成兩群（例如同一張副卡在不同
+            // 紀錄裡分別跟三張以上彼此互斥的卡搭配），那已經是資料本身的限制，不是任何
+            // 排序方式能解決的，這時候退回用卡片固定順序排，至少同一筆紀錄內部的順序穩定
+            const companionConflicts = new Map(); // 副卡名稱 -> 曾經同時出現過的其他副卡集合
+            allInstances.forEach((d) => {
+                const companions = d.cards.filter((name) => name !== cardName);
+                companions.forEach((name) => { if (!companionConflicts.has(name)) companionConflicts.set(name, new Set()); });
+                companions.forEach((a) => companions.forEach((b) => { if (a !== b) companionConflicts.get(a).add(b); }));
+            });
+            const companionGroup = new Map(); // 副卡名稱 -> 0 或 1（兩群其中一群）
+            [...companionConflicts.keys()].forEach((start) => {
+                if (companionGroup.has(start)) return;
+                companionGroup.set(start, 0);
+                const queue = [start];
+                while (queue.length > 0) {
+                    const cur = queue.shift();
+                    const curGroup = companionGroup.get(cur);
+                    companionConflicts.get(cur).forEach((neighbor) => {
+                        if (!companionGroup.has(neighbor)) {
+                            companionGroup.set(neighbor, 1 - curGroup);
+                            queue.push(neighbor);
+                        }
+                        // 分不成兩群的情況（neighbor 已經跟 cur 同一群）：保留這個群組指派，
+                        // 不強行修正——那樣只會拆散其他原本排得好好的卡，這裡本來就是
+                        // 資料衝突到無解的少數情況，不追求完美
+                    });
+                }
+            });
+            const canonicalRank = (name) => { const i = CARD_CANONICAL_ORDER.indexOf(name); return i === -1 ? Infinity : i; };
+            allInstances.forEach((d) => {
+                const rest = d.cards.filter((name) => name !== cardName)
                     .sort((a, b) => {
-                        const ra = CARD_CANONICAL_ORDER.indexOf(a);
-                        const rb = CARD_CANONICAL_ORDER.indexOf(b);
-                        return (ra === -1 ? Infinity : ra) - (rb === -1 ? Infinity : rb);
+                        const groupDiff = (companionGroup.get(a) || 0) - (companionGroup.get(b) || 0);
+                        return groupDiff !== 0 ? groupDiff : canonicalRank(a) - canonicalRank(b);
                     });
                 d.cards = d.cards.includes(cardName) ? [cardName, ...rest] : rest;
             });

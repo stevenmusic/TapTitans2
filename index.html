@@ -1220,35 +1220,6 @@
             padding: 18px 10px;
         }
 
-        /* ── 攻擊紀錄面板：跟卡片池同一套卡片外觀，但是內嵌在面板裡（不是固定底部抽屜），
-           換成自動換行的格狀排列，用來一次查詢好幾位勾選玩家使用某張卡片的紀錄 ── */
-        .raid-log-card-pool-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        .raid-log-card-pool-card {
-            flex: 0 0 var(--card-pool-card-size);
-            width: var(--card-pool-card-size);
-            height: var(--card-pool-card-size);
-            border: 1px solid #e0d5c1;
-            border-radius: 6px;
-            overflow: hidden;
-            background: #fff;
-            cursor: pointer;
-        }
-        .raid-log-card-pool-card img {
-            width: 100%; height: 100%;
-            object-fit: contain;
-            pointer-events: none;
-        }
-        .raid-log-player-checkbox {
-            width: 17px; height: 17px;
-            flex-shrink: 0;
-            accent-color: #8b263e;
-            cursor: pointer;
-        }
-
         .drag-clone {
             position: fixed;
             top: 0;
@@ -3227,10 +3198,6 @@
                     </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
-                        <div id="raid-log-card-pool-wrap" style="display:none; width:100%; margin-bottom:12px; background:#faf8f5; border:1px solid #e5dcd2; border-radius:10px; padding:10px 12px; box-sizing:border-box;">
-                            <div style="font-size:12px; font-weight:700; color:#6b5a4a; margin-bottom:8px;">🎴 卡片池丨勾選左邊的玩家後，點卡片查詢這幾位一起用過這張卡的紀錄</div>
-                            <div id="raid-log-card-pool-grid" class="raid-log-card-pool-grid"></div>
-                        </div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
@@ -6558,18 +6525,12 @@
             return `<svg width="${totalWidth}" height="${size}" viewBox="0 0 ${totalWidth} ${size}" style="vertical-align:1px;" aria-hidden="true">${rects}</svg>`;
         }
 
-        // 目前畫面上「這場」看得到的攻擊紀錄（有選場次就是那場，沒選就是目前載入的全部）。
-        // 排行榜、卡片池都要看同一份範圍，抽出來共用，不要各自重複判斷一次
-        function raidLogCurrentSessionAttacks() {
+        function buildRaidLogRanking(keyword) {
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
             // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
             // 否則回溯歸類進來的舊資料會因為欄位本身還是空的而被漏掉
-            return raidSessionFilter ? raidSessionFilter.attacks : fullLog;
-        }
-
-        function buildRaidLogRanking(keyword) {
-            const log = raidLogCurrentSessionAttacks();
+            const log = raidSessionFilter ? raidSessionFilter.attacks : fullLog;
 
             // 用玩家編號（player_code）分組，不是用名稱——遊戲改名後名稱會變，
             // 用名稱分組的話，改名前後的攻擊紀錄會被拆成兩個不同的人。極少數

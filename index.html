@@ -7461,23 +7461,25 @@
             const columnOf = assignDeckColumns(allInstances);
             allInstances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
 
-            // 卡片圖示縮小、下面疊等級＋單張傷害兩行小字（跟攻擊紀錄卡片明細同樣的
-            // 「沒配到傷害＝輔助」判斷），儘量省版面，不額外拉高整行高度
+            // 排版跟「攻擊紀錄」裡單張攻擊卡片明細一致：圖示維持原本大小，等級＋單張
+            // 傷害放在圖示右邊兩行小字（不是疊在下面），才不會數字被擠到截斷顯示「...」
             const renderInstanceRow = (d) => `
-                <div style="display:flex; align-items:center; gap:6px; padding:6px 8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                    <div style="display:flex; gap:8px; flex-shrink:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
                             const meta = d.cardMeta[name] || {};
                             const dmgLabel = (meta.damage && meta.damage > 0) ? formatNumAlwaysM(meta.damage) : t('raidLogSupport');
                             const icon = img
-                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:30px; height:30px; border-radius:5px; object-fit:cover; display:block;">`
-                                : '<span style="font-size:20px; width:30px; text-align:center; display:block;">🃏</span>';
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
+                                : '<span style="font-size:20px; line-height:28px; display:block; text-align:center;">🃏</span>';
                             return `
-                                <div style="width:30px; flex-shrink:0; text-align:center;">
+                                <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
                                     ${icon}
-                                    <div style="font-size:8px; color:#a89a88; line-height:1.25; white-space:nowrap;">Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</div>
-                                    <div style="font-size:8px; font-weight:700; color:#6b5a4a; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(dmgLabel)}</div>
+                                    <div style="display:flex; flex-direction:column; line-height:1.5; font-size:11px; color:#5a4a3a; white-space:nowrap;">
+                                        <span>Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</span>
+                                        <span style="font-weight:600;">${escapeHtml(dmgLabel)}</span>
+                                    </div>
                                 </div>
                             `;
                         }).join('')}

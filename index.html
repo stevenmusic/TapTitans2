@@ -7446,7 +7446,12 @@
                 r.attacks
                     .filter(a => (a.cards || []).some(c => c.name === cardName))
                     .forEach(a => {
-                        allInstances.push({ player: r.player, cards: (a.cards || []).map(c => c.name).filter(Boolean), ts: a.ts, totalDamage: a.totalDamage });
+                        // 每張卡的等級、單張傷害另外存一份用名稱查（跟伺服器 cardDamage 欄位
+                        // 一致：沒配到傷害的卡代表那次是輔助用途），去重排欄位只需要卡片名稱，
+                        // 不用把等級/傷害也塞進去搞亂 assignDeckColumns/orderCardsByColumn
+                        const cardMeta = {};
+                        (a.cards || []).forEach(c => { cardMeta[c.name] = { level: c.level, damage: (a.cardDamage && a.cardDamage[c.name]) || 0 }; });
+                        allInstances.push({ player: r.player, cards: (a.cards || []).map(c => c.name).filter(Boolean), cardMeta, ts: a.ts, totalDamage: a.totalDamage });
                     });
             });
             if (allInstances.length === 0) return;
@@ -7456,14 +7461,25 @@
             const columnOf = assignDeckColumns(allInstances);
             allInstances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
 
+            // 卡片圖示縮小、下面疊等級＋單張傷害兩行小字（跟攻擊紀錄卡片明細同樣的
+            // 「沒配到傷害＝輔助」判斷），儘量省版面，不額外拉高整行高度
             const renderInstanceRow = (d) => `
-                <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                    <div style="display:flex; gap:6px; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:6px; padding:6px 8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
-                            return img
-                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
-                                : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
+                            const meta = d.cardMeta[name] || {};
+                            const dmgLabel = (meta.damage && meta.damage > 0) ? formatNumAlwaysM(meta.damage) : t('raidLogSupport');
+                            const icon = img
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:30px; height:30px; border-radius:5px; object-fit:cover; display:block;">`
+                                : '<span style="font-size:20px; width:30px; text-align:center; display:block;">🃏</span>';
+                            return `
+                                <div style="width:30px; flex-shrink:0; text-align:center;">
+                                    ${icon}
+                                    <div style="font-size:8px; color:#a89a88; line-height:1.25; white-space:nowrap;">Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</div>
+                                    <div style="font-size:8px; font-weight:700; color:#6b5a4a; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(dmgLabel)}</div>
+                                </div>
+                            `;
                         }).join('')}
                     </div>
                     <div style="flex:1; text-align:right;">

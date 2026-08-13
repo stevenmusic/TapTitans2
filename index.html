@@ -6627,7 +6627,10 @@
         // 而不是每一列各自照原本出牌順序排，導致同一張卡東跑西跑不好比對。
         // 做法：把「同一副牌組裡的卡片」視為互斥（不能同欄），越常出現的卡片
         // 越優先搶到固定欄位，再用貪婪演算法分配 0/1/2 三欄。
-        function assignDeckColumns(decks) {
+        // pinnedName 有給的話，這張卡一定會分到第 0 欄（用在「查詢單張卡片的所有紀錄」
+        // 情境——每一組牌組都一定包含這張卡，理論上頻率就是最高，但萬一跟別張卡打平，
+        // 靠 Map 插入順序決定先後不夠可靠，直接把它排到處理順序最前面才保證拿到第 0 欄
+        function assignDeckColumns(decks, pinnedName) {
             const conflicts = new Map(); // 卡片 -> 不能跟它同欄的其他卡片
             const freq = new Map(); // 卡片 -> 在這份排行榜裡總共出現幾次（決定分欄優先順序）
             decks.forEach(d => {
@@ -6638,7 +6641,10 @@
                 d.cards.forEach(a => d.cards.forEach(b => { if (a !== b) conflicts.get(a).add(b); }));
             });
 
-            const order = [...freq.keys()].sort((a, b) => freq.get(b) - freq.get(a));
+            let order = [...freq.keys()].sort((a, b) => freq.get(b) - freq.get(a));
+            if (pinnedName && freq.has(pinnedName)) {
+                order = [pinnedName, ...order.filter(n => n !== pinnedName)];
+            }
             const columnOf = new Map();
             order.forEach(name => {
                 const used = new Set([...conflicts.get(name)].map(c => columnOf.get(c)).filter(c => c !== undefined));
@@ -7458,7 +7464,7 @@
 
             // 欄位分配要看「所有展開玩家、這張卡全部的牌組」一起算，同一張卡才會固定
             // 出現在同一欄，不同玩家之間也對得起來，方便一眼比對（跟「常用牌組」同一套邏輯）
-            const columnOf = assignDeckColumns(allInstances);
+            const columnOf = assignDeckColumns(allInstances, cardName);
             allInstances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
 
             // 排版跟「攻擊紀錄」裡單張攻擊卡片明細一致：圖示維持原本大小，等級＋單張

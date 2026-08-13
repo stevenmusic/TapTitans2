@@ -7463,11 +7463,13 @@
 
             // 排版跟「攻擊紀錄」裡單張攻擊卡片明細一致：圖示維持原本大小，等級＋單張
             // 傷害放在圖示右邊兩行小字（不是疊在下面），才不會數字被擠到截斷顯示「...」。
-            // 三張卡固定用同一組欄寬（grid，不是內容多寬佔多寬的flex），這樣同一欄的圖示
-            // 才會每一行都對在同一個x位置，不會因為隔壁欄的傷害數字比較長就跟著被推開
+            // 三張卡固定用同一組欄寬的 grid（不是內容多寬佔多寬的flex），同一欄的圖示
+            // 才會每一行都對在同一個x位置。總傷害／時間改放到卡片列「下面」單獨一行，
+            // 不跟卡片列搶同一行的寬度——彈窗最寬只有420px，三張卡＋右邊數字擠在
+            // 同一行在手機窄螢幕上會超出版面，拆成兩行才不會爆版
             const renderInstanceRow = (d) => `
-                <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                    <div style="display:grid; grid-template-columns: repeat(3, 28px 60px); column-gap:6px; align-items:center; flex-shrink:0;">
+                <div style="padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                    <div style="display:grid; grid-template-columns: repeat(3, 28px minmax(0,1fr)); column-gap:6px; align-items:center;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
                             const meta = d.cardMeta[name] || {};
@@ -7477,16 +7479,16 @@
                                 : '<span style="font-size:20px; line-height:28px; display:block; text-align:center;">🃏</span>';
                             return `
                                 ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11px; color:#5a4a3a; white-space:nowrap;">
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11px; color:#5a4a3a; overflow:hidden;">
                                     <span>Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</span>
-                                    <span style="font-weight:600;">${escapeHtml(dmgLabel)}</span>
+                                    <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(dmgLabel)}</span>
                                 </div>
                             `;
                         }).join('')}
                     </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                        <div style="font-size:10.5px; color:#a89a88; line-height:1.3;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:6px; padding-top:6px; border-top:1px dashed #ece3d4;">
+                        <span style="font-size:10.5px; color:#a89a88;">${escapeHtml(raidLogRelativeDate(d.ts))}</span>
+                        <span style="font-size:14px; font-weight:800; color:#4a3a2a;">${escapeHtml(formatNum(d.totalDamage))}</span>
                     </div>
                 </div>
             `;

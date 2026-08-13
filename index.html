@@ -7368,7 +7368,7 @@
                             : '<span style="font-size:18px; line-height:28px; display:block; text-align:center;">🃏</span>';
                         // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            <div class="raid-log-card-tap" onclick="openCardUsageDetail(${rIdx}, '${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 28px 60px; column-gap:6px; align-items:center;">
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 28px 60px; column-gap:6px; align-items:center;">
                                 ${icon}
                                 <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
@@ -7433,44 +7433,67 @@
         // 依出現次數多到少排列，只列卡片圖示，不顯示傷害/時間等其他資料。
         // 直接從最近一次排行榜算好的資料撈，資料範圍跟畫面上的排行榜一致：
         // 有選場次就只看那一場，沒選就是全部場次合併
-        function openCardUsageDetail(rIdx, cardName) {
-            const r = raidLogLastRanked[rIdx];
-            if (!r) return;
+        function openCardUsageDetail(cardName) {
+            // 目前展開中的每一位玩家都會被合併進來一起查詢這張卡的紀錄，不是只看
+            // 點擊當下這一位——想比對多位玩家，同時展開他們的攻擊紀錄再點卡片就行
+            const players = raidLogLastRanked.filter(r => raidLogExpandedPlayers.has(r.player));
+            if (players.length === 0) return;
 
-            // 列出這位玩家「這場」每一次用到這張卡的紀錄（不是合併同組牌組只顯示一次），
-            // 因為每一次出牌的傷害、時間都不一樣，合併起來就沒辦法個別對照了
-            const instances = r.attacks
-                .filter(a => (a.cards || []).some(c => c.name === cardName))
-                .map(a => ({ cards: (a.cards || []).map(c => c.name).filter(Boolean), ts: a.ts, totalDamage: a.totalDamage }))
-                .sort((a, b) => b.ts - a.ts); // 最新的排最上面
+            // 列出每一次用到這張卡的紀錄（不是合併同組牌組只顯示一次），因為每一次
+            // 出牌的傷害、時間都不一樣，合併起來就沒辦法個別對照了
+            const allInstances = [];
+            players.forEach((r) => {
+                r.attacks
+                    .filter(a => (a.cards || []).some(c => c.name === cardName))
+                    .forEach(a => {
+                        allInstances.push({ player: r.player, cards: (a.cards || []).map(c => c.name).filter(Boolean), ts: a.ts, totalDamage: a.totalDamage });
+                    });
+            });
+            if (allInstances.length === 0) return;
 
-            // 讓同一張卡固定出現在同一欄，方便一眼比對（跟「常用牌組」同一套排版邏輯）
-            const columnOf = assignDeckColumns(instances);
-            instances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
+            // 欄位分配要看「所有展開玩家、這張卡全部的牌組」一起算，同一張卡才會固定
+            // 出現在同一欄，不同玩家之間也對得起來，方便一眼比對（跟「常用牌組」同一套邏輯）
+            const columnOf = assignDeckColumns(allInstances);
+            allInstances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
+
+            const renderInstanceRow = (d) => `
+                <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
+                    <div style="display:flex; gap:6px; flex-shrink:0;">
+                        ${d.cards.map(name => {
+                            const img = raidCardImage(name);
+                            return img
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
+                                : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
+                        }).join('')}
+                    </div>
+                    <div style="flex:1; text-align:right;">
+                        <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
+                        <div style="font-size:10.5px; color:#a89a88; line-height:1.3;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
+                    </div>
+                </div>
+            `;
+
+            // 依玩家分組（沿用排行榜的名次順序），組內依時間新到舊排序——同一位玩家的
+            // 紀錄排在一起，不會跟別人的資料交錯，但每組上面的名字清楚標示是誰打的
+            const groupsHtml = players.map((r) => {
+                const instances = allInstances.filter(d => d.player === r.player).sort((a, b) => b.ts - a.ts);
+                if (instances.length === 0) return '';
+                return `
+                    <div style="margin-bottom:12px;">
+                        <div style="font-weight:700; font-size:12.5px; color:#8e6a3a; margin-bottom:6px;">${escapeHtml(r.player)}</div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            ${instances.map(renderInstanceRow).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
 
             const label = raidCardLabel(cardName);
             const body = document.getElementById('card-usage-detail-body');
             body.innerHTML = `
-                <div style="font-weight:700; font-size:14px; color:#4a3a2a; margin-bottom:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.player)} · ${escapeHtml(label)}</div>
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${instances.map(d => `
-                        <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                            <div style="display:flex; gap:6px; flex-shrink:0;">
-                                ${d.cards.map(name => {
-                                    const img = raidCardImage(name);
-                                    return img
-                                        ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; display:block;">`
-                                        : '<span style="font-size:24px; width:36px; text-align:center;">🃏</span>';
-                                }).join('')}
-                            </div>
-                            <div style="flex:1; text-align:right;">
-                                <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                                <div style="font-size:10.5px; color:#a89a88; line-height:1.3;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-                <button class="btn-close" style="width:100%; margin-top:14px;" onclick="closeCardUsageDetail()">關閉</button>
+                <div style="font-weight:700; font-size:14px; color:#4a3a2a; margin-bottom:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(label)}</div>
+                ${groupsHtml}
+                <button class="btn-close" style="width:100%; margin-top:4px;" onclick="closeCardUsageDetail()">關閉</button>
             `;
             document.getElementById('card-usage-detail-modal').style.display = 'flex';
         }

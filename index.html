@@ -7476,26 +7476,54 @@
                 companions.forEach((name) => { if (!companionConflicts.has(name)) companionConflicts.set(name, new Set()); });
                 companions.forEach((a) => companions.forEach((b) => { if (a !== b) companionConflicts.get(a).add(b); }));
             });
-            const companionGroup = new Map(); // 副卡名稱 -> 0 或 1（兩群其中一群）
+            // 副卡出現次數（給下面決定「哪一群排前面」用——重複次數比較多的那群排第二欄，
+            // 比較少的排第三欄）
+            const companionFreq = new Map();
+            allInstances.forEach((d) => {
+                d.cards.filter((name) => name !== cardName).forEach((name) => {
+                    companionFreq.set(name, (companionFreq.get(name) || 0) + 1);
+                });
+            });
+
+            const companionGroup = new Map(); // 副卡名稱 -> 0（第二欄）或 1（第三欄）
             [...companionConflicts.keys()].forEach((start) => {
                 if (companionGroup.has(start)) return;
-                companionGroup.set(start, 0);
+                // 先用暫時的 0/1 標記把這個連通分量整個著色完，同時記錄兩群各自有哪些卡
+                const tempGroup = new Map([[start, 0]]);
+                const side = [[start], []];
                 const queue = [start];
                 while (queue.length > 0) {
                     const cur = queue.shift();
-                    const curGroup = companionGroup.get(cur);
+                    const curGroup = tempGroup.get(cur);
                     companionConflicts.get(cur).forEach((neighbor) => {
-                        if (!companionGroup.has(neighbor)) {
-                            companionGroup.set(neighbor, 1 - curGroup);
+                        if (!tempGroup.has(neighbor)) {
+                            const ng = 1 - curGroup;
+                            tempGroup.set(neighbor, ng);
+                            side[ng].push(neighbor);
                             queue.push(neighbor);
                         }
-                        // 分不成兩群的情況（neighbor 已經跟 cur 同一群）：保留這個群組指派，
+                        // 分不成兩群的情況（neighbor 已經跟 cur 同一群）：保留這個暫時指派，
                         // 不強行修正——那樣只會拆散其他原本排得好好的卡，這裡本來就是
                         // 資料衝突到無解的少數情況，不追求完美
                     });
                 }
+                // 這個連通分量裡，看哪一群「重複最多次的那張卡」比較誇張，那一群就排第二欄
+                // （0），另一群排第三欄（1）——比較「這群裡最會重複的卡」而不是整群次數
+                // 加總，才不會被「一群裡塞了好幾張各出現一次的雜卡」蓋過「另一群其實只有
+                // 一張卡但一直重複出現」的情況。同一個連通分量之外的卡不受影響，各自獨立判斷
+                const maxFreq = (names) => Math.max(0, ...names.map((n) => companionFreq.get(n) || 0));
+                const frontSide = maxFreq(side[0]) >= maxFreq(side[1]) ? side[0] : side[1];
+                const backSide = frontSide === side[0] ? side[1] : side[0];
+                frontSide.forEach((n) => companionGroup.set(n, 0));
+                backSide.forEach((n) => companionGroup.set(n, 1));
             });
-            const canonicalRank = (name) => { const i = CARD_CANONICAL_ORDER.indexOf(name); return i === -1 ? Infinity : i; };
+            // 同一群裡如果不只一張卡（極少數分不成兩群、退回同一群的情況），
+            // 用出現次數排序當備援，次數多的在前
+            const canonicalRank = (name) => {
+                const freq = companionFreq.get(name) || 0;
+                const i = CARD_CANONICAL_ORDER.indexOf(name);
+                return -freq * 100000 + (i === -1 ? Infinity : i);
+            };
             allInstances.forEach((d) => {
                 const rest = d.cards.filter((name) => name !== cardName)
                     .sort((a, b) => {

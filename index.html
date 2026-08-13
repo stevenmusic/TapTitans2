@@ -7462,10 +7462,12 @@
             allInstances.forEach(d => { d.cards = orderCardsByColumn(d.cards, columnOf); });
 
             // 排版跟「攻擊紀錄」裡單張攻擊卡片明細一致：圖示維持原本大小，等級＋單張
-            // 傷害放在圖示右邊兩行小字（不是疊在下面），才不會數字被擠到截斷顯示「...」
+            // 傷害放在圖示右邊兩行小字（不是疊在下面），才不會數字被擠到截斷顯示「...」。
+            // 三張卡固定用同一組欄寬（grid，不是內容多寬佔多寬的flex），這樣同一欄的圖示
+            // 才會每一行都對在同一個x位置，不會因為隔壁欄的傷害數字比較長就跟著被推開
             const renderInstanceRow = (d) => `
                 <div style="display:flex; align-items:center; gap:8px; padding:8px; background:#fff; border:1px solid #ece3d4; border-radius:8px;">
-                    <div style="display:flex; gap:8px; flex-shrink:0;">
+                    <div style="display:grid; grid-template-columns: repeat(3, 28px 60px); column-gap:6px; align-items:center; flex-shrink:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
                             const meta = d.cardMeta[name] || {};
@@ -7474,12 +7476,10 @@
                                 ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
                                 : '<span style="font-size:20px; line-height:28px; display:block; text-align:center;">🃏</span>';
                             return `
-                                <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
-                                    ${icon}
-                                    <div style="display:flex; flex-direction:column; line-height:1.5; font-size:11px; color:#5a4a3a; white-space:nowrap;">
-                                        <span>Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</span>
-                                        <span style="font-weight:600;">${escapeHtml(dmgLabel)}</span>
-                                    </div>
+                                ${icon}
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11px; color:#5a4a3a; white-space:nowrap;">
+                                    <span>Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</span>
+                                    <span style="font-weight:600;">${escapeHtml(dmgLabel)}</span>
                                 </div>
                             `;
                         }).join('')}

@@ -3362,6 +3362,8 @@
                 cardUsageEmpty: '目前還沒有任何攻擊紀錄',
                 cardUsageRound: '第 {n} 輪',
                 cardUsageAllUsed: '✓ 全員都有帶',
+                cardUsageGridTitle: '每輪使用總覽',
+                cardUsageMissCountLabel: '漏帶 {n} 次',
                 raidLogToday: '今天',
                 raidLogYesterday: '昨天',
                 raidLogAttacksRemaining: '剩餘攻擊次數',
@@ -3371,7 +3373,7 @@
                 raidLogAttackedAt: '攻擊時間',
                 raidLogSupport: '輔助',
                 cardUsageMissingListLabel: '（未使用名單）',
-                cardUsageRoundCount: '共 {n} 輪（最新的在最上面）',
+                cardUsageRoundCount: '共 {n} 輪（由左到右照時間排列）',
                 cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
                 cardUsageNoneMissedBoth: '✓ 沒有人兩張都沒帶',
                 cardUsageNeverUsedTitle: '整場突襲沒有使用',
@@ -3527,6 +3529,8 @@
                 cardUsageEmpty: 'No attack records yet',
                 cardUsageRound: 'Cycle {n}',
                 cardUsageAllUsed: '✓ everyone brought it',
+                cardUsageGridTitle: 'Cycle Overview',
+                cardUsageMissCountLabel: 'Missed {n}',
                 raidLogToday: 'Today',
                 raidLogYesterday: 'Yesterday',
                 raidLogAttacksRemaining: 'Attacks remaining',
@@ -3536,7 +3540,7 @@
                 raidLogAttackedAt: 'Attacked at',
                 raidLogSupport: 'Support',
                 cardUsageMissingListLabel: '(Not Used List)',
-                cardUsageRoundCount: '{n} cycles total (newest first)',
+                cardUsageRoundCount: '{n} cycles total (left to right, oldest first)',
                 cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
                 cardUsageNoneMissedBoth: '✓ Nobody missed both',
                 cardUsageNeverUsedTitle: 'Never used this card across the whole raid',
@@ -6142,9 +6146,11 @@
 
         // 目前卡片使用檢查選擇的場次（null = 自動選最新一場）
         let cardUsageSessionFilter = null;
+        let cardUsageSessionMenuShowOlder = false;
 
         // 卡片使用的場次選單：跟攻擊紀錄的「依場次瀏覽」同一套顯示方式
-        // （2026-07-14 22:40 M-62 這種格式），最新的場次排最上面
+        // （2026-07-14 22:40 M-62 這種格式），最新的場次排最上面，14天前的
+        // 舊場次預設收合，跟攻擊紀錄面板的 renderRaidSessionMenu() 同一套邏輯
         function renderCardUsageSessionMenu(sessions) {
             const box = document.getElementById('card-usage-session-menu');
             if (!box) return;
@@ -6155,15 +6161,50 @@
             }
             box.style.display = 'block';
             const activeStart = cardUsageSessionFilter ? cardUsageSessionFilter.startedAt : null;
+
+            const cutoffTs = Date.now() - RAID_SESSION_MENU_RECENT_DAYS * 86400000;
+            const recentIdx = [];
+            const olderIdx = [];
+            sessions.forEach((s, i) => {
+                const isRecent = parseRaidSessionTs(s.startedAt) >= cutoffTs;
+                (isRecent ? recentIdx : olderIdx).push(i);
+            });
+
+            // 目前選到的場次如果剛好在「更早」那邊，自動展開，不然反白的按鈕會被藏起來看不到
+            if (activeStart && olderIdx.some(i => sessions[i].startedAt === activeStart)) {
+                cardUsageSessionMenuShowOlder = true;
+            }
+
+            const renderSessionBtn = (i) => {
+                const s = sessions[i];
+                const isActive = activeStart === s.startedAt;
+                return `
+                    <button onclick="selectCardUsageSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                        ${escapeHtml(formatSessionLabel(s))}
+                    </button>
+                `;
+            };
+
+            const olderToggleHtml = olderIdx.length === 0 ? '' : `
+                <button onclick="toggleCardUsageSessionMenuOlder()" style="width:100%; text-align:center; padding:7px 12px; border-radius:8px; border:1px dashed #d8c8a8; background:#fff; color:#8e6a3a; font-size:11.5px; font-weight:700; font-family:inherit; cursor:pointer;">
+                    ${cardUsageSessionMenuShowOlder ? '▴ 收合更早的場次' : `▾ 顯示更早的場次（${olderIdx.length} 場）`}
+                </button>
+            `;
+
             box.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:6px;">
-                    ${sessions.map((s, i) => `
-                        <button onclick="selectCardUsageSession(${i})" style="width:100%; text-align:left; padding:9px 12px; border-radius:8px; border:1.5px solid #e5d5c0; background:${activeStart === s.startedAt ? '#8b263e' : '#fffaf3'}; color:${activeStart === s.startedAt ? '#fff' : '#6b4a2a'}; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;">
-                            ${escapeHtml(formatSessionLabel(s))}
-                        </button>
-                    `).join('')}
+                    ${recentIdx.map(renderSessionBtn).join('')}
+                    ${olderToggleHtml}
+                    ${cardUsageSessionMenuShowOlder ? olderIdx.map(renderSessionBtn).join('') : ''}
                 </div>
             `;
+        }
+
+        function toggleCardUsageSessionMenuOlder() {
+            // 純粹展開/收合選單而已，場次資料早就在本機快取裡（buildRaidSessions 不連網），
+            // 不用整個 renderCardUsageCheck() 重跑一次去打伺服器，省頻寬
+            cardUsageSessionMenuShowOlder = !cardUsageSessionMenuShowOlder;
+            renderCardUsageSessionMenu(buildRaidSessions());
         }
 
         async function selectCardUsageSession(idx) {
@@ -6248,42 +6289,66 @@
                     </div>
                 `;
 
-                // 最新一輪排最上面，方便瀏覽大量輪次時第一眼就看到最近的狀況
-                const sortedRoundNos = [...rounds.keys()].sort((x, y) => y - x);
-                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">${t('cardUsageRoundCount').replace('{n}', sortedRoundNos.length)}</div>`;
+                // 依玩家、依輪次畫出「這輪有沒有用到卡」的格狀總覽（跟參考圖的排版風格
+                // 一致）：每個玩家一個區塊，標題顯示漏用總次數，底下兩張卡各一橫排，
+                // 橫排裡每一格對應一輪——OK＝那輪有用、✕＝那輪出刀了但沒用、－＝那輪
+                // 根本沒出刀（沒資料可判斷，不算漏用）。輪次由左到右照時間排列
+                const ascendingRoundNos = [...rounds.keys()].sort((a, b) => a - b);
+                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">${t('cardUsageRoundCount').replace('{n}', ascendingRoundNos.length)}</div>`;
 
-                box.innerHTML = summaryLine + neverUsedSection + sortedRoundNos.map((roundNo) => {
-                    const players = rounds.get(roundNo);
-                    const cardBlocks = CARD_USAGE_TRACKED.map((tc) => {
-                        const totalPlayers = players.size; // 這一輪總共有幾人出刀
-                        const missNames = [...players.entries()]
-                            .filter(([name, usedSet]) => !usedSet.has(tc.id))
-                            .map(([name]) => escapeHtml(name));
-                        const usedCount = totalPlayers - missNames.length; // 左邊數字：總人數扣掉未使用的人數
-                        const namesHtml = missNames.length === 0
-                            ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageAllUsed')}</span>`
-                            : sortNamesGrouped(missNames).map(n => `<span style="background:#f3e9da; border-radius:6px; padding:2px 8px; display:inline-block; margin:2px 3px 2px 0;">${n}</span>`).join('');
-                        return `
-                            <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
-                                <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
-                                    ${cardUsageCardVisual(tc)}
-                                    <span style="font-size:10px; color:#8a7a6a; font-weight:600; white-space:nowrap;">${usedCount}/${totalPlayers}</span>
-                                </div>
-                                <div style="flex:1; font-size:12.5px; color:#5a4a3a; line-height:1.7; padding-top:6px;">${namesHtml}</div>
-                            </div>
-                        `;
-                    }).join('');
+                const allPlayers = [...globalUsage.keys()];
+                const missCountByPlayer = new Map();
+                allPlayers.forEach((name) => {
+                    let miss = 0;
+                    ascendingRoundNos.forEach((roundNo) => {
+                        const usedSet = rounds.get(roundNo).get(name);
+                        if (!usedSet) return; // 那輪沒出刀，不算漏用
+                        CARD_USAGE_TRACKED.forEach((tc) => { if (!usedSet.has(tc.id)) miss++; });
+                    });
+                    missCountByPlayer.set(name, miss);
+                });
+                // 漏用次數多的排前面，方便公會長優先盯著問題比較大的人；次數一樣才照名字排序
+                const gridPlayers = [...allPlayers].sort((a, b) =>
+                    (missCountByPlayer.get(b) || 0) - (missCountByPlayer.get(a) || 0) || a.localeCompare(b, 'zh'));
 
-                    return `
-                        <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
-                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">
-                                ${t('cardUsageRound').replace('{n}', roundNo)}
-                                <span style="font-weight:500; color:#a89a88; font-size:12px;">${t('cardUsageMissingListLabel')}</span>
-                            </div>
-                            ${cardBlocks}
+                const gridTemplate = `24px repeat(${ascendingRoundNos.length}, minmax(22px, 1fr))`;
+                const roundHeaderRow = `
+                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:3px; margin-bottom:4px;">
+                        <div></div>
+                        ${ascendingRoundNos.map(n => `<div style="font-size:9.5px; color:#a89a88; text-align:center; font-weight:700; white-space:nowrap;">R${n}</div>`).join('')}
+                    </div>
+                `;
+                const gridSection = `
+                    <div style="margin-top:4px;">
+                        <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageGridTitle')}</div>
+                        ${roundHeaderRow}
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            ${gridPlayers.map((name) => {
+                                const miss = missCountByPlayer.get(name) || 0;
+                                const rowsHtml = CARD_USAGE_TRACKED.map((tc) => `
+                                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:3px; align-items:center; margin-top:3px;">
+                                        <div style="display:flex; align-items:center; justify-content:center;">${cardUsageIconHtml(tc, 18)}</div>
+                                        ${ascendingRoundNos.map((roundNo) => {
+                                            const usedSet = rounds.get(roundNo).get(name);
+                                            if (!usedSet) return `<div style="text-align:center; font-size:10px; color:#c2b8a8;">－</div>`;
+                                            return usedSet.has(tc.id)
+                                                ? `<div style="text-align:center; font-size:9.5px; font-weight:700; color:#2E7D32; background:#e6f4ea; border-radius:4px; padding:2px 0;">OK</div>`
+                                                : `<div style="text-align:center; font-size:11px; font-weight:700; color:#c0392b; background:#fdecec; border-radius:4px; padding:2px 0;">✕</div>`;
+                                        }).join('')}
+                                    </div>
+                                `).join('');
+                                return `
+                                    <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:8px 10px;">
+                                        <div style="font-size:12.5px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'};">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:11px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
+                                        ${rowsHtml}
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
-                    `;
-                }).join('');
+                    </div>
+                `;
+
+                box.innerHTML = summaryLine + neverUsedSection + gridSection;
             } catch (e) {
                 console.error('卡片使用檢查失敗:', e);
                 box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageError')}</div>`;
@@ -6977,6 +7042,7 @@
                 }
                 if (id === 'cardusage') {
                     cardUsageSessionFilter = null;
+                    cardUsageSessionMenuShowOlder = false; // 每次重新打開面板，場次選單一律重設回只顯示最近14天
                     renderCardUsageCheck(); // 點開就直接依場次顯示，不用再填時間
                 }
                 if (id === 'missed') {

@@ -6294,13 +6294,16 @@
                 // 橫排裡每一格對應一輪——OK＝那輪有用、✕＝那輪出刀了但沒用、－＝那輪
                 // 根本沒出刀（沒資料可判斷，不算漏用）。輪次由左到右照時間排列
                 const ascendingRoundNos = [...rounds.keys()].sort((a, b) => a - b);
-                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">${t('cardUsageRoundCount').replace('{n}', ascendingRoundNos.length)}</div>`;
+                // 輪次太多格子會擠不下，只顯示「最近」7輪（最新的漏用狀況才是公會長真正在意的）
+                const CARD_USAGE_GRID_MAX_ROUNDS = 7;
+                const displayRoundNos = ascendingRoundNos.slice(-CARD_USAGE_GRID_MAX_ROUNDS);
+                const summaryLine = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">${t('cardUsageRoundCount').replace('{n}', displayRoundNos.length)}</div>`;
 
                 const allPlayers = [...globalUsage.keys()];
                 const missCountByPlayer = new Map();
                 allPlayers.forEach((name) => {
                     let miss = 0;
-                    ascendingRoundNos.forEach((roundNo) => {
+                    displayRoundNos.forEach((roundNo) => {
                         const usedSet = rounds.get(roundNo).get(name);
                         if (!usedSet) return; // 那輪沒出刀，不算漏用
                         CARD_USAGE_TRACKED.forEach((tc) => { if (!usedSet.has(tc.id)) miss++; });
@@ -6311,39 +6314,42 @@
                 const gridPlayers = [...allPlayers].sort((a, b) =>
                     (missCountByPlayer.get(b) || 0) - (missCountByPlayer.get(a) || 0) || a.localeCompare(b, 'zh'));
 
-                const gridTemplate = `24px repeat(${ascendingRoundNos.length}, minmax(22px, 1fr))`;
+                const gridTemplate = `16px repeat(${displayRoundNos.length}, minmax(16px, 1fr))`;
+                // 每個玩家區塊自己帶一份輪次表頭，不用共用同一條表頭列——
+                // 兩欄並排時，左右兩塊各自獨立，表頭跟著各自的格子對齊才不會錯位
                 const roundHeaderRow = `
-                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:3px; margin-bottom:4px;">
+                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:2px; margin-bottom:2px;">
                         <div></div>
-                        ${ascendingRoundNos.map(n => `<div style="font-size:9.5px; color:#a89a88; text-align:center; font-weight:700; white-space:nowrap;">R${n}</div>`).join('')}
+                        ${displayRoundNos.map(n => `<div style="font-size:8px; color:#a89a88; text-align:center; font-weight:700; white-space:nowrap;">R${n}</div>`).join('')}
                     </div>
                 `;
+                const playerBlockHtml = (name) => {
+                    const miss = missCountByPlayer.get(name) || 0;
+                    const rowsHtml = CARD_USAGE_TRACKED.map((tc) => `
+                        <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:2px; align-items:center; margin-top:3px;">
+                            <div style="display:flex; align-items:center; justify-content:center;">${cardUsageIconHtml(tc, 14)}</div>
+                            ${displayRoundNos.map((roundNo) => {
+                                const usedSet = rounds.get(roundNo).get(name);
+                                if (!usedSet) return `<div style="text-align:center; font-size:8px; color:#c2b8a8;">－</div>`;
+                                return usedSet.has(tc.id)
+                                    ? `<div style="text-align:center; font-size:8px; font-weight:700; color:#2E7D32; background:#e6f4ea; border-radius:3px; padding:1px 0;">OK</div>`
+                                    : `<div style="text-align:center; font-size:9px; font-weight:700; color:#c0392b; background:#fdecec; border-radius:3px; padding:1px 0;">✕</div>`;
+                            }).join('')}
+                        </div>
+                    `).join('');
+                    return `
+                        <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:6px 6px;">
+                            <div style="font-size:11px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px;">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:9.5px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
+                            ${roundHeaderRow}
+                            ${rowsHtml}
+                        </div>
+                    `;
+                };
                 const gridSection = `
                     <div style="margin-top:4px;">
                         <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageGridTitle')}</div>
-                        ${roundHeaderRow}
-                        <div style="display:flex; flex-direction:column; gap:8px;">
-                            ${gridPlayers.map((name) => {
-                                const miss = missCountByPlayer.get(name) || 0;
-                                const rowsHtml = CARD_USAGE_TRACKED.map((tc) => `
-                                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:3px; align-items:center; margin-top:3px;">
-                                        <div style="display:flex; align-items:center; justify-content:center;">${cardUsageIconHtml(tc, 18)}</div>
-                                        ${ascendingRoundNos.map((roundNo) => {
-                                            const usedSet = rounds.get(roundNo).get(name);
-                                            if (!usedSet) return `<div style="text-align:center; font-size:10px; color:#c2b8a8;">－</div>`;
-                                            return usedSet.has(tc.id)
-                                                ? `<div style="text-align:center; font-size:9.5px; font-weight:700; color:#2E7D32; background:#e6f4ea; border-radius:4px; padding:2px 0;">OK</div>`
-                                                : `<div style="text-align:center; font-size:11px; font-weight:700; color:#c0392b; background:#fdecec; border-radius:4px; padding:2px 0;">✕</div>`;
-                                        }).join('')}
-                                    </div>
-                                `).join('');
-                                return `
-                                    <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:8px 10px;">
-                                        <div style="font-size:12.5px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'};">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:11px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
-                                        ${rowsHtml}
-                                    </div>
-                                `;
-                            }).join('')}
+                        <div style="display:grid; grid-template-columns:1fr 1fr; column-gap:6px; row-gap:6px;">
+                            ${gridPlayers.map(playerBlockHtml).join('')}
                         </div>
                     </div>
                 `;

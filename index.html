@@ -6315,14 +6315,6 @@
                     (missCountByPlayer.get(b) || 0) - (missCountByPlayer.get(a) || 0) || a.localeCompare(b, 'zh'));
 
                 const gridTemplate = `16px repeat(${displayRoundNos.length}, minmax(16px, 1fr))`;
-                // 每個玩家區塊自己帶一份輪次表頭，不用共用同一條表頭列——
-                // 兩欄並排時，左右兩塊各自獨立，表頭跟著各自的格子對齊才不會錯位
-                const roundHeaderRow = `
-                    <div style="display:grid; grid-template-columns:${gridTemplate}; column-gap:2px; margin-bottom:2px;">
-                        <div></div>
-                        ${displayRoundNos.map(n => `<div style="font-size:8px; color:#a89a88; text-align:center; font-weight:700; white-space:nowrap;">R${n}</div>`).join('')}
-                    </div>
-                `;
                 const playerBlockHtml = (name) => {
                     const miss = missCountByPlayer.get(name) || 0;
                     const rowsHtml = CARD_USAGE_TRACKED.map((tc) => `
@@ -6340,7 +6332,6 @@
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:6px 6px;">
                             <div style="font-size:11px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px;">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:9.5px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
-                            ${roundHeaderRow}
                             ${rowsHtml}
                         </div>
                     `;

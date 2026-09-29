@@ -3375,8 +3375,6 @@
                 cardUsageMissingListLabel: '（未使用名單）',
                 cardUsageRoundCount: '共 {n} 輪（由左到右照時間排列）',
                 cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
-                cardUsageNoneMissedBoth: '✓ 沒有人兩張都沒帶',
-                cardUsageNeverUsedTitle: '整場突襲沒有使用',
                 cardUsagePeopleUnit: '人',
                 cardUsageRoundStatsTitle: '每輪使用人數與傷害',
                 cardUsageRoundCol: '輪次',
@@ -3548,8 +3546,6 @@
                 cardUsageMissingListLabel: '(Not Used List)',
                 cardUsageRoundCount: '{n} cycles total (left to right, oldest first)',
                 cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
-                cardUsageNoneMissedBoth: '✓ Nobody missed both',
-                cardUsageNeverUsedTitle: 'Never used this card across the whole raid',
                 cardUsagePeopleUnit: ' people',
                 cardUsageRoundStatsTitle: 'Players & Damage per Cycle',
                 cardUsageRoundCol: 'Cycle',
@@ -6284,32 +6280,6 @@
                     (a.cards || []).forEach(c => globalSet.add(c.name));
                 });
 
-                // 整場突襲下來，每張卡分開檢查「全部輪次都沒有帶過」的人是誰
-                // （只要曾經帶過一次，任何一輪都算，就不會出現在這份名單）
-                const neverUsedBlocks = CARD_USAGE_TRACKED.map((tc) => {
-                    const neverNames = [...globalUsage.entries()]
-                        .filter(([name, usedSet]) => !usedSet.has(tc.id))
-                        .map(([name]) => escapeHtml(name));
-                    const content = neverNames.length === 0
-                        ? `<span style="color:#2E7D32; font-weight:600;">${t('cardUsageNoneMissedBoth')}</span>`
-                        : sortNamesGrouped(neverNames).map(n => `<span style="background:#fff5f5; border:1px solid #f3b8b8; border-radius:6px; padding:2px 8px; display:inline-block; margin:2px 3px 2px 0;">${n}</span>`).join('');
-                    return `
-                        <div style="display:flex; align-items:flex-start; gap:10px; margin-top:8px;">
-                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
-                                ${cardUsageCardVisual(tc)}
-                                <span style="font-size:10px; color:#8a7a6a; font-weight:600; white-space:nowrap;">${neverNames.length}${t('cardUsagePeopleUnit')}</span>
-                            </div>
-                            <div style="flex:1; font-size:12.5px; color:#5a4a3a; line-height:1.7; padding-top:6px;">${content}</div>
-                        </div>
-                    `;
-                }).join('');
-                const neverUsedSection = `
-                    <div style="background:#fdecec; border:1px solid #f3b8b8; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
-                        <div style="font-size:13.5px; font-weight:700; color:#8e3a3a;"><svg class="panel-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="5" y="4" width="14" height="17" rx="1.8"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.4" fill="currentColor"/></svg> ${t('cardUsageNeverUsedTitle')}</div>
-                        ${neverUsedBlocks}
-                    </div>
-                `;
-
                 // 依玩家、依輪次畫出「這輪有沒有用到卡」的格狀總覽（跟參考圖的排版風格
                 // 一致）：每個玩家一個區塊，標題顯示漏用總次數，底下兩張卡各一橫排，
                 // 橫排裡每一格對應一輪——OK＝那輪有用、✕＝那輪出刀了但沒用、－＝那輪
@@ -6406,7 +6376,7 @@
                     </div>
                 `;
 
-                box.innerHTML = summaryLine + roundStatsSection + neverUsedSection + gridSection;
+                box.innerHTML = summaryLine + roundStatsSection + gridSection;
             } catch (e) {
                 console.error('卡片使用檢查失敗:', e);
                 box.innerHTML = `<div style="font-size:12px; color:#8e3a3a;">${t('cardUsageError')}</div>`;

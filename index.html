@@ -7392,7 +7392,7 @@
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
-                        <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:8px;">
+                        <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:5px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
                     </div>
@@ -7447,8 +7447,8 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:grid; grid-template-columns: 60px repeat(${(a.cards || []).length}, 28px 60px); column-gap:6px; row-gap:4px; align-items:center; padding:4px 0;">
-                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                <div style="display:grid; grid-template-columns: 56px repeat(${(a.cards || []).length}, 26px 58px); column-gap:5px; row-gap:2px; align-items:center;">
+                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.3; font-size:11.5px; color:#5a4a3a;">
                         <span>${t('raidLogTapDamage')}</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
@@ -7457,13 +7457,13 @@
                         const dmg = cardDamage[c.name];
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:28px; height:28px; border-radius:5px; object-fit:cover; display:block;">`
-                            : '<span style="font-size:18px; line-height:28px; display:block; text-align:center;">🃏</span>';
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:26px; height:26px; border-radius:5px; object-fit:cover; display:block;">`
+                            : '<span style="font-size:17px; line-height:26px; display:block; text-align:center;">🃏</span>';
                         // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 28px 60px; column-gap:6px; align-items:center;">
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 26px 58px; column-gap:5px; align-items:center;">
                                 ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.5; font-size:11.5px; color:#5a4a3a;">
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.3; font-size:11.5px; color:#5a4a3a;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
                                     <span style="font-weight:600;">${dmgLabel}</span>
                                 </div>
@@ -7499,8 +7499,8 @@
                 : '';
 
             return `
-                <div style="border:1px solid #e5dcd2; border-radius:10px; word-break:break-word; overflow:hidden;">
-                    <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; background:#faf6f0;">
+                <div style="border:1px solid #e5dcd2; border-radius:8px; word-break:break-word; overflow:hidden;">
+                    <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; background:#faf6f0;">
                         <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}${attacksLeftInline}</span>
                         <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
@@ -7508,7 +7508,7 @@
                         </span>
                     </div>
                     <!-- 這一段不管收合與否都會顯示：玩家資訊、點擊傷害、卡片傷害 -->
-                    <div style="padding:10px; border-top:1px solid #e5dcd2;">
+                    <div style="padding:5px 10px; border-top:1px solid #e5dcd2;">
                         ${cardRows}
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->

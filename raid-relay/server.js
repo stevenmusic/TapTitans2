@@ -268,9 +268,12 @@ const dbReady = (async () => {
       started_at TEXT PRIMARY KEY,
       captured_at INTEGER NOT NULL,
       event TEXT,
-      data TEXT
+      data TEXT,
+      buff_type TEXT
     )
   `);
+  // 之前已經建好的舊表沒有 buff_type 欄位，補上（已經有就會報錯，忽略即可）
+  try { await db.execute('ALTER TABLE raid_snapshots ADD COLUMN buff_type TEXT'); } catch (e) { /* 欄位已存在 */ }
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -597,6 +600,7 @@ async function computeSessionSummary() {
   const sessions = knownStarts.map((startedAt, i) => ({
     startedAt,
     levelTier: startToLevel.get(startedAt) || null,
+    buffType: raidBuffByStart.get(startedAt) || null,
     attackCount: countByCanonical.get(startedAt) || 0,
     rangeStartTs: parseRaidSessionTsServer(startedAt),
     rangeEndTs: (i + 1 < knownStarts.length) ? parseRaidSessionTsServer(knownStarts[i + 1]) : null // null = 沒有上限（最新一場）
@@ -1203,15 +1207,67 @@ function stripPartsForSnapshot(value) {
   return value;
 }
 
+/* ── 場次 buff 類型偵測（只記 buff，不記 debuff）──
+   還不確定官方資料把整場突襲加成（例如「神秘呐喊 x1.3 苦難機會」）放在哪個欄位，
+   所以先用保守做法：把快照裡「王（titans，變異／詛咒都在這裡）以外」的所有欄位名稱跟
+   文字攤平，找關鍵字對應到六種類型。名稱裡帶 curse／debuff／penalty 之類的一律略過。
+   找不到就是 null，畫面不顯示，不會亂猜。找到欄位後再改成精準比對。 */
+const RAID_BUFF_PATTERNS = [
+  ['burstChance',      /burst[\s_.-]*(chance|prob)|(chance|prob)[\s_.-]*burst|爆裂機會|爆裂机会/],
+  ['burstDamage',      /burst[\s_.-]*(damage|dmg)|(damage|dmg)[\s_.-]*burst|爆裂傷害|爆裂伤害/],
+  ['afflictionChance', /mystic[\s_.-]*shout|神秘(呐|吶)喊|(afflict|torment|anguish|suffer)\w*[\s_.-]*(chance|prob)|(chance|prob)[\s_.-]*(afflict|torment|anguish|suffer)|(苦難|苦难|苦痛|痛苦)(機會|机会)/],
+  ['afflictionDamage', /(afflict|torment|anguish|suffer)\w*[\s_.-]*(damage|dmg)|(damage|dmg)[\s_.-]*(afflict|torment|anguish|suffer)|(苦難|苦难|苦痛|痛苦)(傷害|伤害)/],
+  ['support',          /support|支援/],
+  ['timeBoost',        /time[\s_.-]*(bonus|boost|extend|gain|extra)|(bonus|boost|extra|extend)[\s_.-]*time|hourglass|時間增益|时间增益|時間|时间/]
+];
+const RAID_BUFF_SKIP_KEYS = new Set(['titans', 'parts', 'attack_log', 'player', 'raid_state', 'spawn_sequence']);
+const RAID_BUFF_IGNORE = /curse|debuff|penalt|mutat|詛咒|诅咒|變異|变异/;
+
+function detectRaidBuffType(payload) {
+  const leaves = [];
+  (function walk(node, path) {
+    if (Array.isArray(node)) { node.forEach((v, i) => walk(v, `${path}[${i}]`)); return; }
+    if (node && typeof node === 'object') {
+      Object.keys(node).forEach((k) => { if (!RAID_BUFF_SKIP_KEYS.has(k)) walk(node[k], path ? `${path}.${k}` : k); });
+      return;
+    }
+    leaves.push(`${path} ${typeof node === 'string' ? node : ''}`.toLowerCase());
+  })(payload, '');
+  const usable = leaves.filter(t => !RAID_BUFF_IGNORE.test(t));
+  for (const [type, re] of RAID_BUFF_PATTERNS) {
+    if (usable.some(t => re.test(t))) return type;
+  }
+  return null;
+}
+
+// 場次開始時間 -> buff 類型（記憶體快取，場次清單直接讀這裡，不用每次查資料庫）
+const raidBuffByStart = new Map();
+async function loadRaidBuffCache() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT started_at, buff_type FROM raid_snapshots WHERE buff_type IS NOT NULL');
+    result.rows.forEach(r => raidBuffByStart.set(r.started_at, r.buff_type));
+  } catch (e) {
+    console.error('讀取場次 buff 類型失敗:', e.message);
+  }
+}
+loadRaidBuffCache();
+
 async function saveRawRaidSnapshot(event, payload) {
   try {
     const startedAt = payload && payload.raid_started_at;
     if (typeof startedAt !== 'string') return;
     await dbReady;
+    const buffType = detectRaidBuffType(payload);
     await db.execute({
-      sql: 'INSERT OR IGNORE INTO raid_snapshots (started_at, captured_at, event, data) VALUES (?, ?, ?, ?)',
-      args: [startedAt, Date.now(), event, JSON.stringify(stripPartsForSnapshot(payload))]
+      sql: 'INSERT OR IGNORE INTO raid_snapshots (started_at, captured_at, event, data, buff_type) VALUES (?, ?, ?, ?, ?)',
+      args: [startedAt, Date.now(), event, JSON.stringify(stripPartsForSnapshot(payload)), buffType]
     });
+    // 第一份快照沒帶 buff、後面的快照才有的話，補寫進去
+    if (buffType && !raidBuffByStart.has(startedAt)) {
+      raidBuffByStart.set(startedAt, buffType);
+      await db.execute({ sql: 'UPDATE raid_snapshots SET buff_type = ? WHERE started_at = ? AND buff_type IS NULL', args: [buffType, startedAt] });
+    }
   } catch (e) {
     console.error('儲存原始場次快照失敗:', e.message);
   }

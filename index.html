@@ -6500,10 +6500,21 @@
             return serverSessionsSummary.map(s => ({
                 startedAt: s.startedAt,
                 levelTier: s.levelTier,
+                buffType: s.buffType || null,
                 attackCount: s.attackCount,
                 attacks: sessionAttacksCache.get(s.startedAt) || []
             }));
         }
+
+        // 場次 buff 類型（伺服器從官方快照偵測，偵測不到就不顯示）：[中文, 英文]
+        const RAID_BUFF_LABELS = {
+            burstDamage: ['爆裂傷害', 'Burst Damage'],
+            burstChance: ['爆裂機會', 'Burst Chance'],
+            afflictionDamage: ['苦痛傷害', 'Affliction Damage'],
+            afflictionChance: ['苦痛機會', 'Affliction Chance'],
+            support: ['支援', 'Support'],
+            timeBoost: ['時間增益', 'Time Boost']
+        };
 
         // 顯示格式改成「等級丨日期時間丨（筆數 筆攻擊）」，等級放最前面方便一眼掃過去找場次
         function formatSessionLabel(session) {
@@ -6511,7 +6522,8 @@
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const pad = n => String(n).padStart(2, '0');
             const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-            const levelStr = session.levelTier ? `M-${session.levelTier}` : '未知等級';
+            const levelStr = (session.levelTier ? `M-${session.levelTier}` : '未知等級')
+                + (session.buffType && RAID_BUFF_LABELS[session.buffType] ? `丨${RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0]}` : '');
             const count = session.attackCount != null ? session.attackCount : (session.attacks ? session.attacks.length : 0);
             return `${levelStr}丨 ${dateStr}丨（${count} 筆攻擊）`;
         }

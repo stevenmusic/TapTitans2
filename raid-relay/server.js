@@ -261,6 +261,16 @@ const dbReady = (async () => {
       total_damage INTEGER
     )
   `);
+  // 診斷用：每個場次第一次收到的官方快照原始內容（部位血量 parts 已拿掉，太大且用不到），
+  // 用來查「突襲加成（例如 神秘呐喊 x1.3 苦難機會）」跟每隻王的變異／詛咒藏在哪個欄位
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS raid_snapshots (
+      started_at TEXT PRIMARY KEY,
+      captured_at INTEGER NOT NULL,
+      event TEXT,
+      data TEXT
+    )
+  `);
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -1182,7 +1192,33 @@ function buildPartStatusFromTitan(titan) {
   return status;
 }
 
-function watcherHandleRaidSnapshot(payload) {
+// 拿掉 parts 陣列（每個部位一筆，體積大、跟加成資訊無關），其餘欄位原封不動存起來
+function stripPartsForSnapshot(value) {
+  if (Array.isArray(value)) return value.map(stripPartsForSnapshot);
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.keys(value).forEach((k) => { if (k !== 'parts') out[k] = stripPartsForSnapshot(value[k]); });
+    return out;
+  }
+  return value;
+}
+
+async function saveRawRaidSnapshot(event, payload) {
+  try {
+    const startedAt = payload && payload.raid_started_at;
+    if (typeof startedAt !== 'string') return;
+    await dbReady;
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO raid_snapshots (started_at, captured_at, event, data) VALUES (?, ?, ?, ?)',
+      args: [startedAt, Date.now(), event, JSON.stringify(stripPartsForSnapshot(payload))]
+    });
+  } catch (e) {
+    console.error('儲存原始場次快照失敗:', e.message);
+  }
+}
+
+function watcherHandleRaidSnapshot(payload, event) {
+  saveRawRaidSnapshot(event, payload);
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
   if (payload && typeof payload.raid_started_at === 'string') {
@@ -1381,7 +1417,7 @@ function startWatcher() {
     watcherReconnectTimer = setTimeout(startWatcher, delay);
   });
 
-  ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => watcherSocket.on(evt, watcherHandleRaidSnapshot));
+  ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => watcherSocket.on(evt, (payload) => watcherHandleRaidSnapshot(payload, evt)));
   watcherSocket.on('attack', watcherHandleAttack);
   watcherSocket.on('end', handleWatcherRaidEnd('end'));
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
@@ -1448,6 +1484,14 @@ app.get('/recent-attacks', async (req, res) => {
 app.get('/raid-sessions-summary', async (req, res) => {
   const { sessions, fallbackCount } = await computeSessionSummary();
   res.json({ sessions, fallbackCount });
+});
+
+// 診斷用：列出各場次第一次收到的官方快照原始內容（最新的在前）
+app.get('/raid-raw-snapshots', async (req, res) => {
+  await dbReady;
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 3, 1), 20);
+  const result = await db.execute({ sql: 'SELECT started_at, captured_at, event, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT ?', args: [limit] });
+  res.json({ snapshots: result.rows.map(r => ({ startedAt: r.started_at, capturedAt: r.captured_at, event: r.event, data: JSON.parse(r.data || 'null') })) });
 });
 
 app.get('/raid-players', async (req, res) => {

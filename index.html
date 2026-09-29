@@ -3376,12 +3376,10 @@
                 cardUsageRoundCount: '共 {n} 輪（由左到右照時間排列）',
                 cardUsageMissedBothLabel: '🚫 兩張都沒帶：{n} 人',
                 cardUsagePeopleUnit: '人',
-                cardUsageRoundStatsTitle: '每輪使用人數與傷害',
                 cardUsageRoundCol: '輪次',
                 cardUsageTotalDmgCol: '總傷害',
                 cardUsageAvgDmgCol: '平均傷害',
                 cardUsageTotalRow: '總計',
-                cardUsageRoundStatsNote: '卡片欄＝這輪有帶那張卡的人數（括號內為使用次數）；平均傷害＝這輪總傷害 ÷ 出刀次數',
                 missedAttackAllDone: '✓ 全員都打滿 {n} 刀',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
                 playerFilterNoMatch: '沒有符合的玩家',
@@ -3547,12 +3545,10 @@
                 cardUsageRoundCount: '{n} cycles total (left to right, oldest first)',
                 cardUsageMissedBothLabel: '🚫 Used neither: {n} people',
                 cardUsagePeopleUnit: ' people',
-                cardUsageRoundStatsTitle: 'Players & Damage per Cycle',
                 cardUsageRoundCol: 'Cycle',
                 cardUsageTotalDmgCol: 'Total Dmg',
                 cardUsageAvgDmgCol: 'Avg Dmg',
                 cardUsageTotalRow: 'Total',
-                cardUsageRoundStatsNote: 'Card columns = players who used that card this cycle (usage count in brackets); Avg Dmg = cycle total damage ÷ attacks',
                 missedAttackAllDone: '✓ Everyone used all {n} attacks',
                 playerFilterPlaceholder: '🔍 Search player name…',
                 playerFilterNoMatch: 'No matching players',
@@ -6258,8 +6254,8 @@
                 // 依「突襲開始時間」切輪：第 1 輪 = 開始後 0～12 小時，以此類推
                 const rounds = new Map(); // roundNo -> Map(player -> Set(帶過的卡))
                 const globalUsage = new Map(); // player -> Set(帶過的卡)，不分輪次，整場合併看
-                const roundDamage = new Map(); // roundNo -> { total, attacks, cardUses: {卡片id: 使用次數} }
-                const newRoundDamage = () => ({ total: 0, attacks: 0, cardUses: {} });
+                const roundDamage = new Map(); // roundNo -> { total, attacks }
+                const newRoundDamage = () => ({ total: 0, attacks: 0 });
                 const overallDamage = newRoundDamage();
                 attacks.forEach((a) => {
                     const roundNo = Math.max(1, Math.floor((cardUsageAttackTs(a) - startTs) / CARD_USAGE_ROUND_MS) + 1);
@@ -6267,7 +6263,6 @@
                     [roundDamage.get(roundNo), overallDamage].forEach((rd) => {
                         rd.total += a.totalDamage || 0;
                         rd.attacks++;
-                        (a.cards || []).forEach(c => { rd.cardUses[c.name] = (rd.cardUses[c.name] || 0) + 1; });
                     });
                     if (!rounds.has(roundNo)) rounds.set(roundNo, new Map());
                     const players = rounds.get(roundNo);
@@ -6336,7 +6331,7 @@
                     </div>
                 `;
 
-                // 每輪統計表：瘋狂無效／鏡子力的使用人數（括號是使用次數），以及每輪總傷害跟平均傷害
+                // 每輪統計表：瘋狂無效／鏡子力的使用人數，以及每輪總傷害跟平均傷害
                 // （平均＝這輪總傷害 ÷ 這輪出刀次數，跟遊戲 Card Usages 的 RAW AVG Damage 同一種算法）。
                 // 表格很精簡，所以所有輪次都列出來，不像下面格狀總覽只取最近 7 輪
                 const fmtDmg = (n) => {
@@ -6350,14 +6345,13 @@
                 const statRowHtml = (label, players, rd, isTotal) => `
                     <tr style="${isTotal ? 'background:#f3e8d6; font-weight:700;' : 'border-top:1px solid #efe4d2;'}">
                         <td style="padding:5px 4px; text-align:left; white-space:nowrap; font-weight:700;">${label}</td>
-                        ${CARD_USAGE_TRACKED.map(tc => `<td style="${statCell}">${countUsers(players, tc.id)}<span style="color:#a89a88; font-weight:500; font-size:10px;"> (${rd.cardUses[tc.id] || 0})</span></td>`).join('')}
+                        ${CARD_USAGE_TRACKED.map(tc => `<td style="${statCell}">${countUsers(players, tc.id)}</td>`).join('')}
                         <td style="${statCell}">${fmtDmg(rd.total)}</td>
                         <td style="${statCell}">${fmtDmg(rd.attacks > 0 ? rd.total / rd.attacks : 0)}</td>
                     </tr>
                 `;
                 const roundStatsSection = `
                     <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 10px; margin-bottom:10px;">
-                        <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageRoundStatsTitle')}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#5a4a3a; font-variant-numeric:tabular-nums;">
                             <thead>
                                 <tr style="color:#8a7a6a; font-size:11px;">
@@ -6372,7 +6366,6 @@
                                 ${statRowHtml(t('cardUsageTotalRow'), globalUsage, overallDamage, true)}
                             </tbody>
                         </table>
-                        <div style="font-size:10.5px; color:#a89a88; margin-top:6px; line-height:1.5;">${t('cardUsageRoundStatsNote')}</div>
                     </div>
                 `;
 

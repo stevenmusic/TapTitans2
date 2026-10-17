@@ -2875,6 +2875,7 @@
                               placeholder="請將 CSV 內容直接貼上此處，貼上後將自動分析..." data-i18n-placeholder="csvPlaceholder"></textarea>
 
                     <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
+                        <input type="text" inputmode="decimal" class="tier-stage-select" id="analysis-morale-input" placeholder="士氣%" title="士氣加成 %" maxlength="5" style="cursor:text;" oninput="onMoraleInput()">
                         <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
                             <option value="" data-i18n="tierPlaceholder">Tier</option>
                             <option value="1">1</option>
@@ -4545,6 +4546,18 @@
             }
         }
 
+        const ANALYSIS_MORALE_KEY = 'tt2_analysis_morale';
+        function onMoraleInput() {
+            try { localStorage.setItem(ANALYSIS_MORALE_KEY, document.getElementById('analysis-morale-input').value.trim()); } catch (e) {}
+        }
+        (function restoreMorale() {
+            try {
+                const v = localStorage.getItem(ANALYSIS_MORALE_KEY);
+                const el = document.getElementById('analysis-morale-input');
+                if (v && el) el.value = v;
+            } catch (e) {}
+        })();
+
         function buildScreenshotTag() {
             const tierSel = document.getElementById('analysis-tier-select');
             const stageSel = document.getElementById('analysis-stage-select');
@@ -4560,6 +4573,16 @@
             wrap.style.paddingRight = '4px';
             wrap.style.width = '100%';
             wrap.style.boxSizing = 'border-box';
+
+            const morale = (document.getElementById('analysis-morale-input') || {}).value;
+            if (morale && morale.trim()) {
+                const moraleEl = document.createElement('span');
+                moraleEl.textContent = `士氣 +${morale.trim().replace(/%$/, '')}%`;
+                moraleEl.style.fontSize = '20px';
+                moraleEl.style.fontWeight = '900';
+                moraleEl.style.color = '#00897b';
+                wrap.appendChild(moraleEl);
+            }
 
             if (tier && stage) {
                 const tagEl = document.createElement('span');

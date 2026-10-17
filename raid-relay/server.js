@@ -1251,7 +1251,22 @@ async function loadRaidBuffCache() {
     console.error('讀取場次 buff 類型失敗:', e.message);
   }
 }
-loadRaidBuffCache();
+// 偵測功能上線前就存下來的舊快照 buff_type 是空的，用已存的原始內容重新偵測補寫回去
+async function backfillRaidBuffTypes() {
+  try {
+    await dbReady;
+    const result = await db.execute('SELECT started_at, data FROM raid_snapshots WHERE buff_type IS NULL');
+    for (const row of result.rows) {
+      const buffType = detectRaidBuffType(JSON.parse(row.data || 'null'));
+      if (!buffType) continue;
+      raidBuffByStart.set(row.started_at, buffType);
+      await db.execute({ sql: 'UPDATE raid_snapshots SET buff_type = ? WHERE started_at = ?', args: [buffType, row.started_at] });
+    }
+  } catch (e) {
+    console.error('補寫舊場次 buff 類型失敗:', e.message);
+  }
+}
+loadRaidBuffCache().then(backfillRaidBuffTypes);
 
 async function saveRawRaidSnapshot(event, payload) {
   try {

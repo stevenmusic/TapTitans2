@@ -2875,6 +2875,15 @@
                               placeholder="請將 CSV 內容直接貼上此處，貼上後將自動分析..." data-i18n-placeholder="csvPlaceholder"></textarea>
 
                     <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
+                        <select class="tier-stage-select" id="analysis-buff-select" title="突襲加成" style="flex:0 0 74px; width:74px;" onchange="onBuffSelect()">
+                            <option value="">加成</option>
+                            <option value="burstDamage">爆發傷害</option>
+                            <option value="burstChance">爆發機會</option>
+                            <option value="afflictionDamage">苦痛傷害</option>
+                            <option value="afflictionChance">苦痛機會</option>
+                            <option value="support">支援</option>
+                            <option value="timeBoost">時間增益</option>
+                        </select>
                         <input type="text" inputmode="decimal" class="tier-stage-select" id="analysis-morale-input" placeholder="士氣%" title="士氣加成 %" maxlength="5" style="cursor:text;" oninput="onMoraleInput()">
                         <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
                             <option value="" data-i18n="tierPlaceholder">Tier</option>
@@ -4547,6 +4556,34 @@
         }
 
         const ANALYSIS_MORALE_KEY = 'tt2_analysis_morale';
+        const ANALYSIS_BUFF_KEY = 'tt2_analysis_buff';
+        // 加成顏色：爆發紅、苦痛藍、支援綠（時間增益另用橘）
+        const RAID_BUFF_COLORS = {
+            burstDamage: '#d32f2f', burstChance: '#d32f2f',
+            afflictionDamage: '#1976d2', afflictionChance: '#1976d2',
+            support: '#2E7D32', timeBoost: '#ef8f00'
+        };
+        const RAID_BUFF_ZH = {
+            burstDamage: '爆發傷害', burstChance: '爆發機會',
+            afflictionDamage: '苦痛傷害', afflictionChance: '苦痛機會',
+            support: '支援', timeBoost: '時間增益'
+        };
+        function applyBuffSelectColor() {
+            const el = document.getElementById('analysis-buff-select');
+            if (el) el.style.backgroundColor = RAID_BUFF_COLORS[el.value] || '#00897b';
+        }
+        function onBuffSelect() {
+            applyBuffSelectColor();
+            try { localStorage.setItem(ANALYSIS_BUFF_KEY, document.getElementById('analysis-buff-select').value); } catch (e) {}
+        }
+        (function restoreBuff() {
+            try {
+                const v = localStorage.getItem(ANALYSIS_BUFF_KEY);
+                const el = document.getElementById('analysis-buff-select');
+                if (v && el) el.value = v;
+                applyBuffSelectColor();
+            } catch (e) {}
+        })();
         function onMoraleInput() {
             try { localStorage.setItem(ANALYSIS_MORALE_KEY, document.getElementById('analysis-morale-input').value.trim()); } catch (e) {}
         }
@@ -4573,6 +4610,16 @@
             wrap.style.paddingRight = '4px';
             wrap.style.width = '100%';
             wrap.style.boxSizing = 'border-box';
+
+            const buff = (document.getElementById('analysis-buff-select') || {}).value;
+            if (buff && RAID_BUFF_ZH[buff]) {
+                const buffEl = document.createElement('span');
+                buffEl.textContent = RAID_BUFF_ZH[buff];
+                buffEl.style.fontSize = '20px';
+                buffEl.style.fontWeight = '900';
+                buffEl.style.color = RAID_BUFF_COLORS[buff];
+                wrap.appendChild(buffEl);
+            }
 
             const morale = (document.getElementById('analysis-morale-input') || {}).value;
             if (morale && morale.trim()) {
@@ -7743,6 +7790,10 @@
                     const el = document.getElementById('analysis-morale-input');
                     if (el) { el.value = String(report.morale.percent); onMoraleInput(); }
                 }
+                if (report.buffType && RAID_BUFF_ZH[report.buffType]) {
+                    const sel = document.getElementById('analysis-buff-select');
+                    if (sel) { sel.value = report.buffType; onBuffSelect(); }
+                }
                 showRaidReportModal(report);
             } catch (e) {
                 alert('取得戰報失敗，請確認伺服器已更新並稍後再試');
@@ -7761,7 +7812,7 @@
             modal.innerHTML = `
                 <div style="background:#fff; border-radius:12px; padding:14px; width:100%; max-width:560px; max-height:90vh; display:flex; flex-direction:column; gap:8px; box-sizing:border-box;">
                     <div style="font-weight:700; font-size:14px;">${escapeHtml(title)}</div>
-                    <div style="font-size:13px; color:#2E7D32; font-weight:700;">${escapeHtml(moraleText)}</div>
+                    <div style="font-size:13px; font-weight:700;">${report.buffType && RAID_BUFF_ZH[report.buffType] ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">加成：${RAID_BUFF_ZH[report.buffType]}</span>　` : '<span style="color:#888;">加成：未偵測到</span>　'}<span style="color:#2E7D32;">${escapeHtml(moraleText)}</span></div>
                     <textarea id="raid-report-modal-text" readonly style="width:100%; height:240px; font-size:12px; box-sizing:border-box;"></textarea>
                     <div style="display:flex; gap:8px;">
                         <button class="btn-backup export" style="flex:1;" id="raid-report-modal-copy">📋 複製戰報</button>

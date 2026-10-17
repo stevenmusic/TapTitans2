@@ -3204,6 +3204,7 @@
                         <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
                         <button class="btn-backup import" onclick="document.getElementById('raid-log-import-input').click()">📥 匯入（JSON）</button>
                     </div>
+                    <button class="btn-backup" style="margin-top:8px; width:100%; background:#eef6ee; color:#2E7D32;" onclick="copyRaidReport()">📋 複製本場戰報（貼到戰報分析頁）</button>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
                     <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
                 </div>
@@ -7699,6 +7700,31 @@
 
         function closeCardUsageDetail() {
             document.getElementById('card-usage-detail-modal').style.display = 'none';
+        }
+
+        // 向伺服器要目前選到的場次（沒選就是最新一場）的戰報 CSV，複製到剪貼簿，
+        // 貼到「戰報分析」頁就會自動分析
+        async function copyRaidReport() {
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            const q = (raidSessionFilter && raidSessionFilter.startedAt) ? `?session=${encodeURIComponent(raidSessionFilter.startedAt)}` : '';
+            try {
+                const resp = await fetch(`${relayUrl}/raid-report${q}`);
+                if (!resp.ok) throw new Error(resp.status);
+                const csv = await resp.text();
+                try {
+                    await navigator.clipboard.writeText(csv);
+                } catch (e) {
+                    const ta = document.createElement('textarea');
+                    ta.value = csv;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+                showPlayerCopyToastLike('已複製本場戰報，到戰報分析頁貼上即可');
+            } catch (e) {
+                alert('取得戰報失敗，請確認伺服器已更新並稍後再試');
+            }
         }
 
         // 匯出「全部場次」的完整攻擊紀錄成一個 JSON 檔案下載，在雲端資料庫還沒設定好、

@@ -1717,12 +1717,46 @@ function buildRaidReport(attacks) {
   return { headers, rows, csv, attackCount: attacks.length, playerCount: attackCountByPlayer.size };
 }
 
+// 場次士氣加成：每場突襲一個固定的加成 %，藏在該場第一份官方快照（raid_snapshots）裡。
+// 不確定官方欄位的確切名稱，所以掃整份快照裡「名稱含 morale／士氣」的數字欄位，
+// 全部列出（路徑＋原始值）；第一個符合的當作這場的士氣加成。
+function findMoraleFields(data) {
+  const found = [];
+  (function walk(node, path) {
+    if (Array.isArray(node)) { node.forEach((v, i) => walk(v, `${path}[${i}]`)); return; }
+    if (node && typeof node === 'object') {
+      Object.keys(node).forEach(k => walk(node[k], path ? `${path}.${k}` : k));
+      return;
+    }
+    if (/morale|士氣|士气/i.test(path) && typeof node === 'number') found.push({ path, value: node });
+  })(data, '');
+  return found;
+}
+
+async function getSessionMorale(startedAt) {
+  if (!startedAt) return null;
+  try {
+    await dbReady;
+    const startMs = parseRaidSessionTsServer(startedAt);
+    const result = await db.execute('SELECT started_at, data FROM raid_snapshots');
+    for (const row of result.rows) {
+      if (Math.abs(parseRaidSessionTsServer(row.started_at) - startMs) >= RAID_SESSION_MATCH_MS) continue;
+      const fields = findMoraleFields(JSON.parse(row.data || 'null'));
+      if (fields.length > 0) return { value: fields[0].value, path: fields[0].path, allFields: fields };
+    }
+  } catch (e) {
+    console.error('讀取場次士氣失敗:', e.message);
+  }
+  return null;
+}
+
 async function buildSessionReport(session) {
   const attacks = await getAttacksInRange(session.rangeStartTs, session.rangeEndTs);
   return {
     startedAt: session.startedAt,
     levelTier: session.levelTier,
     buffType: session.buffType,
+    morale: await getSessionMorale(session.startedAt), // { value, path } 或 null（快照裡找不到）
     ...buildRaidReport(attacks)
   };
 }
@@ -1745,7 +1779,7 @@ app.get('/raid-report/view', async (req, res) => {
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cards = reports.map((r, i) => `
     <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
-      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）</p>
+      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　士氣加成：${r.morale ? `${r.morale.value}（${esc(r.morale.path)}）` : '未找到'}</p>
       <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
       <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
       <textarea id="rep-${i}" readonly style="display:none;">${esc(r.csv)}</textarea>
@@ -1763,6 +1797,14 @@ app.get('/raid-report/view', async (req, res) => {
         }
       </script>
     </body></html>`);
+});
+
+// 診斷用：列出各場第一份快照裡所有「名稱含 morale／士氣」的數字欄位，
+// 用來確認士氣加成到底藏在哪個欄位
+app.get('/raid-morale-debug', async (req, res) => {
+  await dbReady;
+  const result = await db.execute('SELECT started_at, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT 20');
+  res.json({ sessions: result.rows.map(r => ({ startedAt: r.started_at, fields: findMoraleFields(JSON.parse(r.data || 'null')) })) });
 });
 
 // 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的

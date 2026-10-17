@@ -1781,10 +1781,12 @@ app.get('/raid-report/view', async (req, res) => {
   const { sessions } = await computeSessionSummary();
   const reports = [];
   for (const s of sessions) reports.push(await buildSessionReport(s));
+  const BUFF_ZH = { burstDamage: '爆發傷害', burstChance: '爆發機會', afflictionDamage: '苦痛傷害', afflictionChance: '苦痛機會', support: '支援', timeBoost: '時間增益' };
+  const BUFF_COLOR = { burstDamage: '#d32f2f', burstChance: '#d32f2f', afflictionDamage: '#1976d2', afflictionChance: '#1976d2', support: '#2E7D32', timeBoost: '#ef8f00' };
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cards = reports.map((r, i) => `
     <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
-      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
+      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　${r.buffType && BUFF_ZH[r.buffType] ? `<b style="color:${BUFF_COLOR[r.buffType]};">加成：${BUFF_ZH[r.buffType]}</b>` : '加成：未偵測到'}　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
       <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
       <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
       <details open style="margin-top:8px;"><summary>CSV 內容${r.morale ? `（士氣 +${r.morale.percent}%）` : ''}</summary>

@@ -274,6 +274,17 @@ const dbReady = (async () => {
   `);
   // 之前已經建好的舊表沒有 buff_type 欄位，補上（已經有就會報錯，忽略即可）
   try { await db.execute('ALTER TABLE raid_snapshots ADD COLUMN buff_type TEXT'); } catch (e) { /* 欄位已存在 */ }
+  // 診斷用：每個場次「每種事件」第一次收到的原始內容（snapshot 只留第一份，其他事件類型會被蓋掉看不到），
+  // 用來找加成等欄位到底放在哪個事件
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS raid_event_samples (
+      started_at TEXT NOT NULL,
+      event TEXT NOT NULL,
+      captured_at INTEGER NOT NULL,
+      data TEXT,
+      PRIMARY KEY (started_at, event)
+    )
+  `);
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -1268,6 +1279,21 @@ async function backfillRaidBuffTypes() {
 }
 loadRaidBuffCache().then(backfillRaidBuffTypes);
 
+async function saveRawEventSample(event, startedAt, payload) {
+  try {
+    if (typeof startedAt !== 'string' || !startedAt) return;
+    const json = JSON.stringify(stripPartsForSnapshot(payload));
+    if (json.length > 30000) return;
+    await dbReady;
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO raid_event_samples (started_at, event, captured_at, data) VALUES (?, ?, ?, ?)',
+      args: [startedAt, event, Date.now(), json]
+    });
+  } catch (e) {
+    console.error('儲存事件樣本失敗:', e.message);
+  }
+}
+
 async function saveRawRaidSnapshot(event, payload) {
   try {
     const startedAt = payload && payload.raid_started_at;
@@ -1298,6 +1324,7 @@ async function saveRawRaidSnapshot(event, payload) {
 
 function watcherHandleRaidSnapshot(payload, event) {
   saveRawRaidSnapshot(event, payload);
+  saveRawEventSample(event, payload && payload.raid_started_at, payload);
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
   if (payload && typeof payload.raid_started_at === 'string') {
@@ -1339,6 +1366,7 @@ function watcherHandleRaidSnapshot(payload, event) {
 }
 
 function watcherHandleAttack(payload) {
+  saveRawEventSample('attack', watcherCurrentRaidStartedAt, payload);
   if (typeof payload.cycle === 'number') watcherLastCycle = payload.cycle;
   const rs = payload && payload.raid_state;
   if (!rs) return;
@@ -1845,6 +1873,14 @@ app.get('/raid-morale-debug', async (req, res) => {
   await dbReady;
   const result = await db.execute('SELECT started_at, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT 20');
   res.json({ sessions: result.rows.map(r => ({ startedAt: r.started_at, fields: findMoraleFields(JSON.parse(r.data || 'null')) })) });
+});
+
+// 診斷用：各場每種事件（sub_start／start／sub_cycle／cycle_reset／attack）第一次收到的原始內容
+app.get('/raid-event-samples', async (req, res) => {
+  await dbReady;
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+  const result = await db.execute({ sql: 'SELECT started_at, event, captured_at, data FROM raid_event_samples ORDER BY captured_at DESC LIMIT ?', args: [limit] });
+  res.json({ samples: result.rows.map(r => ({ startedAt: r.started_at, event: r.event, capturedAt: r.captured_at, data: JSON.parse(r.data || 'null') })) });
 });
 
 // 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的

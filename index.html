@@ -7775,9 +7775,20 @@
             document.getElementById('raid-report-modal-close').onclick = () => modal.remove();
             modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
             document.getElementById('raid-report-modal-copy').onclick = async () => {
-                try { await navigator.clipboard.writeText(report.csv); }
-                catch (e) { ta.select(); document.execCommand('copy'); }
-                showPlayerCopyToastLike('已複製本場戰報，到戰報分析頁貼上即可');
+                let ok = false;
+                try { await navigator.clipboard.writeText(report.csv); ok = true; }
+                catch (e) {
+                    // 部分手機瀏覽器／App 內嵌網頁不允許 clipboard API，退回選取後複製（iOS 要用 setSelectionRange）
+                    try {
+                        ta.removeAttribute('readonly');
+                        ta.focus();
+                        ta.select();
+                        ta.setSelectionRange(0, ta.value.length);
+                        ok = document.execCommand('copy');
+                    } catch (e2) { ok = false; }
+                }
+                if (ok) showPlayerCopyToastLike('已複製本場戰報，到戰報分析頁貼上即可');
+                else { ta.focus(); ta.select(); alert('這個瀏覽器不允許自動複製，文字已全選，請長按選「拷貝」'); }
             };
         }
 

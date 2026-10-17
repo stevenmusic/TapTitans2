@@ -4868,6 +4868,20 @@
             const dIdx = findHeaderIdx(headers, ['泰坦傷害', '泰坦伤害']);
             const cIdx = findHeaderIdx(headers, ['總突擊傷害', '总突击伤害']);
 
+            // 戰報 CSV 最後兩欄帶有士氣加成與突襲加成，貼上時自動填進對應欄位
+            const mIdx = findHeaderIdx(headers, ['士氣加成(%)']);
+            const fIdx = findHeaderIdx(headers, ['突襲加成']);
+            const firstRow = dataRows[0] || [];
+            if (mIdx >= 0 && (firstRow[mIdx] || '').trim() !== '') {
+                const el = document.getElementById('analysis-morale-input');
+                if (el) { el.value = firstRow[mIdx].trim(); onMoraleInput(); }
+            }
+            if (fIdx >= 0) {
+                const key = Object.keys(RAID_BUFF_ZH).find(k => RAID_BUFF_ZH[k] === (firstRow[fIdx] || '').trim());
+                const sel = document.getElementById('analysis-buff-select');
+                if (key && sel) { sel.value = key; onBuffSelect(); }
+            }
+
             autoDetectBossesFromCSV(dataRows, bIdx);
             autoDetectBannedParts(headers, dataRows);
 

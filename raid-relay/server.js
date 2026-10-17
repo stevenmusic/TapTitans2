@@ -1683,9 +1683,15 @@ function csvCell(v) {
   return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
 
-function buildRaidReport(attacks) {
+const REPORT_BUFF_ZH = { burstDamage: '爆發傷害', burstChance: '爆發機會', afflictionDamage: '苦痛傷害', afflictionChance: '苦痛機會', support: '支援', timeBoost: '時間增益' };
+
+// meta: { moralePercent, buffType }，會放在每一列最後兩欄（戰報分析頁不認識這兩欄的話會直接忽略）
+function buildRaidReport(attacks, meta) {
   const headers = ['玩家名稱', '泰坦名稱', '泰坦傷害', '總突擊傷害'];
   REPORT_PART_COLS.forEach(([, zh]) => headers.push(`${zh}(裝甲)`, `${zh}(肉體)`));
+  headers.push('士氣加成(%)', '突襲加成');
+  const moraleCell = (meta && typeof meta.moralePercent === 'number') ? meta.moralePercent : '';
+  const buffCell = (meta && REPORT_BUFF_ZH[meta.buffType]) || '';
 
   const attackCountByPlayer = new Map();
   const groups = new Map(); // `${player}\u0000${boss}` -> 累計列
@@ -1710,6 +1716,7 @@ function buildRaidReport(attacks) {
       REPORT_PART_COLS.forEach(([key]) => {
         row.push(Math.round(g.cols[`${key}_armor`] || 0), Math.round(g.cols[`${key}_body`] || 0));
       });
+      row.push(moraleCell, buffCell);
       return row;
     });
 
@@ -1756,12 +1763,13 @@ async function getSessionMorale(startedAt) {
 
 async function buildSessionReport(session) {
   const attacks = await getAttacksInRange(session.rangeStartTs, session.rangeEndTs);
+  const morale = await getSessionMorale(session.startedAt); // { value, percent, path } 或 null（快照裡找不到）
   return {
     startedAt: session.startedAt,
     levelTier: session.levelTier,
     buffType: session.buffType,
-    morale: await getSessionMorale(session.startedAt), // { value, path } 或 null（快照裡找不到）
-    ...buildRaidReport(attacks)
+    morale,
+    ...buildRaidReport(attacks, { moralePercent: morale ? morale.percent : null, buffType: session.buffType })
   };
 }
 

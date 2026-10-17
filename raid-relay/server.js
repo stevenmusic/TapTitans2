@@ -1742,7 +1742,11 @@ async function getSessionMorale(startedAt) {
     for (const row of result.rows) {
       if (Math.abs(parseRaidSessionTsServer(row.started_at) - startMs) >= RAID_SESSION_MATCH_MS) continue;
       const fields = findMoraleFields(JSON.parse(row.data || 'null'));
-      if (fields.length > 0) return { value: fields[0].value, path: fields[0].path, allFields: fields };
+      if (fields.length > 0) {
+        // 官方欄位 morale.bonus_amount 是小數（0.451 = 45.1%），優先用它
+        const main = fields.find(f => f.path === 'morale.bonus_amount') || fields[0];
+        return { value: main.value, percent: Math.round(main.value * 1000) / 10, path: main.path, allFields: fields };
+      }
     }
   } catch (e) {
     console.error('讀取場次士氣失敗:', e.message);
@@ -1779,7 +1783,7 @@ app.get('/raid-report/view', async (req, res) => {
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cards = reports.map((r, i) => `
     <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
-      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　士氣加成：${r.morale ? `${r.morale.value}（${esc(r.morale.path)}）` : '未找到'}</p>
+      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
       <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
       <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
       <textarea id="rep-${i}" readonly style="display:none;">${esc(r.csv)}</textarea>

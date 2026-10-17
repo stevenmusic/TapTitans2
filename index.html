@@ -7729,11 +7729,17 @@
         // 貼到「戰報分析」頁就會自動分析
         async function copyRaidReport() {
             const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-            const q = (raidSessionFilter && raidSessionFilter.startedAt) ? `?session=${encodeURIComponent(raidSessionFilter.startedAt)}` : '';
+            const q = (raidSessionFilter && raidSessionFilter.startedAt) ? `session=${encodeURIComponent(raidSessionFilter.startedAt)}&` : '';
             try {
-                const resp = await fetch(`${relayUrl}/raid-report${q}`);
+                const resp = await fetch(`${relayUrl}/raid-report?${q}format=json`);
                 if (!resp.ok) throw new Error(resp.status);
-                const csv = await resp.text();
+                const report = await resp.json();
+                const csv = report.csv;
+                // 士氣加成也一併填進戰報分析頁的士氣欄，貼上戰報後直接就有
+                if (report.morale && typeof report.morale.percent === 'number') {
+                    const el = document.getElementById('analysis-morale-input');
+                    if (el) { el.value = String(report.morale.percent); onMoraleInput(); }
+                }
                 try {
                     await navigator.clipboard.writeText(csv);
                 } catch (e) {
@@ -7744,7 +7750,7 @@
                     document.execCommand('copy');
                     document.body.removeChild(ta);
                 }
-                showPlayerCopyToastLike('已複製本場戰報，到戰報分析頁貼上即可');
+                showPlayerCopyToastLike('已複製本場戰報' + (report.morale ? `（士氣 +${report.morale.percent}%）` : '') + '，到戰報分析頁貼上即可');
             } catch (e) {
                 alert('取得戰報失敗，請確認伺服器已更新並稍後再試');
             }

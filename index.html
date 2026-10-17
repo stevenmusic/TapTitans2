@@ -3205,7 +3205,7 @@
                         <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
                         <button class="btn-backup import" onclick="document.getElementById('raid-log-import-input').click()">📥 匯入（JSON）</button>
                     </div>
-                    <button class="btn-backup" style="margin-top:8px; width:100%; background:#eef6ee; color:#2E7D32;" onclick="copyRaidReport()">📋 複製本場戰報（貼到戰報分析頁）</button>
+                    <button class="btn-backup" style="margin-top:8px; width:100%; background:#eef6ee; color:#2E7D32;" onclick="copyRaidReport()">📋 查看／複製本場戰報（含士氣%）</button>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
                     <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
                 </div>
@@ -7734,30 +7734,51 @@
                 const resp = await fetch(`${relayUrl}/raid-report?${q}format=json`);
                 if (!resp.ok) throw new Error(resp.status);
                 const report = await resp.json();
-                const csv = report.csv;
                 if (!report.attackCount) {
-                    alert('這一場目前沒有攻擊紀錄，請從場次選單選一場有紀錄的再複製');
+                    alert('這一場目前沒有攻擊紀錄，請從場次選單選一場有紀錄的再查看');
                     return;
                 }
-                // 士氣加成也一併填進戰報分析頁的士氣欄，貼上戰報後直接就有
+                // 士氣加成也一併填進戰報分析頁的士氣欄
                 if (report.morale && typeof report.morale.percent === 'number') {
                     const el = document.getElementById('analysis-morale-input');
                     if (el) { el.value = String(report.morale.percent); onMoraleInput(); }
                 }
-                try {
-                    await navigator.clipboard.writeText(csv);
-                } catch (e) {
-                    const ta = document.createElement('textarea');
-                    ta.value = csv;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                }
-                showPlayerCopyToastLike('已複製本場戰報' + (report.morale ? `（士氣 +${report.morale.percent}%）` : '') + '，到戰報分析頁貼上即可');
+                showRaidReportModal(report);
             } catch (e) {
                 alert('取得戰報失敗，請確認伺服器已更新並稍後再試');
             }
+        }
+
+        // 顯示本場戰報：場次、士氣%、CSV 內容（可全選／一鍵複製）
+        function showRaidReportModal(report) {
+            const old = document.getElementById('raid-report-modal');
+            if (old) old.remove();
+            const title = formatSessionLabel({ startedAt: report.startedAt, levelTier: report.levelTier, buffType: report.buffType, attackCount: report.attackCount });
+            const moraleText = report.morale ? `士氣加成：+${report.morale.percent}%` : '士氣加成：未找到';
+            const modal = document.createElement('div');
+            modal.id = 'raid-report-modal';
+            modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;';
+            modal.innerHTML = `
+                <div style="background:#fff; border-radius:12px; padding:14px; width:100%; max-width:560px; max-height:90vh; display:flex; flex-direction:column; gap:8px; box-sizing:border-box;">
+                    <div style="font-weight:700; font-size:14px;">${escapeHtml(title)}</div>
+                    <div style="font-size:13px; color:#2E7D32; font-weight:700;">${escapeHtml(moraleText)}</div>
+                    <textarea id="raid-report-modal-text" readonly style="width:100%; height:240px; font-size:12px; box-sizing:border-box;"></textarea>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-backup export" style="flex:1;" id="raid-report-modal-copy">📋 複製戰報</button>
+                        <button class="btn-backup" style="flex:1;" id="raid-report-modal-close">關閉</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+            const ta = document.getElementById('raid-report-modal-text');
+            ta.value = report.csv;
+            ta.addEventListener('click', () => ta.select());
+            document.getElementById('raid-report-modal-close').onclick = () => modal.remove();
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            document.getElementById('raid-report-modal-copy').onclick = async () => {
+                try { await navigator.clipboard.writeText(report.csv); }
+                catch (e) { ta.select(); document.execCommand('copy'); }
+                showPlayerCopyToastLike('已複製本場戰報，到戰報分析頁貼上即可');
+            };
         }
 
         // 匯出「全部場次」的完整攻擊紀錄成一個 JSON 檔案下載，在雲端資料庫還沒設定好、

@@ -1666,6 +1666,105 @@ app.get('/cycle-summaries/view', (req, res) => {
   `);
 });
 
+/* ══════════════════════════════════════════════════════════
+   戰報產生器：把某一場的攻擊紀錄整理成「戰報分析」頁貼得進去的內容。
+   遊戲內建的匯出版面壞掉時，改由這裡根據我們自己記錄的每筆攻擊重組。
+   欄位跟遊戲匯出的 CSV 一致（玩家名稱、泰坦名稱、泰坦傷害、總突擊傷害、
+   各部位的裝甲／肉體傷害），戰報分析頁貼上後會自動分析。
+   注意：伺服器存檔時骨架傷害已併進「裝甲」欄，無法單獨拆出來。
+   ══════════════════════════════════════════════════════════ */
+const REPORT_PART_COLS = [
+  ['Head', '頭部'], ['ChestUpper', '肚子'], ['ArmUpperLeft', '左臂'], ['ArmUpperRight', '右臂'],
+  ['HandLeft', '左手'], ['HandRight', '右手'], ['LegUpperLeft', '左腿'], ['LegUpperRight', '右腿']
+];
+
+function csvCell(v) {
+  const str = String(v == null ? '' : v);
+  return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+function buildRaidReport(attacks) {
+  const headers = ['玩家名稱', '泰坦名稱', '泰坦傷害', '總突擊傷害'];
+  REPORT_PART_COLS.forEach(([, zh]) => headers.push(`${zh}(裝甲)`, `${zh}(肉體)`));
+
+  const attackCountByPlayer = new Map();
+  const groups = new Map(); // `${player}\u0000${boss}` -> 累計列
+  attacks.forEach((a) => {
+    const player = a.player || '?';
+    attackCountByPlayer.set(player, (attackCountByPlayer.get(player) || 0) + 1);
+    const boss = a.boss || '?';
+    const key = `${player}\u0000${boss}`;
+    if (!groups.has(key)) groups.set(key, { player, boss, total: 0, cols: {}, firstTs: a.ts });
+    const g = groups.get(key);
+    (a.parts || []).forEach((p) => {
+      const col = `${p.part}_${p.layer === 'body' ? 'body' : 'armor'}`;
+      g.cols[col] = (g.cols[col] || 0) + (p.damage || 0);
+      g.total += p.damage || 0;
+    });
+  });
+
+  const rows = [...groups.values()]
+    .sort((x, y) => x.firstTs - y.firstTs || x.player.localeCompare(y.player))
+    .map((g) => {
+      const row = [g.player, g.boss, Math.round(g.total), attackCountByPlayer.get(g.player)];
+      REPORT_PART_COLS.forEach(([key]) => {
+        row.push(Math.round(g.cols[`${key}_armor`] || 0), Math.round(g.cols[`${key}_body`] || 0));
+      });
+      return row;
+    });
+
+  const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
+  return { headers, rows, csv, attackCount: attacks.length, playerCount: attackCountByPlayer.size };
+}
+
+async function buildSessionReport(session) {
+  const attacks = await getAttacksInRange(session.rangeStartTs, session.rangeEndTs);
+  return {
+    startedAt: session.startedAt,
+    levelTier: session.levelTier,
+    buffType: session.buffType,
+    ...buildRaidReport(attacks)
+  };
+}
+
+// 單場戰報：?session=場次開始時間（沒給 = 最新一場）；?format=json 回傳 JSON，預設純文字 CSV
+app.get('/raid-report', async (req, res) => {
+  const { sessions } = await computeSessionSummary();
+  const target = req.query.session ? sessions.find(s => s.startedAt === req.query.session) : sessions[0];
+  if (!target) return res.status(404).json({ error: 'session not found' });
+  const report = await buildSessionReport(target);
+  if (req.query.format === 'json') return res.json(report);
+  res.type('text/plain; charset=utf-8').send(report.csv);
+});
+
+// 所有場次的戰報一次列出，可直接在網頁上一鍵複製貼去戰報分析頁
+app.get('/raid-report/view', async (req, res) => {
+  const { sessions } = await computeSessionSummary();
+  const reports = [];
+  for (const s of sessions) reports.push(await buildSessionReport(s));
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cards = reports.map((r, i) => `
+    <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
+      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）</p>
+      <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
+      <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
+      <textarea id="rep-${i}" readonly style="display:none;">${esc(r.csv)}</textarea>
+    </div>`).join('');
+  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+    <body style="font-family:sans-serif; padding:24px; line-height:1.6;">
+      <h2>每場戰報（貼到「戰報分析」頁）</h2>
+      ${cards || '<p>目前還沒有任何攻擊紀錄</p>'}
+      <script>
+        function copyReport(i, btn) {
+          const ta = document.getElementById('rep-' + i);
+          const done = () => { btn.textContent = '已複製 ✓'; setTimeout(() => btn.textContent = '複製戰報', 1500); };
+          if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done);
+          else { ta.style.display = 'block'; ta.select(); document.execCommand('copy'); ta.style.display = 'none'; done(); }
+        }
+      </script>
+    </body></html>`);
+});
+
 // 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的
 // stack trace（含檔案路徑、套件版本）直接回給客戶端。一定要放在所有路由最後面，
 // Express 才會在任何路由裡的例外丟出來時走到這裡

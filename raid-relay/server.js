@@ -1278,6 +1278,14 @@ async function saveRawRaidSnapshot(event, payload) {
       sql: 'INSERT OR IGNORE INTO raid_snapshots (started_at, captured_at, event, data, buff_type) VALUES (?, ?, ?, ?, ?)',
       args: [startedAt, Date.now(), event, JSON.stringify(stripPartsForSnapshot(payload)), buffType]
     });
+    // 先收到的是 cycle_reset 這種不帶王／加成資料的精簡快照時，後面收到完整快照（sub_start／start／sub_cycle）要換掉它，
+    // 不然 INSERT OR IGNORE 會永遠只留下那份沒有加成資訊的
+    if (event !== 'cycle_reset') {
+      await db.execute({
+        sql: "UPDATE raid_snapshots SET event = ?, data = ? WHERE started_at = ? AND event = 'cycle_reset'",
+        args: [event, JSON.stringify(stripPartsForSnapshot(payload)), startedAt]
+      });
+    }
     // 第一份快照沒帶 buff、後面的快照才有的話，補寫進去
     if (buffType && !raidBuffByStart.has(startedAt)) {
       raidBuffByStart.set(startedAt, buffType);

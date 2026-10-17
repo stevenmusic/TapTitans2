@@ -1768,7 +1768,8 @@ async function buildSessionReport(session) {
 // 單場戰報：?session=場次開始時間（沒給 = 最新一場）；?format=json 回傳 JSON，預設純文字 CSV
 app.get('/raid-report', async (req, res) => {
   const { sessions } = await computeSessionSummary();
-  const target = req.query.session ? sessions.find(s => s.startedAt === req.query.session) : sessions[0];
+  // 沒指定場次時，用「最新一場有攻擊紀錄的」——剛開打、還沒人出手的新場次會是空的
+  const target = req.query.session ? sessions.find(s => s.startedAt === req.query.session) : (sessions.find(s => s.attackCount > 0) || sessions[0]);
   if (!target) return res.status(404).json({ error: 'session not found' });
   const report = await buildSessionReport(target);
   if (req.query.format === 'json') return res.json(report);

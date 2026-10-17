@@ -7735,6 +7735,10 @@
                 if (!resp.ok) throw new Error(resp.status);
                 const report = await resp.json();
                 const csv = report.csv;
+                if (!report.attackCount) {
+                    alert('這一場目前沒有攻擊紀錄，請從場次選單選一場有紀錄的再複製');
+                    return;
+                }
                 // 士氣加成也一併填進戰報分析頁的士氣欄，貼上戰報後直接就有
                 if (report.morale && typeof report.morale.percent === 'number') {
                     const el = document.getElementById('analysis-morale-input');

@@ -1787,7 +1787,9 @@ app.get('/raid-report/view', async (req, res) => {
       <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
       <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
       <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
-      <textarea id="rep-${i}" readonly style="display:none;">${esc(r.csv)}</textarea>
+      <details open style="margin-top:8px;"><summary>CSV 內容${r.morale ? `（士氣 +${r.morale.percent}%）` : ''}</summary>
+        <textarea id="rep-${i}" readonly onclick="this.select()" style="width:100%; height:160px; font-size:12px; box-sizing:border-box;">${esc(r.csv)}</textarea>
+      </details>
     </div>`).join('');
   res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
     <body style="font-family:sans-serif; padding:24px; line-height:1.6;">
@@ -1798,7 +1800,7 @@ app.get('/raid-report/view', async (req, res) => {
           const ta = document.getElementById('rep-' + i);
           const done = () => { btn.textContent = '已複製 ✓'; setTimeout(() => btn.textContent = '複製戰報', 1500); };
           if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done);
-          else { ta.style.display = 'block'; ta.select(); document.execCommand('copy'); ta.style.display = 'none'; done(); }
+          else { ta.select(); document.execCommand('copy'); done(); }
         }
       </script>
     </body></html>`);

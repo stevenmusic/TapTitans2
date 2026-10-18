@@ -4684,6 +4684,7 @@
             } catch (e) {}
         })();
 
+        let analysisSessionDate = null; // 由場次戰報按鈕載入時設定，手動貼 CSV 時清掉
         function buildScreenshotTag() {
             const tierSel = document.getElementById('analysis-tier-select');
             const stageSel = document.getElementById('analysis-stage-select');
@@ -4729,7 +4730,8 @@
                 wrap.appendChild(tagEl);
             }
 
-            const d = new Date();
+            // 從場次「戰報」按鈕載入的戰報用那一場的日期；自己貼上的 CSV 才用今天
+            const d = analysisSessionDate || new Date();
             const dateStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
             const dateEl = document.createElement('span');
             dateEl.textContent = dateStr;
@@ -5046,6 +5048,7 @@
         /* 貼上／輸入 CSV 後自動分析，不需要再手動按「分析」鈕 */
         let csvAutoAnalyzeTimer = null;
         document.getElementById('csv-text-input').addEventListener('input', () => {
+            analysisSessionDate = null; // 自己貼的 CSV，圖片日期用今天
             clearTimeout(csvAutoAnalyzeTimer);
             csvAutoAnalyzeTimer = setTimeout(() => {
                 if (document.getElementById('csv-text-input').value.trim()) {
@@ -8006,8 +8009,15 @@
             showView('analysis');
             const input = document.getElementById('csv-text-input');
             input.value = report.csv;
+            analysisSessionDate = new Date(parseRaidSessionTs(session.startedAt));
+            // 關卡：場次等級（例如 M-30）填進 Tier／關卡選單，圖片標籤才會帶出關卡
+            if (report.levelTier) {
+                document.getElementById('analysis-tier-select').value = 'M';
+                document.getElementById('analysis-stage-select').value = String(report.levelTier);
+            }
             processPastedCSV();
-            showPlayerCopyToastLike('已載入這場戰報' + (report.morale ? `（士氣 +${report.morale.percent}%）` : ''));
+            // 等表格畫好再自動產生戰報圖片
+            setTimeout(() => exportAnalysisImage(), 400);
         }
 
         // 顯示本場戰報：場次、士氣%、CSV 內容（可全選／一鍵複製）

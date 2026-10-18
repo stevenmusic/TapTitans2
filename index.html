@@ -3489,6 +3489,7 @@
                 cardPoolNotLoaded: '卡片池資料尚未載入',
                 cardPoolNotLoadedDetail: '卡片池資料尚未載入（找不到 cards.js 的 PRESET_CARDS 陣列）。',
                 modalImageReady: '💡 配卡圖已生成！請【長按下方圖片】即可儲存至手機相簿',
+                modalReportReady: '📊 突襲戰報已生成，長按圖片儲存',
                 btnBackToEdit: '返回修改',
                 btnShareImage: '📤 分享到 LINE／Discord',
                 shareFailed: '此瀏覽器不支援直接分享圖片，請長按上方圖片儲存後手動傳送',
@@ -3660,6 +3661,7 @@
                 cardPoolNotLoaded: 'Card pool data not loaded yet',
                 cardPoolNotLoadedDetail: 'Card pool data not loaded yet (could not find the PRESET_CARDS array in cards.js).',
                 modalImageReady: '💡 Image generated! Long-press the image below to save it to your photo album.',
+                modalReportReady: '📊 Raid report ready — long-press to save',
                 btnBackToEdit: 'Back to Edit',
                 btnShareImage: '📤 Share to LINE/Discord',
                 shareFailed: 'This browser can\'t share images directly. Long-press the image above to save it and share manually.',
@@ -4554,6 +4556,8 @@
             const modal = document.getElementById('result-modal');
             modal.style.display = "none";
             currentShareableCanvas = null;
+            const tip = modal.querySelector('[data-i18n="modalImageReady"]');
+            if (tip) tip.textContent = t('modalImageReady');
 
             if (currentView === 'deck') {
                 isSwiping = false;
@@ -5157,6 +5161,8 @@
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
             imgContainer.innerHTML = t('generatingAnalysisImage');
+            // 共用的圖片視窗：戰報顯示「突襲戰報」說明（關閉時改回配卡圖的說明）
+            document.querySelector('#result-modal [data-i18n="modalImageReady"]').textContent = t('modalReportReady');
             modal.style.display = "flex";
             document.getElementById('btn-share-image').style.display = 'none';
 

@@ -1978,6 +1978,11 @@
         #raid-tab-records .raid-records-head { margin-top: 0; }
         /* 分頁上已經有名稱，面板內重複的標題拿掉（攻擊紀錄的標題列有重新載入按鈕，保留） */
         #panel-topdecks > .backup-title, #panel-cardusage > .backup-title, #panel-missed > .backup-title { display: none; }
+        /* 牌組參考卡片很小時（小手機），總傷與均傷排成一行 */
+        .top-decks-compact .top-deck-nums { display: flex; align-items: baseline; gap: 6px; }
+        .top-decks-compact .top-deck-total { font-size: 14px !important; }
+        .top-decks-compact .top-deck-avg { font-size: 11px !important; }
+        .top-decks-compact .top-deck-row { padding: 2px !important; }
         /* 牌組參考只顯示「總傷前十」，「這樣配最簡單！」子頁籤拿掉 */
         #panel-topdecks .deck-subtab-row, #suggested-deck-result, #best-six-dropdown-wrap { display: none !important; }
         .raid-tool-menu {
@@ -7066,23 +7071,45 @@
         }
 
         // 條列：一組一行（名次｜三張卡｜總傷（均傷*次數）），用虛線分隔，不加方框
+        // 依「畫面高度 − 列表上方已佔的高度」算出每列可用高度，換算卡片大小，
+        // 不管手機多大，前十名都剛好放進一個畫面（卡片介於 26～64px）
+        function fitTopDecksToScreen() {
+            const box = document.getElementById('top-decks-result');
+            if (!box || box.offsetParent === null) return;
+            const rows = box.querySelectorAll('.top-deck-row');
+            if (rows.length === 0) return;
+            const listTop = box.getBoundingClientRect().top + window.scrollY;
+            const available = window.innerHeight - listTop - 12;
+            let card = Math.max(18, Math.min(64, Math.floor(available / rows.length - 8))); // 8 = 上下留白＋分隔線
+            // 卡片小的時候，右邊數字改成一行，列高才不會被數字撐高
+            for (let i = 0; i < 4; i++) {
+                box.style.setProperty('--top-deck-card', card + 'px');
+                box.classList.toggle('top-decks-compact', card < 40);
+                const last = rows[rows.length - 1].getBoundingClientRect().bottom + window.scrollY;
+                const overflow = last - (window.innerHeight - 12);
+                if (overflow <= 0 || card <= 18) break;
+                card = Math.max(18, card - Math.ceil(overflow / rows.length));
+            }
+        }
+        window.addEventListener('resize', () => { if (typeof fitTopDecksToScreen === 'function') fitTopDecksToScreen(); });
+
         function renderTopDeckRow(d, rank) {
             const avgDamage = d.count > 0 ? d.totalDamage / d.count : 0;
             return `
-                <div style="display:flex; align-items:center; gap:8px; padding:6px 2px; border-bottom:1px dashed #e8dcc8;">
+                <div class="top-deck-row" style="display:flex; align-items:center; gap:8px; padding:3px 2px; border-bottom:1px dashed #e8dcc8;">
                     <div style="font-size:13px; font-weight:700; color:#8a7a63; width:22px; flex-shrink:0;">${rank}.</div>
                     <div style="display:flex; gap:5px; flex:1; min-width:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
-                            // 卡片跟著寬度放大（最大 68px），把空白填滿
+                            // 卡片大小由 fitTopDecksToScreen() 依畫面剩餘高度計算，讓 10 組剛好放進一個畫面
                             return img
-                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="flex:1; min-width:0; max-width:68px; aspect-ratio:1; border-radius:8px; object-fit:cover; display:block;">`
-                                : `<span style="flex:1; max-width:68px; font-size:20px; text-align:center;">🃏</span>`;
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:var(--top-deck-card, 40px); height:var(--top-deck-card, 40px); border-radius:7px; object-fit:cover; display:block; flex-shrink:0;">`
+                                : `<span style="width:var(--top-deck-card, 40px); font-size:20px; text-align:center;">🃏</span>`;
                         }).join('')}
                     </div>
-                    <div style="flex-shrink:0; text-align:right; line-height:1.25;">
-                        <div style="font-size:16px; font-weight:800; color:#4a3a2a;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                        <div style="font-size:11.5px; color:#a89a88;">${escapeHtml(formatNum(avgDamage))} × ${d.count}</div>
+                    <div class="top-deck-nums" style="flex-shrink:0; text-align:right; line-height:1.25;">
+                        <div class="top-deck-total" style="font-size:16px; font-weight:800; color:#4a3a2a;">${escapeHtml(formatNum(d.totalDamage))}</div>
+                        <div class="top-deck-avg" style="font-size:11.5px; color:#a89a88;">${escapeHtml(formatNum(avgDamage))} × ${d.count}</div>
                     </div>
                 </div>
             `;
@@ -7157,6 +7184,7 @@
                     ${decks.slice(0, 10).map((d, i) => renderTopDeckRow(d, i + 1)).join('')}
                 </div>
             `;
+            fitTopDecksToScreen();
         }
 
         // 切換「常用牌組」／「建議牌組」兩個子頁籤，同一個面板內切換，不用重新點外層選單

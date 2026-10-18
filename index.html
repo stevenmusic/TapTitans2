@@ -4918,10 +4918,13 @@
                 const dmg = parseNumber(row[dIdx]);
                 bossTotalDmg[bossName] = (bossTotalDmg[bossName] || 0) + dmg;
 
+                // 看「盔甲＋肉體」的總傷害：禁打的部位大家連盔甲都不會碰。
+                // 只看肉體的話，還在打的王（盔甲還沒破）幾乎每個部位肉體都是 0，會全部誤判成禁打
                 if (!bossFleshDmg[bossName]) bossFleshDmg[bossName] = {};
                 PART_BASE_NAMES.forEach(base => {
-                    const colIdx = fleshColIdx(headers, base);
-                    const val = colIdx >= 0 ? parseNumber(row[colIdx]) : 0;
+                    const fIdx = fleshColIdx(headers, base);
+                    const aIdx = armorColIdx(headers, base);
+                    const val = (fIdx >= 0 ? parseNumber(row[fIdx]) : 0) + (aIdx >= 0 ? parseNumber(row[aIdx]) : 0);
                     bossFleshDmg[bossName][base] = (bossFleshDmg[bossName][base] || 0) + val;
                 });
             });

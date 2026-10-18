@@ -1275,6 +1275,9 @@
         .home-nav-card.players .home-nav-arrow { color: #e3cb8f; }
 
         .home-nav-card.raidstatus { border-left: 4px solid #c62828; }
+        /* 首頁主卡片：突襲狀態橫跨兩欄，其他四個功能排成 2×2 */
+        .home-nav-card.raidstatus { grid-column: 1 / -1; background: linear-gradient(135deg, #fff 0%, #fff4f2 100%); }
+        .home-nav-card.raidstatus .home-nav-desc { -webkit-line-clamp: 2; line-clamp: 2; }
         .home-nav-card.raidstatus .home-nav-icon { background: #fbe6e6; color: #c62828; }
         .home-nav-card.raidstatus .home-nav-title { color: #8e1c1c; }
         .home-nav-card.raidstatus .home-nav-arrow { color: #e8b3b3; }
@@ -1964,20 +1967,37 @@
             margin-bottom: 4px;
         }
         /* 突襲工具選單：跟首頁卡片一樣每橫排兩個 */
-        /* 突襲狀態：即時／紀錄 分頁 */
-        .raid-tabs { display: flex; gap: 6px; width: 100%; max-width: 560px; margin: 2px auto 10px auto; }
-        .raid-tab-btn {
-            flex: 1; padding: 10px 4px; border-radius: 12px; border: 1.5px solid #e5d5c0;
-            background: #fffaf3; color: #6b4a2a; font-size: 14px; font-weight: 800; font-family: inherit; cursor: pointer;
+        /* 標題列上的齒輪（連線設定） */
+        /* 不能用 lang-toggle-btn：切換語言時會把那個 class 的按鈕文字整個改掉 */
+        .nav-gear-btn {
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.5); color: #fff;
+            border-radius: 14px; padding: 4px 8px; line-height: 0; cursor: pointer;
         }
-        .raid-tab-btn.active { background: #8b263e; border-color: #8b263e; color: #fff; }
-        .raid-tab-gear {
-            flex: 0 0 46px; border-radius: 12px; border: 1.5px solid #e5d5c0; background: #fff;
-            color: #8e6a3a; font-size: 18px; cursor: pointer; font-family: inherit;
-        }
-        .raid-tab-gear.active { background: #f0e6d2; }
+        .nav-gear-btn svg { width: 17px; height: 17px; }
+        .nav-gear-btn.active { background: rgba(255,255,255,0.35); }
         /* 紀錄分頁：四個功能改成一列分頁 */
-        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+        @media (max-width: 359px) { #raid-tab-records .raid-tool-btn { font-size: 11px !important; } }
+        /* 場次統計 → 戰報 */
+        .raid-report-export { width: 100%; background: #fdf9f3; border-radius: 12px; padding: 10px; box-sizing: border-box; }
+        .raid-report-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-weight: 800; color: #6b1d30; font-size: 15px; margin-bottom: 8px; }
+        .raid-report-title span { white-space: nowrap; }
+        .raid-report-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-bottom: 8px; }
+        .raid-report-summary > div { background: #fff; border: 1px solid #ecdcc4; border-radius: 10px; padding: 6px 2px; text-align: center; }
+        .raid-report-summary .num { font-size: 14px; font-weight: 900; color: #6b1d30; white-space: nowrap; }
+        .raid-report-summary .label { font-size: 10.5px; color: #a08a70; margin-top: 1px; }
+        .raid-report-summary .warn { background: #fdecec; border-color: #f0b8b8; }
+        .raid-report-summary .warn .num { color: #c0392b; }
+        .raid-report-banned { font-size: 12px; color: #6b4a2a; line-height: 1.6; margin-bottom: 8px; }
+        .raid-report-banned b { color: #8b263e; }
+        .raid-report-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; font-size: 13px; }
+        .raid-report-table th { background: #8b263e; color: #fff; font-size: 11.5px; padding: 6px 4px; white-space: nowrap; }
+        .raid-report-table td { padding: 6px 4px; text-align: center; font-weight: 700; border-bottom: 1px solid #f3e8d8; white-space: nowrap; color: #4a3a2a; }
+        .raid-report-table td.name { text-align: left; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; }
+        .raid-report-table tr:nth-child(even) td { background: #fdf8f1; }
+        .raid-report-table td.rate { color: #d32f2f; }
+        .raid-report-table td.rate.hi { background: #fdecec !important; }
+        .raid-report-table tr.total td { background: #f3e6d0 !important; color: #6b1d30; font-weight: 900; }
         #raid-tab-records .raid-tool-btn { padding: 9px 2px; min-height: 40px; font-size: 12.5px; gap: 2px; border-radius: 10px; }
         #raid-tab-records .raid-tool-btn .raid-tool-icon { display: none; }
         #raid-tab-records .backup-section { margin-top: 8px; }
@@ -2766,10 +2786,6 @@
                     <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3z"/><path d="M7.5 12.5h2l1.5-3 2 6 1.5-3h2"/></svg></div><div class="home-nav-title" data-i18n="navRaidStatusTitle">突襲狀態</div></div>
                     <div class="home-nav-desc" data-i18n="navRaidStatusDesc">即時顯示當前王、部位盔甲與血量，換王自動通知</div>
                 </button>
-                <button class="home-nav-card analysis" onclick="showView('analysis')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M20 20v-4"/></svg></div><div class="home-nav-title" data-i18n="navAnalysisTitle">戰報分析</div></div>
-                    <div class="home-nav-desc" data-i18n="navAnalysisDesc">貼上突襲 CSV，自動算出誤傷率與傷害排名</div>
-                </button>
                 <button class="home-nav-card deck" onclick="showView('deck')">
                     <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></div><div class="home-nav-title" data-i18n="navDeckTitle">牌組建構</div></div>
                     <div class="home-nav-desc" data-i18n="navDeckDesc">配置爆裂／苦痛／支援牌組，自動儲存進度</div>
@@ -3178,18 +3194,17 @@
             <div class="nav-title-row">
                 <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
                 <div class="nav-title" data-i18n="raidStatusPageTitle">突襲狀態</div>
-                <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+                <div style="grid-column:3; justify-self:end; display:flex; gap:6px; align-items:center;">
+                    <button id="raid-tab-gear" class="nav-gear-btn raid-tab-gear" onclick="toggleRaidSettingsSheet()" title="連線設定" aria-label="連線設定"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block; margin:auto;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                    <button class="lang-toggle-btn" onclick="toggleLanguage()">EN</button>
+                </div>
             </div>
         </div>
 
         <div class="standalone-page" id="page-raidstatus">
             <div class="export-area" id="export-raidstatus">
 
-                <div class="raid-tabs">
-                    <button id="raid-tab-btn-live" class="raid-tab-btn active" onclick="switchRaidTab('live')">目前戰況</button>
-                    <button id="raid-tab-btn-records" class="raid-tab-btn" onclick="switchRaidTab('records')">場次統計</button>
-                    <button id="raid-tab-gear" class="raid-tab-gear" onclick="toggleRaidSettingsSheet()" title="連線設定" aria-label="連線設定"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block; margin:auto;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-                </div>
+                
 
                 <div id="raid-settings-sheet" style="display:none; width:100%;">
                 <div class="raid-settings-card" id="raid-connect-card">
@@ -3287,7 +3302,7 @@
                 </div>
                 </div>
 
-                <div id="raid-tab-records" style="display:none;">
+                <div id="raid-tab-records">
                 <div class="backup-section raid-records-head">
                     <div id="shared-session-menu" style="display:none; width:100%; margin-bottom:8px;"></div>
                     <div class="raid-tool-menu">
@@ -3295,6 +3310,7 @@
                         <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</button>
                         <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">紫球&amp;鏡子</button>
                         <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="1.8"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.4" fill="currentColor"/></svg> 剩餘次數</button>
+                        <button id="raid-tool-btn-report" class="raid-tool-btn" onclick="toggleRaidToolPanel('report')">戰報</button>
                     </div>
                 </div>
 
@@ -3357,6 +3373,16 @@
                     <div id="missed-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="missed-attack-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
                 </div>
+
+                <div class="backup-section" id="panel-report" style="display:none;">
+                    <div id="raid-report-export" class="raid-report-export"></div>
+                    <div id="raid-report-actions" style="display:none; gap:8px; margin-top:10px;">
+                        <button class="btn-analysis export btn-save-deco" style="flex:1;" onclick="saveRaidReportImage()">✨ 儲存圖片 ✨</button>
+                    </div>
+                    <div style="text-align:center; margin-top:14px;">
+                        <button onclick="analysisReturnView = 'raidStatus'; showView('analysis');" style="background:none; border:none; color:#8e6a3a; font-size:12px; text-decoration:underline; font-family:inherit; cursor:pointer;">手動貼上遊戲匯出的 CSV →</button>
+                    </div>
+                </div>
                 </div>
 
             </div>
@@ -3387,8 +3413,8 @@
         const I18N = {
             zh: {
                 homeEyebrow: 'TT2 TOOLKIT',
-                appSubtitle: '配卡、戰報分析與錦標賽攻略工具',
-                homeTagline: '突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名；另外也收錄深淵錦標賽各模式攻略',
+                appSubtitle: '突襲戰況、戰報與配卡工具',
+                homeTagline: '即時掌握突襲戰況，每場自動產生戰報；也收錄牌組、突襲水晶與深淵錦標賽攻略',
                 homeSectionLabel: '選擇功能',
                 navDeckTitle: '牌組建構',
                 navDeckDesc: '配置爆裂／苦痛／支援牌組，自動儲存進度',
@@ -3418,7 +3444,7 @@
                 backupImportedToast: '✓ 資料已還原，頁面即將重新整理',
                 playerSavedAt: '更新於',
                 navRaidStatusTitle: '突襲狀態',
-                navRaidStatusDesc: '即時顯示當前王、部位盔甲與血量，換王自動通知',
+                navRaidStatusDesc: '即時戰況、攻擊紀錄、剩餘次數，每場戰報一鍵產生',
                 raidStatusPageTitle: '突襲狀態',
                 raidConnectTitle: '連線設定',
                 raidAppTokenPlaceholder: 'Application Token',
@@ -3559,8 +3585,8 @@
             },
             en: {
                 homeEyebrow: 'TT2 TOOLKIT',
-                appSubtitle: 'Deck Builder, Report Analyzer & Tournament Guides',
-                homeTagline: 'Build decks before raids, analyze reports afterward for miss rates & rankings, plus Abyssal Tournament guides.',
+                appSubtitle: 'Raid Tracker, Reports & Deck Builder',
+                homeTagline: 'Track raids live with auto-generated reports per session, plus deck, raid crystal and Abyssal Tournament guides.',
                 homeSectionLabel: 'Choose a tool',
                 navDeckTitle: 'Deck Builder',
                 navDeckDesc: 'Set up Burst / Affliction / Support decks — auto-saved as you go',
@@ -3590,7 +3616,7 @@
                 backupImportedToast: '✓ Data restored. The page will now reload.',
                 playerSavedAt: 'Updated',
                 navRaidStatusTitle: 'Raid Status',
-                navRaidStatusDesc: 'Live boss HP, armored parts & notifications on boss change',
+                navRaidStatusDesc: 'Live status, attack log, remaining attacks & one-tap reports',
                 raidStatusPageTitle: 'Raid Status',
                 raidConnectTitle: 'Connection Settings',
                 raidAppTokenPlaceholder: 'Application Token (pending approval)',
@@ -4332,12 +4358,7 @@
                 syncCardPoolCardSize();
             }
             if (view === 'analysis') updateAnalysisEmptyUI();
-            if (view === 'raidStatus') {
-                let tab = 'live';
-                try { tab = localStorage.getItem(RAID_TAB_KEY) || 'live'; } catch (e) {}
-                switchRaidTab(tab);
-                if (tab !== 'records') loadSharedSessionMenu();
-            }
+            if (view === 'raidStatus') switchRaidTab();
 
             syncHeaderHeight();
             syncBodyBackground();
@@ -5828,7 +5849,6 @@
         }
 
         /* ── 突襲狀態：即時／紀錄 分頁、⚙ 設定區 ── */
-        const RAID_TAB_KEY = 'tt2_raid_tab';
         const RAID_TOOL_KEY = 'tt2_raid_tool';
         function toggleRaidSettingsSheet(force) {
             const sheet = document.getElementById('raid-settings-sheet');
@@ -5840,28 +5860,18 @@
             if (emptyBtn) emptyBtn.style.display = show ? 'none' : ''; // 設定已經打開，就不用再顯示這顆捷徑
             if (show) {
                 document.getElementById('raid-connect-card').classList.add('expanded');
-                switchRaidTab('live'); // 設定區在即時分頁上方，切回即時才看得到
+                window.scrollTo({ top: 0, behavior: 'smooth' }); // 設定區在頁面最上方
             }
         }
-        function switchRaidTab(tab) {
-            const isRecords = tab === 'records';
-            document.getElementById('raid-tab-live').style.display = isRecords ? 'none' : 'block';
-            document.getElementById('raid-tab-records').style.display = isRecords ? 'block' : 'none';
-            document.getElementById('raid-tab-btn-live').classList.toggle('active', !isRecords);
-            document.getElementById('raid-tab-btn-records').classList.toggle('active', isRecords);
-            try { localStorage.setItem(RAID_TAB_KEY, isRecords ? 'records' : 'live'); } catch (e) {}
-            if (isRecords) {
-                document.getElementById('raid-settings-sheet').style.display = 'none';
-                document.getElementById('raid-tab-gear').classList.remove('active');
-                loadSharedSessionMenu();
-                // 進紀錄分頁時，自動打開上次用的功能（預設攻擊紀錄），不用再點一次
-                const anyOpen = RAID_TOOL_PANELS.some(p => document.getElementById('panel-' + p).style.display === 'block');
-                if (!anyOpen) {
-                    let last = 'attacklog';
-                    try { last = localStorage.getItem(RAID_TOOL_KEY) || 'attacklog'; } catch (e) {}
-                    if (!RAID_TOOL_PANELS.includes(last)) last = 'attacklog';
-                    toggleRaidToolPanel(last);
-                }
+        // 目前戰況在上、場次統計在下，同一頁上下滑動；進頁面時自動打開上次用的統計功能
+        function switchRaidTab() {
+            loadSharedSessionMenu();
+            const anyOpen = RAID_TOOL_PANELS.some(p => document.getElementById('panel-' + p).style.display === 'block');
+            if (!anyOpen) {
+                let last = 'attacklog';
+                try { last = localStorage.getItem(RAID_TOOL_KEY) || 'attacklog'; } catch (e) {}
+                if (!RAID_TOOL_PANELS.includes(last)) last = 'attacklog';
+                toggleRaidToolPanel(last);
             }
         }
 
@@ -7129,15 +7139,19 @@
             if (!box || box.offsetParent === null) return;
             const rows = box.querySelectorAll('.top-deck-row');
             if (rows.length === 0) return;
-            const listTop = box.getBoundingClientRect().top + window.scrollY;
-            const available = window.innerHeight - listTop - 12;
+            // 假設使用者把功能按鈕列捲到畫面頂端（緊貼標題列）時，前十名要剛好放得下
+            const header = document.getElementById('nav-header-raidstatus');
+            const headerH = header ? header.getBoundingClientRect().height : 60;
+            const menuTop = document.querySelector('#raid-tab-records .raid-tool-menu').getBoundingClientRect().top;
+            const offsetInSection = box.getBoundingClientRect().top - menuTop;
+            const available = window.innerHeight - headerH - offsetInSection - 16;
             let card = Math.max(18, Math.min(64, Math.floor(available / rows.length - 8))); // 8 = 上下留白＋分隔線
             // 卡片小的時候，右邊數字改成一行，列高才不會被數字撐高
             for (let i = 0; i < 4; i++) {
                 box.style.setProperty('--top-deck-card', card + 'px');
                 box.classList.toggle('top-decks-compact', card < 40);
-                const last = rows[rows.length - 1].getBoundingClientRect().bottom + window.scrollY;
-                const overflow = last - (window.innerHeight - 12);
+                const lastOffset = rows[rows.length - 1].getBoundingClientRect().bottom - menuTop;
+                const overflow = lastOffset - (window.innerHeight - headerH - 16);
                 if (overflow <= 0 || card <= 18) break;
                 card = Math.max(18, card - Math.ceil(overflow / rows.length));
             }
@@ -7424,7 +7438,7 @@
         }
 
         // 四個面板預設都收合，點按鈕才顯示內容（同時間只顯示一個，點別的按鈕會自動關掉前一個）
-        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed'];
+        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report'];
         function toggleRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
             const wasOpen = panel.style.display === 'block';
@@ -8131,6 +8145,9 @@
             return sessions.find(x => x.startedAt === sharedSessionStart) || sessions[0] || null;
         }
 
+        // 場次清單：顯示最近 4 場，更早的收合在「顯示更早的場次」裡
+        let sharedSessionMenuShowOlder = false;
+        const SHARED_SESSION_RECENT_COUNT = 4;
         function renderSharedSessionMenu() {
             const box = document.getElementById('shared-session-menu');
             if (!box) return;
@@ -8138,13 +8155,20 @@
             if (sessions.length === 0) { box.style.display = 'none'; box.innerHTML = ''; return; }
             box.style.display = 'block';
             const active = getSharedSession();
-            const options = sessions.map((x, i) =>
-                `<option value="${i}" ${active && active.startedAt === x.startedAt ? 'selected' : ''}>${escapeHtml(formatSessionLabelShort(x))}</option>`).join('');
-            box.innerHTML = `
-                <div style="display:flex; gap:6px; align-items:stretch;">
-                    <select onchange="selectSharedSession(Number(this.value))" class="raid-session-select" style="flex:1; min-width:0; padding:9px 10px; border-radius:10px; border:1.5px solid #8b263e; background:#fff; color:#6b1d30; font-size:13px; font-weight:800; font-family:inherit;">${options}</select>
-                    <button onclick="openSessionReportInAnalysis(Number(this.previousElementSibling.value))" title="複製這場的戰報 CSV 並開啟戰報分析" style="flex:0 0 auto; padding:0 14px; border-radius:10px; border:1.5px solid #2E7D32; background:#eef6ee; color:#2E7D32; font-size:13px; font-weight:800; font-family:inherit; cursor:pointer; white-space:nowrap;">戰報</button>
-                </div>`;
+            const activeIdx = active ? sessions.findIndex(x => x.startedAt === active.startedAt) : 0;
+            if (activeIdx >= SHARED_SESSION_RECENT_COUNT) sharedSessionMenuShowOlder = true; // 選到的在收合區時自動展開
+            const row = (x, i) => {
+                const isActive = i === activeIdx;
+                return `<button onclick="selectSharedSession(${i})" style="width:100%; text-align:left; padding:8px 12px; border-radius:10px; border:1.5px solid ${isActive ? '#8b263e' : '#e5d5c0'}; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}</button>`;
+            };
+            const recent = sessions.slice(0, SHARED_SESSION_RECENT_COUNT).map((x, i) => row(x, i)).join('');
+            const olderList = sessions.slice(SHARED_SESSION_RECENT_COUNT);
+            const olderToggle = olderList.length === 0 ? '' : `
+                <button onclick="sharedSessionMenuShowOlder = !sharedSessionMenuShowOlder; renderSharedSessionMenu();" style="width:100%; text-align:center; padding:6px 12px; border-radius:10px; border:1px dashed #d8c8a8; background:#fff; color:#8e6a3a; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer;">
+                    ${sharedSessionMenuShowOlder ? '▴ 收合更早的場次' : `▾ 顯示更早的場次（${olderList.length} 場）`}
+                </button>`;
+            const older = sharedSessionMenuShowOlder ? olderList.map((x, k) => row(x, k + SHARED_SESSION_RECENT_COUNT)).join('') : '';
+            box.innerHTML = `<div style="display:flex; flex-direction:column; gap:5px;">${recent}${olderToggle}${older}</div>`;
         }
 
         async function selectSharedSession(idx) {
@@ -8170,6 +8194,7 @@
             if (id === 'topdecks') { topDecksSessionFilter = x; await renderTopDecks(); }
             if (id === 'cardusage') { cardUsageSessionFilter = x; await renderCardUsageCheck(); }
             if (id === 'missed') { missedSessionFilter = x; await renderMissedAttackList(); }
+            if (id === 'report') await renderRaidReportPanel(x);
             renderSharedSessionMenu();
         }
 
@@ -8190,6 +8215,152 @@
 
         // 場次選單右邊的「戰報」：抓這場的戰報 CSV，複製到剪貼簿，直接跳到戰報分析頁貼上並分析
         // （士氣與加成在 CSV 最後兩欄，分析頁貼上時會自動帶入）
+        /* ── 場次統計 → 戰報：直接在突襲狀態頁顯示這一場的戰報（不用跳到戰報分析頁）──
+           計算方式跟戰報分析頁相同：誤傷＝骨架傷害＋打在禁打部位的傷害；
+           禁打部位＝這隻王「盔甲＋肉體」總傷低於 1% 的部位（大家都沒碰的部位） */
+        const raidReportCache = new Map(); // startedAt|attackCount -> report json
+        let raidReportCurrent = null;
+
+        function analyzeReportCsv(csv) {
+            const rows = parseCSV(csv);
+            if (rows.length < 2) return null;
+            const headers = rows[0].map(h => h.trim());
+            const data = rows.slice(1);
+            const pIdx = findHeaderIdx(headers, ['玩家名稱', '玩家名称']);
+            const bIdx = findHeaderIdx(headers, ['泰坦名稱', '泰坦名称']);
+            const dIdx = findHeaderIdx(headers, ['泰坦傷害', '泰坦伤害']);
+            const cIdx = findHeaderIdx(headers, ['總突擊傷害', '总突击伤害']);
+            const bosses = [];
+            const bossTotal = {}, bossPart = {};
+            data.forEach(r => {
+                const b = (r[bIdx] || '').trim();
+                if (b && !bosses.includes(b)) bosses.push(b);
+                bossTotal[b] = (bossTotal[b] || 0) + parseNumber(r[dIdx]);
+                bossPart[b] = bossPart[b] || {};
+                PART_BASE_NAMES.forEach(base => {
+                    const a = armorColIdx(headers, base), f = fleshColIdx(headers, base);
+                    bossPart[b][base] = (bossPart[b][base] || 0) + (a >= 0 ? parseNumber(r[a]) : 0) + (f >= 0 ? parseNumber(r[f]) : 0);
+                });
+            });
+            const banned = {};
+            bosses.forEach(b => { banned[b] = PART_BASE_NAMES.filter(base => (bossPart[b][base] || 0) < (bossTotal[b] || 0) * 0.01); });
+            const grouped = {};
+            data.forEach(r => {
+                const name = (r[pIdx] || '').trim();
+                if (!name) return;
+                const g = grouped[name] = grouped[name] || { player: name, count: 0, total: 0, accident: 0 };
+                if (cIdx >= 0) g.count = Math.max(g.count, parseNumber(r[cIdx])); else g.count++;
+                g.total += parseNumber(r[dIdx]);
+                const b = (r[bIdx] || '').trim();
+                headers.forEach((h, idx) => {
+                    if ([pIdx, bIdx, dIdx, cIdx].includes(idx)) return;
+                    const v = parseNumber(r[idx]);
+                    if (v <= 0) return;
+                    if (h.endsWith('(骨架)')) { g.accident += v; return; }
+                    if (/\((裝甲|装甲|肉體|肉体)\)$/.test(h)) {
+                        const base = canonicalPartBase(h.replace(/\((裝甲|装甲|肉體|肉体)\)$/, ''));
+                        if ((banned[b] || []).includes(base)) g.accident += v;
+                    }
+                });
+            });
+            const players = Object.values(grouped).map(p => ({ ...p, net: p.total - p.accident, avg: p.count ? (p.total - p.accident) / p.count : 0, rate: p.total ? p.accident / p.total * 100 : 0 }))
+                .sort((a, b) => b.net - a.net);
+            const sum = (k) => players.reduce((x, p) => x + p[k], 0);
+            const totalCount = sum('count'), totalDmg = sum('total'), totalAcc = sum('accident');
+            return {
+                bosses, banned, players,
+                summary: { players: players.length, avgCount: players.length ? totalCount / players.length : 0, rate: totalDmg ? totalAcc / totalDmg * 100 : 0, total: totalDmg, avgHit: totalCount ? (totalDmg - totalAcc) / totalCount : 0 }
+            };
+        }
+
+        async function renderRaidReportPanel(session) {
+            const box = document.getElementById('raid-report-export');
+            const actions = document.getElementById('raid-report-actions');
+            actions.style.display = 'none';
+            if (!session) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">目前還沒有場次</div>'; return; }
+            const key = `${session.startedAt}|${session.attackCount}`;
+            let report = raidReportCache.get(key);
+            if (!report) {
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
+                try {
+                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    const resp = await fetch(`${relayUrl}/raid-report?session=${encodeURIComponent(session.startedAt)}&format=json`);
+                    if (!resp.ok) throw new Error(resp.status);
+                    report = await resp.json();
+                    raidReportCache.set(key, report);
+                } catch (e) {
+                    box.innerHTML = '<div style="font-size:12px; color:#c0392b;">取得戰報失敗，請稍後再試</div>';
+                    return;
+                }
+            }
+            if (!report.attackCount) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
+            const a = analyzeReportCsv(report.csv);
+            if (!a) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
+            raidReportCurrent = { session, report };
+            const d = new Date(parseRaidSessionTs(session.startedAt));
+            const buff = report.buffType && RAID_BUFF_ZH[report.buffType];
+            const titleParts = [
+                session.levelTier ? `<span>M-${session.levelTier}</span>` : '',
+                buff ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">${buff}</span>` : '',
+                report.morale ? `<span style="color:#00897b;">士氣 +${report.morale.percent}%</span>` : '',
+                `<span style="color:#8a7a63; font-weight:700;">${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}</span>`
+            ].filter(Boolean).join('');
+            const s = a.summary;
+            const bannedLine = a.bosses.filter(b => a.banned[b].length).map(b =>
+                `<b>${escapeHtml(b)}</b> ${a.banned[b].map(base => basePartToLabel(base)).join('、')}`).join('｜');
+            box.innerHTML = `
+                <div class="raid-report-title">${titleParts}</div>
+                <div class="raid-report-summary">
+                    <div><div class="num">${s.players}</div><div class="label">玩家數</div></div>
+                    <div><div class="num">${s.avgCount.toFixed(1)}</div><div class="label">平均次數</div></div>
+                    <div class="${s.rate > 5 ? 'warn' : ''}"><div class="num">${formatRate(s.rate)}</div><div class="label">誤傷率</div></div>
+                    <div><div class="num">${formatNum(s.total)}</div><div class="label">總傷害</div></div>
+                    <div><div class="num">${formatNum(s.avgHit)}</div><div class="label">平均傷害</div></div>
+                </div>
+                ${bannedLine ? `<div class="raid-report-banned">禁打：${bannedLine}</div>` : ''}
+                <table class="raid-report-table">
+                    <thead><tr><th style="text-align:left;">玩家</th><th>次數</th><th>誤傷率</th><th>總傷</th><th>均傷</th></tr></thead>
+                    <tbody>
+                        ${a.players.map((p, i) => `<tr>
+                            <td class="name">${i + 1}. ${escapeHtml(p.player)}</td>
+                            <td>${p.count}</td>
+                            <td class="rate ${p.rate > 5 ? 'hi' : ''}">${formatRate(p.rate)}</td>
+                            <td>${formatNum(p.net)}</td>
+                            <td>${formatNum(p.avg)}</td>
+                        </tr>`).join('')}
+                        <tr class="total"><td class="name">總計 / 平均</td><td>${s.avgCount.toFixed(1)}</td><td>${formatRate(s.rate)}</td><td>${formatNum(s.total)}</td><td>${formatNum(s.avgHit)}</td></tr>
+                    </tbody>
+                </table>`;
+            actions.style.display = 'flex';
+        }
+
+        // 部位內部名稱（頭部、肚子、左臂…）→ 畫面上的短名稱（頭、肚、左肩…）
+        function basePartToLabel(base) {
+            return ({ '頭部': '頭', '肚子': '肚', '左臂': '左肩', '右臂': '右肩', '左手': '左手', '右手': '右手', '左腿': '左腳', '右腿': '右腳' })[base] || base;
+        }
+
+        function saveRaidReportImage() {
+            const area = document.getElementById('raid-report-export');
+            if (!area || !raidReportCurrent) return;
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+            imgContainer.innerHTML = t('generatingAnalysisImage');
+            modal.querySelector('[data-i18n="modalImageReady"]').textContent = t('modalReportReady');
+            modal.style.display = 'flex';
+            document.getElementById('btn-share-image').style.display = 'none';
+            html2canvas(area, {
+                useCORS: true, scale: 2, backgroundColor: '#fdf9f3',
+                onclone: (doc) => { doc.querySelectorAll('.raid-report-table td.name').forEach(td => { td.style.maxWidth = 'none'; }); }
+            }).then(canvas => {
+                imgContainer.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+                currentShareableCanvas = canvas;
+                updateShareButtonVisibility();
+            }).catch(() => { alert(t('generateFailed')); closeModal(); });
+        }
+
         let analysisReturnView = null; // 從突襲狀態的「戰報」按鈕過來時，返回鍵回到突襲狀態
         function goBackFromAnalysis() {
             const target = analysisReturnView || 'home';

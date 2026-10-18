@@ -7408,9 +7408,9 @@
 
         function renderMissedRow(p, rank, maxSoFar) {
             return `
-                <div style="font-size:12px; color:#5a4a3a; padding:4px 6px; background:#fff; border:1px solid #ece3d4; border-radius:6px;">
-                    <div style="word-break:break-word; overflow-wrap:anywhere; white-space:normal; line-height:1.35;">${rank}. ${escapeHtml(p.name)}</div>
-                    <div style="font-weight:700; color:#8e3a3a; text-align:right;">${currentLang === 'en' ? `${maxSoFar - p.count} left` : `剩 ${maxSoFar - p.count} 次`}</div>
+                <div style="display:flex; align-items:baseline; gap:8px; font-size:13px; color:#5a4a3a; padding:5px 2px; border-bottom:1px dashed #e8dcc8;">
+                    <div style="flex:1; min-width:0; word-break:break-word; overflow-wrap:anywhere; line-height:1.35;">${rank}. ${escapeHtml(p.name)}</div>
+                    <div style="flex-shrink:0; font-weight:700; color:#8e3a3a;">${currentLang === 'en' ? `${maxSoFar - p.count} left` : `剩 ${maxSoFar - p.count} 次`}</div>
                 </div>
             `;
         }
@@ -7535,20 +7535,12 @@
                     ...missed.map((p, i) => `${i + 1}. ${p.name} 剩 ${maxSoFar - p.count} 次`)
                 ].filter(Boolean).join('\n'));
 
-                // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多
-                // （跟低傷名單同一套排版邏輯，但這裡不設 50 人上限——漏打名單需要看到全部人）
-                const missedColumns = [];
-                for (let i = 0; i < missed.length; i += 8) missedColumns.push(missed.slice(i, i + 8));
-
+                // 條列顯示：一人一行，名字在左、剩餘次數在右
                 const listHtml = missed.length === 0
                     ? `<div style="color:#2E7D32; font-weight:600; font-size:12.5px;">${t('missedAttackAllDone').replace('{n}', maxSoFar)}</div>`
                     : `
-                        <div style="display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px;">
-                            ${missedColumns.map((col, colIdx) => `
-                                <div style="flex:0 0 auto; width:132px; display:flex; flex-direction:column; gap:4px;">
-                                    ${col.map((p, i) => renderMissedRow(p, colIdx * 8 + i + 1, maxSoFar)).join('')}
-                                </div>
-                            `).join('')}
+                        <div style="display:flex; flex-direction:column;">
+                            ${missed.map((p, i) => renderMissedRow(p, i + 1, maxSoFar)).join('')}
                         </div>
                     `;
 

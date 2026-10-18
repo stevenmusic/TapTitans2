@@ -7610,7 +7610,8 @@
                 const missed = [...allPlayers]
                     .map(identity => ({ name: nameByIdentity.get(identity), count: cumCounts.get(identity) || 0, avg: avgDamageByPlayer.get(identity) || 0 }))
                     .filter(p => p.count < maxSoFar)
-                    .sort((a, b) => b.avg - a.avg); // 根據均傷排列：均傷高的排最前面
+                    // 剩餘次數多的排最前面（最需要催）；剩餘次數一樣再按均傷高低
+                    .sort((a, b) => (a.count - b.count) || (b.avg - a.avg));
                 // 一鍵複製用的文字，直接貼到公會群組
                 missedCopyTextByRound.set(roundNo, [
                     // 只寫等級與加成（例如 M-30丨爆發傷害），不寫日期與攻擊筆數

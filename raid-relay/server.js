@@ -1327,6 +1327,9 @@ async function saveRawRaidSnapshot(event, payload) {
 // 向官方訂閱這個公會的突襲事件。訂閱成功後官方會送一份 sub_start 完整快照
 // （王清單、部位、突襲設定，加成應該也在裡面）。新場次開打時只會收到精簡的 cycle_reset，
 // 沒有 sub_start，所以新場次開始時也要再訂閱一次，主動要一份完整快照
+// 診斷用：背景側錄實際收到哪些事件、訂閱結果如何（/watcher-debug 查看）
+const watcherDebug = { eventCounts: {}, lastEvents: [], lastSubscribe: null };
+
 function watcherSubscribe() {
   fetch(`${RAID_REST_BASE}/raid/subscribe`, {
     method: 'POST',
@@ -1341,6 +1344,7 @@ function watcherSubscribe() {
     } else {
       console.log(`[watcher] 訂閱成功：${text}`);
     }
+    watcherDebug.lastSubscribe = { at: new Date().toISOString(), status: resp.status, body: text.slice(0, 500) };
   }).catch((e) => console.error('[watcher] 訂閱請求失敗:', e));
 }
 
@@ -1537,6 +1541,14 @@ function startWatcher() {
 
   ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => watcherSocket.on(evt, (payload) => watcherHandleRaidSnapshot(payload, evt)));
   watcherSocket.on('attack', watcherHandleAttack);
+  // 不管官方送來什麼事件都記一筆，找出加成到底放在哪個事件（名稱不在上面清單裡的也存原始內容）
+  const knownEvents = new Set(['sub_start', 'start', 'sub_cycle', 'cycle_reset', 'attack']);
+  watcherSocket.onAny((eventName, payload) => {
+    watcherDebug.eventCounts[eventName] = (watcherDebug.eventCounts[eventName] || 0) + 1;
+    watcherDebug.lastEvents.unshift({ at: new Date().toISOString(), event: eventName, keys: payload && typeof payload === 'object' ? Object.keys(payload) : typeof payload });
+    watcherDebug.lastEvents.length = Math.min(watcherDebug.lastEvents.length, 30);
+    if (!knownEvents.has(eventName)) saveRawEventSample(eventName, payload && payload.raid_started_at, payload);
+  });
   watcherSocket.on('end', handleWatcherRaidEnd('end'));
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
@@ -1884,6 +1896,15 @@ app.get('/raid-morale-debug', async (req, res) => {
   await dbReady;
   const result = await db.execute('SELECT started_at, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT 20');
   res.json({ sessions: result.rows.map(r => ({ startedAt: r.started_at, fields: findMoraleFields(JSON.parse(r.data || 'null')) })) });
+});
+
+app.get('/watcher-debug', (req, res) => {
+  res.json({
+    serverCommit: (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7),
+    connected: !!(watcherSocket && watcherSocket.connected),
+    currentRaidStartedAt: watcherCurrentRaidStartedAt,
+    ...watcherDebug
+  });
 });
 
 // 診斷用：各場每種事件（sub_start／start／sub_cycle／cycle_reset／attack）第一次收到的原始內容

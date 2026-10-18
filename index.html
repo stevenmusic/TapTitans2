@@ -8296,7 +8296,7 @@
             if (!report.attackCount) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
             const a = analyzeReportCsv(report.csv);
             if (!a) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
-            raidReportCurrent = { session, report };
+            raidReportCurrent = { session, report, a };
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const buff = report.buffType && RAID_BUFF_ZH[report.buffType];
             const titleParts = [
@@ -8339,26 +8339,78 @@
             return ({ '頭部': '頭', '肚子': '肚', '左臂': '左肩', '右臂': '右肩', '左手': '左手', '右手': '右手', '左腿': '左腳', '右腿': '右腳' })[base] || base;
         }
 
+        // 戰報圖片：沿用戰報分析頁的舊版樣式（藍色系、摘要卡、表格），超過 25 人分成左右兩直排，
+        // 右下角標籤寫加成／士氣／關卡／日期
+        function buildRaidReportImageNode() {
+            const { session, report, a } = raidReportCurrent;
+            const SPLIT_AT = 25;
+            const players = a.players;
+            const twoCols = players.length > SPLIT_AT;
+            const maxCount = players.reduce((m, p) => Math.max(m, p.count), 0);
+            const s = a.summary;
+            const wrap = document.createElement('div');
+            wrap.style.cssText = `position:fixed; left:-10000px; top:0; width:${twoCols ? 980 : 480}px; background:#e3f2fd; padding:14px; box-sizing:border-box; font-family:inherit;`;
+            const rateCls = (r) => 'rate-cell' + (r > 5 ? ' rate-warning' : '');
+            const row = (p, i) => `<tr>
+                <td class="player-name" style="max-width:none;">${i + 1}. ${escapeHtml(p.player)}</td>
+                <td class="${p.count < maxCount / 2 ? 'rate-warning' : ''}">${p.count}</td>
+                <td class="${rateCls(p.rate)}" style="color:#d32f2f; font-weight:bold;">${formatRate(p.rate)}</td>
+                <td>${formatNum(p.net)}</td>
+                <td>${formatNum(p.avg)}</td></tr>`;
+            const totalRow = `<tr class="summary-row">
+                <td class="player-name" style="max-width:none;">總計 / 平均</td><td>${s.avgCount.toFixed(1)}</td>
+                <td class="${rateCls(s.rate)}" style="color:#d32f2f; font-weight:bold;">${formatRate(s.rate)}</td>
+                <td>${formatNum(s.total)}</td><td>${formatNum(s.avgHit)}</td></tr>`;
+            const table = (list, offset, withTotal) => `
+                <div class="analysis-table-wrap" style="flex:1; margin:0; max-width:none; overflow:visible;">
+                    <table class="analysis-table">
+                        <thead><tr><th>玩家</th><th>次數</th><th>誤傷率</th><th>總傷</th><th>均傷</th></tr></thead>
+                        <tbody>${list.map((p, i) => row(p, i + offset)).join('')}${withTotal ? totalRow : ''}</tbody>
+                    </table>
+                </div>`;
+            const tables = twoCols
+                ? `<div style="display:flex; gap:12px; align-items:flex-start;">${table(players.slice(0, SPLIT_AT), 0, false)}${table(players.slice(SPLIT_AT), SPLIT_AT, true)}</div>`
+                : table(players, 0, true);
+            const d = new Date(parseRaidSessionTs(session.startedAt));
+            const pad = n => String(n).padStart(2, '0');
+            const tags = [
+                report.buffType && RAID_BUFF_ZH[report.buffType] ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">${RAID_BUFF_ZH[report.buffType]}</span>` : '',
+                report.morale ? `<span style="color:#00897b;">士氣 +${report.morale.percent}%</span>` : '',
+                session.levelTier ? `<span style="color:#0d47a1;">M-${session.levelTier}</span>` : '',
+                `<span style="color:#5e7a9c;">${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}</span>`
+            ].filter(Boolean).join('');
+            wrap.innerHTML = `
+                <div class="analysis-summary" style="max-width:none; margin-bottom:12px;">
+                    <div class="summary-card"><div class="num">${s.players}</div><div class="label">${t('statPlayers')}</div></div>
+                    <div class="summary-card"><div class="num">${s.avgCount.toFixed(1)}</div><div class="label">${t('statAvgHits')}</div></div>
+                    <div class="summary-card ${s.rate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(s.rate)}</div><div class="label">${t('statOverallMissRate')}</div></div>
+                    <div class="summary-card"><div class="num">${formatNum(s.total)}</div><div class="label">${t('statTotalDmg')}</div></div>
+                    <div class="summary-card"><div class="num">${formatNum(s.avgHit)}</div><div class="label">${t('statAvgDmg')}</div></div>
+                </div>
+                ${tables}
+                <div style="display:flex; justify-content:flex-end; flex-wrap:wrap; gap:2px 12px; margin-top:12px; padding-right:4px; font-size:18px; font-weight:900; white-space:nowrap;">${tags}</div>`;
+            return wrap;
+        }
+
         function saveRaidReportImage() {
-            const area = document.getElementById('raid-report-export');
-            if (!area || !raidReportCurrent) return;
+            if (!raidReportCurrent) return;
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
             imgContainer.innerHTML = t('generatingAnalysisImage');
             modal.querySelector('[data-i18n="modalImageReady"]').textContent = t('modalReportReady');
             modal.style.display = 'flex';
             document.getElementById('btn-share-image').style.display = 'none';
-            html2canvas(area, {
-                useCORS: true, scale: 2, backgroundColor: '#fdf9f3',
-                onclone: (doc) => { doc.querySelectorAll('.raid-report-table td.name').forEach(td => { td.style.maxWidth = 'none'; }); }
-            }).then(canvas => {
+            const node = buildRaidReportImageNode();
+            document.body.appendChild(node);
+            html2canvas(node, { useCORS: true, scale: 2, backgroundColor: '#e3f2fd' }).then(canvas => {
+                node.remove();
                 imgContainer.innerHTML = '';
                 const img = document.createElement('img');
                 img.src = canvas.toDataURL('image/png');
                 imgContainer.appendChild(img);
                 currentShareableCanvas = canvas;
                 updateShareButtonVisibility();
-            }).catch(() => { alert(t('generateFailed')); closeModal(); });
+            }).catch(() => { node.remove(); alert(t('generateFailed')); closeModal(); });
         }
 
         let analysisReturnView = null; // 從突襲狀態的「戰報」按鈕過來時，返回鍵回到突襲狀態

@@ -7516,8 +7516,8 @@
                 cumulativeByRound.set(roundNo, new Map(runningTotal));
             });
 
-            // 最新一輪排最上面；只列出「有攻擊紀錄」的輪次，完全沒人出刀的輪次不會出現在這裡
-            const sortedRoundNos = [...ascendingRoundNos].reverse();
+            // 不分輪次：只看累計到最新一輪的結果，全部名單放在一起（剩餘次數＝到目前為止應有刀數－已出刀數）
+            const sortedRoundNos = [...ascendingRoundNos].reverse().slice(0, 1);
 
             missedCopyTextByRound = new Map();
             box.innerHTML = sortedRoundNos.map((roundNo) => {
@@ -7531,7 +7531,7 @@
                 missedCopyTextByRound.set(roundNo, [
                     // 只寫等級與加成（例如 M-30丨爆發傷害），不寫日期與攻擊筆數
                     [session.levelTier ? `M-${session.levelTier}` : '', session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : ''].filter(Boolean).join('丨'),
-                    `${t('cardUsageRound').replace('{n}', roundNo)} 漏打（${missed.length} 人）`,
+                    `漏打（${missed.length} 人）`,
                     ...missed.map((p, i) => `${i + 1}. ${p.name} 剩 ${maxSoFar - p.count} 次`)
                 ].filter(Boolean).join('\n'));
 
@@ -7555,7 +7555,7 @@
                 return `
                     <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
-                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${currentLang === 'en' ? `${missed.length} players` : `共 ${missed.length} 人`}</div>
                             ${missed.length ? `<button onclick="copyMissedRound(${roundNo})" style="font-size:12px; font-weight:700; color:#8e3a3a; background:#fff; border:1px solid #e0c4c0; border-radius:6px; padding:4px 10px; font-family:inherit; cursor:pointer;">📋 複製名單</button>` : ''}
                         </div>
                         ${listHtml}

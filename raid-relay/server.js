@@ -1328,7 +1328,7 @@ async function saveRawRaidSnapshot(event, payload) {
 // （王清單、部位、突襲設定，加成應該也在裡面）。新場次開打時只會收到精簡的 cycle_reset，
 // 沒有 sub_start，所以新場次開始時也要再訂閱一次，主動要一份完整快照
 // 診斷用：背景側錄實際收到哪些事件、訂閱結果如何（/watcher-debug 查看）
-const watcherDebug = { eventCounts: {}, lastEvents: [], lastSubscribe: null };
+const watcherDebug = { eventCounts: {}, lastEvents: [], lastSubscribe: null, lastConnectAt: null, lastError: null, lastDisconnect: null, startAttempts: 0 };
 
 function watcherSubscribe() {
   fetch(`${RAID_REST_BASE}/raid/subscribe`, {
@@ -1501,6 +1501,7 @@ function handleWatcherRaidEnd(reason) {
 }
 
 function startWatcher() {
+  watcherDebug.startAttempts++;
   if (!WATCHER_APP_TOKEN || !WATCHER_PLAYER_TOKEN) {
     console.warn('尚未設定 WATCHER_APP_TOKEN / WATCHER_PLAYER_TOKEN 環境變數，24小時背景側錄停用。');
     return;
@@ -1522,11 +1523,13 @@ function startWatcher() {
 
   watcherSocket.on('connect', () => {
     console.log('[watcher] 已連上 GameHive');
+    watcherDebug.lastConnectAt = new Date().toISOString();
     watcherConsecutiveFailures = 0;
     watcherSubscribe();
   });
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);
+    watcherDebug.lastError = { at: new Date().toISOString(), message: String(err && err.message), description: err && err.description ? String(err.description).slice(0, 300) : undefined };
     watcherConsecutiveFailures++;
     const delay = watcherNextBackoffMs();
     console.log(`[watcher] 第 ${watcherConsecutiveFailures} 次連續失敗，${Math.round(delay / 1000)} 秒後重試`);
@@ -1534,6 +1537,7 @@ function startWatcher() {
   });
   watcherSocket.on('disconnect', () => {
     console.log('[watcher] 斷線，準備重連');
+    watcherDebug.lastDisconnect = new Date().toISOString();
     watcherConsecutiveFailures++;
     const delay = watcherNextBackoffMs();
     watcherReconnectTimer = setTimeout(startWatcher, delay);
@@ -1902,6 +1906,8 @@ app.get('/watcher-debug', (req, res) => {
   res.json({
     serverCommit: (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7),
     connected: !!(watcherSocket && watcherSocket.connected),
+    tokensConfigured: !!(WATCHER_APP_TOKEN && WATCHER_PLAYER_TOKEN),
+    consecutiveFailures: watcherConsecutiveFailures,
     currentRaidStartedAt: watcherCurrentRaidStartedAt,
     ...watcherDebug
   });

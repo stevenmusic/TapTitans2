@@ -52,6 +52,7 @@
            ══════════════════════════════════════════════════════════ */
         #view-home {
             min-height: 100vh;
+            min-height: 100dvh;
             box-sizing: border-box;
             background-color: #fdf9f2;
             display: flex;
@@ -941,7 +942,7 @@
             /* 戰報分析：五張統計卡維持同一列 */
             .summary-card { min-width: 0; padding: 6px 2px; }
             .summary-card .num { font-size: 12.5px; }
-            .summary-card .label { font-size: 9px; }
+            .summary-card .label { font-size: 10px; }
         }
 
         /* 爆裂／苦痛／支援三個橫排套用跟牌組建構一樣的底色 */
@@ -2334,7 +2335,7 @@
             color: #8e3a3a;
         }
         .raid-target-banner b { font-weight: 800; }
-        .raid-target-parts { margin-top: 3px; font-size: 12.5px; }
+        .raid-target-parts { font-size: 13px; margin-left: 2px; }
 
         /* 部位卡片右上角的紅色 X：跟遊戲畫面一樣，代表幹部標記「禁打」，是官方資料，不是猜的 */
         .raid-part-cell { position: relative; }
@@ -2666,6 +2667,47 @@
             .raid-recent-item { font-size: 11.5px; padding: 6px 9px; }
             .raid-log-part-cell { font-size: 10.5px; }
             .btn-raid-connect, .btn-raid-demo, .btn-raid-tool { font-size: 12.5px; padding: 11px 4px; }
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           一般手機（寬度 < 420px）可讀性：原本很多次要文字只有 8～10.5px，
+           手機上要瞇眼才看得清楚，這裡統一拉高最小字級（≥ 10.5px，主要數字 ≥ 12px）。
+           420px 以上的大手機／平板有自己的放大規則，不受影響。
+           ══════════════════════════════════════════════════════════ */
+        @media (max-width: 419px) {
+            .home-eyebrow { font-size: 11px; }
+            .home-section-label { font-size: 12px; }
+            .home-footnote { font-size: 11px; }
+            .home-nav-desc { font-size: 12.5px; line-height: 1.5; -webkit-line-clamp: 3; line-clamp: 3; }
+            /* 首頁卡片會撐滿整個畫面，內容垂直置中、圖示與標題放大，卡片才不會下半部空空的 */
+            .home-nav-card { justify-content: center; gap: 10px; }
+            .home-nav-icon { width: 46px; height: 46px; border-radius: 13px; }
+            .home-nav-icon svg { width: 22px; height: 22px; }
+            .home-nav-title { font-size: 15.5px; }
+
+            .selected-part-badge { font-size: 11px; }
+            .summary-card .label { font-size: 10.5px; }
+
+            .abyss-spell-name { font-size: 11px; }
+            .abyss-checkpoint-btn { font-size: 12px; }
+            .tree-cat-total { font-size: 11px; }
+
+            .raid-settings-status-mini { font-size: 11.5px; }
+            .raid-boss-name { font-size: 15px; }
+            .raid-boss-ordinal { font-size: 12px; }
+            .raid-boss-hp-label { font-size: 11px; width: 28px; }
+            .raid-boss-hp-text { font-size: 11px; }
+            .raid-target-banner { font-size: 12.5px; }
+            .raid-part-name { font-size: 11.5px; }
+            .raid-part-hp { font-size: 13px; }
+            .raid-part-layer { font-size: 9.5px; }
+            .raid-part-skeleton-note { font-size: 10.5px; }
+            .raid-updated-at { font-size: 11px; }
+            .raid-recent-title { font-size: 13px; }
+            .raid-recent-item { font-size: 12px; padding: 6px 8px; }
+            .raid-recent-part { min-width: 56px; }
+            .raid-recent-dmg { width: 58px; }
+            .raid-log-part-cell { font-size: 10.5px; }
         }
     </style>
 </head>
@@ -3336,8 +3378,9 @@
                 raidStatusNoAppToken: 'Application Token 尚未核發，暫時無法連線真實資料',
                 raidStatusDemoRunning: '🎬 示範模式中（假資料）',
                 raidEmptyState: '尚未有任何突襲資料，請先連線或使用示範模式',
-                raidTargetArmorLabel: '🛡️ 優先拆除盔甲，先打這些部位（其他部位的肉體先不要打）：',
-                raidTargetFocusLabel: '💧 盔甲已全破，目前肉體血量最多、建議集火：',
+                raidTargetArmorLabel: '🛡️ 先拆盔甲（肉體先別打）：',
+                raidAllParts: '全部位',
+                raidTargetFocusLabel: '💧 盔甲全破，建議集火：',
                 raidNoBannedParts: '目前沒有偵測到需要優先處理的部位',
                 raidReminderFrenzy: '🟣 上線用瘋狂無效',
                 raidReminderMarch: '🟤 上線用凱旋行軍',
@@ -3352,7 +3395,7 @@
                 raidPartHandR: '右手', raidPartHandL: '左手',
                 raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊', raidPartBannedLabel: '禁打',
-                raidTargetSkeletonLabel: '🦴 全身部位已無盔甲與肉體，即將擊殺',
+                raidTargetSkeletonLabel: '🦴 全身只剩骨架，即將擊殺',
                 raidUpdatedAt: '最後更新',
                 raidPipUnsupported: '此瀏覽器不支援浮動小工具（建議使用 Android Chrome）',
                 raidNotifyGranted: '✓ 已開啟通知',
@@ -3506,8 +3549,9 @@
                 raidStatusNoAppToken: 'Application Token not issued yet — live data unavailable for now',
                 raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
                 raidEmptyState: 'No raid data yet. Connect or use Demo Mode to preview.',
-                raidTargetArmorLabel: '🛡️ Break armor first on these parts (avoid hitting body on other parts for now):',
-                raidTargetFocusLabel: '💧 All armor destroyed — focus this part (highest body HP):',
+                raidTargetArmorLabel: '🛡️ Break armor first (skip body):',
+                raidAllParts: 'All parts',
+                raidTargetFocusLabel: '💧 Armor gone — focus:',
                 raidNoBannedParts: 'No priority parts detected right now',
                 raidReminderFrenzy: '🟣 Use Frenzy now',
                 raidReminderMarch: '🟤 Use Triumphant March now',
@@ -3522,7 +3566,7 @@
                 raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
                 raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked', raidPartBannedLabel: 'Banned',
-                raidTargetSkeletonLabel: '🦴 All parts have no armor or body left — boss is about to die',
+                raidTargetSkeletonLabel: '🦴 Skeleton only — boss about to die',
                 raidUpdatedAt: 'Last updated',
                 raidPipUnsupported: 'Floating widget not supported in this browser (try Android Chrome)',
                 raidNotifyGranted: '✓ Notifications enabled',
@@ -4209,7 +4253,8 @@
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;
-                el.style.display = (key === view) ? 'block' : 'none';
+                // 首頁是直向 flex 版面（功能卡片平均撐滿整個畫面），不能被改成 block
+                el.style.display = (key === view) ? (key === 'home' ? 'flex' : 'block') : 'none';
             });
 
             window.scrollTo(0, 0);
@@ -6440,16 +6485,16 @@
                             <div style="display:flex; align-items:center; justify-content:center;">${cardUsageIconHtml(tc, 14)}</div>
                             ${displayRoundNos.map((roundNo) => {
                                 const usedSet = rounds.get(roundNo).get(name);
-                                if (!usedSet) return `<div style="text-align:center; font-size:8px; color:#c2b8a8;">－</div>`;
+                                if (!usedSet) return `<div style="text-align:center; font-size:10px; color:#c2b8a8;">－</div>`;
                                 return usedSet.has(tc.id)
-                                    ? `<div style="text-align:center; font-size:8px; font-weight:700; color:#2E7D32; background:#e6f4ea; border-radius:3px; padding:1px 0;">OK</div>`
-                                    : `<div style="text-align:center; font-size:9px; font-weight:700; color:#c0392b; background:#fdecec; border-radius:3px; padding:1px 0;">✕</div>`;
+                                    ? `<div style="text-align:center; font-size:10px; font-weight:700; color:#2E7D32; background:#e6f4ea; border-radius:3px; padding:2px 0;">OK</div>`
+                                    : `<div style="text-align:center; font-size:11px; font-weight:700; color:#c0392b; background:#fdecec; border-radius:3px; padding:1px 0;">✕</div>`;
                             }).join('')}
                         </div>
                     `).join('');
                     return `
                         <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:6px 6px;">
-                            <div style="font-size:11px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px;">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:9.5px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
+                            <div style="font-size:12px; font-weight:700; color:${miss > 0 ? '#8e3a3a' : '#5a4a3a'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px;">${escapeHtml(name)}<span style="font-weight:500; color:#a89a88; font-size:10.5px;"> 丨 ${t('cardUsageMissCountLabel').replace('{n}', miss)}</span></div>
                             ${rowsHtml}
                         </div>
                     `;
@@ -6923,7 +6968,7 @@
                     </div>
                     <div style="flex:1; text-align:center;">
                         <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                        <div style="font-size:10px; color:#a89a88; line-height:1.3;">（${escapeHtml(formatNum(avgDamage))}*${d.count}）</div>
+                        <div style="font-size:11px; color:#a89a88; line-height:1.3;">（${escapeHtml(formatNum(avgDamage))}*${d.count}）</div>
                     </div>
                 </div>
             `;
@@ -7171,7 +7216,7 @@
                     </div>
                     <div style="flex:1; text-align:center;">
                         <div style="font-size:14px; font-weight:800; color:#4a3a2a; line-height:1.3;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                        <div style="font-size:10px; color:#a89a88; line-height:1.3;">（${escapeHtml(formatNum(d.avgDamage))}*${d.count}）</div>
+                        <div style="font-size:11px; color:#a89a88; line-height:1.3;">（${escapeHtml(formatNum(d.avgDamage))}*${d.count}）</div>
                     </div>
                 </div>
             `;
@@ -7636,7 +7681,7 @@
                         }).join('');
                         return `
                             <div style="flex:1; max-width:90px; border:1px solid #e5dcd2; border-radius:8px; padding:4px 2px; text-align:center; background:#fdfaf5;">
-                                <div style="font-size:9.5px; color:#a89a88; margin-bottom:2px;">${escapeHtml(raidPartLabel(partKey))}</div>
+                                <div style="font-size:10.5px; color:#a89a88; margin-bottom:2px;">${escapeHtml(raidPartLabel(partKey))}</div>
                                 ${cellRows}
                             </div>
                         `;
@@ -7797,7 +7842,7 @@
                     </div>
                     <div style="flex:1; min-width:0; text-align:right;">
                         <div style="font-size:13px; font-weight:800; color:#4a3a2a; line-height:1.3; white-space:nowrap;">${escapeHtml(formatNum(d.totalDamage))}</div>
-                        <div style="font-size:10px; color:#a89a88; line-height:1.3; white-space:nowrap;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
+                        <div style="font-size:11px; color:#a89a88; line-height:1.3; white-space:nowrap;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
                     </div>
                 </div>
             `;
@@ -8686,10 +8731,10 @@
             // 禁打部位不用再另外顯示一行提示了——8個部位圖示本身已經會直接標紅「禁打」
             if (target.armoredParts.length > 0) {
                 bannerEl.className = 'raid-target-banner armor';
-                bannerEl.innerHTML = `<div>${t('raidTargetArmorLabel')}</div><div class="raid-target-parts"><b>${target.armoredParts.map(raidPartLabel).join('、')}</b></div>`;
+                bannerEl.innerHTML = `${t('raidTargetArmorLabel')}<b class="raid-target-parts">${target.armoredParts.length >= RAID_PARTS.length ? t('raidAllParts') : target.armoredParts.map(raidPartLabel).join('、')}</b>`;
             } else if (!target.allBodyDepleted) {
                 bannerEl.className = 'raid-target-banner focus';
-                bannerEl.innerHTML = `<div>${t('raidTargetFocusLabel')}</div><div class="raid-target-parts"><b>${raidPartLabel(target.maxBodyPart)}</b></div>`;
+                bannerEl.innerHTML = `${t('raidTargetFocusLabel')}<b class="raid-target-parts">${raidPartLabel(target.maxBodyPart)}</b>`;
             } else {
                 bannerEl.className = 'raid-target-banner focus';
                 bannerEl.innerHTML = `<div>${t('raidTargetSkeletonLabel')}</div>`;

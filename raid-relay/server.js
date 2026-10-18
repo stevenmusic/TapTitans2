@@ -1281,9 +1281,11 @@ loadRaidBuffCache().then(backfillRaidBuffTypes);
 
 async function saveRawEventSample(event, startedAt, payload) {
   try {
-    if (typeof startedAt !== 'string' || !startedAt) return;
+    // 事件本身沒帶場次時間（例如部分 sub_start）就歸到目前追蹤中的場次，不要整筆丟掉
+    if (typeof startedAt !== 'string' || !startedAt) startedAt = watcherCurrentRaidStartedAt || 'unknown';
+    // sub_start 帶著全部王的資料，很容易超過幾萬字；上限放寬，只防止真的異常大的資料
     const json = JSON.stringify(stripPartsForSnapshot(payload));
-    if (json.length > 30000) return;
+    if (json.length > 2000000) return;
     await dbReady;
     await db.execute({
       sql: 'INSERT OR IGNORE INTO raid_event_samples (started_at, event, captured_at, data) VALUES (?, ?, ?, ?)',
@@ -1889,7 +1891,10 @@ app.get('/raid-event-samples', async (req, res) => {
   await dbReady;
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
   const result = await db.execute({ sql: 'SELECT started_at, event, captured_at, data FROM raid_event_samples ORDER BY captured_at DESC LIMIT ?', args: [limit] });
-  res.json({ samples: result.rows.map(r => ({ startedAt: r.started_at, event: r.event, capturedAt: r.captured_at, data: JSON.parse(r.data || 'null') })) });
+  res.json({
+    serverCommit: (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7), // Render 部署的版本，確認是不是最新版
+    samples: result.rows.map(r => ({ startedAt: r.started_at, event: r.event, capturedAt: r.captured_at, data: JSON.parse(r.data || 'null') }))
+  });
 });
 
 // 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的

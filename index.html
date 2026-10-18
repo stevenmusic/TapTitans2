@@ -6825,6 +6825,16 @@
             return `<svg width="${totalWidth}" height="${size}" viewBox="0 0 ${totalWidth} ${size}" style="vertical-align:1px;" aria-hidden="true">${rects}</svg>`;
         }
 
+        // 玩家識別：優先用玩家編號（改名也不會變）。沒有編號的紀錄（例如從截圖手動補登的）
+        // 如果名字跟某個有編號的玩家相同，就併到那個人身上，不要分成兩個人列出
+        function makePlayerIdentityResolver(attacks) {
+            const codeByName = new Map();
+            (serverAllPlayersCache || []).forEach(p => { if (p.playerCode && p.name) codeByName.set(p.name, p.playerCode); });
+            [...(attacks || [])].sort((x, y) => (x.ts || 0) - (y.ts || 0))
+                .forEach(a => { if (a.playerCode && a.player) codeByName.set(a.player, a.playerCode); });
+            return (a) => a.playerCode || codeByName.get(a.player) || a.player;
+        }
+
         function buildRaidLogRanking(keyword) {
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
@@ -6837,8 +6847,9 @@
             // 沒有編號的舊資料（欄位還沒補齊之前留下來的）才退回用名稱識別。
             const attacksByIdentity = new Map(); // identity -> attacks[]
             const latestByIdentity = new Map(); // identity -> { ts, name }
+            const identityOfAttack = makePlayerIdentityResolver(log);
             log.forEach((a) => {
-                const identity = a.playerCode || a.player;
+                const identity = identityOfAttack(a);
                 if (!attacksByIdentity.has(identity)) attacksByIdentity.set(identity, []);
                 attacksByIdentity.get(identity).push(a);
                 const latest = latestByIdentity.get(identity);
@@ -7434,10 +7445,16 @@
                     });
                     return [...latest.entries()].map(([identity, v]) => ({ identity, name: v.name }));
                 })()
-                : serverAllPlayersCache.map(p => ({ identity: p.playerCode || p.name, name: p.name }));
+                : (() => {
+                    // 沒有編號、但名字跟有編號的成員相同（手動補登造成）→ 視為同一人，不要多列一個
+                    const codedNames = new Set(serverAllPlayersCache.filter(p => p.playerCode).map(p => p.name));
+                    return serverAllPlayersCache
+                        .filter(p => p.playerCode || !codedNames.has(p.name))
+                        .map(p => ({ identity: p.playerCode || p.name, name: p.name }));
+                })();
             const allPlayers = new Set(roster.map(r => r.identity));
             const nameByIdentity = new Map(roster.map(r => [r.identity, r.name]));
-            const identityOf = (a) => a.playerCode || a.player;
+            const identityOf = makePlayerIdentityResolver(attacks);
 
             // 每個人在「這一場」的均傷（總傷害 ÷ 出刀次數；完全沒出刀就是 0），
             // 用來排序漏打名單——均傷高的排前面，方便公會長優先盯著本來很能打、卻漏刀的人

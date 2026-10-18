@@ -3796,7 +3796,6 @@
         /* ── 最上方功能列：每一頁的標題列都換成同一條功能列（深淵模式詳細頁保留返回鍵）── */
         const APP_NAV_ITEMS = [
             { view: 'raidStatus', zh: '突襲', en: 'Raid', color: '#c62828' },
-            { view: 'analysis', zh: '戰報', en: 'Report', color: '#0d47a1' },
             { view: 'deck', zh: '牌組', en: 'Decks', color: '#8b263e' },
             { view: 'raidCrystal', zh: '水晶', en: 'Crystal', color: '#1565c0' },
             { view: 'abyssList', zh: '深淵', en: 'Abyss', color: '#5e35b1' }
@@ -8247,7 +8246,7 @@
             if (activeIdx >= SHARED_SESSION_RECENT_COUNT) sharedSessionMenuShowOlder = true; // 選到的在收合區時自動展開
             const row = (x, i) => {
                 const isActive = i === activeIdx;
-                return `<button onclick="selectSharedSession(${i})" style="width:100%; text-align:left; padding:8px 12px; border-radius:10px; border:1.5px solid ${isActive ? '#8b263e' : '#e5d5c0'}; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆攻擊）</button>`;
+                return `<div style="display:flex; gap:6px; align-items:stretch;"><button onclick="selectSharedSession(${i})" style="flex:1; min-width:0; text-align:left; padding:8px 12px; border-radius:10px; border:1.5px solid ${isActive ? '#8b263e' : '#e5d5c0'}; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆攻擊）</button><button onclick="saveSessionReportImage(${i})" title="把這一場的戰報存成圖片" style="flex:0 0 auto; padding:0 14px; border-radius:10px; border:1.5px solid #2E7D32; background:#eef6ee; color:#2E7D32; font-size:13px; font-weight:800; font-family:inherit; cursor:pointer; white-space:nowrap;">戰報</button></div>`;
             };
             const recent = sessions.slice(0, SHARED_SESSION_RECENT_COUNT).map((x, i) => row(x, i)).join('');
             const olderList = sessions.slice(SHARED_SESSION_RECENT_COUNT);
@@ -8361,28 +8360,43 @@
             };
         }
 
+        async function loadSessionReport(session) {
+            const key = `${session.startedAt}|${session.attackCount}`;
+            let report = raidReportCache.get(key);
+            if (!report) {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const resp = await fetch(`${relayUrl}/raid-report?session=${encodeURIComponent(session.startedAt)}&format=json`);
+                if (!resp.ok) throw new Error(resp.status);
+                report = await resp.json();
+                raidReportCache.set(key, report);
+            }
+            if (!report.buffType) report.buffType = session.buffType || sessionBuffOverride(session.startedAt);
+            return report;
+        }
+
+        // 場次右邊的「戰報」：直接把這一場的戰報存成圖片（含關卡、加成、士氣）
+        async function saveSessionReportImage(idx) {
+            const session = buildRaidSessions()[idx];
+            if (!session) return;
+            let report;
+            try { report = await loadSessionReport(session); }
+            catch (e) { alert('取得戰報失敗，請稍後再試'); return; }
+            const a = report.attackCount ? analyzeReportCsv(report.csv) : null;
+            if (!a) { alert('這一場目前沒有攻擊紀錄'); return; }
+            raidReportCurrent = { session, report, a };
+            saveRaidReportImage();
+        }
+
         async function renderRaidReportPanel(session) {
             const box = document.getElementById('raid-report-export');
             const actions = document.getElementById('raid-report-actions');
             actions.style.display = 'none';
             if (!session) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">目前還沒有場次</div>'; return; }
-            const key = `${session.startedAt}|${session.attackCount}`;
-            let report = raidReportCache.get(key);
-            if (!report) {
-                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
-                try {
-                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                    const resp = await fetch(`${relayUrl}/raid-report?session=${encodeURIComponent(session.startedAt)}&format=json`);
-                    if (!resp.ok) throw new Error(resp.status);
-                    report = await resp.json();
-                    raidReportCache.set(key, report);
-                } catch (e) {
-                    box.innerHTML = '<div style="font-size:12px; color:#c0392b;">取得戰報失敗，請稍後再試</div>';
-                    return;
-                }
-            }
+            let report;
+            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
+            try { report = await loadSessionReport(session); }
+            catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">取得戰報失敗，請稍後再試</div>'; return; }
             if (!report.attackCount) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
-            if (!report.buffType) report.buffType = session.buffType || sessionBuffOverride(session.startedAt);
             const a = analyzeReportCsv(report.csv);
             if (!a) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
             raidReportCurrent = { session, report, a };

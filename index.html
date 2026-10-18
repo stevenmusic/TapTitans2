@@ -7445,6 +7445,13 @@
                 return;
             }
 
+            // 已離開公會的人不要列進來：只算「這一場或上一場（有紀錄的）有出過刀」的成員，
+            // 連續兩場都沒出刀就視為已不在公會
+            const sessionIdx = sessions.findIndex(x => x.startedAt === session.startedAt);
+            const prevSession = sessions.slice(sessionIdx + 1).find(x => (x.attackCount || (x.attacks || []).length) > 0);
+            const prevAttacks = prevSession ? ((await ensureSessionAttacksLoaded(prevSession.startedAt)) || []) : [];
+            const recentAttacks = [...attacks, ...prevAttacks];
+
             // 公會成員名單：不能只看這一場的攻擊紀錄，不然整場完全沒出刀的人
             // 根本不會出現在 attacks 裡、也就永遠不會被列進漏打名單。
             // 改成用「歷史所有場次曾經出現過的人」當作成員名單（伺服器 /raid-players 算好的，
@@ -7469,9 +7476,11 @@
                         .filter(p => p.playerCode || !codedNames.has(p.name))
                         .map(p => ({ identity: p.playerCode || p.name, name: p.name }));
                 })();
-            const allPlayers = new Set(roster.map(r => r.identity));
-            const nameByIdentity = new Map(roster.map(r => [r.identity, r.name]));
-            const identityOf = makePlayerIdentityResolver(attacks);
+            const identityOf = makePlayerIdentityResolver(recentAttacks);
+            const activeIdentities = new Set(recentAttacks.map(identityOf));
+            const activeRoster = roster.filter(r => activeIdentities.has(r.identity));
+            const allPlayers = new Set(activeRoster.map(r => r.identity));
+            const nameByIdentity = new Map(activeRoster.map(r => [r.identity, r.name]));
 
             // 每個人在「這一場」的均傷（總傷害 ÷ 出刀次數；完全沒出刀就是 0），
             // 用來排序漏打名單——均傷高的排前面，方便公會長優先盯著本來很能打、卻漏刀的人

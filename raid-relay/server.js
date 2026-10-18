@@ -1844,17 +1844,17 @@ app.get('/raid-report/view', async (req, res) => {
   const BUFF_COLOR = { burstDamage: '#d32f2f', burstChance: '#d32f2f', afflictionDamage: '#1976d2', afflictionChance: '#1976d2', support: '#2E7D32', timeBoost: '#ef8f00' };
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cards = reports.map((r, i) => `
-    <div style="border:1px solid #ccc; border-radius:8px; padding:12px; margin-bottom:12px;">
-      <p><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc(r.startedAt || '')}（${r.attackCount} 筆攻擊、${r.playerCount} 位玩家）　${r.buffType && BUFF_ZH[r.buffType] ? `<b style="color:${BUFF_COLOR[r.buffType]};">加成：${BUFF_ZH[r.buffType]}</b>` : '加成：未偵測到'}　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
-      <button onclick="copyReport(${i}, this)" style="padding:8px 14px;">複製戰報</button>
+    <div style="border:1px solid #ddd; border-radius:10px; padding:10px; margin-bottom:10px; background:#fff;">
+      <p style="margin:0 0 6px;"><b>${r.levelTier ? `M-${r.levelTier}` : '未知等級'}</b>　${esc((r.startedAt || '').replace('T', ' ').slice(0, 16))} UTC（${r.attackCount} 筆、${r.playerCount} 人）<br>　${r.buffType && BUFF_ZH[r.buffType] ? `<b style="color:${BUFF_COLOR[r.buffType]};">加成：${BUFF_ZH[r.buffType]}</b>` : '加成：未偵測到'}　士氣加成：${r.morale ? `${r.morale.percent}%` : '未找到'}</p>
+      <button onclick="copyReport(${i}, this)" style="padding:6px 14px; font-size:14px;">複製戰報</button>
       <a href="/raid-report?session=${encodeURIComponent(r.startedAt || '')}" target="_blank" style="margin-left:10px;">開啟 CSV</a>
-      <details open style="margin-top:8px;"><summary>CSV 內容${r.morale ? `（士氣 +${r.morale.percent}%）` : ''}</summary>
-        <textarea id="rep-${i}" readonly onclick="this.select()" style="width:100%; height:160px; font-size:12px; box-sizing:border-box;">${esc(r.csv)}</textarea>
+      <details style="margin-top:6px;"><summary>CSV 內容${r.morale ? `（士氣 +${r.morale.percent}%）` : ''}</summary>
+        <textarea id="rep-${i}" readonly onclick="this.select()" style="width:100%; height:140px; font-size:11px; box-sizing:border-box;">${esc(r.csv)}</textarea>
       </details>
     </div>`).join('');
   res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-    <body style="font-family:sans-serif; padding:24px; line-height:1.6;">
-      <h2>每場戰報（貼到「戰報分析」頁）</h2>
+    <body style="font-family:-apple-system, sans-serif; padding:12px; margin:0; line-height:1.5; font-size:14px; background:#f6f3ee;">
+      <h2 style="font-size:17px; margin:4px 0 10px;">每場戰報（貼到「戰報分析」頁）</h2>
       ${cards || '<p>目前還沒有任何攻擊紀錄</p>'}
       <script>
         function copyReport(i, btn) {

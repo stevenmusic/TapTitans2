@@ -492,11 +492,19 @@
         }
         .tier-stage-select:focus { outline: none; }
 
+        /* 戰報分析工具列：第一列四個選單平分寬度，第二列清除／儲存圖片平分 */
+        .analysis-controls { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-bottom: 8px; }
+        .analysis-controls .tier-stage-select { flex: 1 1 0; width: auto; min-width: 0; min-height: 40px; }
+        .analysis-controls .btn-analysis { min-height: 40px; }
+        .analysis-controls-break { flex-basis: 100%; height: 0; }
+        #analysis-morale-input { cursor: text; }
+        #analysis-morale-input::placeholder { color: rgba(255,255,255,0.85); }
+
         .analysis-empty {
             text-align: center;
             color: #7a93b3;
             font-size: 13px;
-            padding: 60px 20px;
+            padding: 28px 20px;
             line-height: 1.8;
             width: 100%;
             margin: 0 auto;
@@ -542,10 +550,9 @@
             border-collapse: collapse;
             background: #ffffff;
             font-size: 12px;
-            min-width: 380px;
         }
         .analysis-table th, .analysis-table td {
-            padding: 8px 6px;
+            padding: 7px 4px;
             text-align: center;
             border-bottom: 1px solid #eef4fb;
             white-space: nowrap;
@@ -562,7 +569,7 @@
         .analysis-table tbody tr:nth-child(even) { background: #f5f9ff; }
         .analysis-table tbody tr:active { background: #e3edfb; }
         .analysis-table .miss-value { color: #d32f2f; font-weight: 700; }
-        .analysis-table .player-name { text-align: left; font-weight: 700; }
+        .analysis-table .player-name { text-align: left; font-weight: 700; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
         .analysis-table .summary-row {
             background: #e3edfb;
             font-weight: 900;
@@ -926,6 +933,15 @@
            這裡把卡槽區塊縮窄一點，配合原本 overflow-x:auto 讓多出來的卡槽用捲動的方式呈現 */
         @media (max-width: 359px) {
             .crystal-slots { width: 176px; }
+            /* 牌組建構：窄螢幕縮小選單／備註／加減欄，把空間讓給卡片格（不然卡片只剩 20px） */
+            .selects-col { width: 60px; }
+            .tier-memo-col { width: 46px; margin: 13px 2px 0 2px; }
+            .tier-control-col { width: 34px; }
+            .tier-row { padding: 6px 4px; gap: 3px; }
+            /* 戰報分析：五張統計卡維持同一列 */
+            .summary-card { min-width: 0; padding: 6px 2px; }
+            .summary-card .num { font-size: 12.5px; }
+            .summary-card .label { font-size: 9px; }
         }
 
         /* 爆裂／苦痛／支援三個橫排套用跟牌組建構一樣的底色 */
@@ -996,26 +1012,26 @@
         .boss-config-container {
             background-color: #f9fbfd;
             border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 16px;
-            margin: 0 auto 20px auto;
+            border-radius: 14px;
+            padding: 10px 12px;
+            margin: 0 auto 12px auto;
             width: 100%;
             max-width: 600px;
             box-sizing: border-box;
             box-shadow: 0 2px 8px rgba(13,71,161,0.05);
         }
         .boss-config-title {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             color: #2d3748;
-            margin-bottom: 12px;
+            margin-bottom: 4px;
         }
         .boss-row {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 10px;
-            padding: 12px 0;
+            gap: 8px;
+            padding: 7px 0;
             border-bottom: 1px dashed #e2e8f0;
         }
         .boss-row:last-child { border-bottom: none; }
@@ -1035,7 +1051,7 @@
             border-radius: 8px;
             font-size: 12px;
             font-weight: 700;
-            min-width: 96px;
+            min-width: 84px;
             flex-shrink: 0;
             background-color: #eef2f9;
             color: #1e3a5f;
@@ -1063,17 +1079,14 @@
             border: 1px solid #d9c7a1;
             background-color: #fffaf0;
             color: #5a4a42;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            cursor: pointer;
+            cursor: default;
             user-select: none;
             white-space: nowrap;
             min-width: 0;
             text-align: center;
             transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
-        }
-        .pill-btn:active {
-            transform: scale(0.96);
         }
         .pill-btn.active {
             background: linear-gradient(135deg, #f3cd6e 0%, #c9971f 100%);
@@ -2871,11 +2884,11 @@
                 <div class="analysis-toolbar" style="flex-direction: column;">
 
                     <textarea id="csv-text-input"
-                              style="width: 100%; height: 120px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 10px; box-sizing: border-box; resize: vertical; margin-bottom: 5px;"
+                              style="width: 100%; height: 88px; font-size: 12px; padding: 8px; border: 1px solid #c9ddf2; border-radius: 10px; box-sizing: border-box; resize: vertical; margin-bottom: 6px;"
                               placeholder="請將 CSV 內容直接貼上此處，貼上後將自動分析..." data-i18n-placeholder="csvPlaceholder"></textarea>
 
-                    <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 12px; flex-wrap: wrap;">
-                        <select class="tier-stage-select" id="analysis-buff-select" title="突襲加成" style="flex:0 0 74px; width:74px;" onchange="onBuffSelect()">
+                    <div class="analysis-controls">
+                        <select class="tier-stage-select" id="analysis-buff-select" title="突襲加成" onchange="onBuffSelect()">
                             <option value="">加成</option>
                             <option value="burstDamage">爆發傷害</option>
                             <option value="burstChance">爆發機會</option>
@@ -2884,7 +2897,7 @@
                             <option value="support">支援</option>
                             <option value="timeBoost">時間增益</option>
                         </select>
-                        <input type="text" inputmode="decimal" class="tier-stage-select" id="analysis-morale-input" placeholder="士氣%" title="士氣加成 %" maxlength="5" style="cursor:text;" oninput="onMoraleInput()">
+                        <input type="text" inputmode="decimal" class="tier-stage-select" id="analysis-morale-input" placeholder="士氣%" title="士氣加成 %" maxlength="5" oninput="onMoraleInput()">
                         <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
                             <option value="" data-i18n="tierPlaceholder">Tier</option>
                             <option value="1">1</option>
@@ -2895,6 +2908,7 @@
                             <option value="M">M</option>
                         </select>
                         <select class="tier-stage-select" id="analysis-stage-select"></select>
+                        <div class="analysis-controls-break"></div>
                         <button class="btn-analysis clear" onclick="clearAnalysisData()" style="flex: 1;" data-i18n="btnClear">清除</button>
                         <button class="btn-analysis export" onclick="exportAnalysisImage()" style="flex: 1;" data-i18n="btnSaveImage">儲存圖片</button>
                     </div>
@@ -3195,7 +3209,7 @@
                         <button id="attacklog-reload-btn" onclick="reloadAttackLogPanel()" style="font-size:19px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:8px; width:36px; height:36px; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; line-height:1;"><span id="attacklog-reload-icon" style="display:inline-block;">🔄</span></button>
                     </div>
                     <div id="raid-session-menu" style="display:none; width:100%; margin-bottom:10px;"></div>
-                    <div id="raid-session-active-bar" style="display:none; width:100%; margin-bottom:10px; padding:8px 10px; background:#f0e6d2; border-radius:8px; align-items:center; justify-content:space-between; gap:8px;">
+                    <div id="raid-session-active-bar" style="display:none; width:100%; margin-bottom:10px; padding:8px 10px; box-sizing:border-box; background:#f0e6d2; border-radius:8px; align-items:center; justify-content:space-between; gap:8px;">
                         <span id="raid-session-active-label" style="font-size:12px; color:#6b4a2a; font-weight:700;"></span>
                         <button onclick="clearRaidSessionFilter()" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:3px 8px; flex-shrink:0;">返回全部場次</button>
                     </div>
@@ -4189,6 +4203,8 @@
 
         function showView(view) {
             currentView = view;
+            const reportModal = document.getElementById('raid-report-modal');
+            if (reportModal) reportModal.remove(); // 切換頁面時順便關掉戰報彈窗，不要蓋在別的頁面上
             const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
@@ -4246,10 +4262,6 @@
             const targetView = HASH_VIEW_MAP[window.location.hash.replace('#', '')];
             showView(targetView || 'home');
 
-            document.querySelectorAll('.pill-btn').forEach(btn => {
-                btn.addEventListener('click', function() { this.classList.toggle('active'); });
-            });
-
             setTimeout(() => window.scrollTo(0, 0), 60);
             setTimeout(() => window.scrollTo(0, 0), 300);
             setTimeout(syncCardPoolCardSize, 300);
@@ -4259,6 +4271,34 @@
             syncCardPoolCardSize();
             syncHeaderHeight();
         });
+
+        /* 自動更新：GitHub Pages 會讓瀏覽器快取網頁約 10 分鐘，加到主畫面的 App 也常直接沿用舊畫面。
+           打開網頁、或從背景切回來時，略過快取抓一份最新的 index.html，跟目前這頁的主程式比對，
+           不一樣就代表有新版，重新整理一次（cache:'reload' 會順便把瀏覽器快取更新成新版）。
+           用 sessionStorage 記住剛重新整理過，避免伺服器兩邊版本不一致時無限重新整理。 */
+        function getMainInlineScriptText(doc) {
+            let longest = '';
+            doc.querySelectorAll('script:not([src])').forEach(sc => { if (sc.textContent.length > longest.length) longest = sc.textContent; });
+            return longest;
+        }
+        let lastUpdateCheckAt = 0;
+        async function checkForNewVersion() {
+            if (location.protocol === 'file:' || Date.now() - lastUpdateCheckAt < 60000) return;
+            lastUpdateCheckAt = Date.now();
+            try {
+                const resp = await fetch(location.pathname, { cache: 'reload' });
+                if (!resp.ok) return;
+                const fresh = new DOMParser().parseFromString(await resp.text(), 'text/html');
+                const freshScript = getMainInlineScriptText(fresh);
+                if (!freshScript || freshScript === getMainInlineScriptText(document)) return;
+                const lastReload = Number(sessionStorage.getItem('tt2_version_reload_at') || 0);
+                if (Date.now() - lastReload < 5 * 60000) return;
+                sessionStorage.setItem('tt2_version_reload_at', String(Date.now()));
+                location.reload();
+            } catch (e) { /* 離線或抓不到就算了，下次再檢查 */ }
+        }
+        window.addEventListener('load', () => setTimeout(checkForNewVersion, 1500));
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(); });
 
         window.addEventListener('load', () => window.scrollTo(0, 0));
         window.addEventListener('pageshow', (e) => {
@@ -4648,6 +4688,11 @@
             dateEl.style.fontWeight = '900';
             dateEl.style.color = '#5e7a9c';
             wrap.appendChild(dateEl);
+
+            // 標籤多（加成／士氣／關卡／日期）時不要把單一標籤折成兩行，放不下就整個換行
+            wrap.style.flexWrap = 'wrap';
+            wrap.style.rowGap = '2px';
+            Array.from(wrap.children).forEach(el => { el.style.whiteSpace = 'nowrap'; el.style.fontSize = '17px'; });
 
             return wrap;
         }

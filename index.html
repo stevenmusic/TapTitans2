@@ -7389,6 +7389,23 @@
             renderMissedAttackList();
         }
 
+        let missedCopyTextByRound = new Map();
+        async function copyMissedRound(roundNo) {
+            const text = missedCopyTextByRound.get(roundNo);
+            if (!text) return;
+            let ok = false;
+            try { await navigator.clipboard.writeText(text); ok = true; }
+            catch (e) {
+                const ta = document.createElement('textarea');
+                ta.value = text; document.body.appendChild(ta);
+                ta.select(); ta.setSelectionRange(0, text.length);
+                try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+                document.body.removeChild(ta);
+            }
+            if (ok) showPlayerCopyToastLike('已複製漏打名單，可以直接貼到群組');
+            else prompt('這個瀏覽器不允許自動複製，請手動複製：', text);
+        }
+
         function renderMissedRow(p, rank, maxSoFar) {
             return `
                 <div style="font-size:12px; color:#5a4a3a; padding:4px 6px; background:#fff; border:1px solid #ece3d4; border-radius:6px;">
@@ -7493,6 +7510,7 @@
             // 最新一輪排最上面；只列出「有攻擊紀錄」的輪次，完全沒人出刀的輪次不會出現在這裡
             const sortedRoundNos = [...ascendingRoundNos].reverse();
 
+            missedCopyTextByRound = new Map();
             box.innerHTML = sortedRoundNos.map((roundNo) => {
                 const maxSoFar = RAID_ATTACKS_PER_ROUND * roundNo; // 到這一輪為止，滿刀應該累計幾次
                 const cumCounts = cumulativeByRound.get(roundNo);
@@ -7500,6 +7518,12 @@
                     .map(identity => ({ name: nameByIdentity.get(identity), count: cumCounts.get(identity) || 0, avg: avgDamageByPlayer.get(identity) || 0 }))
                     .filter(p => p.count < maxSoFar)
                     .sort((a, b) => b.avg - a.avg); // 根據均傷排列：均傷高的排最前面
+                // 一鍵複製用的文字，直接貼到公會群組
+                missedCopyTextByRound.set(roundNo, [
+                    `${formatSessionLabel(session)}`,
+                    `${t('cardUsageRound').replace('{n}', roundNo)} 漏打（${missed.length} 人）`,
+                    ...missed.map((p, i) => `${i + 1}. ${p.name} 漏 ${maxSoFar - p.count} 次`)
+                ].join('\n'));
 
                 // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多
                 // （跟低傷名單同一套排版邏輯，但這裡不設 50 人上限——漏打名單需要看到全部人）
@@ -7520,7 +7544,10 @@
 
                 return `
                     <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
-                        <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageRound').replace('{n}', roundNo)}</div>
+                            ${missed.length ? `<button onclick="copyMissedRound(${roundNo})" style="font-size:12px; font-weight:700; color:#8e3a3a; background:#fff; border:1px solid #e0c4c0; border-radius:6px; padding:4px 10px; font-family:inherit; cursor:pointer;">📋 複製名單</button>` : ''}
+                        </div>
                         ${listHtml}
                     </div>
                 `;

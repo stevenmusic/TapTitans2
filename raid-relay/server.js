@@ -1322,9 +1322,31 @@ async function saveRawRaidSnapshot(event, payload) {
   }
 }
 
+// 向官方訂閱這個公會的突襲事件。訂閱成功後官方會送一份 sub_start 完整快照
+// （王清單、部位、突襲設定，加成應該也在裡面）。新場次開打時只會收到精簡的 cycle_reset，
+// 沒有 sub_start，所以新場次開始時也要再訂閱一次，主動要一份完整快照
+function watcherSubscribe() {
+  fetch(`${RAID_REST_BASE}/raid/subscribe`, {
+    method: 'POST',
+    headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
+  }).then(async (resp) => {
+    const text = await resp.text();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) { /* ignore */ }
+    if (!resp.ok || (parsed && parsed._error) || (parsed && parsed.ok && parsed.ok.length === 0)) {
+      console.error(`[watcher] 訂閱失敗：${text}`);
+    } else {
+      console.log(`[watcher] 訂閱成功：${text}`);
+    }
+  }).catch((e) => console.error('[watcher] 訂閱請求失敗:', e));
+}
+
 function watcherHandleRaidSnapshot(payload, event) {
   saveRawRaidSnapshot(event, payload);
   saveRawEventSample(event, payload && payload.raid_started_at, payload);
+  // 新一輪開始（cycle_reset）時重新訂閱，拿一份含突襲設定（加成）的 sub_start 完整快照
+  if (event === 'cycle_reset') setTimeout(watcherSubscribe, 3000);
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
   if (payload && typeof payload.raid_started_at === 'string') {
@@ -1495,20 +1517,7 @@ function startWatcher() {
   watcherSocket.on('connect', () => {
     console.log('[watcher] 已連上 GameHive');
     watcherConsecutiveFailures = 0;
-    fetch(`${RAID_REST_BASE}/raid/subscribe`, {
-      method: 'POST',
-      headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player_tokens: [WATCHER_PLAYER_TOKEN] })
-    }).then(async (resp) => {
-      const text = await resp.text();
-      let parsed = null;
-      try { parsed = JSON.parse(text); } catch (e) { /* ignore */ }
-      if (!resp.ok || (parsed && parsed._error) || (parsed && parsed.ok && parsed.ok.length === 0)) {
-        console.error(`[watcher] 訂閱失敗：${text}`);
-      } else {
-        console.log(`[watcher] 訂閱成功：${text}`);
-      }
-    }).catch((e) => console.error('[watcher] 訂閱請求失敗:', e));
+    watcherSubscribe();
   });
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);

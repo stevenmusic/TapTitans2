@@ -8263,13 +8263,21 @@
             if (!x) return;
             sharedSessionStart = x.startedAt;
             renderSharedSessionMenu();
-            await ensureSessionAttacksLoaded(x.startedAt);
             const openPanel = RAID_TOOL_PANELS.find(p => document.getElementById('panel-' + p).style.display === 'block');
+            if (openPanel !== 'report') await ensureSessionAttacksLoaded(x.startedAt); // 戰報不需要整場攻擊紀錄
             if (openPanel) await renderRaidToolPanelForSharedSession(openPanel);
         }
 
         // 依共用場次畫出指定的功能面板
         async function renderRaidToolPanelForSharedSession(id) {
+            if (id === 'report') {
+                // 戰報只需要場次清單（伺服器端算好戰報），不用先抓整場攻擊紀錄；
+                // 剛打開網頁時場次清單可能還沒載入，先載入再畫，避免顯示「目前還沒有場次」
+                if (buildRaidSessions().length === 0) await loadSharedSessionMenu();
+                await renderRaidReportPanel(getSharedSession());
+                renderSharedSessionMenu();
+                return;
+            }
             if (sharedSessionStart) await ensureSessionAttacksLoaded(sharedSessionStart);
             const x = getSharedSession();
             if (id === 'attacklog') {

@@ -7529,10 +7529,11 @@
                     .sort((a, b) => b.avg - a.avg); // 根據均傷排列：均傷高的排最前面
                 // 一鍵複製用的文字，直接貼到公會群組
                 missedCopyTextByRound.set(roundNo, [
-                    `${formatSessionLabel(session)}`,
+                    // 只寫等級與加成（例如 M-30丨爆發傷害），不寫日期與攻擊筆數
+                    [session.levelTier ? `M-${session.levelTier}` : '', session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : ''].filter(Boolean).join('丨'),
                     `${t('cardUsageRound').replace('{n}', roundNo)} 漏打（${missed.length} 人）`,
                     ...missed.map((p, i) => `${i + 1}. ${p.name} 漏 ${maxSoFar - p.count} 次`)
-                ].join('\n'));
+                ].filter(Boolean).join('\n'));
 
                 // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多
                 // （跟低傷名單同一套排版邏輯，但這裡不設 50 人上限——漏打名單需要看到全部人）

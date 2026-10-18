@@ -2397,20 +2397,6 @@
             box-sizing: border-box;
             box-shadow: 0 1px 4px rgba(140,40,40,0.05);
         }
-        /* 部位外形：一眼看出是頭、肚、肩、手、腳。畫面左欄是王的「右」側（鏡射），
-           所以右肩／右手／右腳的圓弧在左外側，左邊部位反過來 */
-        .raid-parts-row .raid-part-cell[data-part="Head"]       { flex: 0 0 82px; min-height: 58px; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; }
-        .raid-parts-row .raid-part-cell[data-part="ChestUpper"] { flex: 1.25; max-width: 150px; min-height: 60px; border-radius: 16px 16px 42% 42% / 16px 16px 55% 55%; }
-        .raid-part-cell[data-part="ArmUpperRight"] { border-radius: 70% 10px 10px 12px / 100% 10px 10px 12px; }
-        .raid-part-cell[data-part="ArmUpperLeft"]  { border-radius: 10px 70% 12px 10px / 10px 100% 12px 10px; }
-        .raid-parts-row .raid-part-cell[data-part="HandRight"],
-        .raid-parts-row .raid-part-cell[data-part="HandLeft"] { flex: 0.85; }
-        .raid-part-cell[data-part="HandRight"]     { border-radius: 50% 14px 14px 50% / 50% 14px 14px 50%; }
-        .raid-part-cell[data-part="HandLeft"]      { border-radius: 14px 50% 50% 14px / 14px 50% 50% 14px; }
-        .raid-parts-row .raid-part-cell[data-part="LegUpperRight"],
-        .raid-parts-row .raid-part-cell[data-part="LegUpperLeft"] { max-width: 104px; min-height: 58px; }
-        .raid-part-cell[data-part="LegUpperRight"] { border-radius: 12px 12px 6px 60% / 12px 12px 6px 45%; }
-        .raid-part-cell[data-part="LegUpperLeft"]  { border-radius: 12px 12px 60% 6px / 12px 12px 45% 6px; }
         .raid-part-cell.is-target { border-color: #26c6da; background: #f0fbfd; box-shadow: 0 0 0 2px rgba(38,198,218,0.35); }
         .raid-part-cell.is-destroyed { opacity: 0.55; }
         .raid-part-name { font-size: 9.5px; font-weight: 800; color: #4a2020; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
@@ -8816,7 +8802,6 @@
 
                     const cell = document.createElement('div');
                     cell.className = 'raid-part-cell ' + cellCls;
-                    cell.dataset.part = key; // 依部位套用不同外形（頭＝圓、肚＝軀幹、肩／手／腳左右對稱）
                     if (isSkeleton) {
                         // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害
                         cell.innerHTML = `

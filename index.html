@@ -7410,7 +7410,7 @@
             return `
                 <div style="font-size:12px; color:#5a4a3a; padding:4px 6px; background:#fff; border:1px solid #ece3d4; border-radius:6px;">
                     <div style="word-break:break-word; overflow-wrap:anywhere; white-space:normal; line-height:1.35;">${rank}. ${escapeHtml(p.name)}</div>
-                    <div style="font-weight:700; color:#8e3a3a; text-align:right;">${currentLang === 'en' ? `Missed ${maxSoFar - p.count}` : `漏 ${maxSoFar - p.count} 次`}</div>
+                    <div style="font-weight:700; color:#8e3a3a; text-align:right;">${currentLang === 'en' ? `${maxSoFar - p.count} left` : `剩 ${maxSoFar - p.count} 次`}</div>
                 </div>
             `;
         }
@@ -7532,7 +7532,7 @@
                     // 只寫等級與加成（例如 M-30丨爆發傷害），不寫日期與攻擊筆數
                     [session.levelTier ? `M-${session.levelTier}` : '', session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : ''].filter(Boolean).join('丨'),
                     `${t('cardUsageRound').replace('{n}', roundNo)} 漏打（${missed.length} 人）`,
-                    ...missed.map((p, i) => `${i + 1}. ${p.name} 漏 ${maxSoFar - p.count} 次`)
+                    ...missed.map((p, i) => `${i + 1}. ${p.name} 剩 ${maxSoFar - p.count} 次`)
                 ].filter(Boolean).join('\n'));
 
                 // 每直排列出 8 人，超過 8 人就開下一直排，用左右滑動看更多

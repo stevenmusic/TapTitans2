@@ -2551,10 +2551,12 @@
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
         .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
-        .raid-layer-badge { font-size: 11px; font-weight: 800; line-height: 1; padding: 3px 6px; border-radius: 6px; border: 2px solid transparent; white-space: nowrap; }
-        .raid-layer-badge.layer-armor { background: #37474f; color: #fff; border-color: #37474f; }
-        .raid-layer-badge.layer-body { background: #fff; color: #00545c; border-color: #00545c; }
-        .raid-layer-badge.layer-mixed { background: #ffe0b2; color: #5d3a00; border: 2px dashed #8d5a00; }
+        /* 層別標籤：統一實心底＋白字；盔甲深灰、肉體藍、詛咒甲深紫、甲肉左灰右藍 */
+        .raid-layer-badge { font-size: 11px; font-weight: 800; line-height: 1; padding: 4px 7px; border-radius: 6px; color: #fff; white-space: nowrap; }
+        .raid-layer-badge.layer-armor { background: #455a64; }
+        .raid-layer-badge.layer-body { background: #1565c0; }
+        .raid-layer-badge.layer-cursed { background: #5b2a86; }
+        .raid-layer-badge.layer-mixed { background: linear-gradient(90deg, #455a64 50%, #1565c0 50%); }
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
@@ -3513,7 +3515,7 @@
                 raidPartArmR: '右肩', raidPartArmL: '左肩',
                 raidPartLegR: '右腳', raidPartLegL: '左腳',
                 raidPartHandR: '右手', raidPartHandL: '左手',
-                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerMixed: '甲肉', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
+                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerMixed: '甲肉', raidLayerCursedShort: '詛咒甲', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊', raidPartBannedLabel: '禁打',
                 raidTargetSkeletonLabel: '🦴 全身只剩骨架，即將擊殺',
                 raidUpdatedAt: '最後更新',
@@ -3685,7 +3687,7 @@
                 raidPartArmR: 'R.Arm', raidPartArmL: 'L.Arm',
                 raidPartLegR: 'R.Foot', raidPartLegL: 'L.Foot',
                 raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
-                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerMixed: 'Armor+Body', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
+                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerMixed: 'Armor+Body', raidLayerCursedShort: 'Cursed', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked', raidPartBannedLabel: 'Banned',
                 raidTargetSkeletonLabel: '🦴 Skeleton only — boss about to die',
                 raidUpdatedAt: 'Last updated',
@@ -9117,8 +9119,13 @@
                 const armorDmg = parts.filter(p => p.layer !== 'body').reduce((x, p) => x + dmgOf(p), 0);
                 const bodyDmg = parts.filter(p => p.layer === 'body').reduce((x, p) => x + dmgOf(p), 0);
                 const armorShare = (armorDmg + bodyDmg) > 0 ? armorDmg / (armorDmg + bodyDmg) : (parts.some(p => p.layer === 'body') ? 0 : 1);
-                const layerKind = armorShare >= 0.8 ? 'armor' : armorShare <= 0.2 ? 'body' : 'mixed';
-                const layerLabel = layerKind === 'armor' ? t('raidLayerArmor') : layerKind === 'body' ? t('raidLayerBody') : t('raidLayerMixed');
+                let layerKind = armorShare >= 0.8 ? 'armor' : armorShare <= 0.2 ? 'body' : 'mixed';
+                // 打的盔甲部位目前都是詛咒盔甲 → 標成詛咒甲
+                if (layerKind === 'armor' && raidState && raidState.parts) {
+                    const armorParts = parts.filter(p => p.layer !== 'body').map(p => p.part);
+                    if (armorParts.length && armorParts.every(k => raidState.parts[k] && raidState.parts[k].cursed)) layerKind = 'cursed';
+                }
+                const layerLabel = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[layerKind];
                 const layerCls = 'layer-' + layerKind;
                 const partLabel = raidPartShortCombined(parts);
                 const d = new Date(a.ts);

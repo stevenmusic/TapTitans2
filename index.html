@@ -2549,8 +2549,12 @@
         .is-spinning { animation: spin360 0.7s linear infinite; }
         .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
-        .raid-recent-part.layer-body { color: #00838f; }
-        .raid-recent-part.layer-mixed { color: #7b5ea7; }
+        /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
+        .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
+        .raid-layer-badge { font-size: 11px; font-weight: 800; line-height: 1; padding: 3px 6px; border-radius: 6px; border: 2px solid transparent; white-space: nowrap; }
+        .raid-layer-badge.layer-armor { background: #37474f; color: #fff; border-color: #37474f; }
+        .raid-layer-badge.layer-body { background: #fff; color: #00545c; border-color: #00545c; }
+        .raid-layer-badge.layer-mixed { background: #ffe0b2; color: #5d3a00; border: 2px dashed #8d5a00; }
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
@@ -9123,7 +9127,7 @@
                 return `
                     <div class="raid-recent-item">
                         <span class="raid-recent-player">${timeStr} ${escapeHtml(a.player)}</span>
-                        <span class="raid-recent-part ${layerCls}">${escapeHtml(partLabel)} · ${layerLabel}</span>
+                        <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');

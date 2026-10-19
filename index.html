@@ -4892,7 +4892,7 @@
 
             if (tier && stage) {
                 const tagEl = document.createElement('span');
-                tagEl.textContent = `${tier}-${stage}`;
+                tagEl.textContent = `${tier}-${String(stage).padStart(2, '0')}`;
                 tagEl.style.fontSize = '20px';
                 tagEl.style.fontWeight = '900';
                 tagEl.style.color = '#0d47a1';
@@ -6942,14 +6942,17 @@
 
         // 顯示格式改成「等級丨日期時間丨（筆數 筆攻擊）」，等級放最前面方便一眼掃過去找場次
         // 下拉選單用的短格式：M-62丨苦痛傷害丨10/15 14:30（手機上不會被截斷）
+        // 關卡一律兩位數：M-1 → M-01
+        function formatRaidLevel(level) { return `M-${String(level).padStart(2, '0')}`; }
+
         function formatSessionLabelShort(session) {
             if (!session.startedAt) return '早期紀錄';
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const pad = n => String(n).padStart(2, '0');
             return [
-                session.levelTier ? `M-${session.levelTier}` : '未知等級',
+                session.levelTier ? `${formatRaidLevel(session.levelTier)}` : '未知等級',
                 session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : '',
-                `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+                `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
             ].filter(Boolean).join('丨');
         }
 
@@ -6958,7 +6961,7 @@
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const pad = n => String(n).padStart(2, '0');
             const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-            const levelStr = (session.levelTier ? `M-${session.levelTier}` : '未知等級')
+            const levelStr = (session.levelTier ? `${formatRaidLevel(session.levelTier)}` : '未知等級')
                 + (session.buffType && RAID_BUFF_LABELS[session.buffType] ? `丨${RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0]}` : '');
             const count = session.attackCount != null ? session.attackCount : (session.attacks ? session.attacks.length : 0);
             return `${levelStr}丨 ${dateStr}丨（${count} 筆攻擊）`;
@@ -7799,7 +7802,7 @@
                 // 一鍵複製用的文字，直接貼到公會群組
                 missedCopyTextByRound.set(roundNo, [
                     // 只寫等級與加成（例如 M-30丨爆發傷害），不寫日期與攻擊筆數
-                    [session.levelTier ? `M-${session.levelTier}` : '', session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : ''].filter(Boolean).join('丨'),
+                    [session.levelTier ? `${formatRaidLevel(session.levelTier)}` : '', session.buffType && RAID_BUFF_LABELS[session.buffType] ? RAID_BUFF_LABELS[session.buffType][currentLang === 'en' ? 1 : 0] : ''].filter(Boolean).join('丨'),
                     `剩餘次數（${missed.length} 人）`,
                     ...missed.map((p, i) => `${i + 1}. ${p.name} 剩 ${maxSoFar - p.count} 次`)
                 ].filter(Boolean).join('\n'));
@@ -8418,10 +8421,10 @@
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const buff = report.buffType && RAID_BUFF_ZH[report.buffType];
             const titleParts = [
-                session.levelTier ? `<span>M-${session.levelTier}</span>` : '',
+                session.levelTier ? `<span>${formatRaidLevel(session.levelTier)}</span>` : '',
                 buff ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">${buff}</span>` : '',
                 report.morale ? `<span style="color:#00897b;">士氣 +${report.morale.percent}%</span>` : '',
-                `<span style="color:#8a7a63; font-weight:700;">${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}</span>`
+                `<span style="color:#8a7a63; font-weight:700;">${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}</span>`
             ].filter(Boolean).join('');
             const s = a.summary;
             const bannedLine = a.bosses.filter(b => a.banned[b].length).map(b =>
@@ -8494,7 +8497,7 @@
             const tags = [
                 report.buffType && RAID_BUFF_ZH[report.buffType] ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">${RAID_BUFF_ZH[report.buffType]}</span>` : '',
                 report.morale ? `<span style="color:#00897b;">士氣 +${report.morale.percent}%</span>` : '',
-                session.levelTier ? `<span style="color:#0d47a1;">M-${session.levelTier}</span>` : '',
+                session.levelTier ? `<span style="color:#0d47a1;">${formatRaidLevel(session.levelTier)}</span>` : '',
                 `<span style="color:#5e7a9c;">${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}</span>`
             ].filter(Boolean).join('');
             wrap.innerHTML = `

@@ -2021,6 +2021,12 @@
         .raid-report-table td.rate { color: #d32f2f; }
         .raid-report-table td.rate.hi { background: #fdecec !important; }
         .raid-report-table tr.total td { background: #f3e6d0 !important; color: #6b1d30; font-weight: 900; }
+        @media (max-width: 359px) {
+            .raid-report-table { font-size: 12px; }
+            .raid-report-table th, .raid-report-table td { padding: 6px 2px; }
+            .raid-report-table td.name { max-width: 30vw; }
+            .raid-report-summary .num { font-size: 12.5px; }
+        }
         #raid-tab-records .raid-tool-btn { padding: 9px 2px; min-height: 40px; font-size: 12.5px; gap: 2px; border-radius: 10px; }
         #raid-tab-records .raid-tool-btn .raid-tool-icon { display: none; }
         #raid-tab-records .backup-section { margin-top: 8px; }
@@ -2544,6 +2550,7 @@
         .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         .raid-recent-part.layer-body { color: #00838f; }
+        .raid-recent-part.layer-mixed { color: #7b5ea7; }
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
@@ -3502,7 +3509,7 @@
                 raidPartArmR: '右肩', raidPartArmL: '左肩',
                 raidPartLegR: '右腳', raidPartLegL: '左腳',
                 raidPartHandR: '右手', raidPartHandL: '左手',
-                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
+                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerMixed: '甲肉', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊', raidPartBannedLabel: '禁打',
                 raidTargetSkeletonLabel: '🦴 全身只剩骨架，即將擊殺',
                 raidUpdatedAt: '最後更新',
@@ -3674,7 +3681,7 @@
                 raidPartArmR: 'R.Arm', raidPartArmL: 'L.Arm',
                 raidPartLegR: 'R.Foot', raidPartLegL: 'L.Foot',
                 raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
-                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
+                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerMixed: 'Armor+Body', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked', raidPartBannedLabel: 'Banned',
                 raidTargetSkeletonLabel: '🦴 Skeleton only — boss about to die',
                 raidUpdatedAt: 'Last updated',
@@ -4969,7 +4976,7 @@
         }
 
         function formatNum(n) {
-            if (n >= 1000000000) return (n / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
+            if (n >= 1000000000) return (n / 1000000000).toFixed(2) + 'B'; // 1B 以上固定兩位小數
             if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
             return Math.round(n).toLocaleString('en-US');
         }
@@ -9092,10 +9099,20 @@
                 return;
             }
             listEl.innerHTML = raidRecentAttacks.map(a => {
-                const parts = Array.isArray(a.parts) ? a.parts : [];
-                const hasBody = parts.some(p => p.layer === 'body');
-                const layerLabel = hasBody ? t('raidLayerBody') : t('raidLayerArmor');
-                const layerCls = hasBody ? 'layer-body' : 'layer-armor';
+                const allParts = Array.isArray(a.parts) ? a.parts : [];
+                // 傷害低於這一刀 5% 的部位不列出（濺射的零星傷害）
+                const dmgOf = p => Number(p.damage) || 0;
+                const partTotal = {};
+                allParts.forEach(p => { partTotal[p.part] = (partTotal[p.part] || 0) + dmgOf(p); });
+                const sumAll = Object.values(partTotal).reduce((x, y) => x + y, 0);
+                const parts = sumAll > 0 ? allParts.filter(p => partTotal[p.part] >= sumAll * 0.05) : allParts;
+                // 依盔甲／肉體傷害比例標示：盔甲 ≥ 80% → 盔甲、≤ 20% → 肉體、其他 → 甲肉
+                const armorDmg = parts.filter(p => p.layer !== 'body').reduce((x, p) => x + dmgOf(p), 0);
+                const bodyDmg = parts.filter(p => p.layer === 'body').reduce((x, p) => x + dmgOf(p), 0);
+                const armorShare = (armorDmg + bodyDmg) > 0 ? armorDmg / (armorDmg + bodyDmg) : (parts.some(p => p.layer === 'body') ? 0 : 1);
+                const layerKind = armorShare >= 0.8 ? 'armor' : armorShare <= 0.2 ? 'body' : 'mixed';
+                const layerLabel = layerKind === 'armor' ? t('raidLayerArmor') : layerKind === 'body' ? t('raidLayerBody') : t('raidLayerMixed');
+                const layerCls = 'layer-' + layerKind;
                 const partLabel = raidPartShortCombined(parts);
                 const d = new Date(a.ts);
                 const pad = n => String(n).padStart(2, '0');

@@ -8466,8 +8466,10 @@
             return ({ '頭部': '頭', '肚子': '肚', '左臂': '左肩', '右臂': '右肩', '左手': '左手', '右手': '右手', '左腿': '左腳', '右腿': '右腳' })[base] || base;
         }
 
-        // 戰報圖片：沿用戰報分析頁的舊版樣式（藍色系、摘要卡、表格），超過 25 人分成左右兩直排，
-        // 右下角標籤寫加成／士氣／關卡／日期
+        // 戰報圖片：藍色系摘要卡＋表格，超過 25 人分成左右兩直排，右下角標籤寫加成／士氣／關卡／日期。
+        // 樣式全部寫在圖片裡（不吃手機尺寸的 media query），長寬比固定照 M-22 那張（1266×1292），
+        // 字級從大往小試，直到名字不被裁切、內容放得進去，剩下的高度平均分給每一列
+        const RAID_REPORT_IMG_RATIO = 1292 / 1266;
         function buildRaidReportImageNode() {
             const { session, report, a } = raidReportCurrent;
             const SPLIT_AT = 25;
@@ -8475,28 +8477,28 @@
             const twoCols = players.length > SPLIT_AT;
             const maxCount = players.reduce((m, p) => Math.max(m, p.count), 0);
             const s = a.summary;
+            const W = twoCols ? 980 : 520;
             const wrap = document.createElement('div');
-            wrap.style.cssText = `position:fixed; left:-10000px; top:0; width:${twoCols ? 980 : 480}px; background:#e3f2fd; padding:14px; box-sizing:border-box; font-family:inherit;`;
-            const rateCls = (r) => 'rate-cell' + (r > 5 ? ' rate-warning' : '');
+            wrap.className = 'rrimg';
+            wrap.style.cssText = `position:fixed; left:-10000px; top:0; width:${W}px; background:#e3f2fd; padding:14px; box-sizing:border-box; font-family:inherit; display:flex; flex-direction:column;`;
+            const warn = (on) => on ? ' class="warn"' : '';
             const row = (p, i) => `<tr>
-                <td class="player-name" style="max-width:none;">${i + 1}. ${escapeHtml(p.player)}</td>
-                <td class="${p.count < maxCount / 2 ? 'rate-warning' : ''}">${p.count}</td>
-                <td class="${rateCls(p.rate)}" style="color:#d32f2f; font-weight:bold;">${formatRate(p.rate)}</td>
+                <td class="name">${i + 1}. ${escapeHtml(p.player)}</td>
+                <td${warn(p.count < maxCount / 2)}>${p.count}</td>
+                <td class="rate${p.rate > 5 ? ' warn' : ''}">${formatRate(p.rate)}</td>
                 <td>${formatNum(p.net)}</td>
                 <td>${formatNum(p.avg)}</td></tr>`;
-            const totalRow = `<tr class="summary-row">
-                <td class="player-name" style="max-width:none;">總計 / 平均</td><td>${s.avgCount.toFixed(1)}</td>
-                <td class="${rateCls(s.rate)}" style="color:#d32f2f; font-weight:bold;">${formatRate(s.rate)}</td>
+            const totalRow = `<tr class="total">
+                <td class="name">總計 / 平均</td><td>${s.avgCount.toFixed(1)}</td>
+                <td class="rate">${formatRate(s.rate)}</td>
                 <td>${formatNum(s.total)}</td><td>${formatNum(s.avgHit)}</td></tr>`;
             const table = (list, offset, withTotal) => `
-                <div class="analysis-table-wrap" style="flex:1; margin:0; max-width:none; overflow:visible;">
-                    <table class="analysis-table">
-                        <thead><tr><th>玩家</th><th>次數</th><th>誤傷率</th><th>總傷</th><th>均傷</th></tr></thead>
-                        <tbody>${list.map((p, i) => row(p, i + offset)).join('')}${withTotal ? totalRow : ''}</tbody>
-                    </table>
-                </div>`;
+                <div class="col"><table>
+                    <thead><tr><th>玩家</th><th>次數</th><th>誤傷率</th><th>總傷</th><th>均傷</th></tr></thead>
+                    <tbody>${list.map((p, i) => row(p, i + offset)).join('')}${withTotal ? totalRow : ''}</tbody>
+                </table></div>`;
             const tables = twoCols
-                ? `<div style="display:flex; gap:12px; align-items:flex-start;">${table(players.slice(0, SPLIT_AT), 0, false)}${table(players.slice(SPLIT_AT), SPLIT_AT, true)}</div>`
+                ? table(players.slice(0, SPLIT_AT), 0, false) + table(players.slice(SPLIT_AT), SPLIT_AT, true)
                 : table(players, 0, true);
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const pad = n => String(n).padStart(2, '0');
@@ -8506,17 +8508,68 @@
                 session.levelTier ? `<span style="color:#0d47a1;">${formatRaidLevel(session.levelTier)}</span>` : '',
                 `<span style="color:#5e7a9c;">${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}</span>`
             ].filter(Boolean).join('');
+            const card = (num, label, isWarn) => `<div class="card${isWarn ? ' warn' : ''}"><div class="num">${num}</div><div class="label">${label}</div></div>`;
             wrap.innerHTML = `
-                <div class="analysis-summary" style="max-width:none; margin-bottom:12px;">
-                    <div class="summary-card"><div class="num">${s.players}</div><div class="label">${t('statPlayers')}</div></div>
-                    <div class="summary-card"><div class="num">${s.avgCount.toFixed(1)}</div><div class="label">${t('statAvgHits')}</div></div>
-                    <div class="summary-card ${s.rate > 5 ? 'rate-warning' : ''}"><div class="num">${formatRate(s.rate)}</div><div class="label">${t('statOverallMissRate')}</div></div>
-                    <div class="summary-card"><div class="num">${formatNum(s.total)}</div><div class="label">${t('statTotalDmg')}</div></div>
-                    <div class="summary-card"><div class="num">${formatNum(s.avgHit)}</div><div class="label">${t('statAvgDmg')}</div></div>
+                <style>
+                    .rrimg { --f: 20px; }
+                    .rrimg .cards { display:flex; gap:10px; margin-bottom:12px; }
+                    .rrimg .card { flex:1; min-width:0; background:#fff; border:1px solid #c9ddf2; border-radius:12px; padding:calc(var(--f) * .4) 4px; text-align:center; }
+                    .rrimg .card .num { font-size:calc(var(--f) * 1.3); font-weight:900; color:#0d47a1; line-height:1.2; white-space:nowrap; }
+                    .rrimg .card .label { font-size:calc(var(--f) * .7); color:#7a93b3; margin-top:2px; white-space:nowrap; }
+                    .rrimg .card.warn { background:#ffcdd2; border-color:#ef9a9a; }
+                    .rrimg .card.warn .num, .rrimg .card.warn .label { color:#d32f2f; }
+                    .rrimg .tables { flex:1; min-height:0; display:flex; gap:12px; align-items:flex-start; }
+                    .rrimg .col { flex:1; min-width:0; overflow:hidden; }
+                    .rrimg table { width:100%; border-collapse:collapse; background:#fff; }
+                    .rrimg th, .rrimg td { padding:0 calc(var(--f) * .35); text-align:center; white-space:nowrap; font-size:var(--f); font-weight:800; color:#1a1a1a; border-bottom:1px solid #eef4fb; }
+                    .rrimg th { background:#0d47a1; color:#fff; font-size:calc(var(--f) * .85); }
+                    .rrimg tbody tr:nth-child(even) { background:#f5f9ff; }
+                    .rrimg td.name { text-align:left; }
+                    .rrimg td.rate { color:#d32f2f; }
+                    .rrimg td.warn { background:#ffcdd2; border-radius:5px; }
+                    .rrimg tr.total td { background:#e3edfb; color:#0d47a1; font-weight:900; border-top:2px solid #0d47a1; }
+                    .rrimg tr.total td.rate { color:#d32f2f; }
+                    .rrimg .tags { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:2px 14px; margin-top:12px; padding-right:4px; font-size:calc(var(--f) * 1.15); font-weight:900; white-space:nowrap; }
+                </style>
+                <div class="cards">
+                    ${card(s.players, t('statPlayers'))}
+                    ${card(s.avgCount.toFixed(1), t('statAvgHits'))}
+                    ${card(formatRate(s.rate), t('statOverallMissRate'), s.rate > 5)}
+                    ${card(formatNum(s.total), t('statTotalDmg'))}
+                    ${card(formatNum(s.avgHit), t('statAvgDmg'))}
                 </div>
-                ${tables}
-                <div style="display:flex; justify-content:flex-end; flex-wrap:wrap; gap:2px 12px; margin-top:12px; padding-right:4px; font-size:18px; font-weight:900; white-space:nowrap;">${tags}</div>`;
+                <div class="tables">${tables}</div>
+                <div class="tags">${tags}</div>`;
             return wrap;
+        }
+
+        // 圖片節點放進畫面後再呼叫：固定長寬比，字級由大到小試到不裁切、放得下為止，再把多的高度分給每一列
+        function fitRaidReportImageNode(wrap) {
+            const W = wrap.offsetWidth;
+            const H = Math.round(W * RAID_REPORT_IMG_RATIO);
+            wrap.style.height = H + 'px';
+            const tablesBox = wrap.querySelector('.tables');
+            const tags = wrap.querySelector('.tags');
+            const cols = [...wrap.querySelectorAll('.col')];
+            const allRows = (col) => [...col.querySelectorAll('tr')];
+            const maxRows = Math.max(...cols.map(c => allRows(c).length));
+            const fits = () => {
+                const clipped = cols.some(c => c.querySelector('table').scrollWidth > c.clientWidth + 0.5)
+                    || [...wrap.querySelectorAll('.card .num, .card .label')].some(el => el.scrollWidth > el.parentNode.clientWidth + 0.5)
+                    || tags.offsetHeight > parseFloat(getComputedStyle(tags).fontSize) * 1.6; // 標籤要排成一行
+                if (clipped) return false;
+                // 每列至少要有字高的 1.5 倍
+                const f = parseFloat(getComputedStyle(wrap).getPropertyValue('--f'));
+                return tablesBox.clientHeight >= maxRows * f * 1.5;
+            };
+            let f = 26;
+            for (; f > 10; f -= 0.5) {
+                wrap.style.setProperty('--f', f + 'px');
+                if (fits()) break;
+            }
+            // 剩下的高度平均分給每一列（兩直排列高一致，右排少一列就提早結束）
+            const rowH = Math.floor(tablesBox.clientHeight / maxRows);
+            cols.forEach(c => allRows(c).forEach(tr => { tr.style.height = rowH + 'px'; }));
         }
 
         function saveRaidReportImage() {
@@ -8529,6 +8582,7 @@
             document.getElementById('btn-share-image').style.display = 'none';
             const node = buildRaidReportImageNode();
             document.body.appendChild(node);
+            fitRaidReportImageNode(node);
             html2canvas(node, { useCORS: true, scale: 2, backgroundColor: '#e3f2fd' }).then(canvas => {
                 node.remove();
                 imgContainer.innerHTML = '';

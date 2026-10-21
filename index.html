@@ -4376,7 +4376,13 @@
         /* ── 視圖（首頁 / 牌組建構 / 戰報分析）切換 ── */
         let currentView = 'home';
 
-        function syncHeaderHeight() {
+        /* 導覽列高度（含動態島安全區）可能在載入／旋轉／字型載入後才變動，
+           用 ResizeObserver 持續追蹤，內容的 margin-top 才不會被導覽列蓋住 */
+        const headerResizeObserver = (typeof ResizeObserver !== 'undefined')
+            ? new ResizeObserver(() => syncHeaderHeight(true)) : null;
+        let observedHeaderEl = null;
+
+        function syncHeaderHeight(fromObserver) {
             let headerEl = null;
             if (currentView === 'deck') headerEl = document.getElementById('nav-header-deck');
             else if (currentView === 'analysis') headerEl = document.getElementById('nav-header-analysis');
@@ -4386,7 +4392,14 @@
             else if (currentView === 'raidStatus') headerEl = document.getElementById('nav-header-raidstatus');
             else if (currentView === 'raidCrystal') headerEl = document.getElementById('nav-header-raidcrystal');
             if (headerEl) {
-                document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
+                if (headerEl.offsetHeight > 0) {
+                    document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
+                }
+                if (headerResizeObserver && headerEl !== observedHeaderEl) {
+                    if (observedHeaderEl) headerResizeObserver.unobserve(observedHeaderEl);
+                    headerResizeObserver.observe(headerEl);
+                    observedHeaderEl = headerEl;
+                }
             }
         }
 

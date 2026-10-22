@@ -6708,7 +6708,7 @@
                     (a.cards || []).forEach(c => globalSet.add(c.name));
                 });
 
-                // 依玩家、依輪次畫出「這輪有沒有用到卡」的總覽表（● 有用、○ 沒用或那輪沒出刀）。輪次由左到右照時間排列
+                // 依玩家、依輪次畫出「這輪有沒有用到卡」的總覽表（✓ 有用、✕ 沒用或那輪沒出刀）。輪次由左到右照時間排列
                 const ascendingRoundNos = [...rounds.keys()].sort((a, b) => a - b);
                 // 輪次太多格子會擠不下，只顯示「最近」7輪（最新的漏用狀況才是公會長真正在意的）
                 const CARD_USAGE_GRID_MAX_ROUNDS = 7;
@@ -6732,7 +6732,7 @@
 
                 // 總覽表：每列一位玩家（編號＋名字），每輪一組欄位（標題「第N輪」橫跨兩欄），
                 // 組內依序是瘋狂無效、鏡子力兩張卡的圖示。● ＝ 那輪有用、○ ＝ 那輪出刀了但沒用、
-                // 那輪沒出刀也算漏用，一樣顯示 ○。輪次太多時整張表可左右滑動，名字欄固定在左邊
+                // 那輪沒出刀也算漏用，一樣顯示 ✕。輪次太多時整張表可左右滑動，名字欄固定在左邊
                 const cardCols = CARD_USAGE_TRACKED.length;
                 const thBase = 'padding:4px 3px; border-bottom:1px solid #e5d9c5; background:#fdf9f3;';
                 const groupBorder = 'border-left:1px dashed #d8c8a8;';
@@ -6741,12 +6741,12 @@
                     `<th colspan="${cardCols}" style="${thBase} ${groupBorder} font-size:11px; font-weight:700; color:#8a7a6a; text-align:left; white-space:nowrap;">${t('cardUsageRound').replace('{n}', roundNo)}</th>`).join('');
                 const headIcons = displayRoundNos.map(() =>
                     CARD_USAGE_TRACKED.map((tc, i) =>
-                        `<th style="${thBase} ${i === 0 ? groupBorder : ''} text-align:center; min-width:26px;">${cardUsageIconHtml(tc, 20)}</th>`).join('')).join('');
+                        `<th style="${thBase} ${i === 0 ? groupBorder : ''} text-align:center; min-width:30px;">${cardUsageIconHtml(tc, 22)}</th>`).join('')).join('');
                 const dotCell = (usedSet, tc, first) => {
                     const bd = first ? groupBorder : '';
                     return usedSet && usedSet.has(tc.id)
-                        ? `<td style="${bd} text-align:center; color:#3e2f22; font-size:15px; line-height:1;">●</td>`
-                        : `<td style="${bd} text-align:center; color:#c0392b; font-size:15px; line-height:1; font-weight:700;">○</td>`;
+                        ? `<td style="${bd} text-align:center; color:#2E7D32; font-size:20px; line-height:1.1; font-weight:900;">✓</td>`
+                        : `<td style="${bd} text-align:center; color:#c0392b; font-size:20px; line-height:1.1; font-weight:900; background:#fdecec;">✕</td>`;
                 };
                 const gridRowHtml = (name, idx) => {
                     const miss = missCountByPlayer.get(name) || 0;

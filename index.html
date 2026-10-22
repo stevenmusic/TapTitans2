@@ -6708,10 +6708,7 @@
                     (a.cards || []).forEach(c => globalSet.add(c.name));
                 });
 
-                // 依玩家、依輪次畫出「這輪有沒有用到卡」的格狀總覽（跟參考圖的排版風格
-                // 一致）：每個玩家一個區塊，標題顯示漏用總次數，底下兩張卡各一橫排，
-                // 橫排裡每一格對應一輪——OK＝那輪有用、✕＝那輪出刀了但沒用、－＝那輪
-                // 根本沒出刀（沒資料可判斷，不算漏用）。輪次由左到右照時間排列
+                // 依玩家、依輪次畫出「這輪有沒有用到卡」的總覽表（● 有用、○ 沒用或那輪沒出刀）。輪次由左到右照時間排列
                 const ascendingRoundNos = [...rounds.keys()].sort((a, b) => a - b);
                 // 輪次太多格子會擠不下，只顯示「最近」7輪（最新的漏用狀況才是公會長真正在意的）
                 const CARD_USAGE_GRID_MAX_ROUNDS = 7;
@@ -6724,8 +6721,8 @@
                     let miss = 0;
                     displayRoundNos.forEach((roundNo) => {
                         const usedSet = rounds.get(roundNo).get(name);
-                        if (!usedSet) return; // 那輪沒出刀，不算漏用
-                        CARD_USAGE_TRACKED.forEach((tc) => { if (!usedSet.has(tc.id)) miss++; });
+                        // 那輪沒出刀也算漏用（沒出刀就不可能有用到卡）
+                        CARD_USAGE_TRACKED.forEach((tc) => { if (!usedSet || !usedSet.has(tc.id)) miss++; });
                     });
                     missCountByPlayer.set(name, miss);
                 });
@@ -6735,7 +6732,7 @@
 
                 // 總覽表：每列一位玩家（編號＋名字），每輪一組欄位（標題「第N輪」橫跨兩欄），
                 // 組內依序是瘋狂無效、鏡子力兩張卡的圖示。● ＝ 那輪有用、○ ＝ 那輪出刀了但沒用、
-                // － ＝ 那輪沒出刀（沒資料可判斷，不算漏用）。輪次太多時整張表可左右滑動，名字欄固定在左邊
+                // 那輪沒出刀也算漏用，一樣顯示 ○。輪次太多時整張表可左右滑動，名字欄固定在左邊
                 const cardCols = CARD_USAGE_TRACKED.length;
                 const thBase = 'padding:4px 3px; border-bottom:1px solid #e5d9c5; background:#fdf9f3;';
                 const groupBorder = 'border-left:1px dashed #d8c8a8;';
@@ -6747,8 +6744,7 @@
                         `<th style="${thBase} ${i === 0 ? groupBorder : ''} text-align:center; min-width:26px;">${cardUsageIconHtml(tc, 20)}</th>`).join('')).join('');
                 const dotCell = (usedSet, tc, first) => {
                     const bd = first ? groupBorder : '';
-                    if (!usedSet) return `<td style="${bd} text-align:center; color:#c2b8a8; font-size:12px;">－</td>`;
-                    return usedSet.has(tc.id)
+                    return usedSet && usedSet.has(tc.id)
                         ? `<td style="${bd} text-align:center; color:#3e2f22; font-size:15px; line-height:1;">●</td>`
                         : `<td style="${bd} text-align:center; color:#c0392b; font-size:15px; line-height:1; font-weight:700;">○</td>`;
                 };

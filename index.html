@@ -6653,6 +6653,23 @@
             renderCardUsageCheck();
         }
 
+        let cardUsageCopyText = '';
+        async function copyCardUsageMissed() {
+            const text = cardUsageCopyText;
+            if (!text) return;
+            let ok = false;
+            try { await navigator.clipboard.writeText(text); ok = true; }
+            catch (e) {
+                const ta = document.createElement('textarea');
+                ta.value = text; document.body.appendChild(ta);
+                ta.select(); ta.setSelectionRange(0, text.length);
+                try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+                document.body.removeChild(ta);
+            }
+            if (ok) showPlayerCopyToastLike('已複製名單，可以直接貼到群組');
+            else prompt('這個瀏覽器不允許自動複製，請手動複製：', text);
+        }
+
         async function renderCardUsageCheck() {
             const box = document.getElementById('card-usage-result');
             box.style.display = 'flex';
@@ -6761,9 +6778,22 @@
                         </tr>
                     `;
                 };
+                // 複製名單：列出最新一輪每張卡還沒用的人（那輪沒出刀的也算沒用）
+                const latestRoundNo = displayRoundNos[displayRoundNos.length - 1];
+                const latestPlayers = rounds.get(latestRoundNo);
+                const en = currentLang === 'en';
+                const copyLines = [t('cardUsageRound').replace('{n}', latestRoundNo) + (en ? ' not used yet' : ' 還沒用')];
+                CARD_USAGE_TRACKED.forEach((tc) => {
+                    const names = allPlayers.filter(n => !(latestPlayers.get(n) && latestPlayers.get(n).has(tc.id)));
+                    copyLines.push(`${tc.emoji} ${en ? tc.en : tc.zh}（${names.length}）：${names.length ? names.join('、') : (en ? 'none' : '無')}`);
+                });
+                cardUsageCopyText = copyLines.join('\n');
                 const gridSection = `
                     <div style="margin-top:4px;">
-                        <div style="font-size:13.5px; font-weight:700; color:#5a4a3a; margin-bottom:6px;">${t('cardUsageGridTitle')}</div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+                            <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageGridTitle')}</div>
+                            <button onclick="copyCardUsageMissed()" style="font-size:12px; font-weight:700; color:#8e3a3a; background:#fff; border:1px solid #e0c4c0; border-radius:6px; padding:4px 10px; font-family:inherit; cursor:pointer;">📋 ${en ? 'Copy list' : '複製名單'}</button>
+                        </div>
                         <div style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e5d9c5; border-radius:10px;">
                             <table style="border-collapse:collapse; width:100%;">
                                 <thead>

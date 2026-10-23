@@ -6779,8 +6779,9 @@
                     `;
                 };
                 // 複製名單：列出最新一輪每張卡還沒用的人（那輪沒出刀的也算沒用）
-                const latestRoundNo = displayRoundNos[displayRoundNos.length - 1];
-                const latestPlayers = rounds.get(latestRoundNo);
+                // 以現在時間算出「實時」所在的輪次（不是資料裡最後一輪）；該輪還沒人出刀就視為全員未用
+                const latestRoundNo = Math.max(1, Math.floor((Date.now() - startTs) / CARD_USAGE_ROUND_MS) + 1);
+                const latestPlayers = rounds.get(latestRoundNo) || new Map();
                 const en = currentLang === 'en';
                 const copyLines = [t('cardUsageRound').replace('{n}', latestRoundNo) + (en ? ' not used yet' : ' 還沒用')];
                 CARD_USAGE_TRACKED.forEach((tc) => {

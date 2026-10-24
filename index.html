@@ -7444,7 +7444,8 @@
         let byPartTop = 10;
         const BY_PART_TOP_OPTIONS = [5, 10, 15, 20];
         const BY_PART_MIN_ATTACKS = 3;   // 同時打到所選部位的刀數至少要有幾刀才列入，避免只靠一兩刀就上榜
-        const BY_PART_SHOW_MIN = 0.3;    // 牌組旁顯示的部位：至少在這個牌組 30% 的刀裡被打到（排除偶爾點到的部位）
+        const BY_PART_MULTI_MIN = 6;     // 一刀打到幾個不同部位以上，就當成「多部位」，不逐個列出（通常是 6～8 個）
+        const BY_PART_MAX_OTHERS = 4;    // 「其他打法」最多列幾種
         const byPartSel = new Set();     // 例如 'Head|armor'
         const byPartCache = new Map();   // 前 N 名 -> 伺服器統計
         let byPartRenderToken = 0;
@@ -7474,6 +7475,18 @@
             renderByPart();
         }
 
+        // 一種打法（同一刀同時打到的部位＋狀態）的標籤列：盔甲灰、肉體藍，你選的是實心；
+        // 一刀打到 6 個部位以上就縮成「多部位」加上有哪些狀態，不逐個列出
+        function byPartChips(g) {
+            const chip = (text, rgb, solid) => `<span style="font-size:11px; padding:2px 6px; border-radius:99px; border:1.5px solid rgb(${rgb}); background:${solid ? `rgb(${rgb})` : `rgba(${rgb},0.12)`}; color:${solid ? '#fff' : `rgb(${rgb})`}; font-weight:700; white-space:nowrap;">${escapeHtml(text)}</span>`;
+            const rgbOf = (layer) => layer === 'body' ? '21,101,192' : '69,90,100';
+            const labelOf = (layer) => layer === 'body' ? '肉體' : '盔甲';
+            const inner = g.multi
+                ? chip('多部位（≥6）', '142,106,58', false) + g.layers.map(l => chip(labelOf(l), rgbOf(l), false)).join('')
+                : g.keys.map(k => { const [part, layer] = k.split('|'); return chip(raidPartLabel(part) + labelOf(layer), rgbOf(layer), g.selected.includes(k)); }).join('');
+            return `<div style="display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end;">${inner}</div>`;
+        }
+
         function renderByPartRow(r, rank) {
             return `
                 <div style="display:flex; align-items:center; gap:8px; padding:4px 2px; border-bottom:1px dashed #e8dcc8;">
@@ -7486,8 +7499,9 @@
                                 : `<span style="width:40px; font-size:20px; text-align:center;">🃏</span>`;
                         }).join('')}
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; max-width:55%;">
-                        ${r.parts.map(p => `<span style="font-size:11px; padding:2px 6px; border-radius:99px; border:1.5px solid rgb(${p.rgb}); background:${p.selected ? `rgb(${p.rgb})` : `rgba(${p.rgb},0.12)`}; color:${p.selected ? '#fff' : `rgb(${p.rgb})`}; font-weight:700; white-space:nowrap;">${escapeHtml(p.text)}</span>`).join('')}
+                    <div style="max-width:55%; display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
+                        ${byPartChips(r.primary)}
+                        ${r.others.length ? `<details style="font-size:11px; color:#8a7a6a; text-align:right;"><summary style="cursor:pointer;">＋${r.others.length} 種打法</summary>${r.others.map(g => `<div style="margin-top:4px;">${byPartChips(g)}</div>`).join('')}</details>` : ''}
                     </div>
                 </div>
             `;
@@ -7550,26 +7564,24 @@
             }
             const sel = [...byPartSel];
             const rows = data.decks.map(d => {
-                // 這個牌組有幾刀「同時打到全部所選的部位＋狀態」
-                let matched = 0;
+                // 把符合的刀依「打法」分組：同一刀同時打到的部位＋狀態算一種打法，
+                // 打到 6 個部位以上的刀全部併成「多部位」（依狀態分組），次數多的打法排前面
+                const groups = {};
                 Object.keys(d.patterns || {}).forEach(pattern => {
-                    const hit = new Set(pattern.split(','));
-                    if (sel.every(k => hit.has(k))) matched += d.patterns[pattern];
+                    const keys = pattern.split(',').filter(Boolean);
+                    if (!sel.every(k => keys.includes(k))) return;
+                    const partCount = new Set(keys.map(k => k.split('|')[0])).size;
+                    const multi = partCount >= BY_PART_MULTI_MIN;
+                    const layers = [...new Set(keys.map(k => k.split('|')[1]))].sort();
+                    const gk = multi ? 'MULTI:' + layers.join('+') : pattern;
+                    if (!groups[gk]) groups[gk] = { count: 0, keys, multi, layers, selected: sel };
+                    groups[gk].count += d.patterns[pattern];
                 });
-                // 這個牌組平常打哪些「部位＋狀態」：統計每個部位＋層別出現在幾刀裡
-                const freq = {};
-                Object.keys(d.patterns || {}).forEach(pattern => {
-                    pattern.split(',').forEach(k => { if (k) freq[k] = (freq[k] || 0) + d.patterns[pattern]; });
-                });
-                const parts = Object.keys(freq)
-                    .filter(k => sel.includes(k) || freq[k] / d.attacks >= BY_PART_SHOW_MIN)
-                    .sort((a, b) => (sel.includes(b) - sel.includes(a)) || (freq[b] - freq[a]))
-                    .slice(0, 8)
-                    .map(k => {
-                        const [part, layer] = k.split('|');
-                        return { text: `${raidPartLabel(part)}${layer === 'body' ? '肉體' : '盔甲'}`, rgb: layer === 'body' ? '21,101,192' : '69,90,100', selected: sel.includes(k) };
-                    });
-                return { cards: d.cards, count: d.attacks, matched, parts };
+                const list = Object.values(groups).sort((x, y) => y.count - x.count);
+                const matched = list.reduce((sum, g) => sum + g.count, 0);
+                const primary = list[0];
+                const others = list.slice(1).filter(g => g.count >= 2).slice(0, BY_PART_MAX_OTHERS);
+                return { cards: d.cards, count: d.attacks, matched, primary, others };
             }).filter(r => r.matched >= BY_PART_MIN_ATTACKS)
               .sort((a, b) => (b.matched - a.matched) || (b.matched / b.count - a.matched / a.count))
               .slice(0, 15);
@@ -7580,7 +7592,7 @@
             const columnOf = assignDeckColumns(rows);
             rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
             list.innerHTML = info
-                + `<div style="margin-bottom:4px;">右側：這組牌組常打的部位與狀態（實心＝你選的）</div>`
+                + `<div style="margin-bottom:4px;">右側：這組牌組最常見的打法（實心＝你選的；打到 6 處以上併成「多部位」）</div>`
                 + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 

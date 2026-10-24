@@ -1356,6 +1356,12 @@ function watcherHandleRaidSnapshot(payload, event) {
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
   if (payload && typeof payload.raid_started_at === 'string') {
+    // 換了新場次：上一場最後一隻王的 enemy_id 可能跟這一場第一隻同名同 id，
+    // 不歸零的話 watcherHandleAttack 會當成「同一隻王」，沿用上一場的詛咒甲位置
+    if (watcherCurrentRaidStartedAt && watcherCurrentRaidStartedAt !== payload.raid_started_at) {
+      watcherCurrentEnemyId = null;
+      watcherPartStatus = {};
+    }
     watcherCurrentRaidStartedAt = payload.raid_started_at;
   }
   if (payload && payload.raid && typeof payload.raid.level === 'number') {
@@ -1371,6 +1377,14 @@ function watcherHandleRaidSnapshot(payload, event) {
   }
   if (Array.isArray(titans) && titans.length > 0) {
     watcherRaidTitans = titans;
+    // 詛咒甲位置每場隨機，快照裡的才是官方這一場的實際資料，有目前這隻王的話直接以它覆蓋詛咒狀態
+    const curTitan = watcherCurrentEnemyId && titans.find(t => t.enemy_id === watcherCurrentEnemyId);
+    if (curTitan) {
+      const fresh = buildPartStatusFromTitan(curTitan);
+      Object.keys(watcherPartStatus).forEach((loc) => { watcherPartStatus[loc].cursed = !!(fresh[loc] && fresh[loc].cursed); });
+      Object.keys(fresh).forEach((loc) => { if (!watcherPartStatus[loc]) watcherPartStatus[loc] = fresh[loc]; });
+      saveCurrentBossState();
+    }
     // 補救：伺服器重啟後（例如剛從 Render 暫停恢復），如果第一個進來的是 attack 事件
     // 而不是這種場次快照事件，watcherHandleAttack 那邊會因為 watcherRaidTitans 還是空的，
     // 查不到滿血值，killMaxHp 只好先掛 0（血量%就會變成 0.0%、圖示也會找不到王名對應）。

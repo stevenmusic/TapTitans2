@@ -1572,13 +1572,16 @@ function startWatcher() {
 }
 
 // 開機順序：① 先把 Turso 現有資料一次讀進記憶體快取（之後讀取都不會再查 Turso）；
-// ② 把 GitHub 備份的資料還原回資料庫＋快取，確保不管上次是怎麼重啟的（重新部署、
-// Render 免費方案閒置休眠醒來、帳號被停用又恢復…），資料都能自動補回來；
-// ③ 開始 24 小時背景側錄；④ 啟動定期備份。
+// ② 馬上開始 24 小時背景側錄；③ 把 GitHub 備份的資料還原回資料庫＋快取，確保不管
+// 上次是怎麼重啟的（重新部署、Render 免費方案閒置休眠醒來、帳號被停用又恢復…），
+// 資料都能自動補回來；④ 啟動定期備份。
+// 背景側錄不能排在 GitHub 還原後面：備份每小時多一個檔案，還原是一個檔案一個檔案抓，
+// 檔案越積越多，開機後要很久才跑完，那段期間完全收不到新的攻擊。即時進來的攻擊
+// 跟還原回來的歷史資料用同一個 dedupKey 去重，同時進行不會重複。
 (async () => {
   await hydrateAttacksCacheFromDb();
-  await restoreAttackLogFromGitHubBackup();
   startWatcher();
+  await restoreAttackLogFromGitHubBackup();
   if (githubBackupEnabled) {
     backupAttackLogToGitHub(); // 開機先備份一次，不用等滿一輪
     setInterval(backupAttackLogToGitHub, GITHUB_BACKUP_INTERVAL_MS);

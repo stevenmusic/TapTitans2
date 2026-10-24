@@ -1642,6 +1642,88 @@ app.get('/raid-raw-snapshots', async (req, res) => {
   res.json({ snapshots: result.rows.map(r => ({ startedAt: r.started_at, capturedAt: r.captured_at, event: r.event, data: JSON.parse(r.data || 'null') })) });
 });
 
+// 依部位查牌組用的統計：每一場突襲只看「總傷前 N 名」玩家的攻擊，記錄「這三張卡一組」
+// 每一刀打到了哪些部位+層別（盔甲/肉體），前端選好要打的部位就能比對哪些牌組符合。
+// 不統計傷害數字：每個人的卡片等級不同，傷害高低不能拿來比較牌組好壞，只記「打到哪裡」。
+// 為了不讓出刀很少、剛好均傷高的人擠進榜，要先出到該場最多刀數的 80% 以上才參加排名。
+// 回傳的是整理好的統計（幾十 KB），不是整包攻擊紀錄，不會吃掉太多 Render 流量。
+const DECK_STATS_MIN_ATTACK_RATIO = 0.8;
+const deckPartStatsCache = new Map(); // topN -> 回應內容
+let deckPartStatsCacheSize = -1; // 快取算出來時的攻擊筆數，筆數變了整份快取就失效
+
+async function computeDeckPartStats(topN) {
+  if (deckPartStatsCacheSize !== attacksByDedupKey.size) {
+    deckPartStatsCache.clear();
+    deckPartStatsCacheSize = attacksByDedupKey.size;
+  }
+  if (deckPartStatsCache.has(topN)) return deckPartStatsCache.get(topN);
+
+  const { sessions } = await computeSessionSummary();
+  const decks = new Map(); // 排序後的三張卡名 -> { cards, attacks, patterns }
+  let sessionCount = 0;
+  let attackCount = 0;
+
+  for (const s of sessions) {
+    const attacks = await getAttacksInRange(s.rangeStartTs, s.rangeEndTs);
+    if (attacks.length === 0) continue;
+
+    const byPlayer = new Map(); // 玩家編號（沒有就用名稱）-> { attacks, total }
+    attacks.forEach((a) => {
+      const identity = a.playerCode || a.player;
+      if (!byPlayer.has(identity)) byPlayer.set(identity, { attacks: [], total: 0 });
+      const e = byPlayer.get(identity);
+      e.attacks.push(a);
+      e.total += a.totalDamage || 0;
+    });
+
+    const maxCount = Math.max(...[...byPlayer.values()].map(e => e.attacks.length));
+    const minCount = Math.ceil(maxCount * DECK_STATS_MIN_ATTACK_RATIO);
+    const top = [...byPlayer.values()]
+      .filter(e => e.attacks.length >= minCount)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, topN);
+    if (top.length === 0) continue;
+    sessionCount++;
+
+    top.forEach((e) => e.attacks.forEach((a) => {
+      const names = (a.cards || []).map(c => c.name).filter(Boolean);
+      if (names.length !== 3) return; // 只統計「三張一組」完整的攻擊
+      const key = [...names].sort().join('|');
+      if (!decks.has(key)) decks.set(key, { cards: [...names].sort(), attacks: 0, patterns: {} });
+      const d = decks.get(key);
+      d.attacks++;
+      attackCount++;
+      // 這一刀打到的部位+層別（有造成傷害的才算），排序後串成一個字串當 key，
+      // 例如 "ChestUpper|armor,Head|armor"；同樣組合的刀數累加。前端要找「同時打到所選部位」
+      // 的刀數時，只要看這個組合有沒有包含所選的部位。
+      const hit = [...new Set((a.parts || [])
+        .filter(p => (Number(p.damage) || 0) > 0)
+        .map(p => `${p.part}|${p.layer}`))].sort().join(',');
+      d.patterns[hit] = (d.patterns[hit] || 0) + 1;
+    }));
+  }
+
+  const result = {
+    topN,
+    minAttackRatio: DECK_STATS_MIN_ATTACK_RATIO,
+    sessionCount,
+    attackCount,
+    decks: [...decks.values()]
+  };
+  deckPartStatsCache.set(topN, result);
+  return result;
+}
+
+app.get('/deck-part-stats', async (req, res) => {
+  const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 10, 1), 30);
+  try {
+    res.json(await computeDeckPartStats(topN));
+  } catch (e) {
+    console.error('deck-part-stats failed', e);
+    res.status(500).json({ error: 'deck-part-stats failed' });
+  }
+});
+
 app.get('/raid-players', async (req, res) => {
   res.json({ players: await getDistinctPlayers() });
 });

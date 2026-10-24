@@ -2040,8 +2040,8 @@
         .top-decks-compact .top-deck-total { font-size: 14px !important; }
         .top-decks-compact .top-deck-avg { font-size: 11px !important; }
         .top-decks-compact .top-deck-row { padding: 2px !important; }
-        /* 牌組參考只顯示「總傷前十」，「這樣配最簡單！」子頁籤拿掉 */
-        #panel-topdecks .deck-subtab-row, #suggested-deck-result, #best-six-dropdown-wrap { display: none !important; }
+        /* 牌組參考有「總傷前十」「依部位」兩個子頁籤，「這樣配最簡單！」拿掉 */
+        #deck-subtab-btn-suggested, #suggested-deck-result, #best-six-dropdown-wrap { display: none !important; }
         .raid-tool-menu {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3386,10 +3386,12 @@
                     <div class="backup-title"><svg class="panel-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</div>
                     <div class="deck-subtab-row">
                         <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">總傷前十</button>
+                        <button id="deck-subtab-btn-bypart" class="deck-subtab-btn" onclick="switchDeckSubtab('bypart')">依部位</button>
                         <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">這樣配最簡單！</button>
                     </div>
                     <div id="top-decks-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
+                    <div id="by-part-result" style="display:none; width:100%; margin-top:6px;"></div>
                     <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
                         <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
                             <span id="best-six-dropdown-label">這樣配最簡單！（支援傷15%）</span>
@@ -7415,14 +7417,171 @@
         // 切換「常用牌組」／「建議牌組」兩個子頁籤，同一個面板內切換，不用重新點外層選單
         function switchDeckSubtab(id) {
             const isTopDecks = id === 'topdecks';
+            const isByPart = id === 'bypart';
+            const isSuggested = !isTopDecks && !isByPart;
+            deckSubtab = isByPart ? 'bypart' : (isTopDecks ? 'topdecks' : 'suggested');
             document.getElementById('top-decks-session-menu').style.display = 'none'; // renderTopDecks 會在有場次時再打開
             document.getElementById('top-decks-result').style.display = isTopDecks ? 'flex' : 'none';
-            document.getElementById('suggested-deck-result').style.display = isTopDecks ? 'none' : 'flex';
-            document.getElementById('best-six-dropdown-wrap').style.display = isTopDecks ? 'none' : 'block';
+            document.getElementById('by-part-result').style.display = isByPart ? 'block' : 'none';
+            document.getElementById('suggested-deck-result').style.display = isSuggested ? 'flex' : 'none';
+            document.getElementById('best-six-dropdown-wrap').style.display = isSuggested ? 'block' : 'none';
             document.getElementById('deck-subtab-btn-topdecks').classList.toggle('active', isTopDecks);
-            document.getElementById('deck-subtab-btn-suggested').classList.toggle('active', !isTopDecks);
+            document.getElementById('deck-subtab-btn-bypart').classList.toggle('active', isByPart);
+            document.getElementById('deck-subtab-btn-suggested').classList.toggle('active', isSuggested);
             if (isTopDecks) renderTopDecks();
+            else if (isByPart) renderByPart();
             else renderSuggestedDeck();
+        }
+
+        /* ══════════════════════════════════════════════════════════
+           依部位查牌組：選好「要打的部位＋狀態（盔甲／肉體）」，列出符合的牌組（三張一組）。
+           統計來自伺服器的 /deck-part-stats：每場突襲只看總傷前 N 名玩家的攻擊（出刀數要到
+           該場最多刀數的 80% 以上才參加排名），記錄各牌組每一刀打到哪些部位＋層別。
+           不比傷害數字（每個人的卡片等級不同），只看「有幾刀同時打到所選的部位」。
+           是統計「全部場次」，不受上方場次選單影響。
+           ══════════════════════════════════════════════════════════ */
+        let deckSubtab = 'topdecks';
+        let byPartTop = 10;
+        const BY_PART_TOP_OPTIONS = [5, 10, 15, 20];
+        const BY_PART_MIN_ATTACKS = 3;   // 同時打到所選部位的刀數至少要有幾刀才列入，避免只靠一兩刀就上榜
+        const BY_PART_SHOW_MIN = 0.3;    // 牌組旁顯示的部位：至少在這個牌組 30% 的刀裡被打到（排除偶爾點到的部位）
+        const byPartSel = new Set();     // 例如 'Head|armor'
+        const byPartCache = new Map();   // 前 N 名 -> 伺服器統計
+        let byPartRenderToken = 0;
+
+        async function loadByPartStats(topN) {
+            if (byPartCache.has(topN)) return byPartCache.get(topN);
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const resp = await fetch(`${relayUrl}/deck-part-stats?top=${topN}`);
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                if (!data || !Array.isArray(data.decks)) return null;
+                byPartCache.set(topN, data);
+                return data;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function toggleByPartSel(key) {
+            if (byPartSel.has(key)) byPartSel.delete(key); else byPartSel.add(key);
+            renderByPart();
+        }
+
+        function setByPartTop(n) {
+            byPartTop = n;
+            renderByPart();
+        }
+
+        function renderByPartRow(r, rank) {
+            return `
+                <div style="display:flex; align-items:center; gap:8px; padding:4px 2px; border-bottom:1px dashed #e8dcc8;">
+                    <div style="font-size:13px; font-weight:700; color:#8a7a63; width:22px; flex-shrink:0;">${rank}.</div>
+                    <div style="display:flex; gap:5px; flex:1; min-width:0;">
+                        ${r.cards.map(name => {
+                            const img = raidCardImage(name);
+                            return img
+                                ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" style="width:40px; height:40px; border-radius:7px; object-fit:cover; flex-shrink:0;">`
+                                : `<span style="width:40px; font-size:20px; text-align:center;">🃏</span>`;
+                        }).join('')}
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; max-width:55%;">
+                        ${r.parts.map(p => `<span style="font-size:11px; padding:2px 6px; border-radius:99px; border:1.5px solid rgb(${p.rgb}); background:${p.selected ? `rgb(${p.rgb})` : `rgba(${p.rgb},0.12)`}; color:${p.selected ? '#fff' : `rgb(${p.rgb})`}; font-weight:700; white-space:nowrap;">${escapeHtml(p.text)}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function renderByPart() {
+            const box = document.getElementById('by-part-result');
+            if (!box) return;
+            box.style.display = 'block';
+            const token = ++byPartRenderToken;
+
+            const btnStyle = (on) => `font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid ${on ? '#4a3a2a' : '#d8c8a8'}; background:${on ? '#4a3a2a' : '#fff'}; color:${on ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;`;
+            const topButtons = BY_PART_TOP_OPTIONS.map(n =>
+                `<button onclick="setByPartTop(${n})" style="${btnStyle(n === byPartTop)}">前${n}名</button>`).join('');
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），狀態顏色也跟首頁一致：盔甲深灰、肉體藍
+            const layerRgb = (layer) => layer === 'armor' ? '69,90,100' : '21,101,192';
+            const layerBtn = (partKey, layer) => {
+                const on = byPartSel.has(partKey + '|' + layer);
+                const rgb = layerRgb(layer);
+                return `<button onclick="toggleByPartSel('${partKey}|${layer}')" style="flex:1; min-width:0; font-size:10.5px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.12)`}; color:${on ? '#fff' : `rgb(${rgb})`}; font-family:inherit; cursor:pointer;">${layer === 'armor' ? '盔甲' : '肉體'}</button>`;
+            };
+            const partGrid = `
+                <div class="raid-parts-legend">
+                    <span class="raid-parts-legend-swatch armor"></span>盔甲　<span class="raid-parts-legend-swatch body"></span>肉體
+                </div>
+                <div class="raid-parts-grid">
+                    ${RAID_LOG_PART_LAYOUT.map(row => `
+                        <div class="raid-parts-row">
+                            ${row.map(partKey => `
+                                <div class="raid-part-cell">
+                                    <div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>
+                                    <div style="display:flex; gap:3px;">${layerBtn(partKey, 'armor')}${layerBtn(partKey, 'body')}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            box.innerHTML = `
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:12px; color:#8a7a6a;">統計玩家：每場總傷</span>${topButtons}
+                </div>
+                <div style="margin-top:8px;">${partGrid}</div>
+                <div id="by-part-list" style="margin-top:12px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
+            `;
+
+            const data = await loadByPartStats(byPartTop);
+            if (token !== byPartRenderToken) return; // 載入期間使用者又點了別的選項，這次的結果作廢
+            const list = document.getElementById('by-part-list');
+            if (!list) return;
+            if (!data) {
+                list.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。';
+                return;
+            }
+            const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
+            if (byPartSel.size === 0) {
+                list.innerHTML = info + '點上方要打的部位與狀態（可多選），就會列出符合的牌組。';
+                return;
+            }
+            const sel = [...byPartSel];
+            const rows = data.decks.map(d => {
+                // 這個牌組有幾刀「同時打到全部所選的部位＋狀態」
+                let matched = 0;
+                Object.keys(d.patterns || {}).forEach(pattern => {
+                    const hit = new Set(pattern.split(','));
+                    if (sel.every(k => hit.has(k))) matched += d.patterns[pattern];
+                });
+                // 這個牌組平常打哪些「部位＋狀態」：統計每個部位＋層別出現在幾刀裡
+                const freq = {};
+                Object.keys(d.patterns || {}).forEach(pattern => {
+                    pattern.split(',').forEach(k => { if (k) freq[k] = (freq[k] || 0) + d.patterns[pattern]; });
+                });
+                const parts = Object.keys(freq)
+                    .filter(k => sel.includes(k) || freq[k] / d.attacks >= BY_PART_SHOW_MIN)
+                    .sort((a, b) => (sel.includes(b) - sel.includes(a)) || (freq[b] - freq[a]))
+                    .slice(0, 8)
+                    .map(k => {
+                        const [part, layer] = k.split('|');
+                        return { text: `${raidPartLabel(part)}${layer === 'body' ? '肉體' : '盔甲'}`, rgb: layer === 'body' ? '21,101,192' : '69,90,100', selected: sel.includes(k) };
+                    });
+                return { cards: d.cards, count: d.attacks, matched, parts };
+            }).filter(r => r.matched >= BY_PART_MIN_ATTACKS)
+              .sort((a, b) => (b.matched - a.matched) || (b.matched / b.count - a.matched / a.count))
+              .slice(0, 15);
+            if (rows.length === 0) {
+                list.innerHTML = info + `沒有符合的牌組（至少要有 ${BY_PART_MIN_ATTACKS} 刀同時打到所選的部位）。`;
+                return;
+            }
+            const columnOf = assignDeckColumns(rows);
+            rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
+            list.innerHTML = info
+                + `<div style="margin-bottom:4px;">右側：這組牌組常打的部位與狀態（實心＝你選的）</div>`
+                + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -8359,7 +8518,11 @@
                 renderRaidSessionMenu();
                 renderRaidLogQueryResult();
             }
-            if (id === 'topdecks') { topDecksSessionFilter = x; await renderTopDecks(); }
+            if (id === 'topdecks') {
+                topDecksSessionFilter = x;
+                if (deckSubtab === 'bypart') renderByPart(); // 依部位是統計全部場次，不受場次選單影響
+                else await renderTopDecks();
+            }
             if (id === 'cardusage') { cardUsageSessionFilter = x; await renderCardUsageCheck(); }
             if (id === 'missed') { missedSessionFilter = x; await renderMissedAttackList(); }
             if (id === 'report') await renderRaidReportPanel(x);

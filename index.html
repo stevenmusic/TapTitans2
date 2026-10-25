@@ -7434,20 +7434,28 @@
         }
 
         /* ══════════════════════════════════════════════════════════
-           依部位查牌組：選好「要打的部位＋狀態（盔甲／肉體）」，列出符合的牌組（三張一組）。
+           依部位查牌組：選好「要打的部位＋狀態（盔甲／肉體／肉甲）」，列出符合的牌組（三張一組）。
            統計來自伺服器的 /deck-part-stats：每場突襲只看總傷前 N 名玩家的攻擊（出刀數要到
            該場最多刀數的 80% 以上才參加排名），記錄各牌組每一刀打到哪些部位＋層別。
-           不比傷害數字（每個人的卡片等級不同），只看「有幾刀同時打到所選的部位」。
+           不比傷害數字（每個人的卡片等級不同），只看「有幾刀打到所選的部位」。
            是統計「全部場次」，不受上方場次選單影響。
+
+           符合的規則：
+           ・點擊傷害不算：每一刀都有點擊傷害，點到哪個部位那個部位就有傷害，跟牌組無關。伺服器
+             只把「部位傷害大於點擊傷害」的部位算成卡片打到的。
+           ・只算「專打」的刀：卡片打到的部位要剛好是所選的部位。所以只選一個部位時，一刀打好幾個
+             部位的牌組（例如連鎖）不會符合。
+           ・狀態：盔甲＝有打到該部位盔甲的紀錄；肉體＝有打到肉體的紀錄；肉甲＝兩者都有紀錄
+             （不一定在同一刀）。每個部位只顯示一個狀態標籤，不會同時出現盔甲跟肉體兩個標籤。
            ══════════════════════════════════════════════════════════ */
         let deckSubtab = 'topdecks';
         let byPartTop = 10;
         const BY_PART_TOP_OPTIONS = [5, 10, 15, 20];
-        const BY_PART_MIN_ATTACKS = 3;   // 同時打到所選部位的刀數至少要有幾刀才列入，避免只靠一兩刀就上榜
-        const BY_PART_MULTI_MIN = 6;     // 一刀打到幾個不同部位以上，就當成「多部位」，不逐個列出（通常是 6～8 個）
-        const BY_PART_MAX_OTHERS = 4;    // 「其他打法」最多列幾種
-        const byPartSel = new Set();     // 例如 'Head|armor'
-        const byPartCache = new Map();   // 前 N 名 -> 伺服器統計
+        const BY_PART_MIN_HITS = 3;       // 某個部位的某一層至少要有幾刀專打的紀錄才算「有紀錄」，避免只靠一兩刀就上榜
+        const BY_PART_EXTRA_PARTS = 0;    // 一刀（卡片）打到的部位數可以比所選部位數多幾個；0＝要剛好打在所選的部位上
+        const BY_PART_STATE_LABEL = { armor: '盔甲', body: '肉體', both: '肉甲' };
+        const byPartSel = new Map();      // 部位 key（例如 'Head'）-> 'armor' | 'body' | 'both'
+        const byPartCache = new Map();    // 前 N 名 -> 伺服器統計
         let byPartRenderToken = 0;
 
         async function loadByPartStats(topN) {
@@ -7465,8 +7473,9 @@
             }
         }
 
-        function toggleByPartSel(key) {
-            if (byPartSel.has(key)) byPartSel.delete(key); else byPartSel.add(key);
+        // 同一個部位再點一次同一個狀態＝取消選取；點另一個狀態＝改成那個（每個部位只能選一種狀態）
+        function toggleByPartSel(part, state) {
+            if (byPartSel.get(part) === state) byPartSel.delete(part); else byPartSel.set(part, state);
             renderByPart();
         }
 
@@ -7475,16 +7484,47 @@
             renderByPart();
         }
 
-        // 一種打法（同一刀同時打到的部位＋狀態）的標籤列：盔甲灰、肉體藍，你選的是實心；
-        // 一刀打到 6 個部位以上就縮成「多部位」加上有哪些狀態，不逐個列出
-        function byPartChips(g) {
-            const chip = (text, rgb, solid) => `<span style="font-size:11px; padding:2px 6px; border-radius:99px; border:1.5px solid rgb(${rgb}); background:${solid ? `rgb(${rgb})` : `rgba(${rgb},0.12)`}; color:${solid ? '#fff' : `rgb(${rgb})`}; font-weight:700; white-space:nowrap;">${escapeHtml(text)}</span>`;
-            const rgbOf = (layer) => layer === 'body' ? '21,101,192' : '69,90,100';
-            const labelOf = (layer) => layer === 'body' ? '肉體' : '盔甲';
-            const inner = g.multi
-                ? chip('多部位（≥6）', '142,106,58', false) + g.layers.map(l => chip(labelOf(l), rgbOf(l), false)).join('')
-                : g.keys.map(k => { const [part, layer] = k.split('|'); return chip(raidPartLabel(part) + labelOf(layer), rgbOf(layer), g.selected.includes(k)); }).join('');
-            return `<div style="display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end;">${inner}</div>`;
+        // 這個牌組符不符合目前選的部位：回傳 null＝不符合；符合則回傳每個所選部位的實際狀態與排序用分數
+        function matchDeckByPart(d) {
+            const parts = [...byPartSel.keys()];
+            const maxParts = parts.length + BY_PART_EXTRA_PARTS;
+            const layerHits = {}; // 'Head|armor' -> 專打這些部位的刀數
+            Object.keys(d.patterns || {}).forEach(pattern => {
+                const keys = pattern.split(',').filter(Boolean);
+                const hitParts = new Set(keys.map(k => k.split('|')[0]));
+                if (hitParts.size > maxParts) return;               // 一刀打太多部位＝範圍攻擊，不算專打
+                if (!parts.every(p => hitParts.has(p))) return;     // 要同時打到所有所選部位
+                keys.forEach(k => { layerHits[k] = (layerHits[k] || 0) + d.patterns[pattern]; });
+            });
+            const states = {};
+            let score = Infinity;
+            for (const [part, want] of byPartSel) {
+                const a = layerHits[part + '|armor'] || 0;
+                const b = layerHits[part + '|body'] || 0;
+                const hasA = a >= BY_PART_MIN_HITS, hasB = b >= BY_PART_MIN_HITS;
+                if (want === 'armor' && !hasA) return null;
+                if (want === 'body' && !hasB) return null;
+                if (want === 'both' && !(hasA && hasB)) return null;
+                states[part] = hasA && hasB ? 'both' : (hasA ? 'armor' : 'body');
+                score = Math.min(score, want === 'armor' ? a : (want === 'body' ? b : Math.min(a, b)));
+            }
+            return { states, score };
+        }
+
+        // 狀態標籤：盔甲深灰、肉體藍（跟突襲首頁一致），肉甲左灰右藍
+        function byPartStatePill(state) {
+            const bg = state === 'armor' ? 'rgb(69,90,100)'
+                : (state === 'body' ? 'rgb(21,101,192)' : 'linear-gradient(90deg, rgb(69,90,100) 50%, rgb(21,101,192) 50%)');
+            return `<span style="font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; background:${bg}; color:#fff; white-space:nowrap;">${BY_PART_STATE_LABEL[state]}</span>`;
+        }
+
+        // 同樣狀態的部位併成一行：「盔甲 頭部、肚子」，不是每個部位各一個標籤
+        function byPartStateLines(states) {
+            return ['armor', 'body', 'both'].map(st => {
+                const names = RAID_PARTS.filter(p => states[p.key] === st).map(p => escapeHtml(raidPartLabel(p.key)));
+                if (names.length === 0) return '';
+                return `<div style="display:flex; gap:5px; align-items:center; justify-content:flex-end; flex-wrap:wrap;">${byPartStatePill(st)}<span style="font-size:12px; color:#4a3a2a;">${names.join('、')}</span></div>`;
+            }).join('');
         }
 
         function renderByPartRow(r, rank) {
@@ -7500,8 +7540,7 @@
                         }).join('')}
                     </div>
                     <div style="max-width:55%; display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
-                        ${byPartChips(r.primary)}
-                        ${r.others.length ? `<details style="font-size:11px; color:#8a7a6a; text-align:right;"><summary style="cursor:pointer;">＋${r.others.length} 種打法</summary>${r.others.map(g => `<div style="margin-top:4px;">${byPartChips(g)}</div>`).join('')}</details>` : ''}
+                        ${byPartStateLines(r.states)}
                     </div>
                 </div>
             `;
@@ -7516,16 +7555,18 @@
             const btnStyle = (on) => `font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid ${on ? '#4a3a2a' : '#d8c8a8'}; background:${on ? '#4a3a2a' : '#fff'}; color:${on ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;`;
             const topButtons = BY_PART_TOP_OPTIONS.map(n =>
                 `<button onclick="setByPartTop(${n})" style="${btnStyle(n === byPartTop)}">前${n}名</button>`).join('');
-            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），狀態顏色也跟首頁一致：盔甲深灰、肉體藍
-            const layerRgb = (layer) => layer === 'armor' ? '69,90,100' : '21,101,192';
-            const layerBtn = (partKey, layer) => {
-                const on = byPartSel.has(partKey + '|' + layer);
-                const rgb = layerRgb(layer);
-                return `<button onclick="toggleByPartSel('${partKey}|${layer}')" style="flex:1; min-width:0; font-size:10.5px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.12)`}; color:${on ? '#fff' : `rgb(${rgb})`}; font-family:inherit; cursor:pointer;">${layer === 'armor' ? '盔甲' : '肉體'}</button>`;
+
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），每個部位三個選項：盔甲／肉體／肉甲
+            const stateBtn = (partKey, state) => {
+                const on = byPartSel.get(partKey) === state;
+                const light = state === 'armor' ? 'rgba(69,90,100,0.12)' : (state === 'body' ? 'rgba(21,101,192,0.12)' : 'linear-gradient(90deg, rgba(69,90,100,0.12) 50%, rgba(21,101,192,0.12) 50%)');
+                const solid = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : 'linear-gradient(90deg, rgb(69,90,100) 50%, rgb(21,101,192) 50%)');
+                const border = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : '#8a7a63');
+                return `<button onclick="toggleByPartSel('${partKey}','${state}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid ${border}; background:${on ? solid : light}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer;">${BY_PART_STATE_LABEL[state]}</button>`;
             };
             const partGrid = `
                 <div class="raid-parts-legend">
-                    <span class="raid-parts-legend-swatch armor"></span>盔甲　<span class="raid-parts-legend-swatch body"></span>肉體
+                    <span class="raid-parts-legend-swatch armor"></span>盔甲　<span class="raid-parts-legend-swatch body"></span>肉體　<span class="raid-parts-legend-swatch" style="background:linear-gradient(90deg, rgba(69,90,100,0.55) 50%, rgba(21,101,192,0.55) 50%);"></span>肉甲（兩者都打過）
                 </div>
                 <div class="raid-parts-grid">
                     ${RAID_LOG_PART_LAYOUT.map(row => `
@@ -7533,7 +7574,7 @@
                             ${row.map(partKey => `
                                 <div class="raid-part-cell">
                                     <div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>
-                                    <div style="display:flex; gap:3px;">${layerBtn(partKey, 'armor')}${layerBtn(partKey, 'body')}</div>
+                                    <div style="display:flex; gap:2px;">${['armor', 'body', 'both'].map(st => stateBtn(partKey, st)).join('')}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -7559,40 +7600,23 @@
             }
             const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
             if (byPartSel.size === 0) {
-                list.innerHTML = info + '點上方要打的部位與狀態（可多選），就會列出符合的牌組。';
+                list.innerHTML = info + '點上方要打的部位與狀態（每個部位選一種，可選多個部位），就會列出符合的牌組。只選一個部位時，只列出能專打那個部位的牌組。';
                 return;
             }
-            const sel = [...byPartSel];
             const rows = data.decks.map(d => {
-                // 把符合的刀依「打法」分組：同一刀同時打到的部位＋狀態算一種打法，
-                // 打到 6 個部位以上的刀全部併成「多部位」（依狀態分組），次數多的打法排前面
-                const groups = {};
-                Object.keys(d.patterns || {}).forEach(pattern => {
-                    const keys = pattern.split(',').filter(Boolean);
-                    if (!sel.every(k => keys.includes(k))) return;
-                    const partCount = new Set(keys.map(k => k.split('|')[0])).size;
-                    const multi = partCount >= BY_PART_MULTI_MIN;
-                    const layers = [...new Set(keys.map(k => k.split('|')[1]))].sort();
-                    const gk = multi ? 'MULTI:' + layers.join('+') : pattern;
-                    if (!groups[gk]) groups[gk] = { count: 0, keys, multi, layers, selected: sel };
-                    groups[gk].count += d.patterns[pattern];
-                });
-                const list = Object.values(groups).sort((x, y) => y.count - x.count);
-                const matched = list.reduce((sum, g) => sum + g.count, 0);
-                const primary = list[0];
-                const others = list.slice(1).filter(g => g.count >= 2).slice(0, BY_PART_MAX_OTHERS);
-                return { cards: d.cards, count: d.attacks, matched, primary, others };
-            }).filter(r => r.matched >= BY_PART_MIN_ATTACKS)
-              .sort((a, b) => (b.matched - a.matched) || (b.matched / b.count - a.matched / a.count))
+                const m = matchDeckByPart(d);
+                return m ? { cards: d.cards, count: d.attacks, states: m.states, score: m.score } : null;
+            }).filter(Boolean)
+              .sort((a, b) => (b.score - a.score) || (b.count - a.count))
               .slice(0, 15);
             if (rows.length === 0) {
-                list.innerHTML = info + `沒有符合的牌組（至少要有 ${BY_PART_MIN_ATTACKS} 刀同時打到所選的部位）。`;
+                list.innerHTML = info + `沒有符合的牌組（要有至少 ${BY_PART_MIN_HITS} 刀的卡片剛好打在所選部位上；點擊傷害不算，一刀同時打到其他部位的算範圍攻擊，不列入）。`;
                 return;
             }
             const columnOf = assignDeckColumns(rows);
             rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
             list.innerHTML = info
-                + `<div style="margin-bottom:4px;">右側：這組牌組最常見的打法（實心＝你選的；打到 6 處以上併成「多部位」）</div>`
+                + `<div style="margin-bottom:4px;">右側：這組牌組在所選部位的狀態（肉甲＝盔甲和肉體都打過）</div>`
                 + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 

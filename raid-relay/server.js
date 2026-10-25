@@ -11,6 +11,7 @@ const cors = require('cors');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { Server } = require('socket.io');
 const { io: ioClient } = require('socket.io-client');
 const webpush = require('web-push');
@@ -1652,23 +1653,38 @@ app.get('/raid-raw-snapshots', async (req, res) => {
 // 為了不讓出刀很少、剛好均傷高的人擠進榜，要先出到該場最多刀數的 80% 以上才參加排名。
 // 回傳的是整理好的統計（幾十 KB），不是整包攻擊紀錄，不會吃掉太多 Render 流量。
 const DECK_STATS_MIN_ATTACK_RATIO = 0.8;
-const deckPartStatsCache = new Map(); // topN -> 回應內容
-let deckPartStatsCacheSize = -1; // 快取算出來時的攻擊筆數，筆數變了整份快取就失效
+// 這份統計不需要即時：算完固定 10 分鐘內直接回傳同一份（不會每來一筆新攻擊就重算），
+// 而且預先壓縮成 gzip 存起來，之後每次請求只是把這個小檔案送出去，不用再算、不用再壓縮。
+// 同時有好幾個人打開時共用同一次計算（deckPartStatsPending），不會同時算好幾份。
+const DECK_STATS_TTL_MS = 10 * 60 * 1000;
+const deckPartStatsCache = new Map(); // topN -> { at, gz }
+const deckPartStatsPending = new Map(); // topN -> 計算中的 Promise
+
+async function getDeckPartStatsGz(topN) {
+  const hit = deckPartStatsCache.get(topN);
+  if (hit && Date.now() - hit.at < DECK_STATS_TTL_MS) return hit.gz;
+  if (deckPartStatsPending.has(topN)) return deckPartStatsPending.get(topN);
+  const p = (async () => {
+    const result = await computeDeckPartStats(topN);
+    const json = JSON.stringify(result);
+    const gz = zlib.gzipSync(json);
+    console.log(`[deck-part-stats] top${topN}：${result.decks.length} 組牌組，${json.length} bytes，壓縮後 ${gz.length} bytes`);
+    deckPartStatsCache.set(topN, { at: Date.now(), gz });
+    return gz;
+  })().finally(() => deckPartStatsPending.delete(topN));
+  deckPartStatsPending.set(topN, p);
+  return p;
+}
 
 async function computeDeckPartStats(topN) {
-  if (deckPartStatsCacheSize !== attacksByDedupKey.size) {
-    deckPartStatsCache.clear();
-    deckPartStatsCacheSize = attacksByDedupKey.size;
-  }
-  if (deckPartStatsCache.has(topN)) return deckPartStatsCache.get(topN);
-
   const { sessions } = await computeSessionSummary();
+  const allAttacks = cacheAllAttacksSorted(); // 整份只排序一次，再依場次的時間範圍切開
   const decks = new Map(); // 排序後的三張卡名 -> { cards, attacks, patterns }
   let sessionCount = 0;
   let attackCount = 0;
 
   for (const s of sessions) {
-    const attacks = await getAttacksInRange(s.rangeStartTs, s.rangeEndTs);
+    const attacks = allAttacks.filter(a => a.ts >= s.rangeStartTs && (s.rangeEndTs == null || a.ts < s.rangeEndTs));
     if (attacks.length === 0) continue;
 
     const byPlayer = new Map(); // 玩家編號（沒有就用名稱）-> { attacks, total }
@@ -1721,14 +1737,19 @@ async function computeDeckPartStats(topN) {
     attackCount,
     decks: [...decks.values()]
   };
-  deckPartStatsCache.set(topN, result);
   return result;
 }
 
 app.get('/deck-part-stats', async (req, res) => {
   const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 10, 1), 30);
   try {
-    res.json(await computeDeckPartStats(topN));
+    const gz = await getDeckPartStatsGz(topN);
+    res.set({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Encoding': 'gzip',
+      'Cache-Control': 'public, max-age=300' // 瀏覽器 5 分鐘內重複打開，連請求都不會送到伺服器
+    });
+    res.send(gz);
   } catch (e) {
     console.error('deck-part-stats failed', e);
     res.status(500).json({ error: 'deck-part-stats failed' });

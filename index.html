@@ -7599,16 +7599,67 @@
             }
             return null;
         }
+        // 牌組判斷題：只出「統計裡真的出現過」的牌組（前 15 名玩家真的用過）。
+        // 現在這個部位狀態下「可以」＝統計裡這組牌有現在打得出來的打法（而且最常打的打法也打得出來，至少 10 次）；其他＝「不行」
+        let quizStats = null, quizStatsLoading = false;
+        function quizLoadStats() {
+            if (quizStats || quizStatsLoading) return;
+            quizStatsLoading = true;
+            loadByPartStats(byPartTop).then(data => {
+                quizStats = data && Array.isArray(data.decks) ? data : null;
+                quizStatsLoading = false;
+                if (deckSubtab === 'quiz') { quizQ = null; renderQuiz(); }
+            });
+        }
+        function quizSceneToParts(scene) {
+            const parts = {}, banned = [];
+            RAID_PARTS.forEach(({ key }) => {
+                const s = scene[key];
+                parts[key] = { armor: (s === 'armor' || s === 'cursed' || s === 'banned') ? 100 : 0, armorMax: 100, body: s === 'body' ? 100 : 0, bodyMax: 100, cursed: s === 'cursed' };
+                if (s === 'banned') banned.push(key);
+            });
+            return { parts, banned };
+        }
+        // 這組牌現在打不出來的原因（答題後顯示）
+        function quizDeckWhy(deck, scene) {
+            const n = quizSceneCounts(scene);
+            const cnt = { armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton };
+            for (const card of deck.cards) {
+                const rq = CARD_REQUIREMENTS[card];
+                if (rq && cnt[rq.state] < rq.min) return `${raidCardLabel(card)}：需要${rq.label}部位至少 ${rq.min} 個，現在只有 ${cnt[rq.state]} 個`;
+                if (CARD_ONLY_WHEN[card] && !CARD_ONLY_WHEN[card](cnt)) return `${raidCardLabel(card)}：現在的部位數量不符合它的使用條件`;
+            }
+            // 最常用的打法（統計裡刀數最多、而且打的層別現在場上還有的）要同時打幾個部位、各是哪一層，對照現在可以打的部位數量
+            const avail = { armor: n.armor + n.cursed, body: n.body };
+            const LN = { armor: '盔甲', body: '肉體' };
+            let main = null;
+            byPartParsePatterns(deck).forEach(({ keys, n: cnt }) => {
+                if (!keys.every(([, l]) => avail[l] > 0)) return;
+                if (!main || cnt > main.cnt) main = { keys, cnt };
+            });
+            if (!main) return `這組牌平常打的層別（盔甲或肉體），現在場上沒有可以打的部位`;
+            const need = {};
+            main.keys.forEach(([, l]) => { need[l] = (need[l] || 0) + 1; });
+            const lack = Object.keys(need).filter(l => need[l] > avail[l]);
+            const needText = Object.keys(need).map(l => `${need[l]} 個${LN[l]}`).join('、');
+            if (lack.length) return `這組牌最常用的打法要同時打 ${needText} 部位，現在${lack.map(l => `${LN[l]}部位只有 ${avail[l]} 個可以打`).join('、')}`;
+            return `這組牌最常用的打法（同時打 ${needText} 部位）現在湊不出來`;
+        }
         function quizNextDeck() {
-            const pool = quizSceneCards();
-            for (let tries = 0; tries < 300; tries++) {
+            if (!quizStats) { quizLoadStats(); return null; }
+            const decks = quizStats.decks.filter(d => d.cards.length === 3 && (d.attacks || 0) >= 30);
+            if (!decks.length) return null;
+            for (let tries = 0; tries < 120; tries++) {
                 const scene = quizMakeScene();
+                const { parts, banned } = quizSceneToParts(scene);
+                const okRows = byPartRecoCompute(quizStats, parts, banned, true);
+                const okSet = new Set(okRows.filter(r => r.usable >= BY_PART_RECO_BASE_MIN).map(r => [...r.rawCards].sort().join('|')));
                 const wantOk = Math.random() < 0.5;
-                const cards = quizShuffle(pool).slice(0, 3);
-                const res = cards.map(n => quizCardUsable(n, scene));
-                const allOk = res.every(r => r.ok);
-                if (allOk !== wantOk) continue;
-                return { type: 'deck', scene, cards, res, answer: allOk, picked: null, done: false };
+                const cand = quizShuffle(decks.filter(d => okSet.has([...d.cards].sort().join('|')) === wantOk));
+                if (!cand.length) continue;
+                const deck = cand[0];
+                const cards = byPartOrderCards(deck.cards);
+                return { type: 'deck', scene, cards, deckCards: deck.cards, answer: wantOk, why: wantOk ? '' : quizDeckWhy(deck, scene), picked: null, done: false };
             }
             return null;
         }
@@ -7698,8 +7749,7 @@
             } else if (q.type === 'scene') {
                 detail = q.cards.map(n => { const r = quizCardUsable(n, q.scene); return `<div>${r.ok ? '✔' : '✘'} ${escapeHtml(raidCardLabel(n))}${r.ok ? '：可以用' : '：' + escapeHtml(r.why)}</div>`; }).join('');
             } else {
-                const rows = q.res.map((r, i) => r.ok ? '' : `<div><b>${escapeHtml(raidCardLabel(q.cards[i]))}</b>：${escapeHtml(r.why)}</div>`).join('');
-                detail = `<div>${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}</div>${rows}`;
+                detail = `<div>${q.answer ? '這組牌現在打得出來' : '這組牌現在打不出來'}</div>${q.why ? `<div style="color:#5a5a5a;">${escapeHtml(q.why)}</div>` : ''}`;
                 const names = q.cards.map(n => raidCardLabel(n)).join('、');
                 quizShowToast(ok, `<b>${ok ? '✅ 答對了' : '❌ 答錯了'}</b>　${escapeHtml(names)}${detail}`);
                 quizNext(); renderQuiz();
@@ -7732,7 +7782,7 @@
             const catRgb = { all: '110,90,60', burst: '192,57,43', torment: '30,100,200', support: '46,139,87' };
             const typeChips = QUIZ_TYPES.map(([ty, label]) => chip(quizType === ty, label, `quizSetType('${ty}')`)).join('');
             const catChips = QUIZ_CATS.map(([cat, label]) => chip(quizCat === cat, label, `quizSetCat('${cat}')`, catRgb[cat])).join('');
-            let body = '<div style="font-size:13px; color:#8a7a6a; margin-top:14px;">這個分類目前沒有可以出的題目（卡片資料還沒填）。</div>';
+            let body = `<div style="font-size:13px; color:#8a7a6a; margin-top:14px;">${quizType === 'deck' ? (quizStatsLoading ? '載入統計中…' : '需要連上伺服器取得統計，才能出牌組判斷題。') : '這個分類目前沒有可以出的題目（卡片資料還沒填）。'}</div>`;
             if (quizQ && quizQ.type === 'scene') {
                 const q = quizQ;
                 const opts = q.cards.map(n => {
@@ -7763,14 +7813,11 @@
                     }
                     return `<button onclick="quizAnswerDeck(${yes})" ${q.done ? 'disabled' : ''} style="flex:1; font-size:15px; font-weight:800; padding:12px 0; border-radius:10px; border:2px solid ${border}; background:${bg}; color:${color}; font-family:inherit; cursor:${q.done ? 'default' : 'pointer'};">${label}</button>`;
                 };
-                const blockers = q.res.map((r, i) => r.ok ? '' : `<div style="margin-top:3px;"><b>${escapeHtml(raidCardLabel(q.cards[i]))}</b>：${escapeHtml(r.why)}</div>`).join('');
                 body = `
-                    <div style="font-size:13px; font-weight:800; color:#4a3728; margin-top:12px;">現在王的部位狀態是這樣，這組牌組現在打得出來嗎？（三張卡都要能用）</div>
+                    <div style="font-size:13px; font-weight:800; color:#4a3728; margin-top:12px;">現在王的部位狀態是這樣，這組牌組（實際用過的）現在打得出來嗎？</div>
                     ${quizSceneHtml(q.scene)}
                     <div style="display:flex; gap:3px; justify-content:center; margin-top:10px;">${q.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
-                    <div style="display:flex; gap:8px; margin-top:10px;">${yesNo(true, '可以')}${yesNo(false, '不行')}</div>
-                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
-                        ${q.picked === q.answer ? '✅ 答對了' : '❌ 答錯了'}：${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}${blockers ? `<div style="margin-top:4px; color:#6b5a48;">${blockers}</div>` : ''}</div>` : ''}`;
+                    <div style="display:flex; gap:8px; margin-top:10px;">${yesNo(true, '可以')}${yesNo(false, '不行')}</div>`;
             } else if (quizQ) {
                 const q = quizQ;
                 const options = q.type === 'parts' ? [...QUIZ_PART_OPTIONS, QUIZ_ALL] : QUIZ_STATE_OPTIONS;
@@ -8432,7 +8479,7 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
-        function byPartRecoCompute(data, partsArg, bannedArg) {
+        function byPartRecoCompute(data, partsArg, bannedArg, allRows) {
             const parts = partsArg || (raidState && raidState.parts);
             const bannedList = bannedArg || raidBannedParts;
             if (!parts) return [];
@@ -8589,6 +8636,7 @@
                 if (bestHere && (!best || bestHere.length > best.length)) { best = bestHere; bestObj = objHere; }
                 if (best && best.length >= K) break;
             }
+            if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
             return (best || []).slice().sort((a, b) => b.score - a.score);
         }
 

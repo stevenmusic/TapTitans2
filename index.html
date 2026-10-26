@@ -3409,11 +3409,13 @@
                     <div class="deck-subtab-row">
                         <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">總傷前十</button>
                         <button id="deck-subtab-btn-bypart" class="deck-subtab-btn" onclick="switchDeckSubtab('bypart')">依部位</button>
+                        <button id="deck-subtab-btn-quiz" class="deck-subtab-btn" onclick="switchDeckSubtab('quiz')">題庫</button>
                         <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">這樣配最簡單！</button>
                     </div>
                     <div id="top-decks-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                     <div id="by-part-result" style="display:none; width:100%; margin-top:6px;"></div>
+                    <div id="quiz-result" style="display:none; width:100%; margin-top:6px;"></div>
                     <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
                         <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
                             <span id="best-six-dropdown-label">這樣配最簡單！（支援傷15%）</span>
@@ -7457,11 +7459,128 @@
         }
 
         // 切換「常用牌組」／「建議牌組」兩個子頁籤，同一個面板內切換，不用重新點外層選單
+
+        /* ══════════════════════════════════════════════════════════
+           題庫：每張卡「可以打什麼部位」「可以打哪一層」「適用時機／效果」的選擇題。
+           資料來自配卡工作台整理的卡片資料（l＝可打層別、p＝可打部位、t＝使用時機），
+           只有「有填資料」的卡片才會出題。選項的錯誤答案取自其他卡的答案。
+           ══════════════════════════════════════════════════════════ */
+        const QUIZ_CARDS = {"AstralEcho":{"l":[],"p":[],"t":"每 5 次敲擊在先前部位多一次獎勵點擊"},"BarbedMorningstar":{"l":["盔甲"],"p":[],"t":"每暴露一個身體部位，對裝甲部位傷害增加"},"BattleDrums":{"l":[],"p":[],"t":"大幅增加傷害，但縮短團隊攻擊時間 10 秒"},"BurningAttack":{"l":[],"p":[],"t":"燃燒部位越多，累積機率越高"},"BurstBoost":{"l":["任意"],"p":["任一單部位"],"t":"常搭配鏡子力/防空高砲"},"BurstCount":{"l":["兩者"],"p":["任意"],"t":""},"CelestialStatic":{"l":[],"p":[],"t":"非常少用"},"ChainLightning":{"l":["任意"],"p":["任意"],"t":""},"CosmicBarb":{"l":[],"p":[],"t":"對受影響的部位造成苦痛傷害"},"CrushingVoid":{"l":["肉體"],"p":[],"t":"依未武裝身體部位數增傷，最多疊 6 次"},"DecayingAttack":{"l":[],"p":[],"t":"部位缺失血量越多，苦痛傷害越高"},"Disease":{"l":[],"p":[],"t":"部位受輻射時間越長，苦痛傷害越高"},"ExecutionersAxe":{"l":["任意"],"p":["頭","肚"],"t":""},"FinisherAttack":{"l":[],"p":[],"t":"依骨架部件數增加損壞，最多 6 個"},"FlakShot":{"l":["盔甲"],"p":["任意"],"t":""},"Fragmentize":{"l":["詛咒盔甲","盔甲"],"p":["頭"],"t":"對詛咒盔甲有額外加成"},"Fuse":{"l":["任意"],"p":["多部位（≥6）"],"t":"時常搭配火海"},"Haymaker":{"l":[],"p":[],"t":"每點擊 70 下造成一次重擊，傷害不會溢出"},"ImpactAttack":{"l":["肉體"],"p":[],"t":"提高對未卸載身體部位的損壞"},"InnerTruth":{"l":[],"p":["頭","肚"],"t":"增加對頭和軀幹的傷害，苦痛機會也增加"},"LimbBurst":{"l":["任意"],"p":["手肩","腳"],"t":""},"LimbSupport":{"l":[],"p":["手肩","腳"],"t":"增加對四肢的所有傷害"},"MagicPotion":{"l":[],"p":[],"t":"攻擊期間提高其他團隊卡牌等級"},"MentalFocus":{"l":[],"p":[],"t":"增加苦痛傷害和苦痛機會"},"MirrorForce":{"l":["任意"],"p":["任意"],"t":""},"MoonBeam":{"l":["任意"],"p":["肚","手肩"],"t":""},"PlagueAttack":{"l":["任意"],"p":["多部位（≥6）"],"t":"推薦搭配沙漏+瘋狂無效"},"PoisonAttack":{"l":[],"p":[],"t":"非常少用（舊版本搭配淨化爆裂使用）"},"PowerBubble":{"l":[],"p":[],"t":"刷新氣泡持續時間，滿 5 層時一次爆出巨大損壞"},"Purify":{"l":["兩者"],"p":["任意"],"t":""},"RazorWind":{"l":["肉體"],"p":["任意"],"t":""},"RuinousRust":{"l":["詛咒盔甲"],"p":[],"t":"增加對被詛咒裝甲零件的傷害"},"RuneAttack":{"l":[],"p":[],"t":"增加受漩渦影響部位受到的所有傷害"},"SandsOfTime":{"l":[],"p":[],"t":"延長該部位其他苦痛的持續時間"},"Shadow":{"l":["任意"],"p":[],"t":"2-3 部位，搭配萬花筒"},"SkullBash":{"l":["兩者"],"p":["頭","腳"],"t":""},"SpinalTap":{"l":["盔甲"],"p":[],"t":"增加對裝甲的損壞，有骨骼部位時更多"},"SuperheatMetal":{"l":["盔甲"],"p":[],"t":""},"Swarm":{"l":[],"p":[],"t":"蜂群堆疊滿時有額外效果"},"TeamTactics":{"l":[],"p":[],"t":"提高對泰坦的傷害，持續到氏族突襲結束"},"TotemFairySkill":{"l":["任意"],"p":["任一單部位"],"t":"搭配淨化爆裂或是宇宙激光"},"TriangleSupport":{"l":[],"p":[],"t":"用苦痛增加爆發傷害，用爆發增加苦痛傷害。"},"Weaken":{"l":[],"p":[],"t":"被擊中的部件受所有來源傷害 +437.7%，持續 6 秒"},"WhipOfLightning":{"l":["兩者"],"p":["任意"],"t":"常搭配萬花筒使用"}};
+        // 題目：選出這張卡「可以打的部位」（頭、手肩、肚子、腳）／「適用的狀態」（詛咒甲、盔甲、肉體、肉體部位達6個、骨架部位達6個），可複選
+        const QUIZ_TYPES = [['parts', '可以打什麼部位'], ['layers', '適用什麼狀態']];
+        const QUIZ_CATS = [['all', '全部'], ['burst', '爆裂'], ['torment', '苦痛'], ['support', '支援']];
+        const QUIZ_PART_OPTIONS = ['頭', '手肩', '肚子', '腳'];
+        const QUIZ_STATE_OPTIONS = ['詛咒甲', '盔甲', '肉體', '肉體部位達6個', '骨架部位達6個'];
+        // 需要整隻王的部位數量才有效的卡（工作台沒有這個欄位，依遊戲效果與公會實測整理）
+        const QUIZ_STATE_COND = { CrushingVoid: '肉體部位達6個', PlagueAttack: '肉體部位達6個', SandsOfTime: '肉體部位達6個', FinisherAttack: '骨架部位達6個' };
+        let quizType = 'parts', quizCat = 'all', quizQ = null, quizScore = { right: 0, total: 0 };
+
+        // 這張卡的正確答案（選項字串的集合）；沒有資料回傳 null
+        function quizAnswerSet(card, type) {
+            const c = QUIZ_CARDS[card];
+            if (type === 'parts') {
+                if (!c.p.length) return null;
+                const s = new Set();
+                c.p.forEach(p => {
+                    if (p === '任意' || p === '任一單部位' || p.startsWith('多部位')) QUIZ_PART_OPTIONS.forEach(o => s.add(o));
+                    else if (p === '肚') s.add('肚子');
+                    else if (QUIZ_PART_OPTIONS.includes(p)) s.add(p);
+                });
+                return s.size ? s : null;
+            }
+            const cond = QUIZ_STATE_COND[card];
+            if (!c.l.length && !cond) return null;
+            const s = new Set();
+            c.l.forEach(l => {
+                if (l === '任意' || l === '兩者') ['詛咒甲', '盔甲', '肉體'].forEach(o => s.add(o));
+                else if (l === '詛咒盔甲') s.add('詛咒甲');
+                else if (QUIZ_STATE_OPTIONS.includes(l)) s.add(l);
+            });
+            if (cond) s.add(cond);
+            return s.size ? s : null;
+        }
+        function quizCardCat(card) { return CARD_CATEGORY[card] || 'support'; }
+
+        function quizNext() {
+            const pool = Object.keys(QUIZ_CARDS).filter(n => (quizCat === 'all' || quizCardCat(n) === quizCat));
+            const cands = [];
+            pool.forEach(n => { if (quizAnswerSet(n, quizType)) cands.push(n); });
+            if (!cands.length) { quizQ = null; return; }
+            const card = cands[Math.floor(Math.random() * cands.length)];
+            quizQ = { card, type: quizType, answer: quizAnswerSet(card, quizType), picked: new Set(), done: false };
+        }
+
+        function quizToggle(opt) {
+            if (!quizQ || quizQ.done) return;
+            if (quizQ.picked.has(opt)) quizQ.picked.delete(opt); else quizQ.picked.add(opt);
+            renderQuiz();
+        }
+        function quizSubmit() {
+            if (!quizQ || quizQ.done) return;
+            quizQ.done = true;
+            quizScore.total++;
+            const a = quizQ.answer, p = quizQ.picked;
+            if (a.size === p.size && [...a].every(x => p.has(x))) quizScore.right++;
+            renderQuiz();
+        }
+        function quizSetType(ty) { quizType = ty; quizNext(); renderQuiz(); }
+        function quizSetCat(cat) { quizCat = cat; quizNext(); renderQuiz(); }
+        function quizNextClick() { quizNext(); renderQuiz(); }
+
+        function renderQuiz() {
+            const box = document.getElementById('quiz-result');
+            if (!box) return;
+            if (!quizQ || quizQ.type !== quizType) quizNext();
+            const chip = (on, text, onclick, rgb) => `<button onclick="${onclick}" style="font-size:12.5px; font-weight:800; padding:5px 11px; border-radius:16px; border:1.5px solid rgb(${rgb || '142,27,46'}); background:${on ? `rgb(${rgb || '142,27,46'})` : '#fff'}; color:${on ? '#fff' : `rgb(${rgb || '142,27,46'})`}; font-family:inherit; cursor:pointer;">${text}</button>`;
+            const catRgb = { all: '110,90,60', burst: '192,57,43', torment: '30,100,200', support: '46,139,87' };
+            const typeChips = QUIZ_TYPES.map(([ty, label]) => chip(quizType === ty, label, `quizSetType('${ty}')`)).join('');
+            const catChips = QUIZ_CATS.map(([cat, label]) => chip(quizCat === cat, label, `quizSetCat('${cat}')`, catRgb[cat])).join('');
+            let body = '<div style="font-size:13px; color:#8a7a6a; margin-top:14px;">這個分類目前沒有可以出的題目（卡片資料還沒填）。</div>';
+            if (quizQ) {
+                const q = quizQ;
+                const options = q.type === 'parts' ? QUIZ_PART_OPTIONS : QUIZ_STATE_OPTIONS;
+                const qText = q.type === 'parts' ? '可以打什麼部位？（可複選）' : '適用於什麼狀態？（可複選）';
+                const opts = options.map(o => {
+                    const picked = q.picked.has(o), correct = q.answer.has(o);
+                    let bg = picked ? '#fbeedd' : '#fff', border = picked ? '#c9971f' : '#d8c8a8', color = '#4a3728', mark = picked ? '☑' : '☐';
+                    if (q.done) {
+                        if (correct) { bg = '#e6f4ea'; border = '#2e7d32'; color = '#1b5e20'; mark = picked ? '✅' : '☑'; }
+                        else if (picked) { bg = '#fdeaea'; border = '#c62828'; color = '#b71c1c'; mark = '❌'; }
+                        else { mark = '☐'; }
+                    }
+                    return `<button onclick="quizToggle('${o}')" ${q.done ? 'disabled' : ''} style="width:100%; text-align:left; font-size:14px; font-weight:700; padding:10px 12px; border-radius:10px; border:2px solid ${border}; background:${bg}; color:${color}; font-family:inherit; cursor:${q.done ? 'default' : 'pointer'}; margin-top:7px;">${mark}　${o}</button>`;
+                }).join('');
+                const c = QUIZ_CARDS[q.card];
+                const ok = q.done && q.answer.size === q.picked.size && [...q.answer].every(x => q.picked.has(x));
+                body = `
+                    <div style="display:flex; align-items:center; gap:12px; margin-top:12px;">
+                        ${byPartCardHtml(q.card, 64)}
+                        <div>
+                            <div style="font-size:16px; font-weight:800; color:#4a3728;">${escapeHtml(raidCardLabel(q.card))}</div>
+                            <div style="font-size:13px; font-weight:700; color:#6b5a48; margin-top:2px;">${qText}</div>
+                        </div>
+                    </div>
+                    ${opts}
+                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
+                        ${ok ? '✅ 答對了' : `❌ 答案是：<b>${[...q.answer].join('、')}</b>`}${c.t ? `<div style="margin-top:4px; color:#6b5a48;">使用時機：${escapeHtml(c.t)}</div>` : ''}</div>
+                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>`
+                    : `<button onclick="quizSubmit()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">送出答案</button>`}`;
+            }
+            box.innerHTML = `
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">${typeChips}</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">${catChips}</div>
+                <div style="font-size:12px; color:#8a7a6a; margin-top:8px;">答對 ${quizScore.right} ／ ${quizScore.total}</div>
+                ${body}`;
+        }
+
         function switchDeckSubtab(id) {
             const isTopDecks = id === 'topdecks';
             const isByPart = id === 'bypart';
-            const isSuggested = !isTopDecks && !isByPart;
-            deckSubtab = isByPart ? 'bypart' : (isTopDecks ? 'topdecks' : 'suggested');
+            const isQuiz = id === 'quiz';
+            const isSuggested = !isTopDecks && !isByPart && !isQuiz;
+            deckSubtab = isQuiz ? 'quiz' : (isByPart ? 'bypart' : (isTopDecks ? 'topdecks' : 'suggested'));
+            document.getElementById('quiz-result').style.display = isQuiz ? 'block' : 'none';
+            document.getElementById('deck-subtab-btn-quiz').classList.toggle('active', isQuiz);
             document.getElementById('top-decks-session-menu').style.display = 'none'; // renderTopDecks 會在有場次時再打開
             document.getElementById('top-decks-result').style.display = isTopDecks ? 'flex' : 'none';
             document.getElementById('by-part-result').style.display = isByPart ? 'block' : 'none';
@@ -7470,7 +7589,8 @@
             document.getElementById('deck-subtab-btn-topdecks').classList.toggle('active', isTopDecks);
             document.getElementById('deck-subtab-btn-bypart').classList.toggle('active', isByPart);
             document.getElementById('deck-subtab-btn-suggested').classList.toggle('active', isSuggested);
-            if (isTopDecks) renderTopDecks();
+            if (isQuiz) renderQuiz();
+            else if (isTopDecks) renderTopDecks();
             else if (isByPart) renderByPart();
             else renderSuggestedDeck();
         }

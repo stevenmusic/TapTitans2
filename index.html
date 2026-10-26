@@ -3346,6 +3346,8 @@
                     </div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
+                    <div id="by-part-reco" style="display:none;"></div>
+
                     <div class="raid-recent-title" data-i18n="raidRecentAttacksTitle">⚔️ 最近攻擊</div>
                     <div class="raid-recent-list" id="raid-recent-list"></div>
 
@@ -8004,7 +8006,91 @@
         }, true);
         window.addEventListener('resize', () => { if (byPartModalOpen) positionByPartModal(); });
 
+        /* ── 依目前剩餘部位自動推薦 6 組牌組（首頁，不用點部位、不用卡片池）──
+              用每組牌組過去真實打過的「一刀打到哪些部位＋哪一層」，對照現在每個部位的狀態與血量：
+              • 一刀要打到的部位，目前都要是那一層（盔甲／肉體）、都沒被禁打，才算現在打得出來的打法
+              • 血量低的部位（目前血量低於可打部位平均的 30%）不給單部位或少數部位打，只能由一刀 6 個部位以上的多部位打法順便帶到
+              • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在能用的刀數不到一半的牌組不推薦
+              • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制 ── */
+        const BY_PART_RECO_COUNT = 6;
+        const BY_PART_RECO_LOW_RATIO = 0.3;
+        let byPartRecoToken = 0;
+        let byPartRecoSig = '';
+
+        function byPartRecoCompute(data) {
+            const parts = raidState && raidState.parts;
+            if (!parts) return [];
+            const info = {};
+            const all = { armor: 0, body: 0, skeleton: 0 };
+            RAID_PARTS.forEach(({ key }) => {
+                const p = parts[key];
+                if (!p) return;
+                const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
+                all[layer]++;
+                if (layer === 'skeleton' || raidBannedParts.includes(key)) return;
+                info[key] = { layer, hp: layer === 'armor' ? p.armor : p.body };
+            });
+            const keys = Object.keys(info);
+            if (keys.length === 0) return [];
+            const totalHp = keys.reduce((s, k) => s + info[k].hp, 0);
+            const avgHp = totalHp / keys.length;
+            keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
+
+            const rows = [];
+            data.decks.forEach(d => {
+                // 卡片的部位數量條件
+                const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min);
+                if (reqUnmet) return;
+                const onlyLayers = d.cards.map(n => CARD_ONLY_WHEN[n] ? CARD_ONLY_WHEN[n](all) : undefined);
+                if (onlyLayers.some(l => l === null)) return;
+                const onlyLayer = onlyLayers.find(l => l);
+
+                let usable = 0, score = 0;
+                byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
+                    const hit = new Set(ks.map(k => k[0]));
+                    if (![...hit].every(p => info[p])) return;
+                    if (!ks.every(([p, layer]) => info[p].layer === layer)) return;
+                    if (onlyLayer && !ks.every(([, layer]) => layer === onlyLayer)) return;
+                    if (hit.size < BY_PART_MULTI_MIN && [...hit].some(p => info[p].low)) return;   // 低血量部位只能被多部位打法打到
+                    usable += n;
+                    score += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
+                });
+                if (usable < BY_PART_MIN_HITS || usable / (d.attacks || 1) < 0.5) return;
+                rows.push({ cards: byPartOrderCards(d.cards), score });
+            });
+            return rows.sort((a, b) => b.score - a.score).slice(0, BY_PART_RECO_COUNT);
+        }
+
+        async function byPartRecoRefresh() {
+            const box = document.getElementById('by-part-reco');
+            if (!box) return;
+            const live = byPartLiveStates();
+            if (!live) { box.style.display = 'none'; return; }
+            // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫
+            const sig = JSON.stringify(RAID_PARTS.map(({ key }) => {
+                const p = raidState.parts[key];
+                const hp = p ? (p.armor > 0 ? p.armor : p.body) : 0;
+                const max = p ? (p.armor > 0 ? p.armorMax : p.bodyMax) : 1;
+                return [live[key] && live[key].state, live[key] && live[key].banned, Math.round(hp / (max || 1) * 20)];
+            })) + raidState.bossName;
+            if (sig === byPartRecoSig) return;
+            byPartRecoSig = sig;
+            const token = ++byPartRecoToken;
+            const data = await loadByPartStats(byPartTop);
+            if (token !== byPartRecoToken) return;
+            if (!data) { box.style.display = 'none'; byPartRecoSig = ''; return; }
+            const rows = byPartRecoCompute(data);
+            if (rows.length === 0) { box.style.display = 'none'; return; }
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin:8px 0 3px;">推薦牌組</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}</div>`).join('')}
+                </div>`;
+        }
+
         function byPartOnRaidStatusChanged() {
+            byPartRecoRefresh();
             // 浮動視窗開著：首頁格子剛重畫過，把發亮補回去；狀態真的變了才重畫視窗
             byPartSyncHomeGlow();
             if (byPartModalOpen) {

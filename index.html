@@ -7661,9 +7661,12 @@
          'ChainLightning', 'MirrorForce', 'CelestialStatic', 'LimbBurst', 'Weaken', 'BarbedMorningstar'].forEach(n => { CARD_CATEGORY[n] = 'burst'; });
         ['BurningAttack', 'PoisonAttack', 'DecayingAttack', 'Fuse', 'Shadow', 'PlagueAttack', 'Disease', 'Swarm', 'RuinousRust',
          'PowerBubble', 'RuneAttack', 'MagicPotion', 'CosmicBarb', 'SandsOfTime'].forEach(n => { CARD_CATEGORY[n] = 'torment'; });
+        // 雖然歸在苦痛類，但本身不是傷害來源的卡（放大是提高其他團隊卡片的等級），算牌組的傷害來源時不看它：
+        // 例如 淨化爆裂＋放大 的傷害來源只有淨化爆裂，歸在爆裂欄
+        const BY_PART_NON_DAMAGE = new Set(['MagicPotion']);
         function byPartDamageSources(cards) {
-            const burst = cards.some(n => CARD_CATEGORY[n] === 'burst');
-            const torment = cards.some(n => CARD_CATEGORY[n] === 'torment');
+            const burst = cards.some(n => CARD_CATEGORY[n] === 'burst' && !BY_PART_NON_DAMAGE.has(n));
+            const torment = cards.some(n => CARD_CATEGORY[n] === 'torment' && !BY_PART_NON_DAMAGE.has(n));
             return { burst: burst || !torment, torment }; // 兩種都沒有的（理論上不會）歸在爆裂欄
         }
 

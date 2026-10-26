@@ -889,13 +889,62 @@ let watcherCurrentRaidLevel = null; // 這場突襲的等級（畫面顯示成 M
 
 function saveCycleSummaries() { writeJsonSafe(CYCLE_SUMMARIES_PATH, cycleSummaries); }
 function savePushSubscriptions() { writeJsonSafe(SUBSCRIPTIONS_PATH, pushSubscriptions); }
-function saveCurrentBossState() {
-  writeJsonSafe(CURRENT_BOSS_STATE_PATH, {
+function currentBossStateSnapshot() {
+  return {
     bossTotal: watcherBossTotal, currentEnemyId: watcherCurrentEnemyId, bossName: watcherBossName,
     bossOrdinal: watcherBossOrdinal, killMaxHp: watcherKillMaxHp, bossCurrentHp: watcherBossCurrentHp,
     partStatus: watcherPartStatus, hasReceivedAttack: watcherHasReceivedAttack
-  });
+  };
 }
+function saveCurrentBossState() {
+  writeJsonSafe(CURRENT_BOSS_STATE_PATH, currentBossStateSnapshot());
+  scheduleBossStateDbSave();
+}
+
+// 重新部署時 Render 會清掉本機檔案（current_boss_state.json），部署完要等下一筆攻擊事件才有王的狀態，
+// 畫面就會顯示「尚未有任何突襲資料」。所以王的狀態也備份一份到資料庫（Turso），
+// 啟動時本機檔案不見的話，從資料庫還原。寫入合併成最多每 3 秒一次，失敗只記 log、不影響其他功能
+let bossStateDbTimer = null;
+function scheduleBossStateDbSave() {
+  if (bossStateDbTimer) return;
+  bossStateDbTimer = setTimeout(async () => {
+    bossStateDbTimer = null;
+    try {
+      await dbReady;
+      await db.execute('CREATE TABLE IF NOT EXISTS current_boss_state (id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)');
+      await db.execute({
+        sql: 'INSERT OR REPLACE INTO current_boss_state (id, data, updated_at) VALUES (1, ?, ?)',
+        args: [JSON.stringify(currentBossStateSnapshot()), Date.now()]
+      });
+    } catch (e) {
+      console.error('備份王狀態到資料庫失敗:', e.message);
+    }
+  }, 3000);
+}
+async function restoreBossStateFromDb() {
+  if (savedBossState) return; // 本機檔案還在（不是重新部署）就用本機的
+  try {
+    await dbReady;
+    await db.execute('CREATE TABLE IF NOT EXISTS current_boss_state (id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)');
+    const result = await db.execute('SELECT data FROM current_boss_state WHERE id = 1');
+    if (!result.rows.length) return;
+    if (watcherHasReceivedAttack) return; // 啟動後已經收到新的攻擊事件，不要蓋掉
+    const s = JSON.parse(result.rows[0].data || 'null');
+    if (!s) return;
+    watcherBossTotal = s.bossTotal || 0;
+    watcherCurrentEnemyId = s.currentEnemyId || null;
+    watcherBossName = s.bossName || '—';
+    watcherBossOrdinal = s.bossOrdinal || 0;
+    watcherKillMaxHp = s.killMaxHp || 0;
+    watcherBossCurrentHp = s.bossCurrentHp || 0;
+    watcherHasReceivedAttack = s.hasReceivedAttack || false;
+    watcherPartStatus = s.partStatus || {};
+    console.log('[restore] 從資料庫還原王的狀態：', watcherBossName);
+  } catch (e) {
+    console.error('從資料庫還原王狀態失敗:', e.message);
+  }
+}
+restoreBossStateFromDb();
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';

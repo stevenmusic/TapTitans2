@@ -8036,7 +8036,7 @@
              覆蓋  25％：一刀平均打到全王剩餘血量的多少比例（打到血量多的部位、多部位打法分數高）
              卡片  20％：牌組裡每張卡在「所有紀錄」（前 15 名、所有場次、所有狀態）出現的頻率，同類卡（爆裂／苦痛／支援）之間互相比較；
                          取平均和最弱一張的平均，只要有一張冷門卡就會被拉低，確保 6 組都是大家真的在用的卡
-             專精   5％：牌組現在這個階段的打法裡，有幾成現在打得出來（至少要 6 成，否則不推薦）
+             專精   5％：牌組現在這個階段的打法裡，有幾成現在打得出來（只影響分數，真實打得出來的打法有就可以列入）
              加成 最多 +35％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
         const BY_PART_RECO_W = { pop: 0.35, cover: 0.20, fit: 0.05, card: 0.20, synergyCap: 0.35 };
         const BY_PART_RECO_BOOST = {
@@ -8047,7 +8047,6 @@
         };
         // 對詛咒盔甲有額外加成的卡：撼地破甲、毀了雨。牌組的打法打到詛咒盔甲部位的比例越高，加成越多（打法全打詛咒盔甲＝滿額）
         const BY_PART_RECO_CURSED = { Fragmentize: 0.30, RuinousRust: 0.30 };
-        const BY_PART_RECO_MIN_FIT = 0.6;     // 現在這個階段的打法裡，要有幾成現在打得出來
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
@@ -8104,7 +8103,7 @@
                     hpShare += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
                 // 這組牌組現在這個階段的打法，至少要有 6 成現在打得出來；例如專門同時打頭＋肚子的牌組，肚子禁打時就不推薦
-                if (usable === 0 || usable / Math.max(1, relevant) < BY_PART_RECO_MIN_FIT) return;   // 現在這種狀態下完全沒有打得出來的打法（例如要同時打的部位有禁打）的牌組，絕不推薦，即使湊不滿 6 組
+                if (usable === 0) return;   // 只要現在的部位數量、狀態夠，這組牌組真實打過的打法有一種打得出來就可以列入（打得出來的比例只影響分數）；完全打不出來的絕不推薦
                 const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : 1;   // 2＝現在這種狀態下真的常打；1＝打過但很少
                 const cursedRatio = usable > 0 ? cursedHit / usable : 0;
                 const synergy = Math.min(BY_PART_RECO_W.synergyCap, d.cards.reduce((s, n) => {

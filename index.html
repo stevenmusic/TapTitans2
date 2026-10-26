@@ -3282,6 +3282,7 @@
                         <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token" style="display:none;">
                         <button class="btn-raid-connect" onclick="connectRaidAPI()" style="display:none;" data-i18n="btnRaidConnect">🔌 連線</button>
                         <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" style="width:100%; margin-bottom:6px;" data-i18n="btnRaidDemo">🎬 示範模式</button>
+                        <button class="btn-raid-demo" onclick="toggleRaidSettingsSheet(false); toggleRaidSim();" style="width:100%; margin-bottom:6px;">🧪 模擬畫面（自己設定部位狀態）</button>
                         <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%; display:none;">🔔 開啟通知</button>
                         <button class="btn-raid-tool" onclick="subscribeBackgroundPush()" style="width:100%;">🔔 開啟通知（不用開網頁也會收到）</button>
                         <div id="push-subscribe-status" style="font-size:11px; color:#8a7a6a; margin-top:4px;"></div>
@@ -3305,6 +3306,7 @@
                 <div id="raid-tab-live">
                 <div class="raid-empty-state" id="raid-empty-state">
                     <span data-i18n="raidEmptyState">尚未有任何突襲資料，請先連線或使用示範模式</span><br>
+                    <button class="btn-raid-tool" style="margin-top:10px; width:auto; padding:8px 18px;" onclick="toggleRaidSim()">🧪 模擬畫面</button>
                     <button class="btn-raid-tool" style="margin-top:10px; width:auto; padding:8px 18px;" onclick="toggleRaidSettingsSheet(true)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>連線設定</button>
                 </div>
 
@@ -3345,6 +3347,8 @@
                         <span class="raid-parts-legend-swatch cursed"></span><span data-i18n="raidLayerCursed">詛咒盔甲</span>　<span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>
                     </div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
+
+                    <div id="raid-sim-panel" style="display:none;"></div>
 
                     <div id="by-part-reco" style="display:none;"></div>
 
@@ -6145,6 +6149,7 @@
 
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
         function handleApiRaidStart(payload) {
+            if (raidSimActive) return;
             // 場次開始時間／等級不再由瀏覽器自己記錄場次清單——伺服器 24 小時背景側錄
             // 已經在做一樣的事（見 server.js 的 upsertRaidSessionIfNew），比只有網頁開著
             // 才記得到更可靠，網頁需要場次清單時直接跟伺服器要（serverSessionsSummary）
@@ -6176,6 +6181,7 @@
         }
 
         function handleApiAttack(payload) {
+            if (raidSimActive) return;   // 模擬模式中不讓真實連線資料蓋掉自己設定的狀態
             const rs = payload && payload.raid_state;
             if (!rs) return;
             apiHasReceivedAttack = true;
@@ -6439,6 +6445,7 @@
         // 把伺服器回傳的「目前王狀態」套用到畫面上，heavy（fetchServerRaidData）跟
         // light（fetchRaidLiveEssentials）兩條路徑共用同一份邏輯
         function applyCurrentBossPayload(cb, silent) {
+            if (raidSimActive) return;
             if (!cb || !cb.hasReceivedAttack || !cb.parts || Object.keys(cb.parts).length === 0) return;
             // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
             // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
@@ -10300,6 +10307,100 @@
             renderRaidStatus();
         }
 
+        /* ── 模擬畫面：不連線、不等王，自己設定王與各部位的狀態＋剩餘血量，首頁（王資訊、部位格子、推薦牌組）
+              跟真實連線時一模一樣，用來測試推薦的邏輯。選好狀態（和血量）後點部位格子就套用 ── */
+        let raidSimActive = false;
+        let raidSimBackup = null;
+        let raidSimBrush = 'armor';
+        let raidSimHp = 1;
+        const RAID_SIM_HPS = [1, 0.6, 0.3, 0.1];
+        const RAID_SIM_STATES = [['cursed', '詛咒甲'], ['armor', '盔甲'], ['body', '肉體'], ['skeleton', '骨架'], ['banned', '禁打']];
+        const RAID_SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
+        const RAID_SIM_ARMOR_MAX = 2e9, RAID_SIM_BODY_MAX = 1e9;
+
+        function toggleRaidSim() {
+            if (raidSimActive) {
+                raidSimActive = false;
+                raidState = raidSimBackup ? raidSimBackup.state : null;
+                raidBannedParts = raidSimBackup ? raidSimBackup.banned : [];
+                raidRecentAttacks = raidSimBackup ? raidSimBackup.recent : [];
+                raidSimBackup = null;
+                document.getElementById('raid-sim-panel').style.display = 'none';
+                byPartRecoSig = '';
+                if (raidState) renderRaidStatus();
+                else {
+                    document.getElementById('raid-live-wrap').style.display = 'none';
+                    document.getElementById('raid-empty-state').style.display = '';
+                    document.getElementById('by-part-reco').style.display = 'none';
+                }
+                return;
+            }
+            if (raidDemoTimer) toggleRaidDemoMode(); // 示範模式會一直產生假資料，先關掉
+            raidSimBackup = { state: raidState, banned: raidBannedParts, recent: raidRecentAttacks };
+            raidSimActive = true;
+            const parts = {};
+            RAID_PARTS.forEach(({ key }) => { parts[key] = { armor: RAID_SIM_ARMOR_MAX, armorMax: RAID_SIM_ARMOR_MAX, body: RAID_SIM_BODY_MAX, bodyMax: RAID_SIM_BODY_MAX, cursed: false }; });
+            raidState = { bossIndex: 0, bossName: RAID_BOSS_NAMES[0], bossOrdinal: 1, parts, maxHp: 0, currentHp: 0, killMaxHp: 0, updatedAt: Date.now() };
+            raidBannedParts = [];
+            raidRecentAttacks = [];
+            showView('raidStatus');
+            raidSimRefresh();
+        }
+
+        function raidSimRefresh() {
+            const sum = (f) => Object.values(raidState.parts).reduce((s, p) => s + f(p), 0);
+            raidState.maxHp = raidState.killMaxHp = sum(p => p.armorMax + p.bodyMax);
+            raidState.currentHp = sum(p => p.armor + p.body);
+            raidState.updatedAt = Date.now();
+            renderRaidStatus();
+            renderRaidSimPanel();
+        }
+
+        function raidSimPaint(key) {
+            const p = raidState.parts[key];
+            const st = raidSimBrush, hp = raidSimHp;
+            raidBannedParts = raidBannedParts.filter(k => k !== key);
+            p.cursed = false;
+            if (st === 'cursed' || st === 'armor') { p.armor = p.armorMax * hp; p.body = p.bodyMax; p.cursed = st === 'cursed'; }
+            else if (st === 'body') { p.armor = 0; p.body = p.bodyMax * hp; }
+            else if (st === 'skeleton') { p.armor = 0; p.body = 0; }
+            else if (st === 'banned') { raidBannedParts.push(key); if (p.armor <= 0 && p.body <= 0) { p.armor = p.armorMax * hp; p.body = p.bodyMax; } }
+            raidSimRefresh();
+        }
+        function raidSimPaintAll() { RAID_PARTS.forEach(({ key }) => raidSimPaint(key)); }
+        function setRaidSimBrush(st) { raidSimBrush = st; renderRaidSimPanel(); }
+        function setRaidSimHp(v) { raidSimHp = v; renderRaidSimPanel(); }
+        function setRaidSimBoss(idx) {
+            raidState.bossIndex = Number(idx);
+            raidState.bossName = RAID_BOSS_NAMES[Number(idx)];
+            raidSimRefresh();
+        }
+
+        function renderRaidSimPanel() {
+            const box = document.getElementById('raid-sim-panel');
+            if (!box) return;
+            box.style.display = raidSimActive ? 'block' : 'none';
+            if (!raidSimActive) return;
+            const hasHp = raidSimBrush === 'cursed' || raidSimBrush === 'armor' || raidSimBrush === 'body';
+            const btn = (on, rgb, text, onclick) => `<button onclick="${onclick}" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:7px 0; border-radius:8px; border:2px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${text}</button>`;
+            box.innerHTML = `
+                <div style="margin:8px 0 4px; padding:8px; border:1.5px dashed #c9971f; border-radius:10px; background:#fffaf0;">
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                        <span style="font-size:12px; font-weight:800; color:#8a5a10;">🧪 模擬畫面</span>
+                        <select onchange="setRaidSimBoss(this.value)" style="flex:1; font-size:12px; padding:4px; border-radius:6px; border:1px solid #d8c8a8; font-family:inherit;">
+                            ${RAID_BOSS_NAMES.map((n, i) => `<option value="${i}" ${raidState.bossIndex === i ? 'selected' : ''}>${n}</option>`).join('')}
+                        </select>
+                        <button onclick="toggleRaidSim()" style="font-size:12px; font-weight:700; padding:5px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">結束模擬</button>
+                    </div>
+                    <div style="display:flex; gap:5px;">${RAID_SIM_STATES.map(([st, label]) => btn(raidSimBrush === st, RAID_SIM_RGB[st], label, `setRaidSimBrush('${st}')`)).join('')}</div>
+                    ${hasHp ? `<div style="display:flex; gap:5px; margin-top:5px; align-items:center;"><span style="font-size:11px; color:#8a7a6a; white-space:nowrap;">剩餘血量</span>${RAID_SIM_HPS.map(v => btn(raidSimHp === v, '110,90,60', Math.round(v * 100) + '%', `setRaidSimHp(${v})`)).join('')}</div>` : ''}
+                    <div style="display:flex; gap:6px; margin-top:6px; align-items:center;">
+                        <button onclick="raidSimPaintAll()" style="font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">全部設為${(RAID_SIM_STATES.find(s => s[0] === raidSimBrush) || [0, ''])[1]}</button>
+                        <span style="font-size:11px; color:#8a7a6a;">選好狀態後，點上方部位格子</span>
+                    </div>
+                </div>`;
+        }
+
         function toggleRaidDemoMode() {
             const btn = document.getElementById('raid-demo-btn');
             if (raidDemoTimer) {
@@ -10508,7 +10609,7 @@
             document.getElementById('raid-boss-name').textContent = raidState.bossName;
             const unconfirmedHintEl = document.getElementById('raid-unconfirmed-hint');
             if (unconfirmedHintEl) {
-                const showHint = !raidDemoTimer && !apiHasReceivedAttack;
+                const showHint = !raidDemoTimer && !apiHasReceivedAttack && !raidSimActive;
                 unconfirmedHintEl.style.display = showHint ? 'block' : 'none';
             }
             const ordinalEl = document.getElementById('raid-boss-ordinal');
@@ -10611,7 +10712,7 @@
                     const cell = document.createElement('div');
                     cell.className = 'raid-part-cell ' + cellCls;
                     cell.dataset.part = key;
-                    cell.onclick = () => byPartHomeCellClick(key); // 點部位：跳出（或加減）這個部位可以用哪些牌組
+                    cell.onclick = () => (raidSimActive ? raidSimPaint(key) : byPartHomeCellClick(key)); // 模擬模式：點部位套用狀態；平常：跳出這個部位可以用哪些牌組
                     cell.style.cursor = 'pointer';
                     if (isSkeleton) {
                         // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害

@@ -8062,6 +8062,7 @@
             '肚手': ['ChestUpper', 'HandLeft', 'HandRight'],
             '四肢': ['ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
         };
+        const BY_PART_RECO_FORCE_RATIO = 0.05; // 強制列出的牌組，次數至少要達到最常用那組的這個比例
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
@@ -8170,8 +8171,10 @@
                 if (f.state !== 'body' || !f.minHpRatio) return true;
                 return p.bodyMax > 0 && p.body / p.bodyMax >= f.minHpRatio;
             }).length;
+            // 強制列出的牌組，次數要達到最常用那組的 5％（至少 5 次），只靠偶爾幾次的配法不強制
+            const forceMin = Math.max(BY_PART_RECO_MIN_HITS, maxUsable * BY_PART_RECO_FORCE_RATIO);
             const mustCards = Object.keys(BY_PART_RECO_FORCE)
-                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.usable >= BY_PART_RECO_MIN_HITS));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
+                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.usable >= forceMin));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
 
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
@@ -8194,7 +8197,7 @@
                     const r = cand[i];
                     if (r.cards.some(n => usedSet.has(n))) continue;
                     chosen.push(r); r.cards.forEach(n => usedSet.add(n));
-                    dfs(i + 1, chosen, usedSet, sum + r.score, missing.filter(m => !(r.usable >= BY_PART_RECO_MIN_HITS && r.cards.includes(m))));
+                    dfs(i + 1, chosen, usedSet, sum + r.score, missing.filter(m => !(r.usable >= forceMin && r.cards.includes(m))));
                     chosen.pop(); r.cards.forEach(n => usedSet.delete(n));
                 }
             };

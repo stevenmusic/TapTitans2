@@ -7470,6 +7470,7 @@
         const QUIZ_TYPES = [['parts', '可以打什麼部位'], ['layers', '適用什麼狀態'], ['scene', '情境選卡'], ['deck', '牌組判斷']];
         const QUIZ_CATS = [['all', '全部'], ['burst', '爆裂'], ['torment', '苦痛'], ['support', '支援']];
         const QUIZ_PART_OPTIONS = ['頭', '手肩', '肚子', '腳'];
+        const QUIZ_ALL = '以上皆是';   // 部位題的選項：四個部位都能打
         const QUIZ_STATE_OPTIONS = ['詛咒甲', '盔甲', '肉體', '肉體部位達6個', '骨架部位達6個'];
         // 需要整隻王的部位數量才有效的卡（工作台沒有這個欄位，依遊戲效果與公會實測整理）
         const QUIZ_STATE_COND = { CrushingVoid: '肉體部位達6個', PlagueAttack: '肉體部位達6個', SandsOfTime: '肉體部位達6個', FinisherAttack: '骨架部位達6個' };
@@ -7477,8 +7478,17 @@
 
         // 這張卡的正確答案（選項字串的集合）；沒有資料回傳 null
         function quizAnswerSet(card, type) {
-            const c = QUIZ_CARDS[card];
             if (type === 'parts') {
+                const g = quizPartGroups(card);
+                if (!g) return null;
+                return g.size === QUIZ_PART_OPTIONS.length ? new Set([QUIZ_ALL]) : g;   // 四個部位都能打＝答案是「以上皆是」
+            }
+            return quizLayerSet(card);
+        }
+        // 可以打的部位（頭、手肩、肚子、腳的集合）；沒有資料回傳 null
+        function quizPartGroups(card) {
+            const c = QUIZ_CARDS[card];
+            {
                 if (!c.p.length) return null;
                 const s = new Set();
                 c.p.forEach(p => {
@@ -7488,6 +7498,9 @@
                 });
                 return s.size ? s : null;
             }
+        }
+        function quizLayerSet(card) {
+            const c = QUIZ_CARDS[card];
             const cond = QUIZ_STATE_COND[card];
             if (!c.l.length && !cond) return null;
             const s = new Set();
@@ -7543,9 +7556,9 @@
                 return { ok: attackable.length > 0, why: '現在沒有可以打的部位' };
             }
             // 允許的狀態（卡片資料）：詛咒甲／盔甲／肉體
-            const layers = quizAnswerSet(card, 'layers');
+            const layers = quizLayerSet(card);
             const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
-            const parts = quizAnswerSet(card, 'parts');
+            const parts = quizPartGroups(card);
             let onlyLayerName = null;
             if (card === 'BarbedMorningstar') {
                 const l = CARD_ONLY_WHEN.BarbedMorningstar({ armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton });
@@ -7645,7 +7658,12 @@
         function quizToggle(opt) {
             if (!quizQ || quizQ.done) return;
             if (quizQ.type === 'deck') return;
-            if (quizQ.picked.has(opt)) quizQ.picked.delete(opt); else quizQ.picked.add(opt);
+            if (quizQ.picked.has(opt)) quizQ.picked.delete(opt);
+            else {
+                // 「以上皆是」跟單選的部位互斥：選了以上皆是，其他部位取消；選了其他部位，以上皆是取消
+                if (quizQ.type === 'parts') { if (opt === QUIZ_ALL) quizQ.picked.clear(); else quizQ.picked.delete(QUIZ_ALL); }
+                quizQ.picked.add(opt);
+            }
             renderQuiz();
         }
         function quizAnswerDeck(yes) {
@@ -7659,7 +7677,10 @@
             if (!quizQ || quizQ.done) return;
             quizQ.done = true;
             quizScore.total++;
-            const a = quizQ.answer, p = quizQ.picked;
+            const a = quizQ.answer;
+            // 四個部位全選等於「以上皆是」
+            const p = quizQ.type === 'parts' && QUIZ_PART_OPTIONS.every(o => quizQ.picked.has(o)) ? new Set([QUIZ_ALL]) : quizQ.picked;
+            quizQ.picked = p;
             if (a.size === p.size && [...a].every(x => p.has(x))) quizScore.right++;
             renderQuiz();
         }
@@ -7718,7 +7739,7 @@
                         <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>` : ''}`;
             } else if (quizQ) {
                 const q = quizQ;
-                const options = q.type === 'parts' ? QUIZ_PART_OPTIONS : QUIZ_STATE_OPTIONS;
+                const options = q.type === 'parts' ? [...QUIZ_PART_OPTIONS, QUIZ_ALL] : QUIZ_STATE_OPTIONS;
                 const qText = q.type === 'parts' ? '可以打什麼部位？（可複選）' : '適用於什麼狀態？（可複選）';
                 const opts = options.map(o => {
                     const picked = q.picked.has(o), correct = q.answer.has(o);
@@ -7742,7 +7763,7 @@
                     </div>
                     ${opts}
                     ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
-                        ${ok ? '✅ 答對了' : `❌ 答案是：<b>${[...q.answer].join('、')}</b>`}${c.t ? `<div style="margin-top:4px; color:#6b5a48;">使用時機：${escapeHtml(c.t)}</div>` : ''}</div>
+                        ${ok ? '✅ 答對了' : `❌ 答案是：<b>${[...q.answer].map(x => x === QUIZ_ALL ? '以上皆是（頭、手肩、肚子、腳）' : x).join('、')}</b>`}${c.t ? `<div style="margin-top:4px; color:#6b5a48;">使用時機：${escapeHtml(c.t)}</div>` : ''}</div>
                         <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>`
                     : `<button onclick="quizSubmit()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">送出答案</button>`}`;
             }

@@ -7440,8 +7440,8 @@
            （點擊傷害不算，伺服器已經排除）。不比傷害數字，因為每個人的卡片等級不同。
            是統計「全部場次」，不受上方場次選單影響。
 
-           目標部位：預設＝目前所有還能打的部位（骨架、被標禁打的不算），每個部位的狀態直接用目前突襲
-           狀態（盔甲還在＝盔甲，盔甲破了＝肉體）。點部位格子可以取消／加回，只看自己想打的部位。
+           目標部位：點部位格子選取（會發亮，預設都不選）。格子照抄突襲首頁，每個部位的狀態直接用目前
+           突襲狀態（盔甲還在＝盔甲，盔甲破了＝肉體）；骨架、被標禁打的部位不能選。
            還沒有突襲狀態時（沒連線）才改成手動選每個部位的狀態：盔甲／肉體／肉甲（兩層都算）。
 
            符合：這組牌組至少有 3 刀，卡片打到的部位全部落在目標部位、而且層別就是目前的狀態。
@@ -7481,7 +7481,7 @@
             FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '骨架部位達 6 個以上時傷害最高（每個骨架部位增加損壞，最多算 6 個）' },
             LimbSupport:    { tag: '只打四肢', kind: 'part', note: '只能攻擊四肢' }
         };
-        let byPartTargets = null;           // null＝自動（目前所有能打的部位）；否則是使用者手動選的部位 Set
+        const byPartSelected = new Set();   // 使用者點選要打的部位（預設都不選，點一下發亮，再點一下取消）
         const byPartManualState = new Map(); // 沒有突襲狀態時用：部位 -> 'armor' | 'body' | 'both'
         const byPartCache = new Map();      // 前 N 名 -> 伺服器統計
         let byPartRenderToken = 0;
@@ -7524,7 +7524,7 @@
                 RAID_PARTS.forEach(({ key }) => {
                     const s = live[key];
                     if (!s || s.state === 'skeleton' || s.banned) return;
-                    if (byPartTargets && !byPartTargets.has(key)) return;
+                    if (!byPartSelected.has(key)) return;
                     targets.set(key, new Set([s.state]));
                 });
             } else {
@@ -7533,30 +7533,19 @@
             return { live, targets };
         }
 
-        // 點部位格子：把這個部位從目標拿掉／加回來（第一次點會先把「自動」展開成目前所有目標再調整）
+        // 點部位格子：選取／取消選取（只有還能打的部位可以選；狀態一律用突襲目前的狀態）
         function toggleByPartTarget(part) {
             const live = byPartLiveStates();
             if (!live) return;
-            const cur = new Set(byPartResolveTargets().targets.keys());
-            if (cur.has(part)) cur.delete(part);
-            else {
-                const s = live[part];
-                if (!s || s.state === 'skeleton' || s.banned) return;
-                cur.add(part);
-            }
-            byPartTargets = cur;
+            const s = live[part];
+            if (!s || s.state === 'skeleton' || s.banned) return;
+            if (byPartSelected.has(part)) byPartSelected.delete(part); else byPartSelected.add(part);
             renderByPart();
         }
 
         // 沒有突襲狀態時的手動選擇：同一個部位再點一次同一個狀態＝取消
         function setByPartManual(part, state) {
             if (byPartManualState.get(part) === state) byPartManualState.delete(part); else byPartManualState.set(part, state);
-            renderByPart();
-        }
-
-        function resetByPartTargets() {
-            byPartTargets = null;
-            byPartManualState.clear();
             renderByPart();
         }
 
@@ -7708,14 +7697,6 @@
 
             // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell）。有突襲狀態：格子顯示目前狀態，點一下加入／取消目標；
             // 沒有：格子底下改成手動選盔甲／肉體／肉甲
-            const STATE_RGB = { armor: '69,90,100', body: '21,101,192', cursed: '91,42,134' };
-            const livePill = (s) => {
-                if (s.banned) return `<span style="font-size:10px; font-weight:700; color:#e53935;">禁打</span>`;
-                if (s.state === 'skeleton') return `<span style="font-size:10px; font-weight:700; color:#8a7a63;">🦴 骨架</span>`;
-                const rgb = s.cursed ? STATE_RGB.cursed : STATE_RGB[s.state];
-                const label = s.cursed ? '詛咒盔甲' : (s.state === 'armor' ? '盔甲' : '肉體');
-                return `<span style="font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:99px; background:rgb(${rgb}); color:#fff;">${label}</span>`;
-            };
             const manualBtn = (partKey, state) => {
                 const on = byPartManualState.get(partKey) === state;
                 const light = state === 'armor' ? 'rgba(69,90,100,0.12)' : (state === 'body' ? 'rgba(21,101,192,0.12)' : 'linear-gradient(90deg, rgba(69,90,100,0.12) 50%, rgba(21,101,192,0.12) 50%)');
@@ -7723,17 +7704,42 @@
                 const border = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : '#8a7a63');
                 return `<button onclick="setByPartManual('${partKey}','${state}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid ${border}; background:${on ? solid : light}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer;">${BY_PART_STATE_LABEL[state]}</button>`;
             };
+            // 有突襲狀態時，格子照抄突襲首頁（血量條底色、骨架、禁打紅框，不顯示血量數字）；被選到的部位發亮
+            const homeCellHtml = (partKey) => {
+                const p = raidState.parts[partKey];
+                const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
+                if (!p) return `<div class="raid-part-cell">${name}</div>`;
+                const isSkeleton = p.armor <= 0 && p.body <= 0;
+                const isBanned = raidBannedParts.includes(partKey);
+                const usable = !isSkeleton && !isBanned;
+                const on = byPartSelected.has(partKey);
+                let cls = isBanned ? 'is-banned' : (isSkeleton ? 'is-destroyed' : '');
+                let style = '', inner;
+                if (isSkeleton) {
+                    inner = `${name}<div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>`;
+                } else if (isBanned) {
+                    inner = `${name}<div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}</div>`;
+                } else {
+                    const activeLayer = p.armor > 0 ? 'armor' : 'body';
+                    const activeValue = p.armor > 0 ? p.armor : p.body;
+                    const activeMax = p.armor > 0 ? p.armorMax : p.bodyMax;
+                    const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
+                    const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
+                    const themeColor = isCursedArmor ? '91,42,134' : (activeLayer === 'armor' ? '69,90,100' : '21,101,192');
+                    style = `background:linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%); border-color:rgb(${themeColor}); box-shadow:0 0 6px rgba(${themeColor},0.55);`;
+                    inner = name; // 依部位這裡不顯示血量數字，只留部位名稱和血量條底色
+                }
+                if (usable) {
+                    style += ' cursor:pointer;';
+                    if (on) style += ' box-shadow:0 0 0 3px rgba(38,198,218,0.95), 0 0 16px 2px rgba(38,198,218,0.8); position:relative; z-index:1;';
+                    else if (byPartSelected.size > 0) style += ' opacity:0.6;';
+                }
+                return `<div class="raid-part-cell ${cls}" ${usable ? `onclick="toggleByPartTarget('${partKey}')"` : ''} style="${style}">${inner}</div>`;
+            };
             const cellHtml = (partKey) => {
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
                 if (!live) return `<div class="raid-part-cell">${name}<div style="display:flex; gap:2px;">${['armor', 'body', 'both'].map(st => manualBtn(partKey, st)).join('')}</div></div>`;
-                const s = live[partKey];
-                if (!s) return `<div class="raid-part-cell">${name}</div>`;
-                const usable = s.state !== 'skeleton' && !s.banned;
-                const on = targets.has(partKey);
-                const style = usable
-                    ? `cursor:pointer; text-align:center; ${on ? 'border-color:#4a3a2a; box-shadow:0 0 0 2px rgba(74,58,42,0.35); background:#f3ece0;' : 'opacity:0.55;'}`
-                    : 'opacity:0.45; text-align:center;';
-                return `<div class="raid-part-cell" ${usable ? `onclick="toggleByPartTarget('${partKey}')"` : ''} style="${style}">${name}${livePill(s)}${usable ? `<div style="font-size:10px; margin-top:2px; color:#4a3a2a;">${on ? '✓ 目標' : '不看'}</div>` : ''}</div>`;
+                return homeCellHtml(partKey);
             };
             const partGrid = `
                 <div class="raid-parts-grid">
@@ -7743,8 +7749,8 @@
                 </div>
             `;
             const statusLine = live
-                ? `<div style="font-size:12px; color:#6b5a4a; margin:6px 0 2px;">目前突襲：<b>${escapeHtml(raidState.bossName || '—')}</b>・依各部位現在的狀態比對（點部位格子可取消／加回）${byPartTargets !== null ? ` <button onclick="resetByPartTargets()" style="${btnStyle(false)} padding:2px 8px;">還原成全部部位</button>` : ''}</div>`
-                : `<div style="font-size:12px; color:#8a7a6a; margin:6px 0 2px;">尚未取得突襲狀態（沒有連線），請手動選擇每個部位的狀態。${byPartManualState.size > 0 ? ` <button onclick="resetByPartTargets()" style="${btnStyle(false)} padding:2px 8px;">清除</button>` : ''}</div>`;
+                ? `<div style="font-size:12px; color:#6b5a4a; margin:6px 0 2px;">目前突襲：<b>${escapeHtml(raidState.bossName || '—')}</b>・點要打的部位（會發亮），狀態依各部位現在的盔甲／肉體比對</div>`
+                : `<div style="font-size:12px; color:#8a7a6a; margin:6px 0 2px;">尚未取得突襲狀態（沒有連線），請手動選擇每個部位的狀態。${byPartManualState.size > 0 ? ` <button onclick="byPartManualState.clear(); renderByPart();" style="${btnStyle(false)} padding:2px 8px;">清除</button>` : ''}</div>`;
 
             box.innerHTML = `
                 <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -7765,7 +7771,7 @@
             }
             const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
             if (targets.size === 0) {
-                list.innerHTML = info + (live ? '目前沒有可以打的目標部位。點上方部位格子加入目標。' : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
+                list.innerHTML = info + (live ? '點上方要打的部位（會發亮，可選多個），就會列出符合的牌組。' : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
                 return;
             }
             const rows = data.decks.map(d => {

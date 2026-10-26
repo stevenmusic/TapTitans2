@@ -8215,6 +8215,54 @@
             return picked.sort((a, b) => b.score - a.score);
         }
 
+        let byPartRecoLast = [];
+
+        // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
+        function byPartRecoTagHtml(r) {
+            if (!r.targets || r.targets.length === 0) return '';
+            const layers = new Set(r.targets.map(x => x.layer));
+            const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
+            const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
+            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
+        }
+
+        // 六組存成一張大圖：兩欄三列、卡片放大，沿用其他報表的圖片視窗（長按圖片即可儲存到相簿）
+        function saveByPartRecoImage() {
+            if (!byPartRecoLast.length) return;
+            const modal = document.getElementById('result-modal');
+            const imgContainer = document.getElementById('image-container');
+            imgContainer.innerHTML = t('generatingAnalysisImage');
+            modal.querySelector('[data-i18n="modalImageReady"]').textContent = '💡 推薦牌組圖已生成！請【長按下方圖片】即可儲存至手機相簿';
+            modal.style.display = 'flex';
+            document.getElementById('btn-share-image').style.display = 'none';
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const node = document.createElement('div');
+            node.style.cssText = 'position:fixed; left:-9999px; top:0; width:400px; padding:16px; background:#fdf6e8; font-family:inherit; color:#4a3728; box-sizing:border-box;';
+            node.innerHTML = `
+                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;">
+                    <div style="font-size:20px; font-weight:800;">推薦牌組　${escapeHtml(raidState && raidState.bossName || '')}${raidState && raidState.bossOrdinal ? ` ${raidState.bossOrdinal}/${apiBossTotal}` : ''}</div>
+                    <div style="font-size:11px; color:#8a7a6a;">${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}</div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 10px;">
+                    ${byPartRecoLast.map(r => `
+                        <div style="padding:6px; border-radius:10px; background:#fbf2e2; border:1px solid #ead9b8;">
+                            <div style="display:flex; gap:3px; justify-content:center;">${r.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
+                            <div style="text-align:center; margin-top:6px; font-size:15px; font-weight:800; min-height:22px;">${byPartRecoTagHtml(r)}</div>
+                        </div>`).join('')}
+                </div>`;
+            document.body.appendChild(node);
+            html2canvas(node, { useCORS: true, scale: 2, backgroundColor: '#fdf6e8' }).then(canvas => {
+                node.remove();
+                imgContainer.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                imgContainer.appendChild(img);
+                currentShareableCanvas = canvas;
+                updateShareButtonVisibility();
+            }).catch(() => { node.remove(); alert(t('generateFailed')); closeModal(); });
+        }
+
         async function byPartRecoRefresh() {
             const box = document.getElementById('by-part-reco');
             if (!box) return;
@@ -8236,17 +8284,14 @@
             const rows = byPartRecoCompute(data);
             if (rows.length === 0) { box.style.display = 'none'; return; }
             box.style.display = 'block';
+            byPartRecoLast = rows;
             box.innerHTML = `
-                <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin:8px 0 3px;">推薦牌組</div>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
+                    <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組</div>
+                    <button onclick="saveByPartRecoImage()" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
+                </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                    ${rows.map(r => {
-                        // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
-                        const layers = new Set(r.targets.map(x => x.layer));
-                        const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
-                        const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
-                        const tag = r.targets.length === 0 ? '' : `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
-                        return `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${tag}</div></div>`;
-                    }).join('')}
+                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div></div>`).join('')}
                 </div>`;
         }
 

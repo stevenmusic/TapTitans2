@@ -8010,11 +8010,13 @@
               用每組牌組過去真實打過的「一刀打到哪些部位＋哪一層」，對照現在每個部位的狀態與血量：
               • 一刀要打到的部位，目前都要是那一層（盔甲／肉體）、都沒被禁打，才算現在打得出來的打法
               • 血量低的部位（目前血量低於可打部位平均的 30%）不給單部位或少數部位打，只能由一刀 6 個部位以上的多部位打法順便帶到
-              • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在能用的刀數不到一半的牌組不推薦
+              • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在能用的刀數不到 5 刀、或不到 8 成的牌組不推薦（要真的常這樣打的牌組）
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
               • 6 組之間不重複用同一張卡（分數高的先選） ── */
         const BY_PART_RECO_COUNT = 6;
         const BY_PART_RECO_LOW_RATIO = 0.3;
+        const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
+        const BY_PART_RECO_MIN_SHARE = 0.8;  // 這組牌組至少 8 成的刀，打法現在都打得出來
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
@@ -8056,7 +8058,7 @@
                     usable += n;
                     score += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
-                if (usable < BY_PART_MIN_HITS || usable / (d.attacks || 1) < 0.5) return;
+                if (usable < BY_PART_RECO_MIN_HITS || usable / (d.attacks || 1) < BY_PART_RECO_MIN_SHARE) return;   // 要真的常這樣用的牌組
                 rows.push({ cards: byPartOrderCards(d.cards), score });
             });
             // 6 組之間不能有重複的牌：照分數由高到低挑，跟已選牌組共用任何一張卡的就跳過

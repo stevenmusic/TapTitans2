@@ -7705,9 +7705,8 @@
             const isAny = (r) => r.anyDeck;
             const main = usable.filter(r => !isAny(r));
             const anyRows = usable.filter(isAny);
-            // 同一份列表裡的卡片固定排在同一欄（所有區塊一起算，才不會一邊一個順序）
-            const columnOf = assignDeckColumns([...main, ...anyRows, ...blocked]);
-            [...main, ...anyRows, ...blocked].forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
+            // 每組牌組的卡片順序：主要傷害卡第一張，支援卡最後
+            [...main, ...anyRows, ...blocked].forEach(r => { r.cards = byPartOrderCards(r.cards); });
             const listOf = (rows) => byPartColumnsHtml(rows);
             let html = main.length > 0 ? listOf(main) : '';
             if (anyRows.length > 0) {
@@ -7749,6 +7748,18 @@
                     ${r.shapes.length > 0 ? `<div style="display:flex; gap:3px; flex-wrap:wrap; margin-top:2px;">${r.shapes.map(byPartShapeChip).join('')}</div>` : ''}
                 </div>
             `;
+        }
+
+        // 牌組裡的卡片順序：作為主要傷害的卡放第一張，接著是其他傷害卡，不算傷害來源的卡（放大、破碎的爆炸、漩渦）
+        // 再來，支援卡放最後。同一種角色的卡，照該牌組的傷害來源排（爆裂牌組爆裂卡在前、苦痛牌組苦痛卡在前，
+        // 混合牌組爆裂卡在前），再來照固定的卡片順序，讓同一張卡在不同牌組裡盡量排在差不多的位置
+        function byPartOrderCards(cards) {
+            const group = byPartDamageGroup(cards);
+            const role = (n) => BY_PART_NON_DAMAGE.has(n) ? 1 : (CARD_CATEGORY[n] ? 0 : 2);
+            const catRank = (n) => CARD_CATEGORY[n] === 'burst' ? (group === 'torment' ? 1 : 0)
+                : (CARD_CATEGORY[n] === 'torment' ? (group === 'torment' ? 0 : 1) : 2);
+            const canon = (n) => { const i = CARD_CANONICAL_ORDER.indexOf(n); return i < 0 ? 999 : i; };
+            return [...cards].sort((a, b) => (role(a) - role(b)) || (catRank(a) - catRank(b)) || (canon(a) - canon(b)));
         }
 
         // 依傷害來源分成橫排：爆裂／混合／苦痛。類型名稱是每排上方一行薄薄的彩色文字，牌組橫向排開（卡片大小不變），

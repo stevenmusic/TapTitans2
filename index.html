@@ -8070,8 +8070,9 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
-        function byPartRecoCompute(data) {
-            const parts = raidState && raidState.parts;
+        function byPartRecoCompute(data, partsArg, bannedArg) {
+            const parts = partsArg || (raidState && raidState.parts);
+            const bannedList = bannedArg || raidBannedParts;
             if (!parts) return [];
             const info = {};
             const all = { armor: 0, body: 0, skeleton: 0 };
@@ -8080,7 +8081,7 @@
                 if (!p) return;
                 const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
                 all[layer]++;
-                if (layer === 'skeleton' || raidBannedParts.includes(key)) return;
+                if (layer === 'skeleton' || bannedList.includes(key)) return;
                 info[key] = { layer, hp: layer === 'armor' ? p.armor : p.body, cursed: layer === 'armor' && !!p.cursed };
             });
             const keys = Object.keys(info);
@@ -8230,6 +8231,20 @@
         }
 
         let byPartRecoLast = [];
+        let byPartRecoTitle = true;   // 存成圖片時標題要不要帶王名（依部位分頁是自己設定的狀態，不帶）
+
+        // 推薦牌組區塊（標題＋存成圖片按鈕＋六組牌組）
+        function byPartRecoGridHtml(rows) {
+            byPartRecoLast = rows;
+            return `
+                <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
+                    <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組</div>
+                    <button onclick="saveByPartRecoImage()" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div></div>`).join('')}
+                </div>`;
+        }
 
         // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
         function byPartRecoTagHtml(r) {
@@ -8255,7 +8270,7 @@
             node.style.cssText = 'position:fixed; left:-9999px; top:0; width:400px; padding:16px; background:#fdf6e8; font-family:inherit; color:#4a3728; box-sizing:border-box;';
             node.innerHTML = `
                 <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;">
-                    <div style="font-size:20px; font-weight:800;">推薦牌組　${escapeHtml(raidState && raidState.bossName || '')}${raidState && raidState.bossOrdinal ? ` ${raidState.bossOrdinal}/${apiBossTotal}` : ''}</div>
+                    <div style="font-size:20px; font-weight:800;">推薦牌組　${byPartRecoTitle ? escapeHtml(raidState && raidState.bossName || '') : ''}${byPartRecoTitle && raidState && raidState.bossOrdinal ? ` ${raidState.bossOrdinal}/${apiBossTotal}` : ''}</div>
                     <div style="font-size:11px; color:#8a7a6a;">${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}</div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 10px;">
@@ -8298,15 +8313,8 @@
             const rows = byPartRecoCompute(data);
             if (rows.length === 0) { box.style.display = 'none'; return; }
             box.style.display = 'block';
-            byPartRecoLast = rows;
-            box.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
-                    <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組</div>
-                    <button onclick="saveByPartRecoImage()" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
-                </div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div></div>`).join('')}
-                </div>`;
+            byPartRecoTitle = true;
+            box.innerHTML = byPartRecoGridHtml(rows);
         }
 
         function byPartOnRaidStatusChanged() {
@@ -8317,16 +8325,44 @@
                 const { live, targets } = byPartResolveTargets(byPartModalSel);
                 if (byPartStateSig(live, targets) !== byPartModalSig) renderByPartModal();
             }
-            if (deckSubtab !== 'bypart') return;
-            const panel = document.getElementById('panel-topdecks');
-            if (!panel || panel.style.display !== 'block') return;
-            const { live, targets } = byPartResolveTargets();
-            const sig = JSON.stringify([
-                live ? Object.keys(live).map(k => k + ':' + live[k].state + (live[k].banned ? 'x' : '') + (live[k].cursed ? 'c' : '')) : null,
-                [...targets.keys()]
-            ]) + raidState.bossName;
-            if (sig === byPartLastSig) return;
+        }
+
+        /* ── 依部位分頁：不抓王名跟即時部位狀態，自己設定每個部位現在是什麼狀態（盔甲／詛咒甲／肉體／骨架／禁打），
+              再用跟首頁「推薦牌組」同一套算法，依這些部位的狀態與數量列出 6 組合適的牌組 ── */
+        const BY_PART_SIM_CYCLE = ['armor', 'cursed', 'body', 'skeleton', 'banned'];
+        const BY_PART_SIM_LABEL = { armor: '盔甲', cursed: '詛咒甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
+        const BY_PART_SIM_KEY = 'tt2_by_part_sim';
+        const byPartSim = {};
+        RAID_PARTS.forEach(p => { byPartSim[p.key] = 'armor'; });
+        try {
+            const saved = JSON.parse(localStorage.getItem(BY_PART_SIM_KEY) || 'null');
+            if (saved) RAID_PARTS.forEach(p => { if (BY_PART_SIM_CYCLE.includes(saved[p.key])) byPartSim[p.key] = saved[p.key]; });
+        } catch (e) {}
+
+        function cycleByPartSim(part) {
+            const i = BY_PART_SIM_CYCLE.indexOf(byPartSim[part]);
+            byPartSim[part] = BY_PART_SIM_CYCLE[(i + 1) % BY_PART_SIM_CYCLE.length];
+            try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
             renderByPart();
+        }
+        function setAllByPartSim(state) {
+            RAID_PARTS.forEach(p => { byPartSim[p.key] = state; });
+            try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
+            renderByPart();
+        }
+
+        // 自己設定的狀態轉成推薦算法吃的格式。血量沒辦法自己設，一律當作各部位血量一樣；
+        // 禁打的部位算成盔甲部位（只是不能打）
+        function byPartSimBuild() {
+            const parts = {}, banned = [];
+            RAID_PARTS.forEach(({ key }) => {
+                const s = byPartSim[key];
+                const armor = (s === 'armor' || s === 'cursed' || s === 'banned') ? 100 : 0;
+                const body = s === 'body' ? 100 : 0;
+                parts[key] = { armor, armorMax: 100, body, bodyMax: 100, cursed: s === 'cursed' };
+                if (s === 'banned') banned.push(key);
+            });
+            return { parts, banned };
         }
 
         async function renderByPart() {
@@ -8334,91 +8370,40 @@
             if (!box) return;
             box.style.display = 'block';
             const token = ++byPartRenderToken;
-            const { live, targets } = byPartResolveTargets();
-            byPartLastSig = JSON.stringify([
-                live ? Object.keys(live).map(k => k + ':' + live[k].state + (live[k].banned ? 'x' : '') + (live[k].cursed ? 'c' : '')) : null,
-                [...targets.keys()]
-            ]) + (live ? raidState.bossName : '');
 
-            const btnStyle = (on) => `font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid ${on ? '#4a3a2a' : '#d8c8a8'}; background:${on ? '#4a3a2a' : '#fff'}; color:${on ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;`;
-
-            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell）。有突襲狀態：格子顯示目前狀態，點一下加入／取消目標；
-            // 沒有：格子底下改成手動選盔甲／肉體／肉甲
-            const manualBtn = (partKey, state) => {
-                const on = byPartManualState.get(partKey) === state;
-                const light = state === 'armor' ? 'rgba(69,90,100,0.12)' : (state === 'body' ? 'rgba(21,101,192,0.12)' : 'linear-gradient(90deg, rgba(69,90,100,0.12) 50%, rgba(21,101,192,0.12) 50%)');
-                const solid = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : 'linear-gradient(90deg, rgb(69,90,100) 50%, rgb(21,101,192) 50%)');
-                const border = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : '#8a7a63');
-                return `<button onclick="setByPartManual('${partKey}','${state}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid ${border}; background:${on ? solid : light}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer;">${BY_PART_STATE_LABEL[state]}</button>`;
-            };
-            // 有突襲狀態時，格子完全照抄突襲首頁（血量條底色、剩餘血量數字、骨架、禁打紅框）；被選到的部位發亮
-            const homeCellHtml = (partKey) => {
-                const p = raidState.parts[partKey];
-                const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
-                if (!p) return `<div class="raid-part-cell">${name}</div>`;
-                const isSkeleton = p.armor <= 0 && p.body <= 0;
-                const isBanned = raidBannedParts.includes(partKey);
-                const usable = !isSkeleton && !isBanned;
-                const on = byPartSelected.has(partKey);
-                let cls = isBanned ? 'is-banned' : (isSkeleton ? 'is-destroyed' : '');
-                let style = '', inner;
-                if (isSkeleton) {
-                    inner = `${name}<div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}（${t('raidPartCannotAttack')}）</div>`;
-                } else if (isBanned) {
-                    inner = `${name}<div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}</div>`;
-                } else {
-                    const activeLayer = p.armor > 0 ? 'armor' : 'body';
-                    const activeValue = p.armor > 0 ? p.armor : p.body;
-                    const activeMax = p.armor > 0 ? p.armorMax : p.bodyMax;
-                    const pct = activeMax > 0 ? Math.max(0, Math.min(100, (activeValue / activeMax) * 100)) : 0;
-                    const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
-                    const themeColor = isCursedArmor ? '91,42,134' : (activeLayer === 'armor' ? '69,90,100' : '21,101,192');
-                    style = `background:linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%); border-color:rgb(${themeColor}); box-shadow:0 0 6px rgba(${themeColor},0.55);`;
-                    inner = `${name}<div class="raid-part-hp">${formatNum(activeValue)}</div>`;
-                }
-                if (usable) {
-                    style += ' cursor:pointer;';
-                    if (on) style += ' box-shadow:0 0 0 3px rgba(38,198,218,0.95), 0 0 16px 2px rgba(38,198,218,0.8); position:relative; z-index:1;';
-                    else if (byPartSelected.size > 0) style += ' opacity:0.6;';
-                }
-                return `<div class="raid-part-cell ${cls}" ${usable ? `onclick="toggleByPartTarget('${partKey}')"` : ''} style="${style}">${inner}</div>`;
-            };
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），點一下換下一個狀態
             const cellHtml = (partKey) => {
+                const s = byPartSim[partKey];
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
-                if (!live) return `<div class="raid-part-cell">${name}<div style="display:flex; gap:2px;">${['armor', 'body', 'both'].map(st => manualBtn(partKey, st)).join('')}</div></div>`;
-                return homeCellHtml(partKey);
+                const onclick = `onclick="cycleByPartSim('${partKey}')"`;
+                if (s === 'skeleton') return `<div class="raid-part-cell is-destroyed" ${onclick} style="cursor:pointer;">${name}<div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}</div></div>`;
+                if (s === 'banned') return `<div class="raid-part-cell is-banned" ${onclick} style="cursor:pointer;">${name}<div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}</div></div>`;
+                const theme = s === 'cursed' ? '91,42,134' : (s === 'armor' ? '69,90,100' : '21,101,192');
+                const style = `cursor:pointer; background:rgba(${theme},0.30); border-color:rgb(${theme}); box-shadow:0 0 6px rgba(${theme},0.55);`;
+                return `<div class="raid-part-cell" ${onclick} style="${style}">${name}<div class="raid-part-hp">${BY_PART_SIM_LABEL[s]}</div></div>`;
             };
-            const partGrid = `
-                <div class="raid-parts-grid">
-                    ${RAID_LOG_PART_LAYOUT.map(row => `
-                        <div class="raid-parts-row">${row.map(partKey => cellHtml(partKey)).join('')}</div>
-                    `).join('')}
-                </div>
-            `;
-            const statusLine = live
-                ? `<div style="font-size:12px; color:#6b5a4a; margin:6px 0 2px;">目前突襲：<b>${escapeHtml(raidState.bossName || '—')}</b></div>`
-                : `<div style="font-size:12px; color:#8a7a6a; margin:6px 0 2px;">尚未取得突襲狀態（沒有連線），請手動選擇每個部位的狀態。${byPartManualState.size > 0 ? ` <button onclick="byPartManualState.clear(); renderByPart();" style="${btnStyle(false)} padding:2px 8px;">清除</button>` : ''}</div>`;
-
+            const btnStyle = 'font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
             box.innerHTML = `
-                ${statusLine}
-                <div style="margin-top:6px;">${partGrid}</div>
-                <div id="by-part-list" style="margin-top:12px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
-                ${byPartPoolHtml()}
+                <div class="raid-parts-grid" style="margin-top:6px;">
+                    ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
+                </div>
+                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+                    <span style="font-size:11px; color:#8a7a6a;">點部位換狀態</span>
+                    ${['armor', 'body'].map(st => `<button onclick="setAllByPartSim('${st}')" style="${btnStyle}">全部${BY_PART_SIM_LABEL[st]}</button>`).join('')}
+                </div>
+                <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;
-            byPartPoolRestoreScroll();
 
             const data = await loadByPartStats(byPartTop);
             if (token !== byPartRenderToken) return; // 載入期間畫面又更新了，這次的結果作廢
-            const list = document.getElementById('by-part-list');
-            if (!list) return;
-            if (!data) {
-                list.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。';
-                return;
-            }
-            list.innerHTML = byPartListHtml(data, targets, live, live
-                ? '點上方要打的部位（會發亮，可選多個），就會列出符合的牌組。'
-                : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
-            byPartPoolUpdate();
+            const out = document.getElementById('by-part-sim-reco');
+            if (!out) return;
+            if (!data) { out.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。'; return; }
+            const { parts, banned } = byPartSimBuild();
+            const rows = byPartRecoCompute(data, parts, banned);
+            if (rows.length === 0) { out.textContent = '這個狀態沒有可以推薦的牌組（請至少留一個能打的部位）。'; return; }
+            byPartRecoTitle = false;
+            out.innerHTML = byPartRecoGridHtml(rows);
         }
 
         /* ══════════════════════════════════════════════════════════

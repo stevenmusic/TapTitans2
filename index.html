@@ -7752,7 +7752,7 @@
                 <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
                     <span style="flex:0 0 22px; font-size:10.5px; font-weight:800; color:rgb(${rgb});">${title}</span>
                     <div class="by-part-pool-row" style="display:flex; gap:5px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:4px 3px;">
-                        ${names.map(n => {
+                        ${[...names].sort((a, b) => (byPartPoolUsed && byPartPoolUsed.has(b) ? 1 : 0) - (byPartPoolUsed && byPartPoolUsed.has(a) ? 1 : 0)).map(n => {
                             const sel = byPartPoolSel.has(n);
                             const used = !byPartPoolUsed || byPartPoolUsed.has(n);
                             if (sel) return `<div onclick="toggleByPartPool('${n}')" style="cursor:pointer;">${thumb(n, 36, glow)}</div>`;      // 已選的：發亮，可再點取消
@@ -7771,8 +7771,11 @@
                     ${rows}
                 </div>`;
         }
+        let byPartPoolUsedKey = '';
         function byPartPoolUpdate() {
             byPartPoolSaveScroll();
+            const key = byPartPoolUsed ? [...byPartPoolUsed].sort().join() : '';
+            if (key !== byPartPoolUsedKey) { byPartPoolUsedKey = key; byPartPoolScroll = [0, 0, 0]; }   // 有用到的卡片換了：捲回最左邊
             document.querySelectorAll('.by-part-pool-box').forEach(el => { el.outerHTML = byPartPoolHtml(); });
             byPartPoolRestoreScroll();
         }

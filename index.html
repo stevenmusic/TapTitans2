@@ -7731,7 +7731,7 @@
 
         // 兩直排用的窄版牌組列：名次＋三張卡在上，打法標籤在下
         function renderByPartRow(r, rank, size) {
-            size = size || 38;
+            size = size || 34;
             const cardsHtml = r.cards.map(name => {
                 const img = raidCardImage(name);
                 const limit = CARD_LIMITS[name];
@@ -7740,34 +7740,32 @@
                     ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:${size}px; height:${size}px; border-radius:7px; object-fit:cover; display:block;">`
                     : `<span style="width:${size}px; font-size:20px; text-align:center; display:block;">🃏</span>`;
                 // 有適用部位限制的卡片，在卡片圖底部加標籤（4 個字的標籤字級小一點才塞得下）
-                const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${size >= 38 ? (limit.tag.length >= 4 ? 9 : 10) : (limit.tag.length >= 4 ? 7.5 : 8.5)}px; font-weight:700; line-height:${size >= 38 ? 13 : 11}px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
+                const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${size >= 38 ? (limit.tag.length >= 4 ? 9 : 10) : (size >= 34 ? (limit.tag.length >= 4 ? 8 : 9) : (limit.tag.length >= 4 ? 7.5 : 8.5))}px; font-weight:700; line-height:${size >= 38 ? 13 : 12}px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
                 return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0;">${thumb}${tag}</div>`;
             }).join('');
             return `
-                <div style="padding:5px 0; border-bottom:1px dashed #e8dcc8;">
+                <div style="padding:4px 6px; border:1px solid #efe4d2; border-radius:9px; background:#fff;">
                     <div style="display:flex; align-items:center; gap:4px;">
-                        <div style="font-size:12px; font-weight:700; color:#8a7a63; width:16px; flex-shrink:0;">${rank}.</div>
+                        <div style="font-size:11px; font-weight:700; color:#8a7a63; width:14px; flex-shrink:0;">${rank}.</div>
                         <div style="display:flex; gap:3px; min-width:0;">${cardsHtml}</div>
                     </div>
-                    ${r.shapes.length > 0 ? `<div style="display:flex; gap:3px; flex-wrap:wrap; margin:3px 0 0 20px;">${r.shapes.map(byPartShapeChip).join('')}</div>` : ''}
+                    ${r.shapes.length > 0 ? `<div style="display:flex; gap:3px; flex-wrap:wrap; margin:3px 0 0 18px;">${r.shapes.map(byPartShapeChip).join('')}</div>` : ''}
                 </div>
             `;
         }
 
-        // 依傷害來源分成直排：爆裂欄｜混合欄｜苦痛欄。沒有混合的牌組時只有兩欄；有混合欄時卡片縮小，三欄才放得下
+        // 依傷害來源分成三個橫排：爆裂／混合／苦痛，每排的牌組橫向排開（寬度不夠就換行）。
+        // 比起三直欄，牌組少的類型只佔一小行，不會留下一大塊空白
         function byPartColumnsHtml(rows) {
             const groups = { burst: [], mixed: [], torment: [] };
             rows.forEach(r => groups[byPartDamageGroup(r.cards)].push(r));
-            const cols = [['爆裂', '192,57,43', groups.burst]];
-            if (groups.mixed.length > 0) cols.push(['混合', '120,80,150', groups.mixed]);
-            cols.push(['苦痛', '30,100,200', groups.torment]);
-            const size = cols.length >= 3 ? 30 : 38;
-            const col = ([title, rgb, list]) => `
-                <div style="min-width:0;">
-                    <div style="font-size:12.5px; font-weight:800; color:rgb(${rgb}); border-bottom:2px solid rgb(${rgb}); padding-bottom:2px;">${title}（${list.length}）</div>
-                    ${list.length > 0 ? list.slice(0, 20).map((r, i) => renderByPartRow(r, i + 1, size)).join('') : '<div style="padding:8px 0; color:#a89a88;">—</div>'}
+            const sections = [['爆裂', '192,57,43', groups.burst], ['混合', '120,80,150', groups.mixed], ['苦痛', '30,100,200', groups.torment]];
+            const section = ([title, rgb, list]) => `
+                <div style="margin-bottom:8px;">
+                    <div style="font-size:12.5px; font-weight:800; color:rgb(${rgb}); border-bottom:2px solid rgb(${rgb}); padding-bottom:2px; margin-bottom:${list.length > 0 ? 6 : 0}px;">${title}（${list.length}）</div>
+                    ${list.length > 0 ? `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:6px;">${list.slice(0, 20).map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>` : ''}
                 </div>`;
-            return `<div style="display:grid; grid-template-columns:${cols.map(() => 'minmax(0,1fr)').join(' ')}; gap:${cols.length >= 3 ? 6 : 10}px; align-items:start;">${cols.map(col).join('')}</div>`;
+            return sections.map(section).join('');
         }
 
         function byPartStateSig(live, targets) {

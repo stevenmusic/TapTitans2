@@ -8171,7 +8171,7 @@
                 return p.bodyMax > 0 && p.body / p.bodyMax >= f.minHpRatio;
             }).length;
             const mustCards = Object.keys(BY_PART_RECO_FORCE)
-                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card)));
+                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.usable >= BY_PART_RECO_MIN_HITS));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
 
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
@@ -8194,7 +8194,7 @@
                     const r = cand[i];
                     if (r.cards.some(n => usedSet.has(n))) continue;
                     chosen.push(r); r.cards.forEach(n => usedSet.add(n));
-                    dfs(i + 1, chosen, usedSet, sum + r.score, missing.filter(m => !r.cards.includes(m)));
+                    dfs(i + 1, chosen, usedSet, sum + r.score, missing.filter(m => !(r.usable >= BY_PART_RECO_MIN_HITS && r.cards.includes(m))));
                     chosen.pop(); r.cards.forEach(n => usedSet.delete(n));
                 }
             };
@@ -8223,7 +8223,7 @@
             const layers = new Set(r.targets.map(x => x.layer));
             const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
             const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
-            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
+            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span></span><span style="font-size:10.5px; font-weight:600; color:#8a7a6a; margin-left:5px;">${r.usable} 次</span>`;
         }
 
         // 六組存成一張大圖：兩欄三列、卡片放大，沿用其他報表的圖片視窗（長按圖片即可儲存到相簿）

@@ -8027,18 +8027,22 @@
               用每組牌組過去真實打過的「一刀打到哪些部位＋哪一層」，對照現在每個部位的狀態與血量：
               • 一刀要打到的部位，目前都要是那一層（盔甲／肉體）、都沒被禁打，才算現在打得出來的打法
               • 血量低的部位（目前血量低於可打部位平均的 30%）不給單部位或少數部位打，只能由一刀 6 個部位以上的多部位打法順便帶到
-              • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在這種狀態下打過的刀數不到 5 刀的牌組不推薦
+              • 排名分數＝人氣 45％＋覆蓋 25％＋專精 10％＋卡片加成（最多 35％），細節見下面 BY_PART_RECO_W；現在這種狀態下打過 5 刀以上的牌組排在前面
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
               • 強制列出 6 組，彼此完全不共用任何一張卡（找總分最高的 6 組組合）。現在常打的牌組優先，不夠時才用較少打或沒打過的牌組湊滿 ── */
         const BY_PART_RECO_COUNT = 6;
-        // 整隻王的部位狀態湊齊時特別好用的卡：帶這種卡的牌組推薦分數加倍（每張 ×3，最多算一次）
-        //   肉體部位 6 個以上：瘟疫、沙漏；肉體部位 5 個以上：瘋狂無效
+        /* 推薦分數（0～1 左右，分數越高越前面；現在這種狀態下真的常打的牌組（tier 2）一律排在較少打、沒打過的前面）：
+             人氣  45％：這種打法前 15 名玩家打了幾刀（取對數，避免一組大熱門把其他全部壓下去）
+             覆蓋  25％：一刀平均打到全王剩餘血量的多少比例（打到血量多的部位、多部位打法分數高）
+             專精  10％：牌組自己的刀數裡，有幾成是現在這種狀態打的（越專門打現在狀態的越高）
+             加成 最多 +35％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
+        const BY_PART_RECO_W = { pop: 0.45, cover: 0.25, fit: 0.10, synergyCap: 0.35 };
         const BY_PART_RECO_BOOST = {
-            PlagueAttack: { state: 'body', min: 6 },
-            SandsOfTime:  { state: 'body', min: 6 },
-            CrushingVoid: { state: 'body', min: 5 }   // 瘋狂無效：肉體部位 5 個就能用
+            CrushingVoid:   { state: 'body',     min: 5, w: 0.30 },   // 瘋狂無效：肉體部位 5 個就能用，6 個達到最大傷害
+            PlagueAttack:   { state: 'body',     min: 6, w: 0.25 },   // 瘟疫
+            SandsOfTime:    { state: 'body',     min: 6, w: 0.25 },   // 沙漏
+            FinisherAttack: { state: 'skeleton', min: 6, w: 0.30 }    // 凱旋行軍：骨架部位 6 個以上達到最大傷害
         };
-        const BY_PART_RECO_BOOST_X = 3;
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
@@ -8072,7 +8076,7 @@
                 if (onlyLayers.some(l => l === null)) return;
                 const onlyLayer = onlyLayers.find(l => l);
 
-                let usable = 0, score = 0;
+                let usable = 0, hpShare = 0;
                 byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
                     const hit = new Set(ks.map(k => k[0]));
                     if (![...hit].every(p => info[p])) return;
@@ -8080,11 +8084,21 @@
                     if (onlyLayer && !ks.every(([, layer]) => layer === onlyLayer)) return;
                     if (hit.size < BY_PART_MULTI_MIN && [...hit].some(p => info[p].low)) return;   // 低血量部位只能被多部位打法打到
                     usable += n;
-                    score += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
+                    hpShare += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
                 const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : (usable > 0 ? 1 : 0);   // 2＝現在這種狀態下真的常打；1＝打過但很少；0＝沒打過（只在湊不滿 6 組時才用到）
-                const boosted = d.cards.some(n => BY_PART_RECO_BOOST[n] && all[BY_PART_RECO_BOOST[n].state] >= BY_PART_RECO_BOOST[n].min);
-                rows.push({ cards: byPartOrderCards(d.cards), score: (boosted ? score * BY_PART_RECO_BOOST_X : score) + tier * 1e6 });
+                const synergy = Math.min(BY_PART_RECO_W.synergyCap, d.cards.reduce((s, n) => {
+                    const b = BY_PART_RECO_BOOST[n];
+                    return s + (b && all[b.state] >= b.min ? b.w : 0);
+                }, 0));
+                rows.push({ cards: byPartOrderCards(d.cards), usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy, tier });
+            });
+            // 第二輪：人氣、覆蓋度跟別組比較後換成 0～1 的相對值，再合成總分
+            const maxUsable = Math.max(1, ...rows.map(r => r.usable));
+            const maxCover = Math.max(1e-9, ...rows.map(r => r.cover));
+            rows.forEach(r => {
+                const pop = Math.log(1 + r.usable) / Math.log(1 + maxUsable);
+                r.score = r.tier * 10 + BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + r.synergy;
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；

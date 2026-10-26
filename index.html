@@ -8014,6 +8014,14 @@
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
               • 6 組之間不重複用同一張卡（分數高的先選） ── */
         const BY_PART_RECO_COUNT = 6;
+        // 整隻王的部位狀態湊齊時特別好用的卡：帶這種卡的牌組推薦分數加倍（每張 ×3，最多算一次）
+        //   肉體部位 6 個以上：瘟疫、沙漏、瘋狂無效
+        const BY_PART_RECO_BOOST = {
+            PlagueAttack: { state: 'body', min: 6 },
+            SandsOfTime:  { state: 'body', min: 6 },
+            CrushingVoid: { state: 'body', min: 6 }
+        };
+        const BY_PART_RECO_BOOST_X = 3;
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         const BY_PART_RECO_MIN_SHARE = 0.8;  // 這組牌組至少 8 成的刀，打法現在都打得出來
@@ -8059,7 +8067,8 @@
                     score += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
                 if (usable < BY_PART_RECO_MIN_HITS || usable / (d.attacks || 1) < BY_PART_RECO_MIN_SHARE) return;   // 要真的常這樣用的牌組
-                rows.push({ cards: byPartOrderCards(d.cards), score });
+                const boosted = d.cards.some(n => BY_PART_RECO_BOOST[n] && all[BY_PART_RECO_BOOST[n].state] >= BY_PART_RECO_BOOST[n].min);
+                rows.push({ cards: byPartOrderCards(d.cards), score: boosted ? score * BY_PART_RECO_BOOST_X : score });
             });
             // 6 組之間不能有重複的牌：照分數由高到低挑，跟已選牌組共用任何一張卡的就跳過
             const picked = [], used = new Set();

@@ -8127,22 +8127,31 @@
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
             // 找不到 6 組時退而求其次，列出能找到的最多組數
             rows.sort((a, b) => b.score - a.score);
-            const cand = rows.slice(0, 80);
+            // 特定牌組（瘋狂無效、凱旋行軍）：部位數量條件符合（不符合的前面就已經排除）、而且現在有打得出來的打法，就一定排進來，
+            // 各自取分數最高的那一組（兩組不能共用卡）；剩下的名額才用上面的方法找
+            const forced = [], forcedUsed = new Set();
+            Object.keys(CARD_REQUIREMENTS).forEach(card => {
+                const r = rows.find(x => x.cards.includes(card) && x.cards.every(n => !forcedUsed.has(n)));
+                if (!r || forced.length >= BY_PART_RECO_COUNT) return;
+                forced.push(r);
+                r.cards.forEach(n => forcedUsed.add(n));
+            });
+            const cand = rows.filter(r => !forced.includes(r) && r.cards.every(n => !forcedUsed.has(n))).slice(0, 80);
             let best = [], bestSum = -1, nodes = 0;
             const dfs = (start, chosen, usedSet, sum) => {
                 if (chosen.length > best.length || (chosen.length === best.length && sum > bestSum)) { best = chosen.slice(); bestSum = sum; }
-                if (chosen.length >= BY_PART_RECO_COUNT || nodes++ > 40000) return;
+                if (chosen.length >= BY_PART_RECO_COUNT - forced.length || nodes++ > 40000) return;
                 for (let i = start; i < cand.length; i++) {
-                    if (chosen.length + (cand.length - i) <= best.length && best.length >= BY_PART_RECO_COUNT) return;
+                    if (chosen.length + (cand.length - i) <= best.length && best.length >= BY_PART_RECO_COUNT - forced.length) return;
                     if (cand[i].cards.some(n => usedSet.has(n))) continue;
                     chosen.push(cand[i]); cand[i].cards.forEach(n => usedSet.add(n));
                     dfs(i + 1, chosen, usedSet, sum + cand[i].score);
                     chosen.pop(); cand[i].cards.forEach(n => usedSet.delete(n));
-                    if (best.length >= BY_PART_RECO_COUNT && nodes > 40000) return;
+                    if (best.length >= BY_PART_RECO_COUNT - forced.length && nodes > 40000) return;
                 }
             };
             dfs(0, [], new Set(), 0);
-            const picked = best.sort((a, b) => b.score - a.score);
+            const picked = [...forced, ...best].sort((a, b) => b.score - a.score);
             return picked;
         }
 

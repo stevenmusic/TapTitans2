@@ -8034,9 +8034,11 @@
         /* 推薦分數（0～1 左右，分數越高越前面；現在這種狀態下真的常打的牌組（tier 2）一律排在較少打、沒打過的前面）：
              人氣  45％：這種打法前 15 名玩家打了幾刀（取對數，避免一組大熱門把其他全部壓下去）
              覆蓋  25％：一刀平均打到全王剩餘血量的多少比例（打到血量多的部位、多部位打法分數高）
-             專精  10％：牌組自己的刀數裡，有幾成是現在這種狀態打的（越專門打現在狀態的越高）
+             卡片  20％：牌組裡每張卡在「所有紀錄」（前 15 名、所有場次、所有狀態）出現的頻率，同類卡（爆裂／苦痛／支援）之間互相比較；
+                         取平均和最弱一張的平均，只要有一張冷門卡就會被拉低，確保 6 組都是大家真的在用的卡
+             專精   5％：牌組自己的刀數裡，有幾成是現在這種狀態打的（越專門打現在狀態的越高）
              加成 最多 +35％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
-        const BY_PART_RECO_W = { pop: 0.45, cover: 0.25, fit: 0.10, synergyCap: 0.35 };
+        const BY_PART_RECO_W = { pop: 0.35, cover: 0.20, fit: 0.05, card: 0.20, synergyCap: 0.35 };
         const BY_PART_RECO_BOOST = {
             CrushingVoid:   { state: 'body',     min: 5, w: 0.30 },   // 瘋狂無效：肉體部位 5 個就能用，6 個達到最大傷害
             PlagueAttack:   { state: 'body',     min: 6, w: 0.25 },   // 瘟疫
@@ -8068,6 +8070,13 @@
             const avgHp = totalHp / keys.length;
             keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
 
+            // 每張卡在所有紀錄裡的出現頻率（各牌組刀數加總），同類卡（爆裂／苦痛／支援）之間用最常用的那張當 1，取對數換成 0～1
+            const catOf = (n) => CARD_CATEGORY[n] || 'support';
+            const cardCount = {}, catMax = {};
+            data.decks.forEach(d => d.cards.forEach(n => { cardCount[n] = (cardCount[n] || 0) + (d.attacks || 0); }));
+            Object.keys(cardCount).forEach(n => { catMax[catOf(n)] = Math.max(catMax[catOf(n)] || 1, cardCount[n]); });
+            const cardWeight = (n) => Math.log(1 + (cardCount[n] || 0)) / Math.log(1 + (catMax[catOf(n)] || 1));
+
             const rows = [];
             data.decks.forEach(d => {
                 // 卡片的部位數量條件
@@ -8092,7 +8101,9 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0);
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy, tier });
+                const ws = d.cards.map(cardWeight);
+                const cardScore = 0.5 * (ws.reduce((s, x) => s + x, 0) / ws.length) + 0.5 * Math.min(...ws);   // 平均＋最弱一張，各佔一半
+                rows.push({ cards: byPartOrderCards(d.cards), usable, cardScore, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy, tier });
             });
             // 第二輪：人氣、覆蓋度跟別組比較後換成 0～1 的相對值，再合成總分
             const maxUsable = Math.max(1, ...rows.map(r => r.usable));
@@ -8101,7 +8112,7 @@
             const maxCover = Math.max(1e-9, ...rows.map(r => r.cover));
             rows.forEach(r => {
                 const pop = Math.log(1 + r.usable) / Math.log(1 + maxUsable);
-                r.score = r.tier * 10 + BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + r.synergy;
+                r.score = r.tier * 10 + BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + BY_PART_RECO_W.card * r.cardScore + r.synergy;
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；

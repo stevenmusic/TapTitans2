@@ -7606,52 +7606,28 @@
             });
             if (matched < BY_PART_MIN_HITS) return null;
 
-            // 整理右邊的標籤：只列「符合目前目標」的打法，而且盡量合併，每組牌組最多 3 個標籤。
-            //   頭部、肚子   ＝這組牌組分別單打這些部位（固定照頭、肚、肩、手、腳的順序）
-            //   頭部＋左腳   ＝一刀同時打到這幾個部位（最多列 2 種）
-            //   任一單部位   ＝單打的部位很分散（5 個以上不同部位），不逐個列出
-            //   多部位≥6     ＝一半以上的刀同時打 6 個以上部位
+            // 標籤：符合的打法本身就是上方標題寫的部位，所以不再重複寫；只在多部位牌組才加一個「多部位≥6」提醒
+            // （一半以上的刀同時打 6 個以上部位）。「任一單部位」的牌組（單打的部位很分散，5 個以上不同部位）
+            // 不加標籤，改成分到下面獨立的區塊（anyDeck）
             const total = d.attacks || 1;
             const partOrder = RAID_PARTS.map(p => p.key);
-            const minShown = Math.max(BY_PART_MIN_HITS, Math.ceil(total * 0.05)); // 偶爾幾刀的打法不列
-            const singleN = {};  // 部位 -> 單打刀數（不管符不符合目前目標，用來判斷是不是「任一單部位」）
-            const matchedSingleN = {};
-            const matchedCombos = new Map(); // 'Head+ChestUpper' -> { parts, n }
-            let singleTotal = 0, multiTotal = 0, matchedMulti = 0;
+            const singleN = {};  // 部位 -> 單打刀數
+            let singleTotal = 0, multiTotal = 0, hasMatchedSingle = false;
             pats.forEach(({ keys, n }) => {
                 const parts = partOrder.filter(p => keys.some(k => k[0] === p));
-                const isMatched = fitsTargets(keys);
-                if (parts.length >= BY_PART_MULTI_MIN) { multiTotal += n; if (isMatched) matchedMulti += n; return; }
+                if (parts.length >= BY_PART_MULTI_MIN) { multiTotal += n; return; }
                 if (parts.length === 1) {
                     singleTotal += n;
                     singleN[parts[0]] = (singleN[parts[0]] || 0) + n;
-                    if (isMatched) matchedSingleN[parts[0]] = (matchedSingleN[parts[0]] || 0) + n;
-                } else if (isMatched) {
-                    const key = parts.join('+');
-                    if (!matchedCombos.has(key)) matchedCombos.set(key, { parts, n: 0 });
-                    matchedCombos.get(key).n += n;
+                    if (fitsTargets(keys)) hasMatchedSingle = true;
                 }
             });
             const isMulti = multiTotal / total >= 0.5;
             const singleSpread = Object.keys(singleN).filter(p => singleN[p] >= BY_PART_MIN_HITS).length;
-            const isAny = !isMulti && singleTotal / total >= 0.5 && singleSpread >= BY_PART_ANY_MIN_PARTS;
+            const anyDeck = !isMulti && singleTotal / total >= 0.5 && singleSpread >= BY_PART_ANY_MIN_PARTS && hasMatchedSingle;
             const chips = [];
-            if (isMulti) {
-                chips.push({ kind: 'multi', text: '多部位≥6' });
-            } else {
-                const singles = partOrder.filter(p => (matchedSingleN[p] || 0) >= minShown);
-                if (isAny && Object.keys(matchedSingleN).length > 0) chips.push({ kind: 'any', text: '任一單部位' });
-                else if (singles.length > 0) chips.push({ kind: 'single', text: singles.map(p => raidPartLabel(p)).join('、') });
-                [...matchedCombos.values()].filter(x => x.n >= minShown).sort((x, y) => y.n - x.n).slice(0, 2)
-                    .forEach(x => chips.push({ kind: 'combo', text: x.parts.map(p => raidPartLabel(p)).join('＋') }));
-                if (matchedMulti >= minShown) chips.push({ kind: 'multi', text: '多部位≥6' });
-                if (chips.length === 0) {
-                    // 符合的刀數都很少時，至少列出最多的那一種，不要讓標籤空白
-                    const best = Object.keys(matchedSingleN).sort((x, y) => matchedSingleN[y] - matchedSingleN[x])[0];
-                    if (best) chips.push({ kind: 'single', text: raidPartLabel(best) });
-                }
-            }
-            return { matched, shapes: chips };
+            if (isMulti && targets.size < BY_PART_MULTI_MIN) chips.push({ kind: 'multi', text: '多部位≥6' });
+            return { matched, shapes: chips, anyDeck };
         }
 
         // 每張卡屬於哪一類（爆裂／苦痛／支援），照遊戲卡片頁整理。牌組的傷害來源看這個：
@@ -7692,7 +7668,7 @@
                 return targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。';
             }
             // 「任一單部位」的牌組（單打哪個部位都行，幾乎每個部位都能用）不跟專打的牌組混在一起，另外列在下面
-            const isAny = (r) => r.shapes.some(s => s.kind === 'any');
+            const isAny = (r) => r.anyDeck;
             const main = all.filter(r => !isAny(r));
             const anyRows = all.filter(isAny);
             // 同一份列表裡的卡片固定排在同一欄（兩個區塊一起算，才不會一邊一個順序）
@@ -7729,7 +7705,7 @@
                         <div style="font-size:12px; font-weight:700; color:#8a7a63; width:16px; flex-shrink:0;">${rank}.</div>
                         <div style="display:flex; gap:3px; min-width:0;">${cardsHtml}</div>
                     </div>
-                    <div style="display:flex; gap:3px; flex-wrap:wrap; margin:3px 0 0 20px;">${r.shapes.map(byPartShapeChip).join('')}</div>
+                    ${r.shapes.length > 0 ? `<div style="display:flex; gap:3px; flex-wrap:wrap; margin:3px 0 0 20px;">${r.shapes.map(byPartShapeChip).join('')}</div>` : ''}
                 </div>
             `;
         }

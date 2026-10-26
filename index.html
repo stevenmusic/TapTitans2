@@ -7485,7 +7485,7 @@
             SuperheatMetal: { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲' },
             SpinalTap:      { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲' },
             RazorWind:      { tag: '肉體', kind: 'body',  note: '只能攻擊肉體' },
-            CrushingVoid:   { tag: '肉體≥6', kind: 'body',  note: '只能攻擊肉體；肉體部位少時仍有傷害但效益不高，肉體部位達 6 個以上才值得用' },
+            CrushingVoid:   { tag: '肉體≥6', kind: 'body',  note: '肉體部位最少 5 個時使用' },
             ImpactAttack:   { tag: '肉體', kind: 'body',  note: '只能攻擊肉體' },
             InnerTruth:     { tag: '頭肚', kind: 'part', note: '只能攻擊頭部和肚子' },
             ExecutionersAxe:{ tag: '頭肚', kind: 'part', note: '只能攻擊頭部和肚子' },
@@ -7493,7 +7493,7 @@
             MoonBeam:       { tag: '肚手', kind: 'part', note: '只能攻擊肚子和雙手' },
             CelestialStatic:{ tag: '頭肚觸發', kind: 'part', note: '爆發只在敲擊非四肢部位（頭部、肚子）時觸發；敲四肢只會累積電荷' },
             LimbBurst:      { tag: '四肢', kind: 'part', note: '只能攻擊四肢' },
-            FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '骨架部位達 6 個以上時達到最大傷害' },
+            FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '' },
             LimbSupport:    { tag: '四肢', kind: 'part', note: '只能攻擊四肢' }
         };
         const byPartSelected = new Set();   // 使用者點選要打的部位（預設都不選，點一下發亮，再點一下取消）
@@ -7700,7 +7700,7 @@
             const cardsHtml = r.cards.map(name => {
                 const img = raidCardImage(name);
                 const limit = CARD_LIMITS[name];
-                const tip = limit ? `${raidCardLabel(name)}：${limit.note}` : raidCardLabel(name);
+                const tip = limit && limit.note ? `${raidCardLabel(name)}：${limit.note}` : raidCardLabel(name);
                 const thumb = img
                     ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:${size}px; height:${size}px; border-radius:7px; object-fit:cover; display:block;">`
                     : `<span style="width:${size}px; font-size:20px; text-align:center; display:block;">🃏</span>`;

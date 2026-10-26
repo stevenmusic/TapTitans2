@@ -8110,10 +8110,11 @@
                     const set = CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null;
                     if (set) allowed = allowed ? allowed.filter(p => set.includes(p)) : set.slice();
                 });
-                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0;
+                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true;
                 byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
                     // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有
-                    if (ks.every(([, layer]) => layersNow.has(layer))) relevant += n;
+                    const isStage = ks.every(([, layer]) => layersNow.has(layer));
+                    if (isStage) relevant += n;
                     if (onlyLayer && !ks.every(([, layer]) => layer === onlyLayer)) return;
                     // 這種打法一刀同時打幾個部位、各是哪一層，只要現在場上「該層、沒禁打、不是骨架」的部位數量夠（卡片有限定部位時，要在能打的部位裡）就算打得出來，
                     // 不限定要是當初打的那幾個部位（真實紀錄的是某一次剛好打到哪些部位，之後換成別的同層部位也一樣打得到）
@@ -8128,12 +8129,15 @@
                         if (pool.length < need[layer]) ok = false;
                         else picked.push(...pool.slice(0, need[layer]));   // 同層取血量最多的部位（覆蓋分數用）
                     });
+                    if (isStage && n > mainN) { mainN = n; mainOk = false; }   // 現在這個階段這組牌組最常打的打法
                     if (!ok) return;
+                    if (isStage && n === mainN) mainOk = true;
                     usable += n;
                     cursedHit += n * (picked.filter(p => info[p].cursed).length / Math.max(1, picked.length));
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
-                // 這組牌組現在這個階段的打法，至少要有 6 成現在打得出來；例如專門同時打頭＋肚子的牌組，肚子禁打時就不推薦
+                // 這組牌組現在這個階段「最常打的打法」現在要打得出來（例如專門同時打頭＋肚子的牌組，肚子禁打時，主打法打不出來就不推薦）
+                if (!mainOk) return;
                 if (usable === 0) return;   // 只要現在的部位數量、狀態夠，這組牌組真實打過的打法有一種打得出來就可以列入（打得出來的比例只影響分數）；完全打不出來的絕不推薦
                 const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : 1;   // 2＝現在這種狀態下真的常打；1＝打過但很少
                 const cursedRatio = usable > 0 ? cursedHit / usable : 0;

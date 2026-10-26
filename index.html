@@ -8135,38 +8135,45 @@
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
             // 找不到 6 組時退而求其次，列出能找到的最多組數
             rows.sort((a, b) => b.score - a.score);
-            // 特定牌組（瘋狂無效、凱旋行軍）：部位數量條件符合（見 BY_PART_RECO_FORCE）、而且現在有打得出來的打法，就一定排進來，
-            // 各自取分數最高的那一組（兩組不能共用卡）；剩下的名額才用上面的方法找
-            const forced = [], forcedUsed = new Set();
+            // 特定牌組（瘋狂無效、凱旋行軍）：部位數量條件符合（見 BY_PART_RECO_FORCE）、而且現在有打得出來的打法，就一定要有一組帶這張卡的牌組
             const healthyCount = (f) => Object.values(parts).filter(p => {
                 const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
                 if (layer !== f.state) return false;
                 if (f.state !== 'body' || !f.minHpRatio) return true;
                 return p.bodyMax > 0 && p.body / p.bodyMax >= f.minHpRatio;
             }).length;
-            Object.keys(BY_PART_RECO_FORCE).forEach(card => {
-                if (healthyCount(BY_PART_RECO_FORCE[card]) < BY_PART_RECO_FORCE[card].min) return;
-                const r = rows.find(x => x.cards.includes(card) && x.cards.every(n => !forcedUsed.has(n)));
-                if (!r || forced.length >= BY_PART_RECO_COUNT) return;
-                forced.push(r);
-                r.cards.forEach(n => forcedUsed.add(n));
-            });
-            const cand = rows.filter(r => !forced.includes(r) && r.cards.every(n => !forcedUsed.has(n))).slice(0, 80);
-            let best = [], bestSum = -1, nodes = 0;
-            const dfs = (start, chosen, usedSet, sum) => {
-                if (chosen.length > best.length || (chosen.length === best.length && sum > bestSum)) { best = chosen.slice(); bestSum = sum; }
-                if (chosen.length >= BY_PART_RECO_COUNT - forced.length || nodes++ > 40000) return;
+            const mustCards = Object.keys(BY_PART_RECO_FORCE)
+                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card)));
+
+            // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
+            // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
+            // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
+            const cand = rows;
+            const K = BY_PART_RECO_COUNT;
+            const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
+            let best = null, bestObj = -1, nodes = 0;
+            const BIG = 1000;
+            const dfs = (start, chosen, usedSet, sum, missing) => {
+                if (missing.length === 0) {
+                    const obj = chosen.length * BIG + sum;
+                    if (obj > bestObj) { best = chosen.slice(); bestObj = obj; }
+                }
+                if (chosen.length >= K || nodes++ > 300000) return;
+                const slots = K - chosen.length;
+                if (missing.length > slots) return;
                 for (let i = start; i < cand.length; i++) {
-                    if (chosen.length + (cand.length - i) <= best.length && best.length >= BY_PART_RECO_COUNT - forced.length) return;
-                    if (cand[i].cards.some(n => usedSet.has(n))) continue;
-                    chosen.push(cand[i]); cand[i].cards.forEach(n => usedSet.add(n));
-                    dfs(i + 1, chosen, usedSet, sum + cand[i].score);
-                    chosen.pop(); cand[i].cards.forEach(n => usedSet.delete(n));
-                    if (best.length >= BY_PART_RECO_COUNT - forced.length && nodes > 40000) return;
+                    if ((chosen.length + Math.min(slots, cand.length - i)) * BIG + sum + topSum(i, slots) <= bestObj) return;
+                    const r = cand[i];
+                    if (r.cards.some(n => usedSet.has(n))) continue;
+                    chosen.push(r); r.cards.forEach(n => usedSet.add(n));
+                    dfs(i + 1, chosen, usedSet, sum + r.score, missing.filter(m => !r.cards.includes(m)));
+                    chosen.pop(); r.cards.forEach(n => usedSet.delete(n));
                 }
             };
-            dfs(0, [], new Set(), 0);
-            const picked = [...forced, ...best].sort((a, b) => b.score - a.score);
+            dfs(0, [], new Set(), 0, mustCards);
+            // 必出現的卡不可能同時滿足（例如兩張卡的牌組共用卡）時，退而求其次：不強制，只找最高分組合
+            if (!best) dfs(0, [], new Set(), 0, []);
+            const picked = (best || []).sort((a, b) => b.score - a.score);
             return picked;
         }
 

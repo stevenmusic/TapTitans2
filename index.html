@@ -7478,10 +7478,15 @@
         // 卡片本身有「適用部位」限制的卡片（照遊戲卡片頁的「適用部位」整理），顯示在牌組的卡片圖底部。
         // tag＝卡片圖上的短標籤；note＝列表上方的完整說明。層別限制用跟首頁一樣的顏色（盔甲灰、肉體藍），部位限制用金棕色，
         // 發揮條件（不是限制，例如凱旋行軍要骨架部位多才強）用灰褐色
-        // 卡片要打得有效，目前突襲至少要有幾個「肉體部位」（盔甲已破、肉體還在的部位）。
-        // 沒達到時，帶這張卡的牌組現在還不能用，不會列在主列表，只收在最下面「目前還不能用」
-        // 看的是「整隻王目前有幾個肉體部位」，跟你要打的部位是盔甲還是肉體無關（例如 6 個肉體、1 個盔甲時，也能用來打那個盔甲部位）
-        const CARD_MIN_BODY_PARTS = { CrushingVoid: 5 };
+        // 卡片要打得有效，整隻王目前至少要有幾個某種狀態的部位（看整隻王，跟你要打的部位是盔甲還是肉體無關，
+        // 例如 6 個肉體、1 個盔甲時，瘋狂無效也能用來打那個盔甲部位）。
+        // 沒達到時，帶這張卡的牌組現在傷害太低、還不能用，不會列在主列表，只收在最下面「目前還不能用」
+        //   瘋狂無效：肉體部位（盔甲已破、肉體還在）最少 5 個
+        //   凱旋行軍：骨架部位（盔甲和肉體都破了）要 6 個以上，骨架少傷害很低
+        const CARD_REQUIREMENTS = {
+            CrushingVoid:   { state: 'body', min: 5, label: '肉體' },
+            FinisherAttack: { state: 'skeleton', min: 6, label: '骨架' }
+        };
         const CARD_LIMIT_RGB = { armor: '69,90,100', body: '21,101,192', part: '142,106,58', cond: '120,110,95' };
         const CARD_LIMITS = {
             Fragmentize:    { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲、不能打肉體（詛咒盔甲有額外加成）' },
@@ -7679,14 +7684,23 @@
             if (all.length === 0) {
                 return targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。';
             }
-            // 依目前突襲狀態檢查卡片的使用條件（例如瘋狂無效要有足夠的肉體部位），沒達到的牌組先分出來
-            const bodyParts = live ? Object.values(live).filter(s => s.state === 'body').length : null;
-            const unmetNeed = (r) => {
-                if (bodyParts === null) return 0; // 沒有突襲狀態（手動模式）時無法判斷，不擋
-                return Math.max(0, ...r.cards.map(n => CARD_MIN_BODY_PARTS[n] || 0).filter(need => bodyParts < need));
+            // 依目前突襲狀態檢查卡片的使用條件（瘋狂無效要有足夠的肉體部位、凱旋行軍要有足夠的骨架部位），
+            // 沒達到的牌組先分出來。沒有突襲狀態（手動模式）時無法判斷，不擋
+            const stateCount = live ? {
+                body: Object.values(live).filter(s => s.state === 'body').length,
+                skeleton: Object.values(live).filter(s => s.state === 'skeleton').length
+            } : null;
+            const unmetOf = (r) => {
+                const out = [];
+                if (!stateCount) return out;
+                r.cards.forEach(n => {
+                    const q = CARD_REQUIREMENTS[n];
+                    if (q && stateCount[q.state] < q.min && !out.includes(q)) out.push(q);
+                });
+                return out;
             };
-            const blocked = all.filter(r => unmetNeed(r) > 0);
-            const usable = all.filter(r => unmetNeed(r) === 0);
+            const blocked = all.filter(r => unmetOf(r).length > 0);
+            const usable = all.filter(r => unmetOf(r).length === 0);
             // 「任一單部位」的牌組（單打哪個部位都行，幾乎每個部位都能用）不跟專打的牌組混在一起，另外列在下面
             const isAny = (r) => r.anyDeck;
             const main = usable.filter(r => !isAny(r));
@@ -7704,10 +7718,11 @@
                     </details>`;
             }
             if (blocked.length > 0) {
-                const need = Math.max(...blocked.map(unmetNeed));
+                const reasons = [...new Set(blocked.flatMap(unmetOf))]
+                    .map(q => `${q.label}部位要 ${q.min} 個以上，目前 ${stateCount[q.state]} 個`).join('；');
                 html += `
                     <details style="margin-top:12px;">
-                        <summary style="cursor:pointer; font-weight:700; color:#8a7a6a; padding:4px 0;">目前還不能用（${blocked.length} 組）：肉體部位要 ${need} 個以上，目前 ${bodyParts} 個</summary>
+                        <summary style="cursor:pointer; font-weight:700; color:#8a7a6a; padding:4px 0;">目前還不能用（${blocked.length} 組）：${reasons}</summary>
                         ${listOf(blocked)}
                     </details>`;
             }

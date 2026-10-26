@@ -7682,17 +7682,14 @@
 
         // 依目標部位比對牌組，產生「統計說明＋牌組列表」的 HTML（頁籤版和首頁浮動視窗共用）
         function byPartListHtml(data, targets, live, emptyHint) {
-            const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀</div>`;
-            if (targets.size === 0) return info + emptyHint;
+            if (targets.size === 0) return emptyHint;
             const all = data.decks.map(d => {
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
               .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
             if (all.length === 0) {
-                return info + (targets.size > 1
-                    ? `沒有同時攻擊這 ${targets.size} 個部位的牌組（要有至少 ${BY_PART_MIN_HITS} 刀一刀同時打到這些部位的目前狀態）。`
-                    : `沒有符合的牌組（要有至少 ${BY_PART_MIN_HITS} 刀的卡片剛好打在這個部位的目前狀態上；點擊傷害不算，一刀同時打到其他部位的不列入）。`);
+                return targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。';
             }
             // 「任一單部位」的牌組（單打哪個部位都行，幾乎每個部位都能用）不跟專打的牌組混在一起，另外列在下面
             const isAny = (r) => r.shapes.some(s => s.kind === 'any');
@@ -7702,9 +7699,7 @@
             const columnOf = assignDeckColumns([...main, ...anyRows]);
             [...main, ...anyRows].forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
             const listOf = (rows) => byPartColumnsHtml(rows);
-            let html = info
-                + `<div style="margin-bottom:4px;">${targets.size > 1 ? `同時攻擊所選 ${targets.size} 個部位：` : '符合 '}${main.length} 組</div>`
-                + (main.length > 0 ? listOf(main) : `<div style="padding:6px 0;">沒有只適合這些部位的牌組。</div>`);
+            let html = main.length > 0 ? listOf(main) : '';
             if (anyRows.length > 0) {
                 html += `
                     <details open style="margin-top:12px;">

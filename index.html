@@ -7451,7 +7451,7 @@
            ・一個部位：頭部　　・兩個以上部位：頭部＋左腳（一刀同時打到）
            ・多部位≥6：一刀同時打到 6 個以上部位
            ・任一單部位：一半以上的刀只打單一部位，而且歷史上單打過 5 個以上不同的部位
-           深色＝符合目前目標的打法；淺色＝這組牌組紀錄裡也有、但不符合目前目標的其他打法。
+           只列符合目前目標的打法，標籤盡量合併：頭部、肚子＝分別單打；頭部＋左腳＝一刀同時打。
            ══════════════════════════════════════════════════════════ */
         let deckSubtab = 'topdecks';
         let byPartTop = 10;
@@ -7598,47 +7598,59 @@
             });
             if (matched < BY_PART_MIN_HITS) return null;
 
-            // 整理這組牌組「一刀打到哪些部位」的各種打法（不分層別），符合目前目標的標成 matched
+            // 整理右邊的標籤：只列「符合目前目標」的打法，而且盡量合併，每組牌組最多 3 個標籤。
+            //   頭部、肚子   ＝這組牌組分別單打這些部位（固定照頭、肚、肩、手、腳的順序）
+            //   頭部＋左腳   ＝一刀同時打到這幾個部位（最多列 2 種）
+            //   任一單部位   ＝單打的部位很分散（5 個以上不同部位），不逐個列出
+            //   多部位≥6     ＝一半以上的刀同時打 6 個以上部位
             const total = d.attacks || 1;
             const partOrder = RAID_PARTS.map(p => p.key);
-            const shapes = new Map(); // key -> { kind, parts, n, matched }
+            const minShown = Math.max(BY_PART_MIN_HITS, Math.ceil(total * 0.05)); // 偶爾幾刀的打法不列
+            const singleN = {};  // 部位 -> 單打刀數（不管符不符合目前目標，用來判斷是不是「任一單部位」）
+            const matchedSingleN = {};
+            const matchedCombos = new Map(); // 'Head+ChestUpper' -> { parts, n }
+            let singleTotal = 0, multiTotal = 0, matchedMulti = 0;
             pats.forEach(({ keys, n }) => {
                 const parts = partOrder.filter(p => keys.some(k => k[0] === p));
                 const isMatched = keys.every(([part, layer]) => targets.has(part) && targets.get(part).has(layer));
-                const isMultiShape = parts.length >= BY_PART_MULTI_MIN;
-                const key = isMultiShape ? 'multi' : parts.join('+');
-                const kind = isMultiShape ? 'multi' : (parts.length === 1 ? 'single' : 'combo');
-                if (!shapes.has(key)) shapes.set(key, { kind, parts: isMultiShape ? [] : parts, n: 0, matched: false });
-                const s = shapes.get(key);
-                s.n += n;
-                if (isMatched) s.matched = true;
+                if (parts.length >= BY_PART_MULTI_MIN) { multiTotal += n; if (isMatched) matchedMulti += n; return; }
+                if (parts.length === 1) {
+                    singleTotal += n;
+                    singleN[parts[0]] = (singleN[parts[0]] || 0) + n;
+                    if (isMatched) matchedSingleN[parts[0]] = (matchedSingleN[parts[0]] || 0) + n;
+                } else if (isMatched) {
+                    const key = parts.join('+');
+                    if (!matchedCombos.has(key)) matchedCombos.set(key, { parts, n: 0 });
+                    matchedCombos.get(key).n += n;
+                }
             });
-            let list = [...shapes.values()];
-            // 單打很多不同部位（5 個以上）、而且單打佔一半以上的牌組：併成一個「任一單部位」
-            const singles = list.filter(s => s.kind === 'single' && s.n >= BY_PART_MIN_HITS);
-            const singleTotal = list.filter(s => s.kind === 'single').reduce((sum, s) => sum + s.n, 0);
-            if (singles.length >= BY_PART_ANY_MIN_PARTS && singleTotal / total >= 0.5) {
-                const anyShape = { kind: 'any', parts: [], n: singleTotal, matched: list.some(s => s.kind === 'single' && s.matched) };
-                list = list.filter(s => s.kind !== 'single');
-                list.push(anyShape);
+            const isMulti = multiTotal / total >= 0.5;
+            const singleSpread = Object.keys(singleN).filter(p => singleN[p] >= BY_PART_MIN_HITS).length;
+            const isAny = !isMulti && singleTotal / total >= 0.5 && singleSpread >= BY_PART_ANY_MIN_PARTS;
+            const chips = [];
+            if (isMulti) {
+                chips.push({ kind: 'multi', text: '多部位≥6' });
+            } else {
+                const singles = partOrder.filter(p => (matchedSingleN[p] || 0) >= minShown);
+                if (isAny && Object.keys(matchedSingleN).length > 0) chips.push({ kind: 'any', text: '任一單部位' });
+                else if (singles.length > 0) chips.push({ kind: 'single', text: singles.map(p => raidPartLabel(p)).join('、') });
+                [...matchedCombos.values()].filter(x => x.n >= minShown).sort((x, y) => y.n - x.n).slice(0, 2)
+                    .forEach(x => chips.push({ kind: 'combo', text: x.parts.map(p => raidPartLabel(p)).join('＋') }));
+                if (matchedMulti >= minShown) chips.push({ kind: 'multi', text: '多部位≥6' });
+                if (chips.length === 0) {
+                    // 符合的刀數都很少時，至少列出最多的那一種，不要讓標籤空白
+                    const best = Object.keys(matchedSingleN).sort((x, y) => matchedSingleN[y] - matchedSingleN[x])[0];
+                    if (best) chips.push({ kind: 'single', text: raidPartLabel(best) });
+                }
             }
-            // 次數太少的打法（偶爾一兩刀）不列，符合目前目標的至少要有 3 刀才列
-            const minShown = Math.max(BY_PART_MIN_HITS, Math.ceil(total * 0.1));
-            list = list.filter(s => s.n >= minShown);
-            list.sort((x, y) => (y.matched - x.matched) || (y.n - x.n));
-            return { matched, shapes: list.slice(0, 4), moreShapes: Math.max(0, list.length - 4) };
+            return { matched, shapes: chips };
         }
 
-        // 打法標籤的顏色：符合目前目標的實心，其他淺色。一個部位／兩個以上部位用咖啡色，任一單部位橘色，多部位紫色
+        // 打法標籤的顏色：部位（單打／同時打）咖啡色，任一單部位橘色，多部位紫色
         const BY_PART_SHAPE_RGB = { single: '74,58,42', combo: '74,58,42', any: '224,160,48', multi: '91,42,134' };
         function byPartShapeChip(s) {
             const rgb = BY_PART_SHAPE_RGB[s.kind];
-            const text = s.kind === 'multi' ? '多部位≥6'
-                : (s.kind === 'any' ? '任一單部位' : s.parts.map(p => raidPartLabel(p)).join('＋'));
-            const style = s.matched
-                ? `background:rgb(${rgb}); color:#fff; border:1.5px solid rgb(${rgb});`
-                : `background:rgba(${rgb},0.08); color:rgb(${rgb}); border:1.5px solid rgba(${rgb},0.35); font-weight:600;`;
-            return `<span style="font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:99px; white-space:nowrap; ${style}">${escapeHtml(text)}</span>`;
+            return `<span style="font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:99px; white-space:nowrap; background:rgb(${rgb}); color:#fff;">${escapeHtml(s.text)}</span>`;
         }
 
         function renderByPartRow(r, rank) {
@@ -7659,7 +7671,7 @@
                         }).join('')}
                     </div>
                     <div style="max-width:52%; display:flex; gap:3px; flex-wrap:wrap; justify-content:flex-end;">
-                        ${r.shapes.map(byPartShapeChip).join('')}${r.moreShapes > 0 ? `<span style="font-size:11px; color:#8a7a6a;">…</span>` : ''}
+                        ${r.shapes.map(byPartShapeChip).join('')}
                     </div>
                 </div>
             `;
@@ -7769,7 +7781,7 @@
             const columnOf = assignDeckColumns(rows);
             rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
             list.innerHTML = info
-                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的攻擊紀錄「一刀打到哪些部位」：<b>頭部＋左腳</b>＝一刀同時打到這兩個部位；<b>多部位≥6</b>＝一刀同時打 6 個以上；<b>任一單部位</b>＝可以單打任何部位。深色＝符合目前目標，淺色＝紀錄裡也有的其他打法。</div>`
+                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的打法：<b>頭部、肚子</b>＝分別單打；<b>頭部＋左腳</b>＝一刀同時打；<b>任一單部位</b>＝可以單打任何部位；<b>多部位≥6</b>＝一刀打 6 個以上。</div>`
                 + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 

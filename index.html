@@ -8012,7 +8012,7 @@
               • 血量低的部位（目前血量低於可打部位平均的 30%）不給單部位或少數部位打，只能由一刀 6 個部位以上的多部位打法順便帶到
               • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在能用的刀數不到 5 刀、或不到 8 成的牌組不推薦（要真的常這樣打的牌組）
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
-              • 6 組之間不重複用同一張卡（分數高的先選） ── */
+              • 6 組列滿；先挑彼此不共用卡的，不夠再挑重複最少的補上 ── */
         const BY_PART_RECO_COUNT = 6;
         // 整隻王的部位狀態湊齊時特別好用的卡：帶這種卡的牌組推薦分數加倍（每張 ×3，最多算一次）
         //   肉體部位 6 個以上：瘟疫、沙漏、瘋狂無效
@@ -8070,13 +8070,19 @@
                 const boosted = d.cards.some(n => BY_PART_RECO_BOOST[n] && all[BY_PART_RECO_BOOST[n].state] >= BY_PART_RECO_BOOST[n].min);
                 rows.push({ cards: byPartOrderCards(d.cards), score: boosted ? score * BY_PART_RECO_BOOST_X : score });
             });
-            // 6 組之間不能有重複的牌：照分數由高到低挑，跟已選牌組共用任何一張卡的就跳過
+            // 6 組要列滿、而且牌組各不相同：照分數由高到低挑，先挑跟已選牌組完全不共用卡的；
+            // 不夠 6 組時，再從剩下的牌組裡挑跟已選牌組重複的卡最少的（同樣重複數再看分數）補滿
+            rows.sort((a, b) => b.score - a.score);
             const picked = [], used = new Set();
-            rows.sort((a, b) => b.score - a.score).forEach(r => {
-                if (picked.length >= BY_PART_RECO_COUNT || r.cards.some(n => used.has(n))) return;
-                picked.push(r);
-                r.cards.forEach(n => used.add(n));
-            });
+            const take = (r) => { picked.push(r); r.cards.forEach(n => used.add(n)); };
+            rows.forEach(r => { if (picked.length < BY_PART_RECO_COUNT && r.cards.every(n => !used.has(n))) take(r); });
+            while (picked.length < BY_PART_RECO_COUNT) {
+                const rest = rows.filter(r => !picked.includes(r));
+                if (rest.length === 0) break;
+                const overlap = (r) => r.cards.filter(n => used.has(n)).length;
+                rest.sort((x, y) => (overlap(x) - overlap(y)) || (y.score - x.score));
+                take(rest[0]);
+            }
             return picked;
         }
 

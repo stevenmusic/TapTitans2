@@ -8029,7 +8029,7 @@
               • 血量低的部位（目前血量低於可打部位平均的 30%）不給單部位或少數部位打，只能由一刀 6 個部位以上的多部位打法順便帶到
               • 打法越多、一刀打到的部位血量佔比越高，分數越高；現在這種狀態下打過的刀數不到 5 刀的牌組不推薦
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
-              • 最多 6 組，彼此完全不共用任何一張卡（分數高的先選） ── */
+              • 強制列出 6 組，彼此完全不共用任何一張卡（找總分最高的 6 組組合）。現在常打的牌組優先，不夠時才用較少打或沒打過的牌組湊滿 ── */
         const BY_PART_RECO_COUNT = 6;
         // 整隻王的部位狀態湊齊時特別好用的卡：帶這種卡的牌組推薦分數加倍（每張 ×3，最多算一次）
         //   肉體部位 6 個以上：瘟疫、沙漏；肉體部位 5 個以上：瘋狂無效
@@ -8082,18 +8082,30 @@
                     usable += n;
                     score += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
-                if (usable < BY_PART_RECO_MIN_HITS) return;   // 現在這種狀態下真的打過的牌組（牌組的總刀數含其他階段，不能拿來算比例）
+                const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : (usable > 0 ? 1 : 0);   // 2＝現在這種狀態下真的常打；1＝打過但很少；0＝沒打過（只在湊不滿 6 組時才用到）
                 const boosted = d.cards.some(n => BY_PART_RECO_BOOST[n] && all[BY_PART_RECO_BOOST[n].state] >= BY_PART_RECO_BOOST[n].min);
-                rows.push({ cards: byPartOrderCards(d.cards), score: boosted ? score * BY_PART_RECO_BOOST_X : score });
+                rows.push({ cards: byPartOrderCards(d.cards), score: (boosted ? score * BY_PART_RECO_BOOST_X : score) + tier * 1e6 });
             });
-            // 6 組之間完全不能有相同的卡：照分數由高到低挑，跟已選牌組共用任何一張卡的就跳過（寧可少於 6 組）
+            // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
+            // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
+            // 找不到 6 組時退而求其次，列出能找到的最多組數
             rows.sort((a, b) => b.score - a.score);
-            const picked = [], used = new Set();
-            rows.forEach(r => {
-                if (picked.length >= BY_PART_RECO_COUNT || r.cards.some(n => used.has(n))) return;
-                picked.push(r);
-                r.cards.forEach(n => used.add(n));
-            });
+            const cand = rows.slice(0, 80);
+            let best = [], bestSum = -1, nodes = 0;
+            const dfs = (start, chosen, usedSet, sum) => {
+                if (chosen.length > best.length || (chosen.length === best.length && sum > bestSum)) { best = chosen.slice(); bestSum = sum; }
+                if (chosen.length >= BY_PART_RECO_COUNT || nodes++ > 40000) return;
+                for (let i = start; i < cand.length; i++) {
+                    if (chosen.length + (cand.length - i) <= best.length && best.length >= BY_PART_RECO_COUNT) return;
+                    if (cand[i].cards.some(n => usedSet.has(n))) continue;
+                    chosen.push(cand[i]); cand[i].cards.forEach(n => usedSet.add(n));
+                    dfs(i + 1, chosen, usedSet, sum + cand[i].score);
+                    chosen.pop(); cand[i].cards.forEach(n => usedSet.delete(n));
+                    if (best.length >= BY_PART_RECO_COUNT && nodes > 40000) return;
+                }
+            };
+            dfs(0, [], new Set(), 0);
+            const picked = best.sort((a, b) => b.score - a.score);
             return picked;
         }
 

@@ -7675,12 +7675,15 @@
 
         // 依目標部位比對牌組，產生「統計說明＋牌組列表」的 HTML（頁籤版和首頁浮動視窗共用）
         function byPartListHtml(data, targets, live, emptyHint) {
-            if (targets.size === 0) return emptyHint;
+            if (targets.size === 0) { byPartPoolUsed = new Set(); return emptyHint; }
+            byPartPoolUsed = new Set();
             let all = data.decks.map(d => {
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
               .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
+            // 目前（還沒用卡片池篩選前）列出的牌組真的有用到哪些卡片：卡片池只讓這些卡片正常顯示
+            byPartPoolUsed = new Set(all.flatMap(r => r.cards));
             // 卡片池：有選卡片時，只留下含有所選卡片（任何一張）的牌組
             if (byPartPoolSel.size > 0) all = all.filter(r => r.cards.some(n => byPartPoolSel.has(n)));
             if (all.length === 0) {
@@ -7729,14 +7732,16 @@
 
         // 兩直排用的窄版牌組列：名次＋三張卡在上，打法標籤在下
         /* ── 卡片池：列出全部卡片（爆裂／苦痛／支援）。沒選任何卡＝顯示全部牌組；點一張卡發亮＝只顯示有這張卡的牌組，
-              選多張時有其中任何一張的牌組都顯示；再點一次取消。固定在視窗最下面（捲動時也看得到），預設收合 ── */
+              選多張時有其中任何一張的牌組都顯示；再點一次取消。固定在視窗最下面（捲動時也看得到），預設展開；
+              目前列出的牌組沒用到的卡片會變暗、不能點，只有真的有用到的卡片才正常顯示 ── */
         const BY_PART_POOL = [
             ['爆裂', '192,57,43', ['MoonBeam', 'Fragmentize', 'SkullBash', 'RazorWind', 'WhipOfLightning', 'BurstCount', 'Purify', 'FlakShot', 'Haymaker', 'ChainLightning', 'MirrorForce', 'CelestialStatic', 'LimbBurst', 'Weaken', 'BarbedMorningstar']],
             ['苦痛', '30,100,200', ['BurningAttack', 'PoisonAttack', 'DecayingAttack', 'Fuse', 'Shadow', 'PlagueAttack', 'Disease', 'Swarm', 'RuinousRust', 'PowerBubble', 'RuneAttack', 'MagicPotion', 'CosmicBarb', 'SandsOfTime']],
             ['支援', '46,139,87', ['CrushingVoid', 'MentalFocus', 'InnerTruth', 'FinisherAttack', 'ImpactAttack', 'BurstBoost', 'LimbSupport', 'TotemFairySkill', 'TeamTactics', 'SpinalTap', 'AstralEcho', 'BattleDrums', 'TriangleSupport', 'SuperheatMetal', 'ExecutionersAxe']]
         ];
         const byPartPoolSel = new Set();
-        let byPartPoolOpen = false;
+        let byPartPoolOpen = true;
+        let byPartPoolUsed = null;   // 目前列出的牌組真的有用到的卡片（null＝還沒算出來，先都當作有用到）
         let byPartPoolScroll = [0, 0, 0];
 
         function byPartPoolHtml() {
@@ -7747,11 +7752,17 @@
                 <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
                     <span style="flex:0 0 22px; font-size:10.5px; font-weight:800; color:rgb(${rgb});">${title}</span>
                     <div class="by-part-pool-row" style="display:flex; gap:5px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:4px 3px;">
-                        ${names.map(n => `<div onclick="toggleByPartPool('${n}')" style="cursor:pointer;">${thumb(n, 36, byPartPoolSel.has(n) ? glow : (selected.length > 0 ? 'opacity:0.5;' : ''))}</div>`).join('')}
+                        ${names.map(n => {
+                            const sel = byPartPoolSel.has(n);
+                            const used = !byPartPoolUsed || byPartPoolUsed.has(n);
+                            if (sel) return `<div onclick="toggleByPartPool('${n}')" style="cursor:pointer;">${thumb(n, 36, glow)}</div>`;      // 已選的：發亮，可再點取消
+                            if (used) return `<div onclick="toggleByPartPool('${n}')" style="cursor:pointer;">${thumb(n, 36, '')}</div>`;        // 有用到的：正常顯示，可以點
+                            return `<div>${thumb(n, 36, 'opacity:0.22; filter:grayscale(1);')}</div>`;                                              // 沒用到的：變暗，不能點
+                        }).join('')}
                     </div>
                 </div>`).join('') : '';
             return `
-                <div style="position:sticky; bottom:0; z-index:5; background:#fffaf3; border-top:1px solid #e0d2bb; margin:8px -10px -8px; padding:3px 10px 4px; border-radius:0 0 14px 14px;">
+                <div class="by-part-pool-box" style="position:sticky; bottom:0; z-index:5; background:#fffaf3; border-top:1px solid #e0d2bb; margin:8px -10px -8px; padding:3px 10px 4px; border-radius:0 0 14px 14px;">
                     <div style="display:flex; align-items:center; gap:6px;">
                         <button onclick="toggleByPartPoolOpen()" style="border:none; background:none; font-family:inherit; font-size:12px; font-weight:800; color:#4a3728; cursor:pointer; padding:3px 0; white-space:nowrap;">卡片池 ${byPartPoolOpen ? '▾' : '▴'}</button>
                         <div style="flex:1; min-width:0; display:flex; gap:3px; align-items:center; overflow:hidden; font-size:11px; color:#8a7a6a;">${selected.length > 0 ? selected.map(n => thumb(n, 22, glow.replace('3px', '2px'))).join('') : '全部牌組'}</div>
@@ -7759,6 +7770,11 @@
                     </div>
                     ${rows}
                 </div>`;
+        }
+        function byPartPoolUpdate() {
+            byPartPoolSaveScroll();
+            document.querySelectorAll('.by-part-pool-box').forEach(el => { el.outerHTML = byPartPoolHtml(); });
+            byPartPoolRestoreScroll();
         }
         function byPartPoolSaveScroll() {
             byPartPoolScroll = [...document.querySelectorAll('.by-part-pool-row')].map(el => el.scrollLeft);
@@ -7951,6 +7967,7 @@
             if (!list) return;
             if (!data) { list.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。'; return; }
             list.innerHTML = byPartListHtml(data, targets, live, '這個部位現在不能打（禁打或只剩骨架），請點上面其他部位。');
+            byPartPoolUpdate();
             positionByPartModal();
         }
 
@@ -8070,6 +8087,7 @@
             list.innerHTML = byPartListHtml(data, targets, live, live
                 ? '點上方要打的部位（會發亮，可選多個），就會列出符合的牌組。'
                 : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
+            byPartPoolUpdate();
         }
 
         /* ══════════════════════════════════════════════════════════

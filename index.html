@@ -8341,7 +8341,7 @@
         const BY_PART_SIM_LABEL = { armor: '盔甲', cursed: '詛咒甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
         const BY_PART_SIM_KEY = 'tt2_by_part_sim';
         // 加成類型：不同的突襲加成適合的配卡不一樣，各自統計（伺服器依場次的加成類型分成三群）
-        const BY_PART_GROUPS = [['burst', '爆裂加成'], ['torment', '苦痛加成'], ['other', '其他加成']];
+        const BY_PART_GROUPS = [['burst', '爆裂加成', '192,57,43'], ['torment', '苦痛加成', '30,100,200'], ['other', '其他加成', '230,126,34']];   // 爆裂紅、苦痛藍、其他橘
         const BY_PART_GROUP_KEY = 'tt2_by_part_group';
         let byPartGroup = 'burst';
         try { const g = localStorage.getItem(BY_PART_GROUP_KEY); if (BY_PART_GROUPS.some(x => x[0] === g)) byPartGroup = g; } catch (e) {}
@@ -8393,9 +8393,12 @@
             // 「先選狀態、再點部位」：上面一排狀態按鈕（只有 5 顆）是畫筆，選好之後點哪個部位，那個部位就變成這個狀態；
             // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），格子底色跟著狀態變、中間寫狀態名稱
             const SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
+            const simCount = {};
+            RAID_PARTS.forEach(({ key }) => { simCount[byPartSim[key]] = (simCount[byPartSim[key]] || 0) + 1; });
+            // 每顆狀態按鈕上顯示目前有幾個部位是這個狀態（例如「肉體 5」），選到的實心；點它就是「接下來點部位要套用這個狀態」
             const brushBtn = (st) => {
                 const on = byPartSimBrush === st;
-                return `<button onclick="setByPartSimBrush('${st}')" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:7px 0; border-radius:8px; border:2px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${BY_PART_SIM_LABEL[st]}</button>`;
+                return `<button onclick="setByPartSimBrush('${st}')" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:6px 0 5px; border-radius:8px; border:2px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap; line-height:1.25;">${BY_PART_SIM_LABEL[st]}<br><span style="font-size:15px;">${simCount[st] || 0}</span></button>`;
             };
             const cellHtml = (partKey) => {
                 const s = byPartSim[partKey];
@@ -8405,15 +8408,16 @@
             };
             const btnStyle = 'font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
             box.innerHTML = `
-                <div style="display:flex; gap:6px; margin-top:6px;">
-                    ${BY_PART_GROUPS.map(([g, label]) => `<button onclick="setByPartGroup('${g}')" style="flex:1; font-size:12.5px; font-weight:800; padding:7px 0; border-radius:8px; border:1.5px solid #8e1b2e; background:${byPartGroup === g ? '#8e1b2e' : '#fff'}; color:${byPartGroup === g ? '#fff' : '#8e1b2e'}; font-family:inherit; cursor:pointer;">${label}</button>`).join('')}
+                <div style="display:flex; margin-top:6px; border-bottom:1px solid #e5d9c5;">
+                    ${BY_PART_GROUPS.map(([g, label, rgb]) => `<button onclick="setByPartGroup('${g}')" style="flex:1; font-size:13px; font-weight:800; padding:7px 0 6px; border:none; border-bottom:3px solid ${byPartGroup === g ? `rgb(${rgb})` : 'transparent'}; background:none; color:${byPartGroup === g ? `rgb(${rgb})` : '#9a8a78'}; font-family:inherit; cursor:pointer; margin-bottom:-1px;">${label}</button>`).join('')}
                 </div>
                 <div style="display:flex; gap:5px; margin-top:8px;">${BY_PART_SIM_CYCLE.map(brushBtn).join('')}</div>
                 <div class="raid-parts-grid" style="margin-top:8px;">
                     ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
                 </div>
-                <div style="display:flex; gap:6px; margin-top:6px;">
-                    <button onclick="setAllByPartSim(byPartSimBrush)" style="${btnStyle}">全部設為${BY_PART_SIM_LABEL[byPartSimBrush]}</button>
+                <div style="display:flex; gap:8px; margin-top:6px; align-items:center;">
+                    <span style="font-size:11px; color:#8a7a6a;">先選上面的狀態，再點部位</span>
+                    <button onclick="setAllByPartSim(byPartSimBrush)" style="${btnStyle} margin-left:auto;">全部設為${BY_PART_SIM_LABEL[byPartSimBrush]}</button>
                 </div>
                 <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;
@@ -10382,6 +10386,12 @@
             box.style.display = raidSimActive ? 'block' : 'none';
             if (!raidSimActive) return;
             const hasHp = raidSimBrush === 'cursed' || raidSimBrush === 'armor' || raidSimBrush === 'body';
+            const cnt = {};
+            RAID_PARTS.forEach(({ key }) => {
+                const p = raidState.parts[key];
+                const s = raidBannedParts.includes(key) ? 'banned' : (p.armor > 0 ? (p.cursed ? 'cursed' : 'armor') : (p.body > 0 ? 'body' : 'skeleton'));
+                cnt[s] = (cnt[s] || 0) + 1;
+            });
             const btn = (on, rgb, text, onclick) => `<button onclick="${onclick}" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:7px 0; border-radius:8px; border:2px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${text}</button>`;
             box.innerHTML = `
                 <div style="margin:8px 0 4px; padding:8px; border:1.5px dashed #c9971f; border-radius:10px; background:#fffaf0;">
@@ -10392,7 +10402,7 @@
                         </select>
                         <button onclick="toggleRaidSim()" style="font-size:12px; font-weight:700; padding:5px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">結束模擬</button>
                     </div>
-                    <div style="display:flex; gap:5px;">${RAID_SIM_STATES.map(([st, label]) => btn(raidSimBrush === st, RAID_SIM_RGB[st], label, `setRaidSimBrush('${st}')`)).join('')}</div>
+                    <div style="display:flex; gap:5px;">${RAID_SIM_STATES.map(([st, label]) => btn(raidSimBrush === st, RAID_SIM_RGB[st], `${label}<br><span style="font-size:15px;">${cnt[st] || 0}</span>`, `setRaidSimBrush('${st}')`)).join('')}</div>
                     ${hasHp ? `<div style="display:flex; gap:5px; margin-top:5px; align-items:center;"><span style="font-size:11px; color:#8a7a6a; white-space:nowrap;">剩餘血量</span>${RAID_SIM_HPS.map(v => btn(raidSimHp === v, '110,90,60', Math.round(v * 100) + '%', `setRaidSimHp(${v})`)).join('')}</div>` : ''}
                     <div style="display:flex; gap:6px; margin-top:6px; align-items:center;">
                         <button onclick="raidSimPaintAll()" style="font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">全部設為${(RAID_SIM_STATES.find(s => s[0] === raidSimBrush) || [0, ''])[1]}</button>

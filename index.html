@@ -1876,6 +1876,18 @@
             background: #fffaf3; border-radius: 14px; max-width: 420px; width: 100%;
             max-height: 80vh; overflow-y: auto; padding: 16px; box-sizing: border-box;
         }
+        /* 點突襲首頁的部位跳出的「這個部位可以用哪些牌組」浮動視窗 */
+        #by-part-modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); z-index: 10001;
+            justify-content: center; align-items: center;
+            padding: 16px; box-sizing: border-box;
+        }
+        #by-part-modal .by-part-modal-box {
+            background: #fffaf3; border-radius: 14px; max-width: 460px; width: 100%;
+            max-height: 86vh; overflow-y: auto; padding: 14px; box-sizing: border-box;
+        }
         .player-data-input {
             width: 100%;
             box-sizing: border-box;
@@ -3446,6 +3458,10 @@
 
     <div id="card-usage-detail-modal" onclick="if (event.target === this) closeCardUsageDetail();">
         <div class="card-usage-detail-box" id="card-usage-detail-body"></div>
+    </div>
+
+    <div id="by-part-modal" onclick="if (event.target === this) closeByPartModal();">
+        <div class="by-part-modal-box" id="by-part-modal-body"></div>
     </div>
 
     <script>
@@ -7517,14 +7533,15 @@
         }
 
         // 目前的目標部位：回傳 Map（部位 -> 可接受的層別 Set）
-        function byPartResolveTargets() {
+        function byPartResolveTargets(sel) {
+            sel = sel || byPartSelected;
             const live = byPartLiveStates();
             const targets = new Map();
             if (live) {
                 RAID_PARTS.forEach(({ key }) => {
                     const s = live[key];
                     if (!s || s.state === 'skeleton' || s.banned) return;
-                    if (!byPartSelected.has(key)) return;
+                    if (!sel.has(key)) return;
                     targets.set(key, new Set([s.state]));
                 });
             } else {
@@ -7642,6 +7659,26 @@
             return `<span style="font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:99px; white-space:nowrap; background:rgb(${rgb}); color:#fff;">${escapeHtml(s.text)}</span>`;
         }
 
+        // 依目標部位比對牌組，產生「統計說明＋牌組列表」的 HTML（頁籤版和首頁浮動視窗共用）
+        function byPartListHtml(data, targets, live, emptyHint) {
+            const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
+            if (targets.size === 0) return info + emptyHint;
+            const rows = data.decks.map(d => {
+                const m = analyzeDeckByPart(d, targets);
+                return m ? { cards: d.cards, count: d.attacks, ...m } : null;
+            }).filter(Boolean)
+              .sort((a, b) => (b.matched - a.matched) || (b.count - a.count))
+              .slice(0, 20);
+            if (rows.length === 0) {
+                return info + `沒有符合的牌組（要有至少 ${BY_PART_MIN_HITS} 刀的卡片剛好打在目標部位的目前狀態上；點擊傷害不算，一刀同時打到其他部位的不列入）。`;
+            }
+            const columnOf = assignDeckColumns(rows);
+            rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
+            return info
+                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的打法：<b>頭部、肚子</b>＝分別單打；<b>頭部＋左腳</b>＝一刀同時打；<b>任一單部位</b>＝可以單打任何部位；<b>多部位≥6</b>＝一刀打 6 個以上。</div>`
+                + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
+        }
+
         function renderByPartRow(r, rank) {
             return `
                 <div style="display:flex; align-items:center; gap:8px; padding:4px 2px; border-bottom:1px dashed #e8dcc8;">
@@ -7667,7 +7704,100 @@
         }
 
         // 突襲狀態更新時（renderRaidStatus 會呼叫）：依部位頁籤開著、而且各部位狀態真的變了才重畫，避免畫面一直閃
+        function byPartStateSig(live, targets) {
+            return JSON.stringify([
+                live ? Object.keys(live).map(k => k + ':' + live[k].state + (live[k].banned ? 'x' : '') + (live[k].cursed ? 'c' : '')) : null,
+                [...targets.keys()]
+            ]) + (live ? raidState.bossName : '');
+        }
+
+        /* ── 點突襲首頁的部位 → 浮動視窗：列出這個部位（目前的狀態）可以用哪些牌組 ──
+           視窗頂端可以再加／減其他部位一起比對。統計資料第一次點才載入（之後用快取），
+           視窗開著時突襲狀態變了會自動更新。 */
+        let byPartModalOpen = false;
+        let byPartModalSel = new Set();
+        let byPartModalToken = 0;
+        let byPartModalSig = '';
+
+        function openByPartModal(part) {
+            if (typeof raidState === 'undefined' || !raidState) return;
+            byPartModalSel = new Set([part]);
+            byPartModalOpen = true;
+            document.getElementById('by-part-modal').style.display = 'flex';
+            renderByPartModal();
+        }
+
+        function closeByPartModal() {
+            byPartModalOpen = false;
+            document.getElementById('by-part-modal').style.display = 'none';
+        }
+
+        function toggleByPartModalPart(part) {
+            const live = byPartLiveStates();
+            const s = live && live[part];
+            if (!s || s.state === 'skeleton' || s.banned) return;
+            if (byPartModalSel.has(part)) byPartModalSel.delete(part); else byPartModalSel.add(part);
+            renderByPartModal();
+        }
+
+        function setByPartModalTop(n) {
+            byPartTop = n;
+            renderByPartModal();
+        }
+
+        async function renderByPartModal() {
+            const body = document.getElementById('by-part-modal-body');
+            if (!body) return;
+            const token = ++byPartModalToken;
+            const { live, targets } = byPartResolveTargets(byPartModalSel);
+            byPartModalSig = byPartStateSig(live, targets);
+            if (!live) { body.innerHTML = `<div style="font-size:13px; color:#8a7a6a;">尚未取得突襲狀態。</div><button class="btn-close" style="width:100%; margin-top:10px;" onclick="closeByPartModal()">關閉</button>`; return; }
+
+            const stateText = (s) => s.banned ? '禁打' : (s.state === 'skeleton' ? '骨架' : (s.cursed ? '詛咒盔甲' : (s.state === 'armor' ? '盔甲' : '肉體')));
+            const rgbOf = (s) => s.cursed ? '91,42,134' : (s.state === 'armor' ? '69,90,100' : '21,101,192');
+            const first = [...byPartModalSel][0];
+            const title = byPartModalSel.size === 1 && live[first]
+                ? `${escapeHtml(raidPartLabel(first))}・${stateText(live[first])}`
+                : `已選 ${byPartModalSel.size} 個部位`;
+            const chips = RAID_PARTS.map(({ key }) => {
+                const s = live[key];
+                if (!s) return '';
+                const usable = s.state !== 'skeleton' && !s.banned;
+                const on = byPartModalSel.has(key);
+                const rgb = usable ? rgbOf(s) : '138,122,99';
+                const style = on
+                    ? `background:rgb(${rgb}); color:#fff; border:1.5px solid rgb(${rgb}); box-shadow:0 0 0 2px rgba(38,198,218,0.9);`
+                    : `background:${usable ? `rgba(${rgb},0.10)` : '#f3efe8'}; color:rgb(${rgb}); border:1.5px solid rgba(${rgb},${usable ? 0.55 : 0.3}); ${usable ? '' : 'opacity:0.6;'}`;
+                return `<button ${usable ? `onclick="toggleByPartModalPart('${key}')"` : 'disabled'} style="${style} border-radius:8px; padding:4px 2px; font-family:inherit; cursor:${usable ? 'pointer' : 'default'}; line-height:1.25;"><div style="font-size:12px; font-weight:800;">${escapeHtml(raidPartLabel(key))}</div><div style="font-size:9.5px;">${stateText(s)}</div></button>`;
+            }).join('');
+            const topBtn = (n) => `<button onclick="setByPartModalTop(${n})" style="font-size:11.5px; padding:3px 9px; border-radius:6px; border:1px solid ${n === byPartTop ? '#4a3a2a' : '#d8c8a8'}; background:${n === byPartTop ? '#4a3a2a' : '#fff'}; color:${n === byPartTop ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;">前${n}名</button>`;
+            body.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+                    <div style="font-size:16px; font-weight:800; color:#4a3728;">${title}</div>
+                    <button onclick="closeByPartModal()" style="font-size:18px; line-height:1; border:none; background:none; color:#8a7a63; cursor:pointer; padding:4px 8px;">✕</button>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">${chips}</div>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:8px 0 6px;">
+                    <span style="font-size:12px; color:#8a7a6a;">統計玩家：每場總傷</span>${[5, 10, 15, 20].map(topBtn).join('')}
+                </div>
+                <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">載入統計中…</div>
+                <button class="btn-close" style="width:100%; margin-top:10px;" onclick="closeByPartModal()">關閉</button>
+            `;
+
+            const data = await loadByPartStats(byPartTop);
+            if (token !== byPartModalToken) return;
+            const list = document.getElementById('by-part-modal-list');
+            if (!list) return;
+            if (!data) { list.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。'; return; }
+            list.innerHTML = byPartListHtml(data, targets, live, '這個部位現在不能打（禁打或只剩骨架），請點上方其他部位。');
+        }
+
         function byPartOnRaidStatusChanged() {
+            // 浮動視窗開著：狀態真的變了才重畫
+            if (byPartModalOpen) {
+                const { live, targets } = byPartResolveTargets(byPartModalSel);
+                if (byPartStateSig(live, targets) !== byPartModalSig) renderByPartModal();
+            }
             if (deckSubtab !== 'bypart') return;
             const panel = document.getElementById('panel-topdecks');
             if (!panel || panel.style.display !== 'block') return;
@@ -7769,26 +7899,9 @@
                 list.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。';
                 return;
             }
-            const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
-            if (targets.size === 0) {
-                list.innerHTML = info + (live ? '點上方要打的部位（會發亮，可選多個），就會列出符合的牌組。' : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
-                return;
-            }
-            const rows = data.decks.map(d => {
-                const m = analyzeDeckByPart(d, targets);
-                return m ? { cards: d.cards, count: d.attacks, ...m } : null;
-            }).filter(Boolean)
-              .sort((a, b) => (b.matched - a.matched) || (b.count - a.count))
-              .slice(0, 20);
-            if (rows.length === 0) {
-                list.innerHTML = info + `沒有符合的牌組（要有至少 ${BY_PART_MIN_HITS} 刀的卡片剛好打在目標部位的目前狀態上；點擊傷害不算，一刀同時打到其他部位的不列入）。`;
-                return;
-            }
-            const columnOf = assignDeckColumns(rows);
-            rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
-            list.innerHTML = info
-                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的打法：<b>頭部、肚子</b>＝分別單打；<b>頭部＋左腳</b>＝一刀同時打；<b>任一單部位</b>＝可以單打任何部位；<b>多部位≥6</b>＝一刀打 6 個以上。</div>`
-                + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
+            list.innerHTML = byPartListHtml(data, targets, live, live
+                ? '點上方要打的部位（會發亮，可選多個），就會列出符合的牌組。'
+                : '點上方每個部位選擇要打的狀態（可選多個部位），就會列出符合的牌組。');
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -9975,6 +10088,8 @@
 
                     const cell = document.createElement('div');
                     cell.className = 'raid-part-cell ' + cellCls;
+                    cell.onclick = () => openByPartModal(key); // 點部位：跳出這個部位可以用哪些牌組
+                    cell.style.cursor = 'pointer';
                     if (isSkeleton) {
                         // 盔甲、肉體都已破壞 = 骨架，該部位無法再造成傷害
                         cell.innerHTML = `

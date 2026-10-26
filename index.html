@@ -8036,7 +8036,7 @@
              覆蓋  25％：一刀平均打到全王剩餘血量的多少比例（打到血量多的部位、多部位打法分數高）
              卡片  20％：牌組裡每張卡在「所有紀錄」（前 15 名、所有場次、所有狀態）出現的頻率，同類卡（爆裂／苦痛／支援）之間互相比較；
                          取平均和最弱一張的平均，只要有一張冷門卡就會被拉低，確保 6 組都是大家真的在用的卡
-             專精   5％：牌組自己的刀數裡，有幾成是現在這種狀態打的（越專門打現在狀態的越高）
+             專精   5％：牌組現在這個階段的打法裡，有幾成現在打得出來（至少要 6 成，否則不推薦）
              加成 最多 +35％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
         const BY_PART_RECO_W = { pop: 0.35, cover: 0.20, fit: 0.05, card: 0.20, synergyCap: 0.35 };
         const BY_PART_RECO_BOOST = {
@@ -8047,6 +8047,7 @@
         };
         // 對詛咒盔甲有額外加成的卡：撼地破甲、毀了雨。牌組的打法打到詛咒盔甲部位的比例越高，加成越多（打法全打詛咒盔甲＝滿額）
         const BY_PART_RECO_CURSED = { Fragmentize: 0.30, RuinousRust: 0.30 };
+        const BY_PART_RECO_MIN_FIT = 0.6;     // 現在這個階段的打法裡，要有幾成現在打得出來
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
@@ -8068,6 +8069,7 @@
             });
             const keys = Object.keys(info);
             if (keys.length === 0) return [];
+            const layersNow = new Set(keys.map(k => info[k].layer));
             const totalHp = keys.reduce((s, k) => s + info[k].hp, 0);
             const avgHp = totalHp / keys.length;
             keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
@@ -8088,9 +8090,11 @@
                 if (onlyLayers.some(l => l === null)) return;
                 const onlyLayer = onlyLayers.find(l => l);
 
-                let usable = 0, hpShare = 0, cursedHit = 0;
+                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0;
                 byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
                     const hit = new Set(ks.map(k => k[0]));
+                    // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有；其中有部位禁打或已是骨架的，現在就打不出來
+                    if (ks.every(([, layer]) => layersNow.has(layer))) relevant += n;
                     if (![...hit].every(p => info[p])) return;
                     if (!ks.every(([p, layer]) => info[p].layer === layer)) return;
                     if (onlyLayer && !ks.every(([, layer]) => layer === onlyLayer)) return;
@@ -8099,7 +8103,8 @@
                     cursedHit += n * ([...hit].filter(p => info[p].cursed).length / hit.size);
                     hpShare += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
-                if (usable === 0) return;   // 現在這種狀態下完全沒有打得出來的打法（例如要同時打的部位有禁打）的牌組，絕不推薦，即使湊不滿 6 組
+                // 這組牌組現在這個階段的打法，至少要有 6 成現在打得出來；例如專門同時打頭＋肚子的牌組，肚子禁打時就不推薦
+                if (usable === 0 || usable / Math.max(1, relevant) < BY_PART_RECO_MIN_FIT) return;   // 現在這種狀態下完全沒有打得出來的打法（例如要同時打的部位有禁打）的牌組，絕不推薦，即使湊不滿 6 組
                 const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : 1;   // 2＝現在這種狀態下真的常打；1＝打過但很少
                 const cursedRatio = usable > 0 ? cursedHit / usable : 0;
                 const synergy = Math.min(BY_PART_RECO_W.synergyCap, d.cards.reduce((s, n) => {
@@ -8108,7 +8113,7 @@
                 }, 0));
                 const ws = d.cards.map(cardWeight);
                 const cardScore = 0.5 * (ws.reduce((s, x) => s + x, 0) / ws.length) + 0.5 * Math.min(...ws);   // 平均＋最弱一張，各佔一半
-                rows.push({ cards: byPartOrderCards(d.cards), usable, cardScore, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), usable, cardScore, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 第二輪：人氣、覆蓋度跟別組比較後換成 0～1 的相對值，再合成總分
             const maxUsable = Math.max(1, ...rows.map(r => r.usable));

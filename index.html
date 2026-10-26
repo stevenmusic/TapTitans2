@@ -7676,13 +7676,15 @@
         // 依目標部位比對牌組，產生「統計說明＋牌組列表」的 HTML（頁籤版和首頁浮動視窗共用）
         function byPartListHtml(data, targets, live, emptyHint) {
             if (targets.size === 0) return emptyHint;
-            const all = data.decks.map(d => {
+            let all = data.decks.map(d => {
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
               .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
+            // 卡片池：有選卡片時，只留下含有所選卡片（任何一張）的牌組
+            if (byPartPoolSel.size > 0) all = all.filter(r => r.cards.some(n => byPartPoolSel.has(n)));
             if (all.length === 0) {
-                return targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。';
+                return byPartPoolSel.size > 0 ? '沒有含有所選卡片的牌組。' : (targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。');
             }
             // 每組牌組的卡片順序：主要傷害卡第一張，支援卡最後
             all.forEach(r => { r.cards = byPartOrderCards(r.cards); });
@@ -7726,6 +7728,58 @@
         }
 
         // 兩直排用的窄版牌組列：名次＋三張卡在上，打法標籤在下
+        /* ── 卡片池：列出全部卡片（爆裂／苦痛／支援）。沒選任何卡＝顯示全部牌組；點一張卡發亮＝只顯示有這張卡的牌組，
+              選多張時有其中任何一張的牌組都顯示；再點一次取消。固定在視窗最下面（捲動時也看得到），預設收合 ── */
+        const BY_PART_POOL = [
+            ['爆裂', '192,57,43', ['MoonBeam', 'Fragmentize', 'SkullBash', 'RazorWind', 'WhipOfLightning', 'BurstCount', 'Purify', 'FlakShot', 'Haymaker', 'ChainLightning', 'MirrorForce', 'CelestialStatic', 'LimbBurst', 'Weaken', 'BarbedMorningstar']],
+            ['苦痛', '30,100,200', ['BurningAttack', 'PoisonAttack', 'DecayingAttack', 'Fuse', 'Shadow', 'PlagueAttack', 'Disease', 'Swarm', 'RuinousRust', 'PowerBubble', 'RuneAttack', 'MagicPotion', 'CosmicBarb', 'SandsOfTime']],
+            ['支援', '46,139,87', ['CrushingVoid', 'MentalFocus', 'InnerTruth', 'FinisherAttack', 'ImpactAttack', 'BurstBoost', 'LimbSupport', 'TotemFairySkill', 'TeamTactics', 'SpinalTap', 'AstralEcho', 'BattleDrums', 'TriangleSupport', 'SuperheatMetal', 'ExecutionersAxe']]
+        ];
+        const byPartPoolSel = new Set();
+        let byPartPoolOpen = false;
+        let byPartPoolScroll = [0, 0, 0];
+
+        function byPartPoolHtml() {
+            const glow = 'box-shadow:0 0 0 3px rgba(38,198,218,0.95), 0 0 10px 1px rgba(38,198,218,0.7);';
+            const thumb = (name, size, extra) => `<div style="flex:0 0 ${size}px; width:${size}px; height:${size}px; border-radius:6px; overflow:hidden; ${extra}"><img src="${raidCardImage(name)}" alt="${escapeHtml(raidCardLabel(name))}" style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;"></div>`;
+            const selected = [...byPartPoolSel];
+            const rows = byPartPoolOpen ? BY_PART_POOL.map(([title, rgb, names], i) => `
+                <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
+                    <span style="flex:0 0 22px; font-size:10.5px; font-weight:800; color:rgb(${rgb});">${title}</span>
+                    <div class="by-part-pool-row" style="display:flex; gap:5px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:4px 3px;">
+                        ${names.map(n => `<div onclick="toggleByPartPool('${n}')" style="cursor:pointer;">${thumb(n, 36, byPartPoolSel.has(n) ? glow : (selected.length > 0 ? 'opacity:0.5;' : ''))}</div>`).join('')}
+                    </div>
+                </div>`).join('') : '';
+            return `
+                <div style="position:sticky; bottom:0; z-index:5; background:#fffaf3; border-top:1px solid #e0d2bb; margin:8px -10px -8px; padding:3px 10px 4px; border-radius:0 0 14px 14px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <button onclick="toggleByPartPoolOpen()" style="border:none; background:none; font-family:inherit; font-size:12px; font-weight:800; color:#4a3728; cursor:pointer; padding:3px 0; white-space:nowrap;">卡片池 ${byPartPoolOpen ? '▾' : '▴'}</button>
+                        <div style="flex:1; min-width:0; display:flex; gap:3px; align-items:center; overflow:hidden; font-size:11px; color:#8a7a6a;">${selected.length > 0 ? selected.map(n => thumb(n, 22, glow.replace('3px', '2px'))).join('') : '全部牌組'}</div>
+                        ${selected.length > 0 ? `<button onclick="clearByPartPool()" style="border:1px solid #d8c8a8; background:#fff; border-radius:6px; font-family:inherit; font-size:11px; color:#8e6a3a; padding:2px 8px; cursor:pointer;">清除</button>` : ''}
+                    </div>
+                    ${rows}
+                </div>`;
+        }
+        function byPartPoolSaveScroll() {
+            byPartPoolScroll = [...document.querySelectorAll('.by-part-pool-row')].map(el => el.scrollLeft);
+        }
+        function byPartPoolRestoreScroll() {
+            document.querySelectorAll('.by-part-pool-row').forEach((el, i) => { el.scrollLeft = byPartPoolScroll[i] || 0; });
+        }
+        // 卡片池改變後，重畫目前開著的視窗／頁籤
+        function byPartPoolRefresh() {
+            byPartPoolSaveScroll();
+            if (byPartModalOpen) renderByPartModal();
+            const panel = document.getElementById('panel-topdecks');
+            if (deckSubtab === 'bypart' && panel && panel.style.display === 'block') renderByPart();
+        }
+        function toggleByPartPool(name) {
+            if (byPartPoolSel.has(name)) byPartPoolSel.delete(name); else byPartPoolSel.add(name);
+            byPartPoolRefresh();
+        }
+        function clearByPartPool() { byPartPoolSel.clear(); byPartPoolRefresh(); }
+        function toggleByPartPoolOpen() { byPartPoolOpen = !byPartPoolOpen; byPartPoolRefresh(); }
+
         // 一張卡的圖片（含底部的限制標籤）
         function byPartCardHtml(name, size) {
             size = size || 38;
@@ -7737,7 +7791,8 @@
                 : `<span style="width:${size}px; font-size:20px; text-align:center; display:block;">🃏</span>`;
             // 有適用部位限制的卡片，在卡片圖底部加標籤（4 個字的標籤字級小一點才塞得下）
             const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${limit.tag.length >= 4 ? 9 : 10}px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
-            return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0;">${thumb}${tag}</div>`;
+            const glow = byPartPoolSel.has(name) ? 'box-shadow:0 0 0 2px rgba(38,198,218,0.95); border-radius:7px;' : '';
+            return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0; ${glow}">${thumb}${tag}</div>`;
         }
 
         // 一組牌組（三張卡）；如果有提醒標籤（多部位≥6）放在卡片下方
@@ -7886,7 +7941,9 @@
                     <button onclick="closeByPartModal()" style="font-size:18px; line-height:1; border:none; background:none; color:#8a7a63; cursor:pointer; padding:4px 8px;">✕</button>
                 </div>
                 <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">載入統計中…</div>
+                ${byPartPoolHtml()}
             `;
+            byPartPoolRestoreScroll();
 
             const data = await loadByPartStats(byPartTop);
             if (token !== byPartModalToken) return;
@@ -7998,7 +8055,9 @@
                 ${statusLine}
                 <div style="margin-top:6px;">${partGrid}</div>
                 <div id="by-part-list" style="margin-top:12px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
+                ${byPartPoolHtml()}
             `;
+            byPartPoolRestoreScroll();
 
             const data = await loadByPartStats(byPartTop);
             if (token !== byPartRenderToken) return; // 載入期間畫面又更新了，這次的結果作廢

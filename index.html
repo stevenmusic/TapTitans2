@@ -8329,7 +8329,7 @@
 
         /* ── 依部位分頁：不抓王名跟即時部位狀態，自己設定每個部位現在是什麼狀態（盔甲／詛咒甲／肉體／骨架／禁打），
               再用跟首頁「推薦牌組」同一套算法，依這些部位的狀態與數量列出 6 組合適的牌組 ── */
-        const BY_PART_SIM_CYCLE = ['cursed', 'armor', 'body', 'skeleton', 'banned'];
+        const BY_PART_SIM_CYCLE = ['cursed', 'armor', 'body', 'skeleton', 'banned'];   // 每個部位裡的狀態按鈕
         const BY_PART_SIM_LABEL = { armor: '盔甲', cursed: '詛咒甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
         const BY_PART_SIM_KEY = 'tt2_by_part_sim';
         const byPartSim = {};
@@ -8339,9 +8339,8 @@
             if (saved) RAID_PARTS.forEach(p => { if (BY_PART_SIM_CYCLE.includes(saved[p.key])) byPartSim[p.key] = saved[p.key]; });
         } catch (e) {}
 
-        function cycleByPartSim(part) {
-            const i = BY_PART_SIM_CYCLE.indexOf(byPartSim[part]);
-            byPartSim[part] = BY_PART_SIM_CYCLE[(i + 1) % BY_PART_SIM_CYCLE.length];
+        function setByPartSim(part, state) {
+            byPartSim[part] = state;
             try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
             renderByPart();
         }
@@ -8371,16 +8370,21 @@
             box.style.display = 'block';
             const token = ++byPartRenderToken;
 
-            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），點一下換下一個狀態
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），每個部位裡放狀態按鈕：
+            // 第一排 詛咒甲／盔甲／肉體，第二排 骨架／禁打；選到的按鈕實心，格子底色跟著狀態變
+            const SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
+            const simBtn = (partKey, st) => {
+                const on = byPartSim[partKey] === st;
+                return `<button onclick="setByPartSim('${partKey}','${st}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${BY_PART_SIM_LABEL[st]}</button>`;
+            };
             const cellHtml = (partKey) => {
                 const s = byPartSim[partKey];
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
-                const onclick = `onclick="cycleByPartSim('${partKey}')"`;
-                if (s === 'skeleton') return `<div class="raid-part-cell is-destroyed" ${onclick} style="cursor:pointer;">${name}<div class="raid-part-skeleton-note">🦴 ${t('raidLayerSkeleton')}</div></div>`;
-                if (s === 'banned') return `<div class="raid-part-cell is-banned" ${onclick} style="cursor:pointer;">${name}<div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}</div></div>`;
-                const theme = s === 'cursed' ? '91,42,134' : (s === 'armor' ? '69,90,100' : '21,101,192');
-                const style = `cursor:pointer; background:rgba(${theme},0.30); border-color:rgb(${theme}); box-shadow:0 0 6px rgba(${theme},0.55);`;
-                return `<div class="raid-part-cell" ${onclick} style="${style}">${name}<div class="raid-part-hp">${BY_PART_SIM_LABEL[s]}</div></div>`;
+                const style = `background:rgba(${SIM_RGB[s]},0.14); border-color:rgb(${SIM_RGB[s]}); box-shadow:0 0 6px rgba(${SIM_RGB[s]},0.45);`;
+                return `<div class="raid-part-cell" style="${style}">${name}
+                    <div style="display:flex; gap:2px; margin-bottom:2px;">${['cursed', 'armor', 'body'].map(st => simBtn(partKey, st)).join('')}</div>
+                    <div style="display:flex; gap:2px;">${['skeleton', 'banned'].map(st => simBtn(partKey, st)).join('')}</div>
+                </div>`;
             };
             const btnStyle = 'font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
             box.innerHTML = `
@@ -8388,7 +8392,6 @@
                     ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
                 </div>
                 <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
-                    <span style="font-size:11px; color:#8a7a6a;">點部位換狀態</span>
                     ${['armor', 'body'].map(st => `<button onclick="setAllByPartSim('${st}')" style="${btnStyle}">全部${BY_PART_SIM_LABEL[st]}</button>`).join('')}
                 </div>
                 <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>

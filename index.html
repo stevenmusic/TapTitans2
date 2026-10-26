@@ -7768,12 +7768,8 @@
             }
             const columnOf = assignDeckColumns(rows);
             rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
-            // 結果裡有「有適用部位限制」的卡片時，在列表上方說明標籤的意思
-            const limitNotes = [...new Set(rows.flatMap(r => r.cards))].filter(n => CARD_LIMITS[n])
-                .map(n => `${escapeHtml(raidCardLabel(n))}（${escapeHtml(CARD_LIMITS[n].tag)}）：${escapeHtml(CARD_LIMITS[n].note)}`);
             list.innerHTML = info
                 + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的攻擊紀錄「一刀打到哪些部位」：<b>頭部＋左腳</b>＝一刀同時打到這兩個部位；<b>多部位≥6</b>＝一刀同時打 6 個以上；<b>任一單部位</b>＝可以單打任何部位。深色＝符合目前目標，淺色＝紀錄裡也有的其他打法。</div>`
-                + (limitNotes.length > 0 ? `<div style="margin-bottom:6px; line-height:1.55; padding:6px 8px; background:#fdf9f3; border:1px solid #e8dcc8; border-radius:8px;"><b>卡片限制／條件（圖片底部的標籤）</b><br>${limitNotes.join('<br>')}</div>` : '')
                 + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 

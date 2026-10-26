@@ -7643,10 +7643,18 @@
         //   漩渦（RuneAttack）＝每秒傷害最低，效果是增加受影響部位受到的所有傷害
         // 例如 淨化爆裂＋放大 的傷害來源只有淨化爆裂，歸在爆裂欄
         const BY_PART_NON_DAMAGE = new Set(['MagicPotion', 'Weaken', 'RuneAttack']);
-        function byPartDamageSources(cards) {
-            const burst = cards.some(n => CARD_CATEGORY[n] === 'burst' && !BY_PART_NON_DAMAGE.has(n));
-            const torment = cards.some(n => CARD_CATEGORY[n] === 'torment' && !BY_PART_NON_DAMAGE.has(n));
-            return { burst: burst || !torment, torment }; // 兩種都沒有的（理論上不會）歸在爆裂欄
+        // 牌組的傷害來源分組：只算爆裂／苦痛的傷害卡（支援卡、上面那幾張非傷害卡不算）。
+        // 只有爆裂卡＝爆裂，只有苦痛卡＝苦痛；兩種都有而且張數一樣多（各一半）＝混合；
+        // 兩種都有但其中一種明顯比較多（例如 2 張爆裂＋1 張苦痛）就歸在比較多的那一邊
+        function byPartDamageGroup(cards) {
+            let b = 0, t = 0;
+            cards.forEach(n => {
+                if (BY_PART_NON_DAMAGE.has(n)) return;
+                if (CARD_CATEGORY[n] === 'burst') b++;
+                else if (CARD_CATEGORY[n] === 'torment') t++;
+            });
+            if (b > 0 && t > 0) return b === t ? 'mixed' : (b > t ? 'burst' : 'torment');
+            return t > 0 ? 'torment' : 'burst'; // 兩種都沒有（理論上不會）歸在爆裂
         }
 
         // 打法標籤的顏色：部位（單打／同時打）咖啡色，任一單部位橘色，多部位紫色
@@ -7687,17 +7695,18 @@
         }
 
         // 兩直排用的窄版牌組列：名次＋三張卡在上，打法標籤在下
-        function renderByPartRow(r, rank) {
+        function renderByPartRow(r, rank, size) {
+            size = size || 38;
             const cardsHtml = r.cards.map(name => {
                 const img = raidCardImage(name);
                 const limit = CARD_LIMITS[name];
                 const tip = limit ? `${raidCardLabel(name)}：${limit.note}` : raidCardLabel(name);
                 const thumb = img
-                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:38px; height:38px; border-radius:7px; object-fit:cover; display:block;">`
-                    : `<span style="width:38px; font-size:20px; text-align:center; display:block;">🃏</span>`;
+                    ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:${size}px; height:${size}px; border-radius:7px; object-fit:cover; display:block;">`
+                    : `<span style="width:${size}px; font-size:20px; text-align:center; display:block;">🃏</span>`;
                 // 有適用部位限制的卡片，在卡片圖底部加標籤（4 個字的標籤字級小一點才塞得下）
-                const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${limit.tag.length >= 4 ? 9 : 10}px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
-                return `<div style="position:relative; width:38px; height:38px; flex-shrink:0;">${thumb}${tag}</div>`;
+                const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${size >= 38 ? (limit.tag.length >= 4 ? 9 : 10) : (limit.tag.length >= 4 ? 7.5 : 8.5)}px; font-weight:700; line-height:${size >= 38 ? 13 : 11}px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
+                return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0;">${thumb}${tag}</div>`;
             }).join('');
             return `
                 <div style="padding:5px 0; border-bottom:1px dashed #e8dcc8;">
@@ -7710,16 +7719,20 @@
             `;
         }
 
-        // 依傷害來源分成兩直排：爆裂欄／苦痛欄（兩種卡都有的牌組兩欄都會列出）
+        // 依傷害來源分成直排：爆裂欄｜混合欄｜苦痛欄。沒有混合的牌組時只有兩欄；有混合欄時卡片縮小，三欄才放得下
         function byPartColumnsHtml(rows) {
-            const burst = rows.filter(r => byPartDamageSources(r.cards).burst).slice(0, 20);
-            const torment = rows.filter(r => byPartDamageSources(r.cards).torment).slice(0, 20);
-            const col = (title, rgb, list) => `
+            const groups = { burst: [], mixed: [], torment: [] };
+            rows.forEach(r => groups[byPartDamageGroup(r.cards)].push(r));
+            const cols = [['爆裂', '192,57,43', groups.burst]];
+            if (groups.mixed.length > 0) cols.push(['混合', '120,80,150', groups.mixed]);
+            cols.push(['苦痛', '30,100,200', groups.torment]);
+            const size = cols.length >= 3 ? 30 : 38;
+            const col = ([title, rgb, list]) => `
                 <div style="min-width:0;">
                     <div style="font-size:12.5px; font-weight:800; color:rgb(${rgb}); border-bottom:2px solid rgb(${rgb}); padding-bottom:2px;">${title}（${list.length}）</div>
-                    ${list.length > 0 ? list.map((r, i) => renderByPartRow(r, i + 1)).join('') : '<div style="padding:8px 0; color:#a89a88;">—</div>'}
+                    ${list.length > 0 ? list.slice(0, 20).map((r, i) => renderByPartRow(r, i + 1, size)).join('') : '<div style="padding:8px 0; color:#a89a88;">—</div>'}
                 </div>`;
-            return `<div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:start;">${col('爆裂', '192,57,43', burst)}${col('苦痛', '30,100,200', torment)}</div>`;
+            return `<div style="display:grid; grid-template-columns:${cols.map(() => 'minmax(0,1fr)').join(' ')}; gap:${cols.length >= 3 ? 6 : 10}px; align-items:start;">${cols.map(col).join('')}</div>`;
         }
 
         function byPartStateSig(live, targets) {

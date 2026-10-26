@@ -7460,9 +7460,26 @@
         const BY_PART_MULTI_MIN = 6;        // 一刀打到幾個部位以上算「多部位」
         const BY_PART_ANY_MIN_PARTS = 5;    // 單打過幾個不同部位以上算「任一單部位」
         const BY_PART_STATE_LABEL = { armor: '盔甲', body: '肉體', both: '肉甲' };
-        // 卡片本身只能打某一層的限制（顯示在牌組的卡片圖上）。目前只有撼地破甲：只能攻擊盔甲，詛咒盔甲有額外加成
-        const CARD_LAYER_LIMIT = {
-            Fragmentize: { label: '盔甲', rgb: '69,90,100', note: '詛咒盔甲有額外加成' }
+        // 卡片本身有「適用部位」限制的卡片（照遊戲卡片頁的「適用部位」整理），顯示在牌組的卡片圖底部。
+        // tag＝卡片圖上的短標籤；note＝列表上方的完整說明。層別限制用跟首頁一樣的顏色（盔甲灰、肉體藍），部位限制用金棕色，
+        // 發揮條件（不是限制，例如凱旋行軍要骨架部位多才強）用灰褐色
+        const CARD_LIMIT_RGB = { armor: '69,90,100', body: '21,101,192', part: '142,106,58', cond: '120,110,95' };
+        const CARD_LIMITS = {
+            Fragmentize:    { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲、不能打肉體（詛咒盔甲有額外加成）' },
+            FlakShot:       { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲' },
+            SuperheatMetal: { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲' },
+            SpinalTap:      { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲' },
+            RazorWind:      { tag: '肉體', kind: 'body',  note: '只能攻擊肉體' },
+            CrushingVoid:   { tag: '肉體', kind: 'body',  note: '只能攻擊肉體' },
+            ImpactAttack:   { tag: '肉體', kind: 'body',  note: '只能攻擊肉體' },
+            InnerTruth:     { tag: '頭·肚', kind: 'part', note: '只能攻擊頭部和肚子' },
+            ExecutionersAxe:{ tag: '頭·肚', kind: 'part', note: '只能攻擊頭部和肚子' },
+            SkullBash:      { tag: '頭·腳', kind: 'part', note: '只能攻擊頭部和雙腳' },
+            MoonBeam:       { tag: '肚·手', kind: 'part', note: '只能攻擊肚子和雙手' },
+            CelestialStatic:{ tag: '頭·肚', kind: 'part', note: '爆發只在敲擊非四肢部位（頭部、肚子）時觸發；敲四肢只會累積電荷' },
+            LimbBurst:      { tag: '四肢', kind: 'part', note: '只能攻擊四肢' },
+            FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '骨架部位達 6 個以上時傷害最高（每個骨架部位增加損壞，最多算 6 個）' },
+            LimbSupport:    { tag: '四肢', kind: 'part', note: '只能攻擊四肢' }
         };
         let byPartTargets = null;           // null＝自動（目前所有能打的部位）；否則是使用者手動選的部位 Set
         const byPartManualState = new Map(); // 沒有突襲狀態時用：部位 -> 'armor' | 'body' | 'both'
@@ -7631,13 +7648,13 @@
                     <div style="display:flex; gap:5px; flex:1; min-width:0;">
                         ${r.cards.map(name => {
                             const img = raidCardImage(name);
-                            const limit = CARD_LAYER_LIMIT[name];
-                            const tip = limit ? `${raidCardLabel(name)}：只能攻擊${limit.label}，不能打${limit.label === '盔甲' ? '肉體' : '盔甲'}（${limit.note}）` : raidCardLabel(name);
+                            const limit = CARD_LIMITS[name];
+                            const tip = limit ? `${raidCardLabel(name)}：${limit.note}` : raidCardLabel(name);
                             const thumb = img
                                 ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:40px; height:40px; border-radius:7px; object-fit:cover; display:block;">`
                                 : `<span style="width:40px; font-size:20px; text-align:center; display:block;">🃏</span>`;
-                            // 只能打單一層的卡片，在卡片圖底部加標籤
-                            const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:9.5px; font-weight:700; line-height:13px; color:#fff; background:rgba(${limit.rgb},0.92); border-radius:0 0 7px 7px;">${limit.label}</span>` : '';
+                            // 有適用部位限制的卡片，在卡片圖底部加標籤
+                            const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:9.5px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
                             return `<div style="position:relative; width:40px; height:40px; flex-shrink:0;">${thumb}${tag}</div>`;
                         }).join('')}
                     </div>
@@ -7751,12 +7768,12 @@
             }
             const columnOf = assignDeckColumns(rows);
             rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
-            // 結果裡有「只能打單一層」的卡片時，在列表上方說明標籤的意思
-            const limitNotes = [...new Set(rows.flatMap(r => r.cards))].filter(n => CARD_LAYER_LIMIT[n])
-                .map(n => `<b>${escapeHtml(CARD_LAYER_LIMIT[n].label)}</b> 標籤＝${escapeHtml(raidCardLabel(n))}只能攻擊${CARD_LAYER_LIMIT[n].label}、不能打${CARD_LAYER_LIMIT[n].label === '盔甲' ? '肉體' : '盔甲'}（${escapeHtml(CARD_LAYER_LIMIT[n].note)}）`);
+            // 結果裡有「有適用部位限制」的卡片時，在列表上方說明標籤的意思
+            const limitNotes = [...new Set(rows.flatMap(r => r.cards))].filter(n => CARD_LIMITS[n])
+                .map(n => `${escapeHtml(raidCardLabel(n))}（${escapeHtml(CARD_LIMITS[n].tag)}）：${escapeHtml(CARD_LIMITS[n].note)}`);
             list.innerHTML = info
                 + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的攻擊紀錄「一刀打到哪些部位」：<b>頭部＋左腳</b>＝一刀同時打到這兩個部位；<b>多部位≥6</b>＝一刀同時打 6 個以上；<b>任一單部位</b>＝可以單打任何部位。深色＝符合目前目標，淺色＝紀錄裡也有的其他打法。</div>`
-                + (limitNotes.length > 0 ? `<div style="margin-bottom:4px; line-height:1.5;">${limitNotes.join('；')}</div>` : '')
+                + (limitNotes.length > 0 ? `<div style="margin-bottom:6px; line-height:1.55; padding:6px 8px; background:#fdf9f3; border:1px solid #e8dcc8; border-radius:8px;"><b>卡片限制／條件（圖片底部的標籤）</b><br>${limitNotes.join('<br>')}</div>` : '')
                 + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
         }
 

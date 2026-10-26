@@ -7467,7 +7467,7 @@
            ══════════════════════════════════════════════════════════ */
         const QUIZ_CARDS = {"AstralEcho":{"l":[],"p":[],"t":"每 5 次敲擊在先前部位多一次獎勵點擊"},"BarbedMorningstar":{"l":["盔甲"],"p":[],"t":"每暴露一個身體部位，對裝甲部位傷害增加"},"BattleDrums":{"l":[],"p":[],"t":"大幅增加傷害，但縮短團隊攻擊時間 10 秒"},"BurningAttack":{"l":[],"p":[],"t":"燃燒部位越多，累積機率越高"},"BurstBoost":{"l":["任意"],"p":["任一單部位"],"t":"常搭配鏡子力/防空高砲"},"BurstCount":{"l":["兩者"],"p":["任意"],"t":""},"CelestialStatic":{"l":[],"p":[],"t":"非常少用"},"ChainLightning":{"l":["任意"],"p":["任意"],"t":""},"CosmicBarb":{"l":[],"p":[],"t":"對受影響的部位造成苦痛傷害"},"CrushingVoid":{"l":["肉體"],"p":[],"t":"依未武裝身體部位數增傷，最多疊 6 次"},"DecayingAttack":{"l":[],"p":[],"t":"部位缺失血量越多，苦痛傷害越高"},"Disease":{"l":[],"p":[],"t":"部位受輻射時間越長，苦痛傷害越高"},"ExecutionersAxe":{"l":["任意"],"p":["頭","肚"],"t":""},"FinisherAttack":{"l":[],"p":[],"t":"依骨架部件數增加損壞，最多 6 個"},"FlakShot":{"l":["盔甲"],"p":["任意"],"t":""},"Fragmentize":{"l":["詛咒盔甲","盔甲"],"p":["頭"],"t":"對詛咒盔甲有額外加成"},"Fuse":{"l":["任意"],"p":["多部位（≥6）"],"t":"時常搭配火海"},"Haymaker":{"l":[],"p":[],"t":"每點擊 70 下造成一次重擊，傷害不會溢出"},"ImpactAttack":{"l":["肉體"],"p":[],"t":"提高對未卸載身體部位的損壞"},"InnerTruth":{"l":[],"p":["頭","肚"],"t":"增加對頭和軀幹的傷害，苦痛機會也增加"},"LimbBurst":{"l":["任意"],"p":["手肩","腳"],"t":""},"LimbSupport":{"l":[],"p":["手肩","腳"],"t":"增加對四肢的所有傷害"},"MagicPotion":{"l":[],"p":[],"t":"攻擊期間提高其他團隊卡牌等級"},"MentalFocus":{"l":[],"p":[],"t":"增加苦痛傷害和苦痛機會"},"MirrorForce":{"l":["任意"],"p":["任意"],"t":""},"MoonBeam":{"l":["任意"],"p":["肚","手肩"],"t":""},"PlagueAttack":{"l":["任意"],"p":["多部位（≥6）"],"t":"推薦搭配沙漏+瘋狂無效"},"PoisonAttack":{"l":[],"p":[],"t":"非常少用（舊版本搭配淨化爆裂使用）"},"PowerBubble":{"l":[],"p":[],"t":"刷新氣泡持續時間，滿 5 層時一次爆出巨大損壞"},"Purify":{"l":["兩者"],"p":["任意"],"t":""},"RazorWind":{"l":["肉體"],"p":["任意"],"t":""},"RuinousRust":{"l":["詛咒盔甲"],"p":[],"t":"增加對被詛咒裝甲零件的傷害"},"RuneAttack":{"l":[],"p":[],"t":"增加受漩渦影響部位受到的所有傷害"},"SandsOfTime":{"l":[],"p":[],"t":"延長該部位其他苦痛的持續時間"},"Shadow":{"l":["任意"],"p":[],"t":"2-3 部位，搭配萬花筒"},"SkullBash":{"l":["兩者"],"p":["頭","腳"],"t":""},"SpinalTap":{"l":["盔甲"],"p":[],"t":"增加對裝甲的損壞，有骨骼部位時更多"},"SuperheatMetal":{"l":["盔甲"],"p":[],"t":""},"Swarm":{"l":[],"p":[],"t":"蜂群堆疊滿時有額外效果"},"TeamTactics":{"l":[],"p":[],"t":"提高對泰坦的傷害，持續到氏族突襲結束"},"TotemFairySkill":{"l":["任意"],"p":["任一單部位"],"t":"搭配淨化爆裂或是宇宙激光"},"TriangleSupport":{"l":[],"p":[],"t":"用苦痛增加爆發傷害，用爆發增加苦痛傷害。"},"Weaken":{"l":[],"p":[],"t":"被擊中的部件受所有來源傷害 +437.7%，持續 6 秒"},"WhipOfLightning":{"l":["兩者"],"p":["任意"],"t":"常搭配萬花筒使用"}};
         // 題目：選出這張卡「可以打的部位」（頭、手肩、肚子、腳）／「適用的狀態」（詛咒甲、盔甲、肉體、肉體部位達6個、骨架部位達6個），可複選
-        const QUIZ_TYPES = [['parts', '可以打什麼部位'], ['layers', '適用什麼狀態']];
+        const QUIZ_TYPES = [['parts', '可以打什麼部位'], ['layers', '適用什麼狀態'], ['scene', '情境選卡'], ['deck', '牌組判斷']];
         const QUIZ_CATS = [['all', '全部'], ['burst', '爆裂'], ['torment', '苦痛'], ['support', '支援']];
         const QUIZ_PART_OPTIONS = ['頭', '手肩', '肚子', '腳'];
         const QUIZ_STATE_OPTIONS = ['詛咒甲', '盔甲', '肉體', '肉體部位達6個', '骨架部位達6個'];
@@ -7501,18 +7501,158 @@
         }
         function quizCardCat(card) { return CARD_CATEGORY[card] || 'support'; }
 
+        /* ── 情境題：隨機出一個「王的部位狀態」，判斷卡片現在能不能用 ──
+           卡片能用＝場上有「可以打的部位」同時符合這張卡的可打部位與可打狀態；
+           有部位數量條件的卡（瘋狂無效、瘟疫、沙漏：肉體部位達 6 個；凱旋行軍：骨架部位達 6 個）要先達到條件；
+           帶刺的晨星只用在數量少的那一層（見 CARD_ONLY_WHEN）。沒有資料的卡不出題 */
+        const QUIZ_SCENE_STATES = ['cursed', 'armor', 'body', 'skeleton', 'banned'];
+        const QUIZ_SCENE_LABEL = { cursed: '詛咒甲', armor: '盔甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
+        const QUIZ_PART_GROUP = { Head: '頭', ChestUpper: '肚子', ArmUpperLeft: '手肩', ArmUpperRight: '手肩', HandLeft: '手肩', HandRight: '手肩', LegUpperLeft: '腳', LegUpperRight: '腳' };
+        const QUIZ_SCENE_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
+
+        function quizMakeScene() {
+            // 先決定各狀態大概的數量，再隨機分配到 8 個部位（至少 2 個可以打的部位）
+            for (let tries = 0; tries < 50; tries++) {
+                const scene = {};
+                const mode = Math.random();
+                RAID_PARTS.forEach(({ key }) => {
+                    const r = Math.random();
+                    if (mode < 0.3) scene[key] = r < 0.78 ? 'body' : (r < 0.9 ? 'armor' : (r < 0.96 ? 'cursed' : 'skeleton'));      // 肉體很多
+                    else if (mode < 0.55) scene[key] = r < 0.7 ? 'skeleton' : (r < 0.88 ? 'body' : 'armor');                          // 骨架很多
+                    else scene[key] = r < 0.3 ? 'armor' : (r < 0.5 ? 'cursed' : (r < 0.72 ? 'body' : (r < 0.88 ? 'skeleton' : 'banned')));
+                });
+                const attackable = RAID_PARTS.filter(({ key }) => ['cursed', 'armor', 'body'].includes(scene[key]));
+                if (attackable.length >= 2) return scene;
+            }
+            const s = {}; RAID_PARTS.forEach(({ key }) => { s[key] = 'armor'; }); return s;
+        }
+        function quizSceneCounts(scene) {
+            const n = { cursed: 0, armor: 0, body: 0, skeleton: 0, banned: 0 };
+            RAID_PARTS.forEach(({ key }) => { n[scene[key]]++; });
+            return n;
+        }
+        // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
+        function quizCardUsable(card, scene) {
+            const data = QUIZ_CARDS[card];
+            const n = quizSceneCounts(scene);
+            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
+            const cond = QUIZ_STATE_COND[card];
+            if (cond) {
+                const need = cond === '肉體部位達6個' ? n.body : n.skeleton;
+                if (need < 6) return { ok: false, why: `需要${cond}，現在只有 ${need} 個` };
+                return { ok: attackable.length > 0, why: '現在沒有可以打的部位' };
+            }
+            // 允許的狀態（卡片資料）：詛咒甲／盔甲／肉體
+            const layers = quizAnswerSet(card, 'layers');
+            const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
+            const parts = quizAnswerSet(card, 'parts');
+            let onlyLayerName = null;
+            if (card === 'BarbedMorningstar') {
+                const l = CARD_ONLY_WHEN.BarbedMorningstar({ armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton });
+                if (!l) return { ok: false, why: '只有在盔甲或肉體其中一種只剩 1～2 個部位時才能用' };
+                onlyLayerName = l === 'armor' ? '盔甲' : '肉體';
+            }
+            const hits = attackable.filter(k => {
+                const st = scene[k];
+                const stateOk = onlyLayerName
+                    ? (onlyLayerName === '盔甲' ? st !== 'body' : st === 'body')
+                    : (!allowedLayers || (st === 'cursed' ? (allowedLayers.includes('詛咒甲') || allowedLayers.includes('盔甲')) : (st === 'armor' ? allowedLayers.includes('盔甲') : allowedLayers.includes('肉體'))));
+                const partOk = !parts || parts.has(QUIZ_PART_GROUP[k]);
+                return stateOk && partOk;
+            });
+            if (hits.length > 0) return { ok: true, why: '' };
+            const bits = [];
+            if (allowedLayers) bits.push(`只能打${allowedLayers.join('、')}`);
+            if (parts && parts.size < 4) bits.push(`只能打${[...parts].join('、')}`);
+            return { ok: false, why: `${bits.join('，') || '條件不符'}，現在沒有符合的部位` };
+        }
+        const quizSceneCards = () => Object.keys(QUIZ_CARDS).filter(n => quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers'));
+        function quizShuffle(a) { return a.slice().sort(() => Math.random() - 0.5); }
+
+        function quizNextScene() {
+            const pool = quizSceneCards().filter(n => quizCat === 'all' || quizCardCat(n) === quizCat);
+            const all = quizSceneCards();
+            for (let tries = 0; tries < 200; tries++) {
+                const scene = quizMakeScene();
+                const src = pool.length >= 4 ? pool : all;
+                const usable = quizShuffle(src.filter(n => quizCardUsable(n, scene).ok));
+                const blocked = quizShuffle(src.filter(n => !quizCardUsable(n, scene).ok));
+                if (!usable.length || !blocked.length) continue;
+                const nUse = Math.min(usable.length, 1 + Math.floor(Math.random() * 2));      // 1～2 張能用
+                const nBlock = Math.min(blocked.length, 4 - nUse);
+                if (nUse + nBlock < 4) continue;
+                const cards = quizShuffle([...usable.slice(0, nUse), ...blocked.slice(0, nBlock)]);
+                return { type: 'scene', scene, cards, answer: new Set(cards.filter(n => quizCardUsable(n, scene).ok)), picked: new Set(), done: false };
+            }
+            return null;
+        }
+        function quizNextDeck() {
+            const pool = quizSceneCards();
+            for (let tries = 0; tries < 300; tries++) {
+                const scene = quizMakeScene();
+                const wantOk = Math.random() < 0.5;
+                const cards = quizShuffle(pool).slice(0, 3);
+                const res = cards.map(n => quizCardUsable(n, scene));
+                const allOk = res.every(r => r.ok);
+                if (allOk !== wantOk) continue;
+                return { type: 'deck', scene, cards, res, answer: allOk, picked: null, done: false };
+            }
+            return null;
+        }
+        function quizSceneHtml(scene) {
+            const cell = (k) => {
+                const s = scene[k], rgb = QUIZ_SCENE_RGB[s];
+                const label = s === 'skeleton' ? '🦴 骨架' : QUIZ_SCENE_LABEL[s];
+                return `<div class="raid-part-cell ${s === 'banned' ? 'is-banned' : (s === 'skeleton' ? 'is-destroyed' : '')}" style="background:rgba(${rgb},0.22); border-color:rgb(${rgb}); box-shadow:0 0 6px rgba(${rgb},0.4);"><div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp" style="color:rgb(${rgb});">${label}</div></div>`;
+            };
+            return `<div class="raid-parts-grid" style="margin-top:6px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cell).join('')}</div>`).join('')}</div>`;
+        }
+
+        // 連續出題不重複：記住最近出過的題目，新題目不能跟最近幾題一樣
+        //  （單卡題看「卡片＋題型」；情境題、牌組判斷題看「部位狀態」跟「卡片組合」，其中任何一個跟最近幾題一樣就重抽）
+        let quizRecent = [];
+        function quizKeys(q) {
+            if (!q) return [];
+            if (q.type === 'parts' || q.type === 'layers') return [`${q.type}:${q.card}`];
+            const sceneKey = 'scene:' + RAID_PARTS.map(p => q.scene[p.key]).join(',');
+            return [sceneKey, `${q.type}:${[...q.cards].sort().join('|')}`];
+        }
         function quizNext() {
+            const single = quizType === 'parts' || quizType === 'layers';
+            const poolSize = single ? Object.keys(QUIZ_CARDS).filter(n => (quizCat === 'all' || quizCardCat(n) === quizCat) && quizAnswerSet(n, quizType)).length : 99;
+            const recentN = single ? Math.max(1, Math.min(6, poolSize - 2)) : 6;   // 單卡題：最近 6 題不重複（卡片很少時縮小）
+            let q = null;
+            for (let tries = 0; tries < 40; tries++) {
+                q = quizNextRaw();
+                if (!q) break;
+                if (!quizKeys(q).some(k => quizRecent.slice(-(single ? recentN : recentN * 2)).includes(k))) break;
+            }
+            if (q) quizRecent.push(...quizKeys(q));
+            quizRecent = quizRecent.slice(-60);
+            quizQ = q;
+        }
+        function quizNextRaw() {
+            if (quizType === 'scene') return quizNextScene();
+            if (quizType === 'deck') return quizNextDeck();
             const pool = Object.keys(QUIZ_CARDS).filter(n => (quizCat === 'all' || quizCardCat(n) === quizCat));
             const cands = [];
             pool.forEach(n => { if (quizAnswerSet(n, quizType)) cands.push(n); });
-            if (!cands.length) { quizQ = null; return; }
+            if (!cands.length) return null;
             const card = cands[Math.floor(Math.random() * cands.length)];
-            quizQ = { card, type: quizType, answer: quizAnswerSet(card, quizType), picked: new Set(), done: false };
+            return { card, type: quizType, answer: quizAnswerSet(card, quizType), picked: new Set(), done: false };
         }
 
         function quizToggle(opt) {
             if (!quizQ || quizQ.done) return;
+            if (quizQ.type === 'deck') return;
             if (quizQ.picked.has(opt)) quizQ.picked.delete(opt); else quizQ.picked.add(opt);
+            renderQuiz();
+        }
+        function quizAnswerDeck(yes) {
+            if (!quizQ || quizQ.done || quizQ.type !== 'deck') return;
+            quizQ.picked = yes; quizQ.done = true;
+            quizScore.total++;
+            if (yes === quizQ.answer) quizScore.right++;
             renderQuiz();
         }
         function quizSubmit() {
@@ -7536,7 +7676,47 @@
             const typeChips = QUIZ_TYPES.map(([ty, label]) => chip(quizType === ty, label, `quizSetType('${ty}')`)).join('');
             const catChips = QUIZ_CATS.map(([cat, label]) => chip(quizCat === cat, label, `quizSetCat('${cat}')`, catRgb[cat])).join('');
             let body = '<div style="font-size:13px; color:#8a7a6a; margin-top:14px;">這個分類目前沒有可以出的題目（卡片資料還沒填）。</div>';
-            if (quizQ) {
+            if (quizQ && quizQ.type === 'scene') {
+                const q = quizQ;
+                const opts = q.cards.map(n => {
+                    const picked = q.picked.has(n), correct = q.answer.has(n);
+                    let bg = picked ? '#fbeedd' : '#fff', border = picked ? '#c9971f' : '#d8c8a8', color = '#4a3728', mark = picked ? '☑' : '☐';
+                    if (q.done) {
+                        if (correct) { bg = '#e6f4ea'; border = '#2e7d32'; color = '#1b5e20'; mark = picked ? '✅' : '☑'; }
+                        else if (picked) { bg = '#fdeaea'; border = '#c62828'; color = '#b71c1c'; mark = '❌'; }
+                        else mark = '☐';
+                    }
+                    const why = q.done && !correct ? `<div style="font-size:11.5px; font-weight:600; color:#8a7a6a; margin-top:2px;">${escapeHtml(quizCardUsable(n, q.scene).why)}</div>` : '';
+                    return `<button onclick="quizToggle('${n}')" ${q.done ? 'disabled' : ''} style="width:100%; display:flex; align-items:center; gap:10px; text-align:left; font-size:14px; font-weight:700; padding:7px 10px; border-radius:10px; border:2px solid ${border}; background:${bg}; color:${color}; font-family:inherit; cursor:${q.done ? 'default' : 'pointer'}; margin-top:7px;"><span>${mark}</span>${byPartCardHtml(n, 44)}<span style="flex:1;">${escapeHtml(raidCardLabel(n))}${why}</span></button>`;
+                }).join('');
+                const ok = q.done && q.answer.size === q.picked.size && [...q.answer].every(x => q.picked.has(x));
+                body = `
+                    <div style="font-size:13px; font-weight:800; color:#4a3728; margin-top:12px;">現在王的部位狀態是這樣，哪些卡現在可以用？（可複選）</div>
+                    ${quizSceneHtml(q.scene)}
+                    ${opts}
+                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; color:#4a3728;">${ok ? '✅ 答對了' : '❌ 再看一下上面標示的原因'}</div>
+                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>`
+                    : `<button onclick="quizSubmit()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">送出答案</button>`}`;
+            } else if (quizQ && quizQ.type === 'deck') {
+                const q = quizQ;
+                const yesNo = (yes, label) => {
+                    let bg = '#fff', border = '#d8c8a8', color = '#4a3728';
+                    if (q.done) {
+                        if (yes === q.answer) { bg = '#e6f4ea'; border = '#2e7d32'; color = '#1b5e20'; }
+                        else if (yes === q.picked) { bg = '#fdeaea'; border = '#c62828'; color = '#b71c1c'; }
+                    }
+                    return `<button onclick="quizAnswerDeck(${yes})" ${q.done ? 'disabled' : ''} style="flex:1; font-size:15px; font-weight:800; padding:12px 0; border-radius:10px; border:2px solid ${border}; background:${bg}; color:${color}; font-family:inherit; cursor:${q.done ? 'default' : 'pointer'};">${label}</button>`;
+                };
+                const blockers = q.res.map((r, i) => r.ok ? '' : `<div style="margin-top:3px;"><b>${escapeHtml(raidCardLabel(q.cards[i]))}</b>：${escapeHtml(r.why)}</div>`).join('');
+                body = `
+                    <div style="font-size:13px; font-weight:800; color:#4a3728; margin-top:12px;">現在王的部位狀態是這樣，這組牌組現在打得出來嗎？（三張卡都要能用）</div>
+                    ${quizSceneHtml(q.scene)}
+                    <div style="display:flex; gap:3px; justify-content:center; margin-top:10px;">${q.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
+                    <div style="display:flex; gap:8px; margin-top:10px;">${yesNo(true, '可以')}${yesNo(false, '不行')}</div>
+                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
+                        ${q.picked === q.answer ? '✅ 答對了' : '❌ 答錯了'}：${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}${blockers ? `<div style="margin-top:4px; color:#6b5a48;">${blockers}</div>` : ''}</div>
+                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>` : ''}`;
+            } else if (quizQ) {
                 const q = quizQ;
                 const options = q.type === 'parts' ? QUIZ_PART_OPTIONS : QUIZ_STATE_OPTIONS;
                 const qText = q.type === 'parts' ? '可以打什麼部位？（可複選）' : '適用於什麼狀態？（可複選）';

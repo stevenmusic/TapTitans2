@@ -7488,9 +7488,16 @@
             FinisherAttack: { state: 'skeleton', min: 5, label: '骨架' }
         };
         // 只在特定狀態才用的卡片：整隻王目前的狀態不符時，帶這張卡的牌組完全不列出（連「還不能用」也不列）
-        //   帶刺的晨星：盔甲 6 個＋肉體 2 個，或盔甲 7 個＋肉體 1 個（沒有骨架）
+        //   帶刺的晨星：整隻王 8 個部位只有盔甲和肉體（沒有骨架），其中一種只剩 1～2 個時，只用在少的那一種部位上
+        //   （盔甲 1～2 個、肉體 6～7 個→只打盔甲；肉體 1～2 個、盔甲 6～7 個→只打肉體，不建議但可以）
+        // 回傳可以打的層別（'armor' / 'body'），不符合回傳 null
         const CARD_ONLY_WHEN = {
-            BarbedMorningstar: (n) => n.skeleton === 0 && ((n.armor === 6 && n.body === 2) || (n.armor === 7 && n.body === 1))
+            BarbedMorningstar: (n) => {
+                if (n.skeleton !== 0) return null;
+                if (n.armor >= 1 && n.armor <= 2 && n.body >= 6) return 'armor';
+                if (n.body >= 1 && n.body <= 2 && n.armor >= 6) return 'body';
+                return null;
+            }
         };
         const CARD_LIMIT_RGB = { armor: '69,90,100', body: '21,101,192', part: '142,106,58', cond: '120,110,95' };
         const CARD_LIMITS = {
@@ -7691,7 +7698,11 @@
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
-              .filter(r => !stateNow || r.cards.every(n => !CARD_ONLY_WHEN[n] || CARD_ONLY_WHEN[n](stateNow)))
+              .filter(r => !stateNow || r.cards.every(n => {
+                  if (!CARD_ONLY_WHEN[n]) return true;
+                  const layer = CARD_ONLY_WHEN[n](stateNow);
+                  return layer && [...targets.values()].every(s => s.size === 1 && s.has(layer));   // 選的部位都要是那一層
+              }))
               .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
             // 目前（還沒用卡片池篩選前）列出的牌組真的有用到哪些卡片：卡片池只讓這些卡片正常顯示
             byPartPoolUsed = new Set(all.flatMap(r => r.cards));

@@ -8469,12 +8469,8 @@
                 return;
             }
 
-            // 已離開公會的人不要列進來：只算「這一場或上一場（有紀錄的）有出過刀」的成員，
-            // 連續兩場都沒出刀就視為已不在公會
-            const sessionIdx = sessions.findIndex(x => x.startedAt === session.startedAt);
-            const prevSession = sessions.slice(sessionIdx + 1).find(x => (x.attackCount || (x.attacks || []).length) > 0);
-            const prevAttacks = prevSession ? ((await ensureSessionAttacksLoaded(prevSession.startedAt)) || []) : [];
-            const recentAttacks = [...attacks, ...prevAttacks];
+            // 已離開公會的人不要列進來：這一場完全沒出刀的人就視為已不在公會，只列這一場有出過刀的成員
+            const recentAttacks = attacks;
 
             // 公會成員名單：不能只看這一場的攻擊紀錄，不然整場完全沒出刀的人
             // 根本不會出現在 attacks 裡、也就永遠不會被列進漏打名單。

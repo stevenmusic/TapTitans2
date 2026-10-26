@@ -7684,29 +7684,23 @@
             if (all.length === 0) {
                 return targets.size > 1 ? '沒有同時攻擊這些部位的牌組。' : '沒有符合的牌組。';
             }
-            // 依目前突襲狀態檢查卡片的使用條件（瘋狂無效要有足夠的肉體部位、凱旋行軍要有足夠的骨架部位），
-            // 沒達到的牌組先分出來。沒有突襲狀態（手動模式）時無法判斷，不擋
+            // 每組牌組的卡片順序：主要傷害卡第一張，支援卡最後
+            all.forEach(r => { r.cards = byPartOrderCards(r.cards); });
+
+            // 瘋狂無效、凱旋行軍要看整隻王目前的狀態才有效，帶這兩張卡的牌組不跟一般牌組混在一起，各自單獨列出。
+            // 目前狀態達到條件的區塊預設展開；還沒達到的收起來，標題寫目前還差多少。
+            // 沒有突襲狀態（手動模式）時無法判斷，一律展開
             const stateCount = live ? {
                 body: Object.values(live).filter(s => s.state === 'body').length,
                 skeleton: Object.values(live).filter(s => s.state === 'skeleton').length
             } : null;
-            const unmetOf = (r) => {
-                const out = [];
-                if (!stateCount) return out;
-                r.cards.forEach(n => {
-                    const q = CARD_REQUIREMENTS[n];
-                    if (q && stateCount[q.state] < q.min && !out.includes(q)) out.push(q);
-                });
-                return out;
-            };
-            const blocked = all.filter(r => unmetOf(r).length > 0);
-            const usable = all.filter(r => unmetOf(r).length === 0);
+            const specialKeys = Object.keys(CARD_REQUIREMENTS);
+            const specialOf = (r) => specialKeys.find(k => r.cards.includes(k)) || null;
+            const normal = all.filter(r => !specialOf(r));
+
             // 「任一單部位」的牌組（單打哪個部位都行，幾乎每個部位都能用）不跟專打的牌組混在一起，另外列在下面
-            const isAny = (r) => r.anyDeck;
-            const main = usable.filter(r => !isAny(r));
-            const anyRows = usable.filter(isAny);
-            // 每組牌組的卡片順序：主要傷害卡第一張，支援卡最後
-            [...main, ...anyRows, ...blocked].forEach(r => { r.cards = byPartOrderCards(r.cards); });
+            const main = normal.filter(r => !r.anyDeck);
+            const anyRows = normal.filter(r => r.anyDeck);
             const listOf = (rows) => byPartColumnsHtml(rows);
             let html = main.length > 0 ? listOf(main) : '';
             if (anyRows.length > 0) {
@@ -7716,15 +7710,18 @@
                         ${listOf(anyRows)}
                     </details>`;
             }
-            if (blocked.length > 0) {
-                const reasons = [...new Set(blocked.flatMap(unmetOf))]
-                    .map(q => `${q.label}部位要 ${q.min} 個以上，目前 ${stateCount[q.state]} 個`).join('；');
+            specialKeys.forEach(k => {
+                const rows = all.filter(r => specialOf(r) === k);
+                if (rows.length === 0) return;
+                const q = CARD_REQUIREMENTS[k];
+                const have = stateCount ? stateCount[q.state] : null;
+                const unmet = have !== null && have < q.min;
                 html += `
-                    <details style="margin-top:6px;">
-                        <summary style="cursor:pointer; font-weight:700; color:#8a7a6a; padding:2px 0; font-size:12px;">目前還不能用（${blocked.length} 組）：${reasons}</summary>
-                        ${listOf(blocked)}
+                    <details${unmet ? '' : ' open'} style="margin-top:6px;">
+                        <summary style="cursor:pointer; font-weight:700; color:${unmet ? '#8a7a6a' : '#6b4a8a'}; padding:2px 0; font-size:12px;">${escapeHtml(raidCardLabel(k))}的牌組（${rows.length} 組）${unmet ? `：${q.label}部位要 ${q.min} 個以上，目前 ${have} 個` : ''}</summary>
+                        ${listOf(rows)}
                     </details>`;
-            }
+            });
             return html;
         }
 

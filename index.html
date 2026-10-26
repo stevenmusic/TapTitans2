@@ -7666,23 +7666,59 @@
             }
             renderQuiz();
         }
-        function quizAnswerDeck(yes) {
-            if (!quizQ || quizQ.done || quizQ.type !== 'deck') return;
-            quizQ.picked = yes; quizQ.done = true;
+        // 送出答案後：馬上換下一題，上一題的對錯、正確答案與使用時機用浮在畫面下方的提示顯示（不佔版面，下面的按鈕位置不會被推動），
+        // 答對約 3.5 秒、答錯約 7 秒後自動消失，點一下也可以關掉
+        let quizToastTimer = null;
+        function quizShowToast(ok, html) {
+            let el = document.getElementById('quiz-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'quiz-toast';
+                el.onclick = () => { el.style.display = 'none'; };
+                el.style.cssText = 'position:fixed; left:12px; right:12px; bottom:14px; max-width:460px; margin:0 auto; z-index:9999; padding:11px 13px; border-radius:12px; font-size:13px; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.28); cursor:pointer;';
+                document.body.appendChild(el);
+            }
+            el.style.background = ok ? '#e6f4ea' : '#fdeaea';
+            el.style.border = `2px solid ${ok ? '#2e7d32' : '#c62828'}`;
+            el.style.color = ok ? '#1b5e20' : '#7f1d1d';
+            el.innerHTML = html;
+            el.style.display = 'block';
+            clearTimeout(quizToastTimer);
+            quizToastTimer = setTimeout(() => { el.style.display = 'none'; }, ok ? 3500 : 7000);
+        }
+        // 把剛答完的題目整理成提示內容，換下一題
+        function quizFinish(q, ok) {
             quizScore.total++;
-            if (yes === quizQ.answer) quizScore.right++;
-            renderQuiz();
+            if (ok) quizScore.right++;
+            const head = `<b>${ok ? '✅ 答對了' : '❌ 答錯了'}</b>　${escapeHtml(q.card ? raidCardLabel(q.card) : '')}`;
+            let detail = '';
+            if (q.type === 'parts' || q.type === 'layers') {
+                const ans = [...q.answer].map(x => x === QUIZ_ALL ? '以上皆是（頭、手肩、肚子、腳）' : x).join('、');
+                detail = (ok ? '' : `<div>正確答案：<b>${escapeHtml(ans)}</b></div>`) + (QUIZ_CARDS[q.card].t ? `<div style="color:#5a5a5a;">使用時機：${escapeHtml(QUIZ_CARDS[q.card].t)}</div>` : '');
+            } else if (q.type === 'scene') {
+                detail = q.cards.map(n => { const r = quizCardUsable(n, q.scene); return `<div>${r.ok ? '✔' : '✘'} ${escapeHtml(raidCardLabel(n))}${r.ok ? '：可以用' : '：' + escapeHtml(r.why)}</div>`; }).join('');
+            } else {
+                const rows = q.res.map((r, i) => r.ok ? '' : `<div><b>${escapeHtml(raidCardLabel(q.cards[i]))}</b>：${escapeHtml(r.why)}</div>`).join('');
+                detail = `<div>${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}</div>${rows}`;
+                const names = q.cards.map(n => raidCardLabel(n)).join('、');
+                quizShowToast(ok, `<b>${ok ? '✅ 答對了' : '❌ 答錯了'}</b>　${escapeHtml(names)}${detail}`);
+                quizNext(); renderQuiz();
+                return;
+            }
+            quizShowToast(ok, head + detail);
+            quizNext(); renderQuiz();
+        }
+        function quizAnswerDeck(yes) {
+            if (!quizQ || quizQ.type !== 'deck') return;
+            quizFinish(quizQ, yes === quizQ.answer);
         }
         function quizSubmit() {
-            if (!quizQ || quizQ.done) return;
-            quizQ.done = true;
-            quizScore.total++;
-            const a = quizQ.answer;
+            if (!quizQ) return;
+            const q = quizQ;
             // 四個部位全選等於「以上皆是」
-            const p = quizQ.type === 'parts' && QUIZ_PART_OPTIONS.every(o => quizQ.picked.has(o)) ? new Set([QUIZ_ALL]) : quizQ.picked;
-            quizQ.picked = p;
-            if (a.size === p.size && [...a].every(x => p.has(x))) quizScore.right++;
-            renderQuiz();
+            const p = q.type === 'parts' && QUIZ_PART_OPTIONS.every(o => q.picked.has(o)) ? new Set([QUIZ_ALL]) : q.picked;
+            const a = q.answer;
+            quizFinish(q, a.size === p.size && [...a].every(x => p.has(x)));
         }
         function quizSetType(ty) { quizType = ty; quizNext(); renderQuiz(); }
         function quizSetCat(cat) { quizCat = cat; quizNext(); renderQuiz(); }
@@ -7715,8 +7751,7 @@
                     <div style="font-size:13px; font-weight:800; color:#4a3728; margin-top:12px;">現在王的部位狀態是這樣，哪些卡現在可以用？（可複選）</div>
                     ${quizSceneHtml(q.scene)}
                     ${opts}
-                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; color:#4a3728;">${ok ? '✅ 答對了' : '❌ 再看一下上面標示的原因'}</div>
-                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>`
+                    ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; color:#4a3728;">${ok ? '✅ 答對了' : '❌ 再看一下上面標示的原因'}</div>`
                     : `<button onclick="quizSubmit()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">送出答案</button>`}`;
             } else if (quizQ && quizQ.type === 'deck') {
                 const q = quizQ;
@@ -7735,8 +7770,7 @@
                     <div style="display:flex; gap:3px; justify-content:center; margin-top:10px;">${q.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
                     <div style="display:flex; gap:8px; margin-top:10px;">${yesNo(true, '可以')}${yesNo(false, '不行')}</div>
                     ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
-                        ${q.picked === q.answer ? '✅ 答對了' : '❌ 答錯了'}：${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}${blockers ? `<div style="margin-top:4px; color:#6b5a48;">${blockers}</div>` : ''}</div>
-                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>` : ''}`;
+                        ${q.picked === q.answer ? '✅ 答對了' : '❌ 答錯了'}：${q.answer ? '三張卡現在都能用' : '這組牌組現在打不出來'}${blockers ? `<div style="margin-top:4px; color:#6b5a48;">${blockers}</div>` : ''}</div>` : ''}`;
             } else if (quizQ) {
                 const q = quizQ;
                 const options = q.type === 'parts' ? [...QUIZ_PART_OPTIONS, QUIZ_ALL] : QUIZ_STATE_OPTIONS;
@@ -7763,8 +7797,7 @@
                     </div>
                     ${opts}
                     ${q.done ? `<div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:#fffaf0; border:1px solid #ead9b8; font-size:13px; line-height:1.5; color:#4a3728;">
-                        ${ok ? '✅ 答對了' : `❌ 答案是：<b>${[...q.answer].map(x => x === QUIZ_ALL ? '以上皆是（頭、手肩、肚子、腳）' : x).join('、')}</b>`}${c.t ? `<div style="margin-top:4px; color:#6b5a48;">使用時機：${escapeHtml(c.t)}</div>` : ''}</div>
-                        <button onclick="quizNextClick()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">下一題</button>`
+                        ${ok ? '✅ 答對了' : `❌ 答案是：<b>${[...q.answer].map(x => x === QUIZ_ALL ? '以上皆是（頭、手肩、肚子、腳）' : x).join('、')}</b>`}${c.t ? `<div style="margin-top:4px; color:#6b5a48;">使用時機：${escapeHtml(c.t)}</div>` : ''}</div>`
                     : `<button onclick="quizSubmit()" style="width:100%; margin-top:10px; font-size:14px; font-weight:800; padding:11px; border-radius:10px; border:none; background:#8e1b2e; color:#fff; font-family:inherit; cursor:pointer;">送出答案</button>`}`;
             }
             box.innerHTML = `

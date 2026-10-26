@@ -8063,7 +8063,7 @@
             '四肢': ['ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
         };
         const BY_PART_RECO_BASE_MIN = 10;     // 任何推薦牌組在現在狀態下至少要出現幾次
-        const BY_PART_RECO_FORCE_RATIO = 0.05; // 強制列出的牌組，次數至少要達到最常用那組的這個比例
+        const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
@@ -8144,10 +8144,17 @@
                 }, 0));
                 rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
-            // 出現次數太少的牌組一律不推薦（29 場、前 15 名只出現 1～3 次的配法不可信）：至少要達最常用那組的 5％（且不少於 10 次）。
+            // 出現次數太少的牌組一律不推薦（29 場、前 15 名只出現 1～3 次的配法不可信）：至少要佔相同狀態下全部攻擊次數的 5％（且不少於 10 次）。
             // 湊不滿 6 組時，改成放寬「卡片不重複」（見最後手段），不會拿很少人用的牌組來湊
-            const topUsable = Math.max(0, ...rows.map(r => r.usable));
-            rows = rows.filter(r => r.usable >= Math.max(BY_PART_RECO_BASE_MIN, topUsable * BY_PART_RECO_FORCE_RATIO));
+            // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
+            const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
+            {
+                const minUse = Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_FORCE_RATIO);
+                const passed = rows.filter(r => r.usable >= minUse);
+                // 這個狀態整體的牌組太分散、合格的不到 12 組時（卡片不重複需要足夠的候選），才從次數最多的牌組依序補，絕不跳過次數更多的去選次數少的
+                const need = BY_PART_RECO_COUNT * 2;
+                rows = passed.length >= need ? passed : rows.slice().sort((a, b) => b.usable - a.usable).filter(r => r.usable >= BY_PART_RECO_BASE_MIN).slice(0, Math.max(need, passed.length));
+            }
             // 卡片頻率：組合的可能性太多，同一組三張卡的次數會被切得很零碎（常見的卡搭配各種卡，每個組合只有幾次），
             // 所以另外把「每張卡在現在這種狀態下，所有打得出來的牌組裡總共出現幾次」加總，同類卡（爆裂／苦痛／支援）互比，
             // 牌組的卡片分數＝三張的平均＋最弱一張的平均。這樣一個罕見的組合，只要它的卡本身現在常用，仍然會有分數
@@ -8179,8 +8186,8 @@
                 if (f.state !== 'body' || !f.minHpRatio) return true;
                 return p.bodyMax > 0 && p.body / p.bodyMax >= f.minHpRatio;
             }).length;
-            // 強制列出的牌組，次數要達到最常用那組的 5％（至少 5 次），只靠偶爾幾次的配法不強制
-            const forceMin = Math.max(BY_PART_RECO_BASE_MIN, maxUsable * BY_PART_RECO_FORCE_RATIO);
+            // 強制列出的牌組，次數要佔相同狀態下全部攻擊次數的 5％（至少 10 次），只靠偶爾幾次的配法不強制
+            const forceMin = Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_FORCE_RATIO);
             const mustCards = Object.keys(BY_PART_RECO_FORCE)
                 .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.usable >= forceMin));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
 

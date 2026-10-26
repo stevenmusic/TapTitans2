@@ -1657,27 +1657,39 @@ const DECK_STATS_MIN_ATTACK_RATIO = 0.8;
 // 而且預先壓縮成 gzip 存起來，之後每次請求只是把這個小檔案送出去，不用再算、不用再壓縮。
 // 同時有好幾個人打開時共用同一次計算（deckPartStatsPending），不會同時算好幾份。
 const DECK_STATS_TTL_MS = 10 * 60 * 1000;
-const deckPartStatsCache = new Map(); // topN -> { at, gz }
-const deckPartStatsPending = new Map(); // topN -> 計算中的 Promise
+const deckPartStatsCache = new Map(); // `${topN}|${group}` -> { at, gz }
+const deckPartStatsPending = new Map(); // `${topN}|${group}` -> 計算中的 Promise
 
-async function getDeckPartStatsGz(topN) {
-  const hit = deckPartStatsCache.get(topN);
+// 場次的加成類型分成三群，各自統計各自的配卡（不同加成適合的牌組不一樣）：
+//   burst＝爆裂加成（爆裂傷害、爆裂機會）、torment＝苦痛加成（苦痛傷害、苦痛機會）、
+//   other＝其他加成（支援、時間增益，以及偵測不到加成類型的場次）、all＝不分群（舊版前端沒帶參數時用）
+function raidBuffGroup(buffType) {
+  if (buffType === 'burstDamage' || buffType === 'burstChance') return 'burst';
+  if (buffType === 'afflictionDamage' || buffType === 'afflictionChance') return 'torment';
+  return 'other';
+}
+const DECK_STATS_GROUPS = ['all', 'burst', 'torment', 'other'];
+
+async function getDeckPartStatsGz(topN, group = 'all') {
+  const cacheKey = `${topN}|${group}`;
+  const hit = deckPartStatsCache.get(cacheKey);
   if (hit && Date.now() - hit.at < DECK_STATS_TTL_MS) return hit.gz;
-  if (deckPartStatsPending.has(topN)) return deckPartStatsPending.get(topN);
+  if (deckPartStatsPending.has(cacheKey)) return deckPartStatsPending.get(cacheKey);
   const p = (async () => {
-    const result = await computeDeckPartStats(topN);
+    const result = await computeDeckPartStats(topN, group);
     const json = JSON.stringify(result);
     const gz = zlib.gzipSync(json);
-    console.log(`[deck-part-stats] top${topN}：${result.decks.length} 組牌組，${json.length} bytes，壓縮後 ${gz.length} bytes`);
-    deckPartStatsCache.set(topN, { at: Date.now(), gz });
+    console.log(`[deck-part-stats] top${topN} ${group}：${result.decks.length} 組牌組，${json.length} bytes，壓縮後 ${gz.length} bytes`);
+    deckPartStatsCache.set(cacheKey, { at: Date.now(), gz });
     return gz;
-  })().finally(() => deckPartStatsPending.delete(topN));
-  deckPartStatsPending.set(topN, p);
+  })().finally(() => deckPartStatsPending.delete(cacheKey));
+  deckPartStatsPending.set(cacheKey, p);
   return p;
 }
 
-async function computeDeckPartStats(topN) {
-  const { sessions } = await computeSessionSummary();
+async function computeDeckPartStats(topN, group = 'all') {
+  const { sessions: allSessions } = await computeSessionSummary();
+  const sessions = group === 'all' ? allSessions : allSessions.filter(s => raidBuffGroup(s.buffType) === group);
   const allAttacks = cacheAllAttacksSorted(); // 整份只排序一次，再依場次的時間範圍切開
   const decks = new Map(); // 排序後的三張卡名 -> { cards, attacks, patterns }
   let sessionCount = 0;
@@ -1732,6 +1744,7 @@ async function computeDeckPartStats(topN) {
 
   const result = {
     topN,
+    group,
     minAttackRatio: DECK_STATS_MIN_ATTACK_RATIO,
     sessionCount,
     attackCount,
@@ -1742,8 +1755,9 @@ async function computeDeckPartStats(topN) {
 
 app.get('/deck-part-stats', async (req, res) => {
   const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 10, 1), 30);
+  const group = DECK_STATS_GROUPS.includes(req.query.group) ? req.query.group : 'all';
   try {
-    const gz = await getDeckPartStatsGz(topN);
+    const gz = await getDeckPartStatsGz(topN, group);
     res.set({
       'Content-Type': 'application/json; charset=utf-8',
       'Content-Encoding': 'gzip',

@@ -7663,20 +7663,34 @@
         function byPartListHtml(data, targets, live, emptyHint) {
             const info = `<div style="margin-bottom:6px;">前${data.topN}名玩家・${data.sessionCount} 場・${data.attackCount} 刀（統計全部場次，不受上方場次選單影響）</div>`;
             if (targets.size === 0) return info + emptyHint;
-            const rows = data.decks.map(d => {
+            const all = data.decks.map(d => {
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
-              .sort((a, b) => (b.matched - a.matched) || (b.count - a.count))
-              .slice(0, 20);
-            if (rows.length === 0) {
+              .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
+            if (all.length === 0) {
                 return info + `沒有符合的牌組（要有至少 ${BY_PART_MIN_HITS} 刀的卡片剛好打在目標部位的目前狀態上；點擊傷害不算，一刀同時打到其他部位的不列入）。`;
             }
-            const columnOf = assignDeckColumns(rows);
-            rows.forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
-            return info
-                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${rows.length} 組。右邊是這組牌組的打法：<b>頭部、肚子</b>＝分別單打；<b>頭部＋左腳</b>＝一刀同時打；<b>任一單部位</b>＝可以單打任何部位；<b>多部位≥6</b>＝一刀打 6 個以上。</div>`
-                + `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
+            // 「任一單部位」的牌組（單打哪個部位都行，幾乎每個部位都能用）不跟專打的牌組混在一起，另外列在下面
+            const isAny = (r) => r.shapes.some(s => s.kind === 'any');
+            const main = all.filter(r => !isAny(r)).slice(0, 20);
+            const anyRows = all.filter(isAny).slice(0, 20);
+            // 同一份列表裡的卡片固定排在同一欄（兩個區塊一起算，才不會一邊一個順序）
+            const columnOf = assignDeckColumns([...main, ...anyRows]);
+            [...main, ...anyRows].forEach(r => { r.cards = orderCardsByColumn(r.cards, columnOf); });
+            const listOf = (rows) => `<div style="display:flex; flex-direction:column; width:100%;">${rows.map((r, i) => renderByPartRow(r, i + 1)).join('')}</div>`;
+            let html = info
+                + `<div style="margin-bottom:4px; line-height:1.5;">符合 ${main.length} 組。右邊是這組牌組的打法：<b>頭部、肚子</b>＝分別單打；<b>頭部＋左腳</b>＝一刀同時打；<b>多部位≥6</b>＝一刀打 6 個以上。</div>`
+                + (main.length > 0 ? listOf(main) : `<div style="padding:6px 0;">沒有只適合這些部位的牌組。</div>`);
+            if (anyRows.length > 0) {
+                html += `
+                    <details open style="margin-top:12px;">
+                        <summary style="cursor:pointer; font-weight:700; color:#8a5a10; padding:4px 0;">任一單部位的牌組（${anyRows.length} 組）</summary>
+                        <div style="margin:2px 0 4px; line-height:1.5;">這些牌組單打哪個部位都能用，不是專門為這些部位配的，所以另外列在這裡。</div>
+                        ${listOf(anyRows)}
+                    </details>`;
+            }
+            return html;
         }
 
         function renderByPartRow(r, rank) {

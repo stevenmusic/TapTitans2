@@ -8110,7 +8110,7 @@
                     const set = CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null;
                     if (set) allowed = allowed ? allowed.filter(p => set.includes(p)) : set.slice();
                 });
-                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true;
+                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [];
                 byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
                     // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有
                     const isStage = ks.every(([, layer]) => layersNow.has(layer));
@@ -8132,6 +8132,7 @@
                     if (isStage && n > mainN) { mainN = n; mainOk = false; }   // 現在這個階段這組牌組最常打的打法
                     if (!ok) return;
                     if (isStage && n === mainN) mainOk = true;
+                    if (n > bestN) { bestN = n; bestTargets = picked.map(p => ({ part: p, layer: info[p].layer, cursed: info[p].cursed })); }   // 這組牌組現在最常打、而且打得出來的打法要打的部位
                     usable += n;
                     cursedHit += n * (picked.filter(p => info[p].cursed).length / Math.max(1, picked.length));
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
@@ -8147,7 +8148,7 @@
                 }, 0));
                 const ws = d.cards.map(cardWeight);
                 const cardScore = 0.5 * (ws.reduce((s, x) => s + x, 0) / ws.length) + 0.5 * Math.min(...ws);   // 平均＋最弱一張，各佔一半
-                rows.push({ cards: byPartOrderCards(d.cards), usable, cardScore, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), targets: bestTargets, usable, cardScore, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 第二輪：人氣、覆蓋度跟別組比較後換成 0～1 的相對值，再合成總分
             const maxUsable = Math.max(1, ...rows.map(r => r.usable));
@@ -8238,7 +8239,14 @@
             box.innerHTML = `
                 <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin:8px 0 3px;">推薦牌組</div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}</div>`).join('')}
+                    ${rows.map(r => {
+                        // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
+                        const layers = new Set(r.targets.map(x => x.layer));
+                        const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
+                        const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
+                        const tag = r.targets.length === 0 ? '' : `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
+                        return `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${tag}</div></div>`;
+                    }).join('')}
                 </div>`;
         }
 

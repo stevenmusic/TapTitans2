@@ -7487,6 +7487,11 @@
             CrushingVoid:   { state: 'body', min: 5, label: '肉體' },
             FinisherAttack: { state: 'skeleton', min: 5, label: '骨架' }
         };
+        // 只在特定狀態才用的卡片：整隻王目前的狀態不符時，帶這張卡的牌組完全不列出（連「還不能用」也不列）
+        //   帶刺的晨星：盔甲 6 個＋肉體 2 個，或盔甲 7 個＋肉體 1 個（沒有骨架）
+        const CARD_ONLY_WHEN = {
+            BarbedMorningstar: (n) => n.skeleton === 0 && ((n.armor === 6 && n.body === 2) || (n.armor === 7 && n.body === 1))
+        };
         const CARD_LIMIT_RGB = { armor: '69,90,100', body: '21,101,192', part: '142,106,58', cond: '120,110,95' };
         const CARD_LIMITS = {
             Fragmentize:    { tag: '盔甲', kind: 'armor', note: '只能攻擊盔甲、不能打肉體（詛咒盔甲有額外加成）' },
@@ -7677,10 +7682,16 @@
         function byPartListHtml(data, targets, live, emptyHint) {
             if (targets.size === 0) { byPartPoolUsed = new Set(); return emptyHint; }
             byPartPoolUsed = new Set();
+            const stateNow = live ? {
+                armor: Object.values(live).filter(s => s.state === 'armor').length,
+                body: Object.values(live).filter(s => s.state === 'body').length,
+                skeleton: Object.values(live).filter(s => s.state === 'skeleton').length
+            } : null;
             let all = data.decks.map(d => {
                 const m = analyzeDeckByPart(d, targets);
                 return m ? { cards: d.cards, count: d.attacks, ...m } : null;
             }).filter(Boolean)
+              .filter(r => !stateNow || r.cards.every(n => !CARD_ONLY_WHEN[n] || CARD_ONLY_WHEN[n](stateNow)))
               .sort((a, b) => (b.matched - a.matched) || (b.count - a.count));
             // 目前（還沒用卡片池篩選前）列出的牌組真的有用到哪些卡片：卡片池只讓這些卡片正常顯示
             byPartPoolUsed = new Set(all.flatMap(r => r.cards));

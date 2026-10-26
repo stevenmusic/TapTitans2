@@ -6086,7 +6086,23 @@
             const entry = payload.titan_target.find(tt => tt.enemy_id === apiCurrentEnemyId);
             if (entry && Array.isArray(entry.state)) {
                 raidBannedParts = entry.state.filter(s => String(s.state) === '1').map(s => s.id);
+                saveBannedPartsCache();
             }
+        }
+
+        // 禁打部位只會在即時連線的 sub_start／sub_cycle 事件裡帶來（伺服器的目前王狀態不含這項），
+        // 所以一打開網頁要等下一筆事件才看得到。這裡把最後一次收到的禁打部位連同王的 enemy_id 記在本機，
+        // 開網頁時王沒換就先直接套用，之後有新事件進來再自動校正
+        const RAID_BANNED_CACHE_KEY = 'tt2_raid_banned_parts';
+        function saveBannedPartsCache() {
+            try { localStorage.setItem(RAID_BANNED_CACHE_KEY, JSON.stringify({ enemyId: apiCurrentEnemyId, parts: raidBannedParts })); } catch (e) {}
+        }
+        function restoreBannedPartsCache() {
+            if (raidBannedParts.length > 0 || !apiCurrentEnemyId) return;
+            try {
+                const saved = JSON.parse(localStorage.getItem(RAID_BANNED_CACHE_KEY) || 'null');
+                if (saved && saved.enemyId === apiCurrentEnemyId && Array.isArray(saved.parts)) raidBannedParts = saved.parts;
+            } catch (e) {}
         }
 
         // ordinal：畫面上「第幾隻／6」的數字，一律用 titan_index + 1 計算，
@@ -6430,6 +6446,7 @@
             apiCurrentEnemyId = cb.enemyId || null;
             raidBossOrdinal = cb.ordinal || 1;
             apiBossTotal = cb.total || 6;
+            restoreBannedPartsCache();
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
                 bossName: cb.name || '—',

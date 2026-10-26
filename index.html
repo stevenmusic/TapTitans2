@@ -7766,22 +7766,37 @@
             rows.forEach(r => groups[byPartDamageGroup(r.cards)].push(r));
             const sections = [['爆裂', '192,57,43', groups.burst], ['混合', '120,80,150', groups.mixed], ['苦痛', '30,100,200', groups.torment]]
                 .filter(s => s[2].length > 0);
-            // 整齊排列：同一種類型內，依「第一張（主要傷害卡）、第二張、第三張」排序，相同主力卡的牌組會擠在一起；
-            // 主力卡換了就換一列（從最左邊開始），所以同一列的第一張卡都一樣、整排上下對齊；多部位牌組排最後，
-            // 這樣只有最後幾列會因為多一個提醒標籤而比較高
+            // 相似的牌組疊成同一條直排：同一種類型內，「主要傷害卡（第一張）一樣、而且三張卡裡至少共用兩張」的牌組
+            // 視為相似，由上到下排成一條直排，共用的卡片上下對齊，差別在哪一眼就看得出來。
+            // 不相似的牌組各自成一條，一條接著一條往右排（空間不夠就換到下一排）。多部位牌組排最後。
             const canon = (n) => { const i = CARD_CANONICAL_ORDER.indexOf(n); return i < 0 ? 999 : i; };
-            const sortKey = (r) => [r.shapes.some(s => s.kind === 'multi') ? 1 : 0, ...r.cards.map(canon)];
+            const isMultiDeck = (r) => r.shapes.some(s => s.kind === 'multi');
+            const sortKey = (r) => [isMultiDeck(r) ? 1 : 0, ...r.cards.map(canon)];
             const cmp = (x, y) => { const a = sortKey(x), b = sortKey(y); for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+            const similar = (x, y) => x.cards[0] === y.cards[0] && x.cards.filter(n => y.cards.includes(n)).length >= 2;
+            const stacksOf = (list) => {
+                const parent = list.map((_, i) => i);
+                const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+                for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (similar(list[i], list[j])) parent[find(i)] = find(j);
+                const map = new Map();
+                list.forEach((r, i) => { const k = find(i); if (!map.has(k)) map.set(k, []); map.get(k).push(r); });
+                const stacks = [...map.values()];
+                stacks.forEach(s => s.sort(cmp));
+                // 相似牌組多的直排排前面；多部位的直排排最後
+                stacks.sort((x, y) => (isMultiDeck(x[0]) - isMultiDeck(y[0])) || (y.length - x.length) || cmp(x[0], y[0]));
+                return stacks;
+            };
             const section = ([title, rgb, list]) => {
-                const sorted = list.slice().sort(cmp).slice(0, 40);
-                const items = sorted.map((r, i) => {
-                    const newRun = i > 0 && (sortKey(sorted[i - 1])[0] !== sortKey(r)[0] || sorted[i - 1].cards[0] !== r.cards[0]);
-                    return `<div${newRun ? ' style="grid-column-start:1;"' : ''}>${renderByPartRow(r, i + 1)}</div>`;
-                }).join('');
+                const stacks = stacksOf(list);
+                // 兩組以上的相似牌組，用淡淡的底色（陰影，不佔版面寬度）框成一群，和旁邊的直排分開
+                const items = stacks.map(stack => `
+                    <div style="${stack.length > 8 ? '' : 'break-inside:avoid;'} margin-bottom:${stack.length > 1 ? 10 : 7}px; ${stack.length > 1 ? 'background:#fbf2e2; box-shadow:0 0 0 3px #fbf2e2; border-radius:6px;' : ''}">
+                        ${stack.map((r, i) => `<div style="margin-bottom:${i < stack.length - 1 ? 3 : 0}px;">${renderByPartRow(r, 0)}</div>`).join('')}
+                    </div>`).join('');
                 return `
                 <div style="margin-bottom:4px;">
                     <div style="font-size:11.5px; font-weight:800; color:rgb(${rgb}); line-height:1.3; margin-bottom:2px;">${title} ${list.length}</div>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:5px 6px; align-items:start;">${items}</div>
+                    <div style="column-width:120px; column-gap:10px; padding:3px;">${items}</div>
                 </div>`;
             };
             return sections.map(section).join('');

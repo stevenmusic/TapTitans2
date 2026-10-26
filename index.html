@@ -8047,6 +8047,14 @@
         };
         // 對詛咒盔甲有額外加成的卡：撼地破甲、毀了雨。牌組的打法打到詛咒盔甲部位的比例越高，加成越多（打法全打詛咒盔甲＝滿額）
         const BY_PART_RECO_CURSED = { Fragmentize: 0.30, RuinousRust: 0.30 };
+        // 一定排進來的牌組（條件符合就保留名額，各取分數最高的一組）：
+        //   瘋狂無效：肉體部位 6 個以上（最大傷害）才強制列出；但要有 6 個以上「血量夠」的肉體部位——
+        //             肉體血量低於該部位滿血的 20％，很快就會破掉、肉體部位數會掉到 6 個以下，這種部位不算，湊不到 6 個就不強制（仍可靠分數自然上榜）
+        //   凱旋行軍：骨架部位 6 個以上（最大傷害）就強制列出（骨架沒有血量問題）
+        const BY_PART_RECO_FORCE = {
+            CrushingVoid:   { state: 'body',     min: 6, minHpRatio: 0.20 },
+            FinisherAttack: { state: 'skeleton', min: 6 }
+        };
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
@@ -8127,10 +8135,17 @@
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
             // 找不到 6 組時退而求其次，列出能找到的最多組數
             rows.sort((a, b) => b.score - a.score);
-            // 特定牌組（瘋狂無效、凱旋行軍）：部位數量條件符合（不符合的前面就已經排除）、而且現在有打得出來的打法，就一定排進來，
+            // 特定牌組（瘋狂無效、凱旋行軍）：部位數量條件符合（見 BY_PART_RECO_FORCE）、而且現在有打得出來的打法，就一定排進來，
             // 各自取分數最高的那一組（兩組不能共用卡）；剩下的名額才用上面的方法找
             const forced = [], forcedUsed = new Set();
-            Object.keys(CARD_REQUIREMENTS).forEach(card => {
+            const healthyCount = (f) => Object.values(parts).filter(p => {
+                const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
+                if (layer !== f.state) return false;
+                if (f.state !== 'body' || !f.minHpRatio) return true;
+                return p.bodyMax > 0 && p.body / p.bodyMax >= f.minHpRatio;
+            }).length;
+            Object.keys(BY_PART_RECO_FORCE).forEach(card => {
+                if (healthyCount(BY_PART_RECO_FORCE[card]) < BY_PART_RECO_FORCE[card].min) return;
                 const r = rows.find(x => x.cards.includes(card) && x.cards.every(n => !forcedUsed.has(n)));
                 if (!r || forced.length >= BY_PART_RECO_COUNT) return;
                 forced.push(r);

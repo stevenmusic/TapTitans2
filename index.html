@@ -7704,7 +7704,7 @@
                 const border = state === 'armor' ? 'rgb(69,90,100)' : (state === 'body' ? 'rgb(21,101,192)' : '#8a7a63');
                 return `<button onclick="setByPartManual('${partKey}','${state}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid ${border}; background:${on ? solid : light}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer;">${BY_PART_STATE_LABEL[state]}</button>`;
             };
-            // 有突襲狀態時，格子照抄突襲首頁（血量條底色、骨架、禁打紅框，不顯示血量數字）；被選到的部位發亮
+            // 有突襲狀態時，格子完全照抄突襲首頁（血量條底色、剩餘血量數字、骨架、禁打紅框）；被選到的部位發亮
             const homeCellHtml = (partKey) => {
                 const p = raidState.parts[partKey];
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
@@ -7727,7 +7727,7 @@
                     const isCursedArmor = activeLayer === 'armor' && !!p.cursed;
                     const themeColor = isCursedArmor ? '91,42,134' : (activeLayer === 'armor' ? '69,90,100' : '21,101,192');
                     style = `background:linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%); border-color:rgb(${themeColor}); box-shadow:0 0 6px rgba(${themeColor},0.55);`;
-                    inner = name; // 依部位這裡不顯示血量數字，只留部位名稱和血量條底色
+                    inner = `${name}<div class="raid-part-hp">${formatNum(activeValue)}</div>`;
                 }
                 if (usable) {
                     style += ' cursor:pointer;';

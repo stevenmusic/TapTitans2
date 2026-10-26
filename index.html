@@ -7470,8 +7470,7 @@
            只列符合目前目標的打法，標籤盡量合併：頭部、肚子＝分別單打；頭部＋左腳＝一刀同時打。
            ══════════════════════════════════════════════════════════ */
         let deckSubtab = 'topdecks';
-        let byPartTop = 10;
-        const BY_PART_TOP_OPTIONS = [5, 10, 15, 20];
+        const byPartTop = 15;               // 固定統計每場總傷前 15 名（前幾名的牌組差別不大，不用讓使用者選）
         const BY_PART_MIN_HITS = 3;         // 至少要有幾刀符合才列入，避免只靠一兩刀就上榜
         const BY_PART_MULTI_MIN = 6;        // 一刀打到幾個部位以上算「多部位」
         const BY_PART_ANY_MIN_PARTS = 5;    // 單打過幾個不同部位以上算「任一單部位」
@@ -7563,11 +7562,6 @@
         // 沒有突襲狀態時的手動選擇：同一個部位再點一次同一個狀態＝取消
         function setByPartManual(part, state) {
             if (byPartManualState.get(part) === state) byPartManualState.delete(part); else byPartManualState.set(part, state);
-            renderByPart();
-        }
-
-        function setByPartTop(n) {
-            byPartTop = n;
             renderByPart();
         }
 
@@ -7823,11 +7817,6 @@
             renderByPartModal();
         }
 
-        function setByPartModalTop(n) {
-            byPartTop = n;
-            renderByPartModal();
-        }
-
         async function renderByPartModal() {
             const body = document.getElementById('by-part-modal-body');
             if (!body) return;
@@ -7841,14 +7830,10 @@
             // 標題：選到的部位＋各自目前的狀態；一個都不能打時顯示被點的那個部位
             const names = targets.size > 0 ? RAID_PARTS.map(p => p.key).filter(k => targets.has(k)) : [...byPartModalSel];
             const title = names.filter(k => live[k]).map(k => `${escapeHtml(raidPartLabel(k))}${targets.size > 1 ? '' : '・'}${byPartStateText(live[k])}`).join('＋');
-            const topBtn = (n) => `<button onclick="setByPartModalTop(${n})" style="font-size:11.5px; padding:3px 9px; border-radius:6px; border:1px solid ${n === byPartTop ? '#4a3a2a' : '#d8c8a8'}; background:${n === byPartTop ? '#4a3a2a' : '#fff'}; color:${n === byPartTop ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;">前${n}名</button>`;
             body.innerHTML = `
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
                     <div style="font-size:15px; font-weight:800; color:#4a3728;">${title}</div>
                     <button onclick="closeByPartModal()" style="font-size:18px; line-height:1; border:none; background:none; color:#8a7a63; cursor:pointer; padding:4px 8px;">✕</button>
-                </div>
-                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">
-                    <span style="font-size:12px; color:#8a7a6a;">統計玩家：每場總傷</span>${[5, 10, 15, 20].map(topBtn).join('')}
                 </div>
                 <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;
@@ -7901,8 +7886,6 @@
             ]) + (live ? raidState.bossName : '');
 
             const btnStyle = (on) => `font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid ${on ? '#4a3a2a' : '#d8c8a8'}; background:${on ? '#4a3a2a' : '#fff'}; color:${on ? '#fff' : '#8e6a3a'}; font-family:inherit; cursor:pointer;`;
-            const topButtons = BY_PART_TOP_OPTIONS.map(n =>
-                `<button onclick="setByPartTop(${n})" style="${btnStyle(n === byPartTop)}">前${n}名</button>`).join('');
 
             // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell）。有突襲狀態：格子顯示目前狀態，點一下加入／取消目標；
             // 沒有：格子底下改成手動選盔甲／肉體／肉甲
@@ -7962,9 +7945,6 @@
                 : `<div style="font-size:12px; color:#8a7a6a; margin:6px 0 2px;">尚未取得突襲狀態（沒有連線），請手動選擇每個部位的狀態。${byPartManualState.size > 0 ? ` <button onclick="byPartManualState.clear(); renderByPart();" style="${btnStyle(false)} padding:2px 8px;">清除</button>` : ''}</div>`;
 
             box.innerHTML = `
-                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                    <span style="font-size:12px; color:#8a7a6a;">統計玩家：每場總傷</span>${topButtons}
-                </div>
                 ${statusLine}
                 <div style="margin-top:6px;">${partGrid}</div>
                 <div id="by-part-list" style="margin-top:12px; font-size:12px; color:#8a7a6a;">載入統計中…</div>

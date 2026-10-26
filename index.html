@@ -8350,6 +8350,8 @@
             if (saved) RAID_PARTS.forEach(p => { if (BY_PART_SIM_CYCLE.includes(saved[p.key])) byPartSim[p.key] = saved[p.key]; });
         } catch (e) {}
 
+        let byPartSimBrush = 'armor';   // 目前選的狀態（點部位時套用）
+        function setByPartSimBrush(st) { byPartSimBrush = st; renderByPart(); }
         function setByPartSim(part, state) {
             byPartSim[part] = state;
             try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
@@ -8381,32 +8383,30 @@
             box.style.display = 'block';
             const token = ++byPartRenderToken;
 
-            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），每個部位裡放狀態按鈕：
-            // 第一排 詛咒甲／盔甲／肉體，第二排 骨架／禁打；選到的按鈕實心，格子底色跟著狀態變
+            // 「先選狀態、再點部位」：上面一排狀態按鈕（只有 5 顆）是畫筆，選好之後點哪個部位，那個部位就變成這個狀態；
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），格子底色跟著狀態變、中間寫狀態名稱
             const SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
-            const simBtn = (partKey, st) => {
-                const on = byPartSim[partKey] === st;
-                return `<button onclick="setByPartSim('${partKey}','${st}')" style="flex:1; min-width:0; font-size:10px; font-weight:700; padding:4px 0; border-radius:6px; border:1.5px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${BY_PART_SIM_LABEL[st]}</button>`;
+            const brushBtn = (st) => {
+                const on = byPartSimBrush === st;
+                return `<button onclick="setByPartSimBrush('${st}')" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:7px 0; border-radius:8px; border:2px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${BY_PART_SIM_LABEL[st]}</button>`;
             };
             const cellHtml = (partKey) => {
                 const s = byPartSim[partKey];
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
-                const style = `background:rgba(${SIM_RGB[s]},0.14); border-color:rgb(${SIM_RGB[s]}); box-shadow:0 0 6px rgba(${SIM_RGB[s]},0.45);`;
-                return `<div class="raid-part-cell" style="${style}">${name}
-                    <div style="display:flex; gap:2px; margin-bottom:2px;">${['cursed', 'armor', 'body'].map(st => simBtn(partKey, st)).join('')}</div>
-                    <div style="display:flex; gap:2px;">${['skeleton', 'banned'].map(st => simBtn(partKey, st)).join('')}</div>
-                </div>`;
+                const style = `cursor:pointer; background:rgba(${SIM_RGB[s]},0.22); border-color:rgb(${SIM_RGB[s]}); box-shadow:0 0 6px rgba(${SIM_RGB[s]},0.45);`;
+                return `<div class="raid-part-cell" onclick="setByPartSim('${partKey}','${byPartSimBrush}')" style="${style}">${name}<div class="raid-part-hp" style="color:rgb(${SIM_RGB[s]});">${BY_PART_SIM_LABEL[s]}</div></div>`;
             };
             const btnStyle = 'font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
             box.innerHTML = `
                 <div style="display:flex; gap:6px; margin-top:6px;">
                     ${BY_PART_GROUPS.map(([g, label]) => `<button onclick="setByPartGroup('${g}')" style="flex:1; font-size:12.5px; font-weight:800; padding:7px 0; border-radius:8px; border:1.5px solid #8e1b2e; background:${byPartGroup === g ? '#8e1b2e' : '#fff'}; color:${byPartGroup === g ? '#fff' : '#8e1b2e'}; font-family:inherit; cursor:pointer;">${label}</button>`).join('')}
                 </div>
+                <div style="display:flex; gap:5px; margin-top:8px;">${BY_PART_SIM_CYCLE.map(brushBtn).join('')}</div>
                 <div class="raid-parts-grid" style="margin-top:8px;">
                     ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
                 </div>
-                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
-                    ${['armor', 'body'].map(st => `<button onclick="setAllByPartSim('${st}')" style="${btnStyle}">全部${BY_PART_SIM_LABEL[st]}</button>`).join('')}
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button onclick="setAllByPartSim(byPartSimBrush)" style="${btnStyle}">全部設為${BY_PART_SIM_LABEL[byPartSimBrush]}</button>
                 </div>
                 <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;

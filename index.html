@@ -8043,10 +8043,7 @@
             SandsOfTime:    { state: 'body',     min: 6, w: 0.25 },   // 沙漏
             FinisherAttack: { state: 'skeleton', min: 6, w: 0.30 }    // 凱旋行軍：骨架部位 6 個以上達到最大傷害
         };
-        // 出現次數偏低、想讓它多出現的卡：帶這張卡的牌組加分，而且「現在常打」的門檻放寬到 3 刀（原本 5 刀）
-        //   腐敗突擊：目前推薦裡出現次數偏低
-        const BY_PART_RECO_FAVOR = { DecayingAttack: 0.20 };
-        const BY_PART_RECO_FAVOR_MIN_HITS = 3;
+        const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
@@ -8090,16 +8087,17 @@
                     usable += n;
                     hpShare += n * ([...hit].reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
-                const favor = d.cards.reduce((s, n) => s + (BY_PART_RECO_FAVOR[n] || 0), 0);
-                const tier = usable >= (favor > 0 ? BY_PART_RECO_FAVOR_MIN_HITS : BY_PART_RECO_MIN_HITS) ? 2 : (usable > 0 ? 1 : 0);   // 2＝現在這種狀態下真的常打；1＝打過但很少；0＝沒打過（只在湊不滿 6 組時才用到）
+                const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : (usable > 0 ? 1 : 0);   // 2＝現在這種狀態下真的常打；1＝打過但很少；0＝沒打過（只在湊不滿 6 組時才用到）
                 const synergy = Math.min(BY_PART_RECO_W.synergyCap, d.cards.reduce((s, n) => {
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0);
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy: Math.min(BY_PART_RECO_W.synergyCap, synergy + favor), tier });
+                rows.push({ cards: byPartOrderCards(d.cards), usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / (d.attacks || 1)), synergy, tier });
             });
             // 第二輪：人氣、覆蓋度跟別組比較後換成 0～1 的相對值，再合成總分
             const maxUsable = Math.max(1, ...rows.map(r => r.usable));
+            // 次數比最常打的那組少太多的牌組降到「少打」那一級，只有湊不滿 6 組時才會用到
+            rows.forEach(r => { if (r.tier === 2 && r.usable < maxUsable * BY_PART_RECO_MIN_RATIO) r.tier = 1; });
             const maxCover = Math.max(1e-9, ...rows.map(r => r.cover));
             rows.forEach(r => {
                 const pop = Math.log(1 + r.usable) / Math.log(1 + maxUsable);

@@ -2,6 +2,45 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <script>
+    /* 測試環境隔離：只有網址帶 ?env=dev 或 ?env=dev2（由 /tt2_dev、/tt2_dev2 轉址過來）時才啟動，正式網址完全不受影響。
+       - 測試站的 localStorage／sessionStorage 全部加上前綴（tt2_dev:、tt2_dev2:），跟正式網站（同一個網域）的資料完全分開，
+         不會讀到、也不會改到正式環境的設定（帳號 token、中繼伺服器網址…）
+       - 中繼伺服器網址固定用網址上的 relay 參數（測試伺服器），不會寫回正式的設定
+       - 畫面左上角顯示「測試環境」標籤 */
+    (function () {
+        try {
+            var q = new URLSearchParams(location.search);
+            var env = q.get('env');
+            if (!/^dev\d*$/.test(env || '')) return;
+            var relay = (q.get('relay') || '').replace(/\/$/, '');
+            var prefix = 'tt2_' + env + ':';
+            var RELAY_KEY = 'tt2_raid_relay_url';
+            function isolated(real) {
+                var store = {
+                    getItem: function (k) { k = String(k); if (k === RELAY_KEY && relay) return relay; return real.getItem(prefix + k); },
+                    setItem: function (k, v) { k = String(k); if (k === RELAY_KEY) return; real.setItem(prefix + k, String(v)); },
+                    removeItem: function (k) { real.removeItem(prefix + String(k)); },
+                    key: function (i) { var n = 0; for (var j = 0; j < real.length; j++) { var kk = real.key(j); if (kk.indexOf(prefix) === 0) { if (n === i) return kk.slice(prefix.length); n++; } } return null; },
+                    clear: function () { var del = []; for (var j = 0; j < real.length; j++) { var kk = real.key(j); if (kk.indexOf(prefix) === 0) del.push(kk); } del.forEach(function (kk) { real.removeItem(kk); }); }
+                };
+                Object.defineProperty(store, 'length', { get: function () { var n = 0; for (var j = 0; j < real.length; j++) if (real.key(j).indexOf(prefix) === 0) n++; return n; } });
+                return store;
+            }
+            var ls = isolated(window.localStorage), ss = isolated(window.sessionStorage);
+            Object.defineProperty(window, 'localStorage', { get: function () { return ls; }, configurable: true });
+            Object.defineProperty(window, 'sessionStorage', { get: function () { return ss; }, configurable: true });
+            window.TT2_DEV_ENV = env;
+            document.addEventListener('DOMContentLoaded', function () {
+                document.title = '[' + env + '] ' + document.title;
+                var tag = document.createElement('div');
+                tag.textContent = '🧪 測試環境 ' + env;
+                tag.style.cssText = 'position:fixed; left:6px; top:2px; z-index:99999; font-size:10px; font-weight:800; color:#fff; background:#c62828; border-radius:4px; padding:1px 6px; pointer-events:none; opacity:0.92;';
+                document.body.appendChild(tag);
+            });
+        } catch (e) { /* 隔離失敗就算了，不影響正常使用 */ }
+    })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Tap Titans 2 - Toolkit</title>
     <meta name="apple-mobile-web-app-capable" content="yes">

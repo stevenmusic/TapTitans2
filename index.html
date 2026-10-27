@@ -9032,14 +9032,16 @@
                 const cursedK = Object.values(parts).filter(p => p.armor > 0 && p.cursed).length;
                 const stateKey = acStateKey(layers, cursedK, cursedK > 0 ? curseTypes : []);
                 const st = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), stateKey);   // 永遠只抓前 15 名
-                // 放寬：「不看狀態」的牌組（打法幾乎都是一次打 BY_PART_MULTI_MIN 個以上部位，例如核融炸彈＋炎燒地獄＋戰鼓）
-                // 不一定要完全相同的部位狀態，只要「還有盔甲或肉體的部位數量」一樣、場次類型一樣，這些攻擊都算進它的次數
+                // 放寬：「不看狀態」的牌組＝可以打肉體也可以打盔甲的牌組（每張卡都沒有「只能打盔甲／只能打肉體」的限制），
+                // 例如核融炸彈＋炎燒地獄＋戰鼓、鏡子力＋先祖加護＋破碎本能。這種牌組不一定要完全相同的部位狀態，
+                // 只要「還有盔甲或肉體的部位數量」一樣、場次類型一樣，這些攻擊都算進它的次數（不分盔甲／肉體、不看詛咒）
                 const st2 = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), acCountKey(layers));
-                const isAgnostic = (d) => {
-                    const tot = Object.values(d.patterns).reduce((x, y) => x + y, 0) || 1;
-                    const wide = Object.keys(d.patterns).reduce((x, k) => x + (new Set(k.split(',').map(z => z.split('|')[0])).size >= BY_PART_MULTI_MIN ? d.patterns[k] : 0), 0);
-                    return wide / tot >= 0.7;
+                const layerFree = (n) => {
+                    if (CARD_ONLY_WHEN[n]) return false;   // 帶刺的晨星：依盔甲／肉體數量才能用，要看狀態
+                    const l = (QUIZ_CARDS[n] && QUIZ_CARDS[n].l) || [];
+                    return !l.length || l.includes('任意') || l.includes('兩者') || (l.includes('盔甲') && l.includes('肉體'));
                 };
+                const isAgnostic = (d) => d.cards.every(layerFree);
                 const merged = new Map();
                 st.decks.forEach(d => merged.set([...d.cards].sort().join('|'), { ...d }));
                 st2.decks.forEach(d => {

@@ -8328,6 +8328,10 @@
             const t = (curseTypes && curseTypes[0] && String(curseTypes[0].type || curseTypes[0]).replace(/DamagePerCurse$/, '')) || '';
             return `${c.armor}-${c.body}-${c.skeleton}|${cursed || 0}|${cursed ? t : ''}`;
         }
+        // 放寬用：只看「還有盔甲或肉體的部位有幾個」（不分盔甲／肉體、不看詛咒）
+        function acCountKey(layers) {
+            return 'n=' + Object.values(layers || {}).filter(l => l === 'armor' || l === 'body').length;
+        }
         function buildLocalDeckStats(topN, group, stateKey) {
             const memoKey = `${topN}|${group || 'all'}|${stateKey || ''}`;
             if (localStatsMemo.has(memoKey)) return localStatsMemo.get(memoKey);
@@ -8366,7 +8370,7 @@
                     const three = e.list.filter(a => a[4].length === 3);
                     const mean = three.length ? three.reduce((s, a) => s + adjTotal(a), 0) / three.length : 0;
                     three.forEach(a => {
-                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || acStateKey(cx.layers, cx.cursed, cx.curse) !== stateKey) return; }
+                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || (stateKey.startsWith('n=') ? acCountKey(cx.layers) : acStateKey(cx.layers, cx.cursed, cx.curse)) !== stateKey) return; }
                         a[4].forEach(cn => {
                             if (!cardStats[cn]) cardStats[cn] = { n: 0, rel: 0 };
                             cardStats[cn].n++;
@@ -9027,10 +9031,27 @@
                 RAID_PARTS.forEach(({ key }) => { const p = parts[key]; if (p) layers[key] = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton'); });
                 const cursedK = Object.values(parts).filter(p => p.armor > 0 && p.cursed).length;
                 const stateKey = acStateKey(layers, cursedK, cursedK > 0 ? curseTypes : []);
-                const st = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), stateKey)   // 永遠只抓前 15 名;
-                const total = st.decks.reduce((a, d) => a + d.attacks, 0);
+                const st = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), stateKey);   // 永遠只抓前 15 名
+                // 放寬：「不看狀態」的牌組（打法幾乎都是一次打 BY_PART_MULTI_MIN 個以上部位，例如核融炸彈＋炎燒地獄＋戰鼓）
+                // 不一定要完全相同的部位狀態，只要「還有盔甲或肉體的部位數量」一樣、場次類型一樣，這些攻擊都算進它的次數
+                const st2 = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), acCountKey(layers));
+                const isAgnostic = (d) => {
+                    const tot = Object.values(d.patterns).reduce((x, y) => x + y, 0) || 1;
+                    const wide = Object.keys(d.patterns).reduce((x, k) => x + (new Set(k.split(',').map(z => z.split('|')[0])).size >= BY_PART_MULTI_MIN ? d.patterns[k] : 0), 0);
+                    return wide / tot >= 0.7;
+                };
+                const merged = new Map();
+                st.decks.forEach(d => merged.set([...d.cards].sort().join('|'), { ...d }));
+                st2.decks.forEach(d => {
+                    if (!isAgnostic(d)) return;
+                    const k = [...d.cards].sort().join('|');
+                    const cur = merged.get(k);
+                    if (!cur || d.attacks > cur.attacks) merged.set(k, { ...d, relaxed: true });
+                });
+                const decks = [...merged.values()];
+                const total = decks.reduce((a, d) => a + d.attacks, 0);
                 if (total < BY_PART_CTX_MIN_TOTAL) return null;
-                const cand = st.decks.filter(d => d.attacks >= BY_PART_CTX_MIN_DECK && !d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n) || cardBlocked(n)))   // 卡片本身現在用不到的（例如 0 個肉體部位時的振奮士氣）就算有人這樣配過也不推薦
+                const cand = decks.filter(d => d.attacks >= BY_PART_CTX_MIN_DECK && !d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n) || cardBlocked(n)))   // 卡片本身現在用不到的（例如 0 個肉體部位時的振奮士氣）就算有人這樣配過也不推薦
                     .sort((a, b) => b.attacks - a.attacks);
                 let best = [], bestSum = -1, nodes = 0;
                 const dfs = (i, chosen, used, sum) => {

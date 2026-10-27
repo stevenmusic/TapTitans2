@@ -8833,6 +8833,96 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
+        /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
+           遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
+           而且各種狀態的部位數量一樣（盔甲＋詛咒甲幾個、肉體幾個、骨架幾個、禁打幾個）」時才用，不管是哪幾個部位、血量也不比對；
+           頭部和肚子至少要有一個能打（needTorso）。其他狀態一律用原本的算法。
+           符合時，這 6 組就是遊戲的結果，不再檢查卡片能不能用。每組標出要打的部位與部位狀態：
+             cycle＝輪流打所有能打的部位　armor＝集中打還有盔甲的部位　torso＝集中打頭部與肚子　body＝集中打露出肉體的部位
+             head＝集中打頭部　limbs＝集中打肩與手（四肢）
+           要加新的情境，在下面加一筆（buff＝加成類型代號，counts＝各種狀態的部位數量）即可 ── */
+        const BY_PART_GAME_SCENARIOS = [
+            {   // 苦痛機率 ×1.3：3 盔甲、3 肉體、2 禁打
+                buff: 'afflictionChance',
+                counts: { armor: 3, body: 3, skeleton: 0, banned: 2 },
+                needTorso: true,
+                decks: [
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['FlakShot', 'BurstBoost', 'AstralEcho'], role: 'armor' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+                    { cards: ['MirrorForce', 'ExecutionersAxe', 'TotemFairySkill'], role: 'torso' },
+                    { cards: ['Purify', 'Swarm', 'TriangleSupport'], role: 'cycle' },
+                    { cards: ['Weaken', 'Shadow', 'ImpactAttack'], role: 'body' }
+                ]
+            },
+            {   // 苦痛機率 ×1.3：2 盔甲、4 肉體、2 禁打
+                buff: 'afflictionChance',
+                counts: { armor: 2, body: 4, skeleton: 0, banned: 2 },
+                needTorso: true,
+                decks: [
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['FlakShot', 'BurstBoost', 'CrushingVoid'], role: 'head' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+                    { cards: ['MirrorForce', 'ExecutionersAxe', 'TotemFairySkill'], role: 'head' },
+                    { cards: ['Purify', 'Swarm', 'TriangleSupport'], role: 'cycle' },
+                    { cards: ['Weaken', 'Shadow', 'AstralEcho'], role: 'limbs' }
+                ]
+            },
+            {   // 苦痛機率 ×1.3：4 肉體、2 骨架、2 禁打
+                buff: 'afflictionChance',
+                counts: { armor: 0, body: 4, skeleton: 2, banned: 2 },
+                needTorso: true,
+                decks: [
+                    { cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], role: 'head' },
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['Purify', 'Swarm', 'TriangleSupport'], role: 'cycle' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+                    { cards: ['Weaken', 'Shadow', 'ImpactAttack'], role: 'limbs' },
+                    { cards: ['Haymaker', 'TotemFairySkill', 'AstralEcho'], role: 'head' }
+                ]
+            },
+            {   // 苦痛機率 ×1.3、爆裂詛咒：3 個詛咒甲、4 個盔甲、1 禁打
+                buff: 'afflictionChance',
+                curse: 'Burst', cursed: 3,
+                counts: { armor: 7, body: 0, skeleton: 0, banned: 1 },
+                needTorso: true,
+                decks: [
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['RuinousRust', 'TotemFairySkill', 'AstralEcho'], role: 'cursed1' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'limbs' },
+                    { cards: ['Weaken', 'Shadow', 'TriangleSupport'], role: 'limbs' },
+                    { cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], role: 'head' },
+                    { cards: ['Fuse', 'Swarm', 'SuperheatMetal'], role: 'armor' }
+                ]
+            }
+        ];
+        function byPartGameRows(parts, banned, buffKey, curseTypes) {
+            const scene = byPartPartsToScene(parts, banned);
+            const base = (s) => (s === 'cursed' ? 'armor' : s);
+            const cnt = { armor: 0, body: 0, skeleton: 0, banned: 0 };
+            RAID_PARTS.forEach(({ key }) => { cnt[base(scene[key])]++; });
+            const torsoOk = ['Head', 'ChestUpper'].some(k => ['armor', 'body', 'cursed'].includes(scene[k]));
+            const cursedN = RAID_PARTS.filter(({ key }) => scene[key] === 'cursed').length;
+            const sc = BY_PART_GAME_SCENARIOS.find(x => x.buff === buffKey && (x.cursed === undefined || (cursedN === x.cursed && (curseTypes || []).some(d => String(d.type).startsWith(x.curse)))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk));
+            if (!sc) return [];
+            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
+            const target = (k) => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' });
+            const rows = [];
+            sc.decks.forEach((g, i) => {
+                let tg;
+                if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
+                else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');
+                else if (g.role === 'torso') tg = attackable.filter(k => k === 'Head' || k === 'ChestUpper');
+                else if (g.role === 'head') tg = attackable.filter(k => k === 'Head');
+                else if (g.role === 'cursed1') tg = attackable.filter(k => scene[k] === 'cursed').slice(0, 1);
+                else if (g.role === 'limbs') tg = attackable.filter(k => /Shoulder|Hand/.test(k));
+                else tg = attackable;
+                if (!tg.length) tg = attackable;
+                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, score: 100 - i });
+            });
+            return rows;
+        }
+
         function byPartSynthDecks(data, parts, banned, picked, need, curseTypes, cursedK) {
             const scene = byPartPartsToScene(parts, banned);
             const used = new Set(picked.flatMap(r => r.rawCards));
@@ -9038,10 +9128,12 @@
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
+            // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
+            const gameRows = allRows ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes);
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
-            const forcedRows = allRows ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
-            const usedInit = new Set(forcedRows.flatMap(r => r.rawCards));
-            const K = BY_PART_RECO_COUNT - forcedRows.length;
+            const forcedRows = allRows || gameRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
+            const usedInit = new Set([...gameRows, ...forcedRows].flatMap(r => r.rawCards));
+            const K = BY_PART_RECO_COUNT - gameRows.length - forcedRows.length;
             const BIG = 1e9;
             let best = null, bestObj = -1;
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
@@ -9084,11 +9176,11 @@
                 if (best && best.length >= K) break;
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
-            const picked = [...forcedRows.slice().sort((a, b) => b.score - a.score), ...(best || []).slice().sort((a, b) => b.score - a.score)];
+            const picked = [...gameRows, ...forcedRows.slice().sort((a, b) => b.score - a.score), ...(best || []).slice().sort((a, b) => b.score - a.score)];
             // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
             // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
             if (picked.length < BY_PART_RECO_COUNT) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, BY_PART_RECO_COUNT - picked.length, curseTypes, cursedK));
-            picked.stateTotal = stateTotal;   // 顯示用：分母（這個部位狀態打得出來的牌組全部紀錄刀數）
+            picked.stateTotal = gameRows.length ? 0 : stateTotal;   // 遊戲模擬器的 6 組不顯示總次數與各組次數   // 顯示用：分母（這個部位狀態打得出來的牌組全部紀錄刀數）
             return picked;
         }
 

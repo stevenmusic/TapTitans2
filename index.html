@@ -6,7 +6,8 @@
     /* 測試環境隔離：只有網址帶 ?env=dev 或 ?env=dev2（由 /tt2_dev、/tt2_dev2 轉址過來）時才啟動，正式網址完全不受影響。
        - 測試站的 localStorage／sessionStorage 全部加上前綴（tt2_dev:、tt2_dev2:），跟正式網站（同一個網域）的資料完全分開，
          不會讀到、也不會改到正式環境的設定（帳號 token、中繼伺服器網址…）
-       - 中繼伺服器網址固定用網址上的 relay 參數（測試伺服器），不會寫回正式的設定
+       - 中繼伺服器網址不會被改寫（維持原本的，只拿來轉發遊戲連線，不寫入任何資料）
+       - 測試站禁止對伺服器做任何寫入（只放行 GET 與 /subscribe 轉發），所以不可能動到正式資料庫
        - 畫面左上角顯示「測試環境」標籤 */
     (function () {
         try {
@@ -30,6 +31,15 @@
             var ls = isolated(window.localStorage), ss = isolated(window.sessionStorage);
             Object.defineProperty(window, 'localStorage', { get: function () { return ls; }, configurable: true });
             Object.defineProperty(window, 'sessionStorage', { get: function () { return ss; }, configurable: true });
+            var realFetch = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                var url = typeof input === 'string' ? input : (input && input.url) || '';
+                var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+                if (method !== 'GET' && method !== 'HEAD' && !/\/subscribe(\?|$)/.test(url)) {
+                    return Promise.resolve(new Response(JSON.stringify({ error: '測試站不允許寫入伺服器' }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+                }
+                return realFetch(input, init);
+            };
             window.TT2_DEV_ENV = env;
             document.addEventListener('DOMContentLoaded', function () {
                 document.title = '[' + env + '] ' + document.title;
@@ -6268,7 +6278,100 @@
             renderRaidStatus();
         }
 
+        /* ── 測試資料庫（只在 /tt2_dev、/tt2_dev2 測試站啟動，正式網址完全不執行）──
+           測試站用自己帳號連線收到的每一筆攻擊，存進這個瀏覽器的 IndexedDB「tt2_testdb」。
+           dev 跟 dev2 是同一個網域，共用這一個資料庫；attacks 表用 dedupKey（攻擊時間_玩家，跟正式伺服器同一種算法）當主鍵，
+           同一筆攻擊不管從哪個測試站寫、寫幾次，都只會有一份。writes 表記錄每次寫入（哪個站、有沒有被擋下），用來驗證 ── */
+        let devTestDbPromise = null;
+        function devOpenTestDb() {
+            if (!devTestDbPromise) devTestDbPromise = new Promise((resolve, reject) => {
+                const req = indexedDB.open('tt2_testdb', 1);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    db.createObjectStore('attacks', { keyPath: 'dedupKey' });                        // 主鍵＝unique key
+                    const w = db.createObjectStore('writes', { autoIncrement: true });
+                    w.createIndex('dedupKey', 'dedupKey');
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            return devTestDbPromise;
+        }
+        function devBuildAttackEntry(payload) {
+            const al = payload.attack_log || {};
+            const pl = payload.player || {};
+            const partTotals = {}, cardDamage = {};
+            let tapDamage = 0;
+            (al.cards_damage || []).forEach(cd => {
+                (cd.damage_log || []).forEach(d => {
+                    const { layer, loc } = apiSplitPartId(d.id);
+                    const key = `${layer}_${loc}`;
+                    if (!partTotals[key]) partTotals[key] = { part: loc || d.id, layer: layer || 'armor', damage: 0 };
+                    partTotals[key].damage += d.value;
+                    if (cd.id) cardDamage[cd.id] = (cardDamage[cd.id] || 0) + d.value; else tapDamage += d.value;
+                });
+            });
+            const parts = Object.values(partTotals);
+            if (!parts.length) return null;
+            const player = pl.name || '?';
+            const attackDatetime = al.attack_datetime || null;
+            return {
+                dedupKey: `${attackDatetime || Date.now()}_${player}`,
+                ts: Date.now(), attackDatetime, player, playerCode: pl.player_code || null,
+                boss: raidState ? raidState.bossName : null,
+                cards: (al.cards_level || []).map(cl => ({ name: cl.id, level: cl.value })),
+                cardDamage, tapDamage, parts, totalDamage: parts.reduce((s, p) => s + p.damage, 0)
+            };
+        }
+        async function devRecordAttack(payload) {
+            const entry = devBuildAttackEntry(payload);
+            if (!entry) return;
+            try {
+                const db = await devOpenTestDb();
+                const inserted = await new Promise((resolve) => {
+                    const tx = db.transaction(['attacks', 'writes'], 'readwrite');
+                    const add = tx.objectStore('attacks').add(entry);                 // 主鍵重複就會失敗＝被擋下
+                    add.onsuccess = () => resolve(true);
+                    add.onerror = (ev) => { ev.preventDefault(); resolve(false); };    // ConstraintError：已經有這筆，忽略
+                    tx.objectStore('writes').add({ dedupKey: entry.dedupKey, instance: window.TT2_DEV_ENV, at: Date.now() });
+                });
+                devMarkWrite(inserted);
+            } catch (e) { console.error('測試資料庫寫入失敗', e); }
+        }
+        let devWriteStats = { inserted: 0, blocked: 0 };
+        function devMarkWrite(inserted) { devWriteStats[inserted ? 'inserted' : 'blocked']++; devRefreshPanel(); }
+        async function devCounts() {
+            const db = await devOpenTestDb();
+            const all = (store) => new Promise(res => { const r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = () => res(r.result); });
+            const attacks = await all('attacks'), writes = await all('writes');
+            const inst = {};
+            writes.forEach(w => { (inst[w.dedupKey] = inst[w.dedupKey] || new Set()).add(w.instance); });
+            return { total: attacks.length, writes: writes.length, both: Object.values(inst).filter(s => s.size > 1).length };
+        }
+        async function devRefreshPanel() {
+            let el = document.getElementById('dev-testdb-panel');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'dev-testdb-panel';
+                el.style.cssText = 'position:fixed; left:6px; bottom:6px; z-index:99999; font-size:11px; line-height:1.5; color:#fff; background:rgba(60,20,20,0.88); border-radius:8px; padding:6px 9px; max-width:80vw;';
+                document.body.appendChild(el);
+            }
+            try {
+                const c = await devCounts();
+                el.innerHTML = `🧪 測試資料庫 ${c.total} 筆　此頁寫入 ${devWriteStats.inserted}、擋下重複 ${devWriteStats.blocked}　兩站都寫過 ${c.both} 筆（寫入紀錄 ${c.writes} 次）　<button onclick="devClearTestDb()" style="font-size:10px; padding:1px 6px;">清空</button>`;
+            } catch (e) { el.textContent = '🧪 測試資料庫無法使用'; }
+        }
+        async function devClearTestDb() {
+            if (!confirm('清空測試資料庫（只影響測試站的資料，不影響正式環境）？')) return;
+            const db = await devOpenTestDb();
+            const tx = db.transaction(['attacks', 'writes'], 'readwrite');
+            tx.objectStore('attacks').clear(); tx.objectStore('writes').clear();
+            tx.oncomplete = () => { devWriteStats = { inserted: 0, blocked: 0 }; devRefreshPanel(); };
+        }
+        if (window.TT2_DEV_ENV) document.addEventListener('DOMContentLoaded', () => { devRefreshPanel(); });
+
         function handleApiAttack(payload) {
+            if (window.TT2_DEV_ENV && payload) devRecordAttack(payload);   // 測試站：把這筆攻擊存進測試資料庫
             if (raidSimActive) return;   // 模擬模式中不讓真實連線資料蓋掉自己設定的狀態
             const rs = payload && payload.raid_state;
             if (!rs) return;

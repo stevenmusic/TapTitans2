@@ -8753,7 +8753,8 @@
              加成 最多 +25％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
         const BY_PART_RECO_W = { pop: 0.40, cover: 0.10, fit: 0.05, card: 0.30, synergyCap: 0.25 };
         // 網頁端統計有每一刀的傷害時，加上「傷害」一項（相對傷害指數，每個人以自己該場平均傷害為 1），比重取自頻率與卡片頻率
-        const BY_PART_RECO_W_DMG = { pop: 0.25, dmg: 0.30, cover: 0.10, fit: 0.05, card: 0.20, synergyCap: 0.25 };
+        const BY_PART_RECO_W_DMG = { pop: 0.10, dmg: 0.50, cover: 0.10, fit: 0.05, card: 0.10, synergyCap: 0.25 };
+        const BY_PART_RECO_DMG_SHRINK = 30;   // 傷害指數向 1 收斂：(指數−1)×刀數÷(刀數＋30)，刀數少的牌組不會因為運氣好就排很前面
         const BY_PART_RECO_BOOST = {
             CrushingVoid:   { state: 'body',     min: 5, w: 0.30 },   // 瘋狂無效：肉體部位 5 個就能用，6 個達到最大傷害
             PlagueAttack:   { state: 'body',     min: 6, w: 0.25 },   // 瘟疫
@@ -8930,6 +8931,7 @@
                 r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
             });
             // 傷害：只有網頁端統計才有。用 (指數 − 0.6) ÷ (最高指數 − 0.6) 拉開差距，低於 0.6 算 0
+            rows.forEach(r => { if (r.dmg !== null) r.dmg = 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK); });
             const hasDmg = rows.length > 0 && rows.every(r => r.dmg !== null);
             const maxDmg = hasDmg ? Math.max(...rows.map(r => r.dmg)) : 0;
             const W = hasDmg ? BY_PART_RECO_W_DMG : BY_PART_RECO_W;
@@ -8966,7 +8968,7 @@
             // 門檻從嚴到鬆一階一階放寬（5％→4％→3％→2％→1.5％→1％→0.5％→10 次→5 次→1 次），一找到 6 組就停，
             // 所以結果會盡量用「相同狀態下次數最多」的牌組，不會一下子掉到很低的門檻
             const thresholds = [...new Set([
-                ...[BY_PART_RECO_FORCE_RATIO, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005].map(r => Math.max(BY_PART_RECO_BASE_MIN, stateTotal * r)),
+                ...(rows.every(r => r.dmg !== null && r.dmg !== undefined) ? [0.02, 0.015, 0.01, 0.005] : [BY_PART_RECO_FORCE_RATIO, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005]).map(r => Math.max(BY_PART_RECO_BASE_MIN, stateTotal * r)),
                 BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1
             ])].sort((x, y) => y - x);
             for (const minUse of thresholds) {

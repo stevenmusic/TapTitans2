@@ -8135,7 +8135,141 @@
         const byPartCache = new Map();      // 前 N 名 -> 伺服器統計
         let byPartRenderToken = 0;
 
+        /* ── 攻擊紀錄本機快取＋網頁端統計 ──
+           統計（每組牌打到哪些部位、傷害）直接在網頁端用「每一筆攻擊紀錄」算，不再靠伺服器的 /deck-part-stats：
+           • 每一場突襲的攻擊紀錄只跟伺服器要一次（/full-attack-log?session=…，跟攻擊紀錄面板同一個端點，伺服器沒有任何修改），
+             壓縮成精簡格式存在這台裝置的 IndexedDB；已經打完的場次不會再改，之後只重抓最新一場（超過 30 分鐘才更新）
+           • 傷害用「相對傷害指數」：每筆攻擊的總傷害 ÷ 該玩家在那一場的平均傷害，不同等級的人才能比較
+           • 還沒載入完時，先用伺服器的 /deck-part-stats 頂著（沒有傷害資料），載入完自動換成網頁端統計 ── */
+        const ATTACK_CACHE_DB = 'tt2_attack_cache';
+        const ATTACK_CACHE_LATEST_MS = 30 * 60 * 1000;
+        const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
+        let attackCacheRecords = null;      // [{ startedAt, buffType, attacks:[...] }]，載入後常駐記憶體
+        let attackCacheVersion = 0;
+        const localStatsMemo = new Map();
+
+        function acOpen() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(ATTACK_CACHE_DB, 1);
+                req.onupgradeneeded = () => { req.result.createObjectStore('sessions', { keyPath: 'startedAt' }); };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+        const acReq = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+        // 攻擊紀錄精簡：只留統計需要的欄位 [時間, 玩家, 總傷害, 點擊傷害, [卡名], [[部位,層別,傷害]]]
+        function acCompact(a) {
+            return [a.ts, a.playerCode || a.player, Number(a.totalDamage) || 0, Number(a.tapDamage) || 0,
+                (a.cards || []).map(x => x.name), (a.parts || []).map(p => [p.part, p.layer, Number(p.damage) || 0]),
+                Object.keys(a.cardDamage || {}).map(k => [k, Number(a.cardDamage[k]) || 0])];
+        }
+        async function attackCacheEnsure() {
+            if (attackCacheState.loading) return;
+            attackCacheState.loading = true; attackCacheState.error = false;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const sresp = await fetch(`${relayUrl}/raid-sessions-summary`);
+                if (!sresp.ok) throw new Error('sessions ' + sresp.status);
+                const sessions = (await sresp.json()).sessions || [];
+                const db = await acOpen();
+                const stored = new Map((await acReq(db.transaction('sessions').objectStore('sessions').getAll())).map(r => [r.startedAt, r]));
+                attackCacheState.total = sessions.length; attackCacheState.done = 0;
+                const out = [];
+                for (let i = 0; i < sessions.length; i++) {
+                    const s = sessions[i];
+                    let rec = stored.get(s.startedAt);
+                    const isLatest = i === 0;
+                    const stale = !rec || (isLatest && Date.now() - (rec.fetchedAt || 0) > ATTACK_CACHE_LATEST_MS)
+                        || (!isLatest && !rec.complete) || rec.count !== s.attackCount && !isLatest && rec.complete === false;
+                    if (stale) {
+                        const resp = await fetch(`${relayUrl}/full-attack-log?session=${encodeURIComponent(s.startedAt)}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            const attacks = (Array.isArray(data.attacks) ? data.attacks : []).map(acCompact);
+                            rec = { startedAt: s.startedAt, buffType: s.buffType || null, levelTier: s.levelTier || null, attacks, count: s.attackCount, fetchedAt: Date.now(), complete: !isLatest };
+                            await acReq(db.transaction('sessions', 'readwrite').objectStore('sessions').put(rec));
+                        }
+                    } else if (rec.buffType !== (s.buffType || null)) {
+                        rec.buffType = s.buffType || null;     // 加成類型是後來才偵測到的，更新標籤即可
+                        await acReq(db.transaction('sessions', 'readwrite').objectStore('sessions').put(rec));
+                    }
+                    if (rec) out.push(rec);
+                    attackCacheState.done = i + 1;
+                    if (stale && i % 3 === 2) renderByPartLoadingHint();
+                }
+                attackCacheRecords = out;
+                attackCacheVersion++; localStatsMemo.clear(); byPartCache.clear();
+                attackCacheState.ready = out.length > 0;
+            } catch (e) {
+                console.error('攻擊紀錄快取失敗', e);
+                attackCacheState.error = true;
+            } finally {
+                attackCacheState.loading = false;
+                byPartRecoSig = '';
+                if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+                if (typeof byPartRecoRefresh === 'function') byPartRecoRefresh();
+            }
+        }
+        function renderByPartLoadingHint() {
+            const el = document.getElementById('by-part-sim-reco');
+            if (el && attackCacheState.loading) el.textContent = `正在載入攻擊紀錄（${attackCacheState.done}／${attackCacheState.total}），第一次要一點時間…`;
+        }
+        function acBuffGroup(b) {
+            if (b === 'burstDamage' || b === 'burstChance') return 'burst';
+            if (b === 'afflictionDamage' || b === 'afflictionChance') return 'torment';
+            return 'other';
+        }
+        // 用每一筆攻擊紀錄算統計：跟伺服器 /deck-part-stats 同一套規則（每場只看總傷前 N 名、出刀數要達最多的 80％、
+        // 一刀打到的部位＋層別要大於點擊傷害才算卡片打到的），再加上每種打法的「相對傷害指數」總和
+        function buildLocalDeckStats(topN, group) {
+            const memoKey = `${topN}|${group || 'all'}`;
+            if (localStatsMemo.has(memoKey)) return localStatsMemo.get(memoKey);
+            const decks = new Map();
+            const cardStats = {};   // 單張卡片：出現的刀數、這張卡自己造成的傷害（相對傷害指數）
+            let sessionCount = 0, attackCount = 0;
+            attackCacheRecords.forEach(rec => {
+                if (group && group !== 'all' && acBuffGroup(rec.buffType) !== group) return;
+                const byPlayer = new Map();
+                rec.attacks.forEach(a => {
+                    if (!byPlayer.has(a[1])) byPlayer.set(a[1], { list: [], total: 0 });
+                    const e = byPlayer.get(a[1]); e.list.push(a); e.total += a[2];
+                });
+                if (!byPlayer.size) return;
+                const maxCount = Math.max(...[...byPlayer.values()].map(e => e.list.length));
+                const minCount = Math.ceil(maxCount * 0.8);
+                const top = [...byPlayer.values()].filter(e => e.list.length >= minCount).sort((x, y) => y.total - x.total).slice(0, topN);
+                if (!top.length) return;
+                sessionCount++;
+                top.forEach(e => {
+                    const three = e.list.filter(a => a[4].length === 3);
+                    const mean = three.length ? three.reduce((s, a) => s + a[2], 0) / three.length : 0;
+                    three.forEach(a => {
+                        a[4].forEach(cn => {
+                            if (!cardStats[cn]) cardStats[cn] = { n: 0, rel: 0 };
+                            cardStats[cn].n++;
+                            const cd = (a[6] || []).find(x => x[0] === cn);
+                            if (cd && mean > 0) cardStats[cn].rel += cd[1] / mean;     // 這張卡這一刀的傷害 ÷ 該玩家這場的平均單刀傷害
+                        });
+                        const key = [...a[4]].sort().join('|');
+                        if (!decks.has(key)) decks.set(key, { cards: [...a[4]].sort(), attacks: 0, patterns: {}, patternRel: {} });
+                        const d = decks.get(key);
+                        d.attacks++; attackCount++;
+                        const floor = a[3] > 0 ? a[3] : a[2] * 0.12;
+                        const hit = [...new Set(a[5].filter(p => p[2] > floor).map(p => `${p[0]}|${p[1]}`))].sort().join(',');
+                        d.patterns[hit] = (d.patterns[hit] || 0) + 1;
+                        d.patternRel[hit] = (d.patternRel[hit] || 0) + (mean > 0 ? a[2] / mean : 1);
+                    });
+                });
+            });
+            const result = { topN, group: group || 'all', sessionCount, attackCount, decks: [...decks.values()], cards: cardStats, source: 'local' };
+            localStatsMemo.set(memoKey, result);
+            return result;
+        }
+
         async function loadByPartStats(topN, group) {
+            // 網頁端統計：攻擊紀錄載入好了就直接算；還沒載入就在背景載入，這段時間先用伺服器的統計頂著
+            if (attackCacheState.ready && attackCacheRecords) return buildLocalDeckStats(topN, group);
+            if (!attackCacheState.loading && !attackCacheState.error && typeof indexedDB !== 'undefined') attackCacheEnsure();
             const cacheKey = group ? `${topN}|${group}` : topN;
             if (byPartCache.has(cacheKey)) return byPartCache.get(cacheKey);
             try {
@@ -8190,7 +8324,8 @@
             if (!d._parsed) {
                 d._parsed = Object.keys(d.patterns || {}).map(pat => ({
                     keys: pat.split(',').filter(Boolean).map(k => k.split('|')),
-                    n: d.patterns[pat]
+                    n: d.patterns[pat],
+                    rel: d.patternRel ? (d.patternRel[pat] || 0) : null     // 這種打法所有刀的相對傷害指數總和（網頁端統計才有）
                 })).filter(x => x.keys.length > 0);
             }
             return d._parsed;
@@ -8614,6 +8749,8 @@
              專精   5％：牌組現在這個階段的打法裡，有幾成現在打得出來（只影響分數，真實打得出來的打法有就可以列入）
              加成 最多 +25％：整隻王的部位狀態湊齊時特別好用的卡（下表），每張加各自的分數，合計最多 0.35 */
         const BY_PART_RECO_W = { pop: 0.40, cover: 0.10, fit: 0.05, card: 0.30, synergyCap: 0.25 };
+        // 網頁端統計有每一刀的傷害時，加上「傷害」一項（相對傷害指數，每個人以自己該場平均傷害為 1），比重取自頻率與卡片頻率
+        const BY_PART_RECO_W_DMG = { pop: 0.25, dmg: 0.30, cover: 0.10, fit: 0.05, card: 0.20, synergyCap: 0.25 };
         const BY_PART_RECO_BOOST = {
             CrushingVoid:   { state: 'body',     min: 5, w: 0.30 },   // 瘋狂無效：肉體部位 5 個就能用，6 個達到最大傷害
             PlagueAttack:   { state: 'body',     min: 6, w: 0.25 },   // 瘟疫
@@ -8682,8 +8819,8 @@
                     const set = CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null;
                     if (set) allowed = allowed ? allowed.filter(p => set.includes(p)) : set.slice();
                 });
-                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [], bodyHit = 0;
-                byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
+                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [], bodyHit = 0, relSum = 0, relHas = true;
+                byPartParsePatterns(d).forEach(({ keys: ks, n, rel }) => {
                     // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有
                     const isStage = ks.every(([, layer]) => layersNow.has(layer));
                     if (isStage) relevant += n;
@@ -8706,6 +8843,7 @@
                     if (isStage && n === mainN) mainOk = true;
                     if (n > bestN) { bestN = n; bestTargets = picked.map(p => ({ part: p, layer: info[p].layer, cursed: info[p].cursed })); }   // 這組牌組現在最常打、而且打得出來的打法要打的部位
                     usable += n;
+                    if (rel === null || rel === undefined) relHas = false; else relSum += rel;
                     bodyHit += n * (picked.filter(p => info[p].layer === 'body').length / Math.max(1, picked.length));
                     cursedHit += n * (picked.filter(p => info[p].cursed).length / Math.max(1, picked.length));
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
@@ -8719,7 +8857,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
@@ -8755,9 +8893,14 @@
             rows.forEach(r => {
                 r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
             });
+            // 傷害：只有網頁端統計才有。用 (指數 − 0.6) ÷ (最高指數 − 0.6) 拉開差距，低於 0.6 算 0
+            const hasDmg = rows.length > 0 && rows.every(r => r.dmg !== null);
+            const maxDmg = hasDmg ? Math.max(...rows.map(r => r.dmg)) : 0;
+            const W = hasDmg ? BY_PART_RECO_W_DMG : BY_PART_RECO_W;
             rows.forEach(r => {
                 const pop = r.usable / maxUsable;   // 排序以出現頻率為主：這個搭配的打法在所有場次、所有紀錄裡出現的次數（相對最常出現的那組）
-                r.score = r.tier * 10 + Math.max(0, (BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + BY_PART_RECO_W.card * r.cardScore + r.synergy) * Math.max(0.2, r.curseMul));
+                const dmgScore = hasDmg ? Math.max(0, Math.min(1, (r.dmg - 0.6) / Math.max(0.01, maxDmg - 0.6))) : 0;
+                r.score = r.tier * 10 + Math.max(0, (W.pop * pop + (hasDmg ? W.dmg * dmgScore : 0) + W.cover * (r.cover / maxCover) + W.fit * r.fit + W.card * r.cardScore + r.synergy) * Math.max(0.2, r.curseMul));
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
@@ -8821,6 +8964,60 @@
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
             return (best || []).slice().sort((a, b) => b.score - a.score);
+        }
+
+        // ── 推薦卡片：依詛咒類型與現在的部位狀態，分爆裂／苦痛／支援推薦「單張卡」──
+        // 分數＝使用頻率（這張卡在前 15 名玩家的攻擊裡出現幾刀，同類互比）＋這張卡自己造成的傷害（相對傷害指數），
+        // 支援卡不直接造成傷害，只看頻率；爆裂詛咒時爆裂卡、苦痛詛咒時苦痛卡的分數乘 (1 − 6％ × 詛咒甲數)；
+        // 現在場上用不到的卡（只能打盔甲但沒有盔甲部位、需要的部位數量不夠…）不推薦；次數太少的卡不推薦
+        const BY_PART_CARD_RECO_COUNT = 5;
+        function byPartPartsToScene(parts, banned) {
+            const scene = {};
+            RAID_PARTS.forEach(({ key }) => {
+                const p = parts[key];
+                scene[key] = banned.includes(key) ? 'banned' : (p && p.armor > 0 ? (p.cursed ? 'cursed' : 'armor') : (p && p.body > 0 ? 'body' : 'skeleton'));
+            });
+            return scene;
+        }
+        function byPartCardReco(data, parts, banned, curseArg) {
+            if (!data || !data.cards) return null;
+            const scene = byPartPartsToScene(parts, banned);
+            const cursedK = Object.values(parts).filter(p => p.armor > 0 && p.cursed).length;
+            const curse = cursedK > 0 ? (curseArg || (parts === (raidState && raidState.parts) ? raidCurseInfo : [])) : [];
+            const catOf = (n) => (BY_PART_NON_DAMAGE.has(n) || !CARD_CATEGORY[n]) ? 'support' : CARD_CATEGORY[n];
+            const total = Object.values(data.cards).reduce((s, x) => s + x.n, 0) / 3 || 1;
+            const minN = Math.max(30, total * 0.01);
+            const byCat = { burst: [], torment: [], support: [] };
+            Object.keys(data.cards).forEach(n => {
+                const s = data.cards[n];
+                if (s.n < minN) return;
+                if (QUIZ_CARDS[n] && (quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) && !quizCardUsable(n, scene).ok) return;
+                byCat[catOf(n)].push({ name: n, n: s.n, dmg: s.rel / s.n });
+            });
+            // 傷害卡（爆裂＋苦痛）放在一起排，才看得出詛咒類型的差別：爆裂詛咒時爆裂卡的分數乘 (1 − 6％ × 詛咒甲數)，苦痛詛咒時苦痛卡同理；
+            // 分數＝一半頻率（跟全部傷害卡的最高頻率比）＋一半傷害（跟全部傷害卡的最高傷害比）。支援卡只看頻率
+            const dmgList = [...byCat.burst, ...byCat.torment];
+            const maxN = Math.max(1, ...dmgList.map(x => x.n)), maxD = Math.max(1e-9, ...dmgList.map(x => x.dmg));
+            dmgList.forEach(x => {
+                const cat = catOf(x.name);
+                const mul = 1 - curse.reduce((s, d) => s + Math.abs(d.amount) * cursedK * ((String(d.type).startsWith('Burst') && cat === 'burst') || (String(d.type).startsWith('Afflicted') && cat === 'torment') ? 1 : 0), 0);
+                x.score = (0.5 * Math.log(1 + x.n) / Math.log(1 + maxN) + 0.5 * (x.dmg / maxD)) * Math.max(0.2, mul);
+            });
+            const maxS = Math.max(1, ...byCat.support.map(x => x.n));
+            byCat.support.forEach(x => { x.score = Math.log(1 + x.n) / Math.log(1 + maxS); });
+            return {
+                damage: dmgList.sort((a, b) => b.score - a.score).slice(0, BY_PART_CARD_RECO_COUNT + 3).map(x => ({ name: x.name, cat: catOf(x.name) })),
+                support: byCat.support.sort((a, b) => b.score - a.score).slice(0, BY_PART_CARD_RECO_COUNT).map(x => x.name)
+            };
+        }
+        function byPartCardRecoHtml(lists) {
+            if (!lists || (!lists.damage.length && !lists.support.length)) return '';
+            const ring = { burst: '192,57,43', torment: '30,100,200' };
+            const row = (label, cards) => cards.length ? `<div style="display:flex; align-items:center; gap:6px; margin-bottom:5px;"><span style="width:30px; font-size:11.5px; font-weight:800; color:#6b5a48;">${label}</span><div style="display:flex; gap:4px; flex-wrap:wrap;">${cards.join('')}</div></div>` : '';
+            return `
+                <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin:12px 0 4px;">推薦卡片 <span style="font-size:11px; font-weight:600; color:#8a7a6a;">紅框＝爆裂　藍框＝苦痛</span></div>
+                ${row('傷害', lists.damage.map(x => `<div style="border-radius:8px; box-shadow:0 0 0 2px rgb(${ring[x.cat]});">${byPartCardHtml(x.name)}</div>`))}
+                ${row('支援', lists.support.map(n => byPartCardHtml(n)))}`;
         }
 
         let byPartRecoLast = [];
@@ -8907,7 +9104,7 @@
             if (rows.length === 0) { box.style.display = 'none'; return; }
             box.style.display = 'block';
             byPartRecoTitle = true;
-            box.innerHTML = byPartRecoGridHtml(rows);
+            box.innerHTML = byPartRecoGridHtml(rows) + byPartCardRecoHtml(byPartCardReco(data, raidState.parts, raidBannedParts));
         }
 
         function byPartOnRaidStatusChanged() {
@@ -8966,7 +9163,7 @@
             const rows = byPartRecoCompute(data, parts, banned, false, simCurseInfo());
             if (rows.length === 0) { out.textContent = '這個狀態沒有可以推薦的牌組（請至少留一個能打的部位）。'; return; }
             byPartRecoTitle = false;
-            out.innerHTML = byPartRecoGridHtml(rows);
+            out.innerHTML = byPartRecoGridHtml(rows) + byPartCardRecoHtml(byPartCardReco(data, parts, banned, simCurseInfo()));
         }
 
         /* ══════════════════════════════════════════════════════════

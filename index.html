@@ -9195,8 +9195,9 @@
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
-            const gameRows = allRows ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
-            const ctxRows = allRows || gameRows.length ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
+            // 有「相同狀態」的真實攻擊資料就用真實資料，不用模擬器的 6 組；沒有真實資料才看模擬器情境
+            const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
+            const gameRows = allRows || ctxRows.length ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
             const seedRows = [...gameRows, ...ctxRows];
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
             const forcedRows = allRows || seedRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);

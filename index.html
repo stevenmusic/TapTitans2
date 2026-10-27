@@ -3348,6 +3348,7 @@
                     <div class="raid-parts-legend">
                         <span class="raid-parts-legend-swatch cursed"></span><span data-i18n="raidLayerCursed">詛咒盔甲</span>　<span class="raid-parts-legend-swatch armor"></span><span data-i18n="raidLayerArmor">盔甲</span>　<span class="raid-parts-legend-swatch body"></span><span data-i18n="raidLayerBody">肉體</span>
                     </div>
+                    <div id="raid-curse-tag" style="display:none; text-align:center; margin:-4px 0 6px;"></div>
                     <div class="raid-parts-grid" id="raid-parts-grid"></div>
 
                     <div id="raid-sim-panel" style="display:none;"></div>
@@ -6089,6 +6090,48 @@
         // 從官方 titan_target 資料抓出「打叉／禁打」的部位（state === "1"）。
         // 這是公會幹部在遊戲裡實際標記的，跟畫面上顯示的紅色 X 完全一致，
         // 不是用血量去猜測的。titan_target 只會在 sub_start/start/sub_cycle/cycle_reset 出現。
+        /* ── 詛咒類型 ──
+           官方資料每隻王的 cursed_debuffs 會寫「每有一個詛咒部位，哪種傷害 -6%」，例如
+           BurstDamagePerCurse（爆裂傷害）、AfflictedDamagePerCurse（苦痛傷害）。這份資料只在即時連線的
+           sub_start／sub_cycle 事件裡（raid.titans），所以跟禁打部位一樣，記在本機，
+           打開網頁時同一隻王就先直接顯示，之後有新事件再校正。完全不需要伺服器 ── */
+        const RAID_CURSE_CACHE_KEY = 'tt2_raid_curse';
+        let raidCurseInfo = [];   // [{ type, amount }]
+        function raidCurseTypeLabel(type) {
+            const base = String(type || '').replace(/PerCurse$/, '').replace(/Damage$/, '');
+            const map = { Burst: '爆裂傷害', Afflicted: '苦痛傷害', Affliction: '苦痛傷害', Support: '支援傷害', Raid: '突襲傷害', Tap: '點擊傷害' };
+            return map[base] || String(type || '');
+        }
+        function updateCurseInfo() {
+            const titan = apiCurrentEnemyId ? apiFindTitanByEnemyId(apiCurrentEnemyId) : null;
+            if (titan && Array.isArray(titan.cursed_debuffs)) {
+                raidCurseInfo = titan.cursed_debuffs.map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 }));
+                try { localStorage.setItem(RAID_CURSE_CACHE_KEY, JSON.stringify({ enemyId: apiCurrentEnemyId, info: raidCurseInfo })); } catch (e) {}
+                return;
+            }
+            if (raidCurseInfo.length === 0 && apiCurrentEnemyId) {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(RAID_CURSE_CACHE_KEY) || 'null');
+                    if (saved && saved.enemyId === apiCurrentEnemyId && Array.isArray(saved.info)) raidCurseInfo = saved.info;
+                } catch (e) {}
+            }
+        }
+        function renderRaidCurseTag() {
+            const el = document.getElementById('raid-curse-tag');
+            if (!el) return;
+            if (!raidState || raidSimActive) { el.style.display = 'none'; return; }
+            updateCurseInfo();
+            if (raidCurseInfo.length === 0) { el.style.display = 'none'; return; }
+            const cursedNow = Object.values(raidState.parts || {}).filter(p => p.armor > 0 && p.cursed).length;
+            el.style.display = 'block';
+            el.innerHTML = raidCurseInfo.map(d => {
+                const pct = Math.round(Math.abs(d.amount) * 100);
+                const sign = d.amount < 0 ? '−' : '+';
+                const total = cursedNow > 0 ? `　目前 ${cursedNow} 個詛咒甲 → ${sign}${pct * cursedNow}%` : '';
+                return `<span style="display:inline-block; font-size:11.5px; font-weight:700; color:#fff; background:#5b2a86; border-radius:6px; padding:3px 9px;">詛咒：每個詛咒甲 ${escapeHtml(raidCurseTypeLabel(d.type))} ${sign}${pct}%${total}</span>`;
+            }).join(' ');
+        }
+
         function updateBannedPartsFromPayload(payload) {
             if (!payload || !Array.isArray(payload.titan_target) || !apiCurrentEnemyId) return;
             const entry = payload.titan_target.find(tt => tt.enemy_id === apiCurrentEnemyId);
@@ -6149,6 +6192,7 @@
             raidLastSkillReminderNotifiedAt = 0;
             raidLastBossLowNotifiedAt = 0;
             raidBannedParts = []; // 換了新王，禁打標記歸零，等下一筆 titan_target 資料進來再重新套用
+            raidCurseInfo = []; // 詛咒類型也是每隻王各自的，換王後重新取得
         }
 
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
@@ -6165,6 +6209,7 @@
             }
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
+            updateCurseInfo();
 
             // sub_cycle 會定期重複發送同一份「輪次開始時」的靜態快照，不是即時資料。
             // 如果已經有 attack 事件確立了目前正在打的王，這裡就不能再拿 sub_cycle 蓋回去，
@@ -11010,6 +11055,7 @@
 
         function renderRaidStatus() {
             if (!raidState) return;
+            renderRaidCurseTag();
 
             document.getElementById('raid-empty-state').style.display = 'none';
             document.getElementById('raid-live-wrap').style.display = 'block';

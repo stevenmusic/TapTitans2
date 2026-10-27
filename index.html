@@ -8395,6 +8395,8 @@
             return result;
         }
 
+        // 目前場次的加成類型 → 統計用的場次類型（爆裂／苦痛／其他）；加成類型不明就不分類型（undefined）
+        function byPartStatsGroup(buffKey) { return buffKey && SESSION_BUFFS[buffKey] ? acBuffGroup(buffKey) : undefined; }
         async function loadByPartStats(topN, group) {
             // 網頁端統計：攻擊紀錄載入好了就直接算；還沒載入就在背景載入，這段時間先用伺服器的統計頂著
             if (attackCacheState.ready && attackCacheRecords) return buildLocalDeckStats(topN, group);
@@ -9487,7 +9489,7 @@
             if (sig === byPartRecoSig) return;
             byPartRecoSig = sig;
             const token = ++byPartRecoToken;
-            const data = await loadByPartStats(byPartTop);
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));   // 場次類型相同的場次才算（偵測不到的場次不算）
             if (token !== byPartRecoToken) return;
             if (!data) { box.style.display = 'none'; byPartRecoSig = ''; return; }
             const rows = byPartRecoCompute(data);
@@ -9532,7 +9534,7 @@
                 <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;
 
-            const data = await loadByPartStats(byPartTop);
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(simBuffKey()));
             if (token !== byPartRenderToken) return; // 載入期間畫面又更新了，這次的結果作廢
             const out = document.getElementById('by-part-sim-reco');
             if (!out) return;

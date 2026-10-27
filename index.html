@@ -6152,6 +6152,7 @@
             return map[base] || String(type || '');
         }
         function updateCurseInfo() {
+            if (raidSimActive) return;   // 模擬中的詛咒類型由模擬板決定
             const titan = apiCurrentEnemyId ? apiFindTitanByEnemyId(apiCurrentEnemyId) : null;
             if (titan && Array.isArray(titan.cursed_debuffs)) {
                 raidCurseInfo = titan.cursed_debuffs.map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 }));
@@ -6168,7 +6169,7 @@
         function renderRaidCurseTag() {
             const el = document.getElementById('raid-curse-tag');
             if (!el) return;
-            if (!raidState || raidSimActive) { el.style.display = 'none'; return; }
+            if (!raidState) { el.style.display = 'none'; return; }
             updateCurseInfo();
             if (raidCurseInfo.length === 0) { el.style.display = 'none'; return; }
             const cursedNow = Object.values(raidState.parts || {}).filter(p => p.armor > 0 && p.cursed).length;
@@ -8668,7 +8669,7 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
-        function byPartRecoCompute(data, partsArg, bannedArg, allRows) {
+        function byPartRecoCompute(data, partsArg, bannedArg, allRows, curseArg) {
             const parts = partsArg || (raidState && raidState.parts);
             const bannedList = bannedArg || raidBannedParts;
             if (!parts) return [];
@@ -8765,9 +8766,9 @@
             // 詛咒減傷：官方資料每隻王有一種詛咒類型（爆裂／苦痛／肉體傷害，每個詛咒甲 −6％）。
             // 現在場上有 k 個詛咒甲時，牌組的期望傷害乘上 (1 − 6％ × k × 該牌組這種傷害的占比)：
             // 爆裂／苦痛占比用牌組裡的傷害卡類別估（爆裂卡數 ÷ 傷害卡數），肉體傷害占比用統計裡打肉體層的比例估。
-            // 只有連線中（知道這隻王的詛咒類型）才會套用；依部位分頁自己設定狀態時不知道詛咒類型，不套用
-            const cursedK = !partsArg ? Object.values(parts).filter(p => p.armor > 0 && p.cursed).length : 0;
-            const curseTypes = !partsArg && cursedK > 0 ? raidCurseInfo : [];
+            // 連線中用官方資料的詛咒類型；模擬畫面、依部位分頁用模擬板上設定的詛咒類型
+            const cursedK = Object.values(parts).filter(p => p.armor > 0 && p.cursed).length;
+            const curseTypes = cursedK > 0 ? (curseArg || (!partsArg ? raidCurseInfo : [])) : [];
             const damageShare = (r, type) => {
                 if (type === 'Body') return r.bodyShare;
                 const dmgCards = r.rawCards.filter(n => !BY_PART_NON_DAMAGE.has(n) && CARD_CATEGORY[n]);
@@ -8807,10 +8808,10 @@
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
             // 先用「相同狀態下全部攻擊次數的 5％（不少於 10 次）」，找不到 6 組互不共用卡的組合，才依序降到 3％、1％、10 次、5 次、1 次，
             // 一找到 6 組就停（所以優先用次數多的牌組）；全部放寬還是湊不滿，就只列出找得到的最多組數
+            // 門檻從嚴到鬆一階一階放寬（5％→4％→3％→2％→1.5％→1％→0.5％→10 次→5 次→1 次），一找到 6 組就停，
+            // 所以結果會盡量用「相同狀態下次數最多」的牌組，不會一下子掉到很低的門檻
             const thresholds = [...new Set([
-                Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_FORCE_RATIO),
-                Math.max(BY_PART_RECO_BASE_MIN, stateTotal * 0.03),
-                Math.max(BY_PART_RECO_BASE_MIN, stateTotal * 0.01),
+                ...[BY_PART_RECO_FORCE_RATIO, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005].map(r => Math.max(BY_PART_RECO_BASE_MIN, stateTotal * r)),
                 BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1
             ])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
@@ -8945,9 +8946,6 @@
 
         /* ── 依部位分頁：不抓王名跟即時部位狀態，自己設定每個部位現在是什麼狀態（盔甲／詛咒甲／肉體／骨架／禁打），
               再用跟首頁「推薦牌組」同一套算法，依這些部位的狀態與數量列出 6 組合適的牌組 ── */
-        const BY_PART_SIM_CYCLE = ['cursed', 'armor', 'body', 'skeleton', 'banned'];   // 每個部位裡的狀態按鈕
-        const BY_PART_SIM_LABEL = { armor: '盔甲', cursed: '詛咒甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
-        const BY_PART_SIM_KEY = 'tt2_by_part_sim';
         // 加成類型：不同的突襲加成適合的配卡不一樣，各自統計（伺服器依場次的加成類型分成三群）
         const BY_PART_GROUPS = [['burst', '爆裂加成', '192,57,43'], ['torment', '苦痛加成', '30,100,200'], ['other', '其他加成', '230,126,34']];   // 爆裂紅、苦痛藍、其他橘
         const BY_PART_GROUP_KEY = 'tt2_by_part_group';
@@ -8958,74 +8956,27 @@
             try { localStorage.setItem(BY_PART_GROUP_KEY, g); } catch (e) {}
             renderByPart();
         }
-        const byPartSim = {};
-        RAID_PARTS.forEach(p => { byPartSim[p.key] = 'armor'; });
-        try {
-            const saved = JSON.parse(localStorage.getItem(BY_PART_SIM_KEY) || 'null');
-            if (saved) RAID_PARTS.forEach(p => { if (BY_PART_SIM_CYCLE.includes(saved[p.key])) byPartSim[p.key] = saved[p.key]; });
-        } catch (e) {}
-
-        let byPartSimBrush = 'armor';   // 目前選的狀態（點部位時套用）
-        function setByPartSimBrush(st) { byPartSimBrush = st; renderByPart(); }
-        function setByPartSim(part, state) {
-            byPartSim[part] = state;
-            try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
-            renderByPart();
-        }
-        function setAllByPartSim(state) {
-            RAID_PARTS.forEach(p => { byPartSim[p.key] = state; });
-            try { localStorage.setItem(BY_PART_SIM_KEY, JSON.stringify(byPartSim)); } catch (e) {}
-            renderByPart();
-        }
-
-        // 自己設定的狀態轉成推薦算法吃的格式。血量沒辦法自己設，一律當作各部位血量一樣；
-        // 禁打的部位算成盔甲部位（只是不能打）
-        function byPartSimBuild() {
-            const parts = {}, banned = [];
-            RAID_PARTS.forEach(({ key }) => {
-                const s = byPartSim[key];
-                const armor = (s === 'armor' || s === 'cursed' || s === 'banned') ? 100 : 0;
-                const body = s === 'body' ? 100 : 0;
-                parts[key] = { armor, armorMax: 100, body, bodyMax: 100, cursed: s === 'cursed' };
-                if (s === 'banned') banned.push(key);
-            });
-            return { parts, banned };
-        }
-
         async function renderByPart() {
             const box = document.getElementById('by-part-result');
             if (!box) return;
             box.style.display = 'block';
             const token = ++byPartRenderToken;
 
-            // 「先選狀態、再點部位」：上面一排狀態按鈕（只有 5 顆）是畫筆，選好之後點哪個部位，那個部位就變成這個狀態；
-            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），格子底色跟著狀態變、中間寫狀態名稱
-            const SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
-            const simCount = {};
-            RAID_PARTS.forEach(({ key }) => { simCount[byPartSim[key]] = (simCount[byPartSim[key]] || 0) + 1; });
-            // 每顆狀態按鈕上顯示目前有幾個部位是這個狀態（例如「肉體 5」），選到的實心；點它就是「接下來點部位要套用這個狀態」
-            const brushBtn = (st) => {
-                const on = byPartSimBrush === st;
-                return `<button onclick="setByPartSimBrush('${st}')" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:6px 0 5px; border-radius:8px; border:2px solid rgb(${SIM_RGB[st]}); background:${on ? `rgb(${SIM_RGB[st]})` : `rgba(${SIM_RGB[st]},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap; line-height:1.25;">${BY_PART_SIM_LABEL[st]}<br><span style="font-size:15px;">${simCount[st] || 0}</span></button>`;
-            };
+            // 部位格子照抄突襲首頁（raid-parts-grid／raid-part-cell），格子底色跟著狀態變，寫狀態名稱與剩餘血量
             const cellHtml = (partKey) => {
-                const s = byPartSim[partKey];
+                const s = simBoard.states[partKey], hp = simBoard.hps[partKey];
+                const hasHp = s === 'cursed' || s === 'armor' || s === 'body';
                 const name = `<div class="raid-part-name">${escapeHtml(raidPartLabel(partKey))}</div>`;
                 const style = `cursor:pointer; background:rgba(${SIM_RGB[s]},0.22); border-color:rgb(${SIM_RGB[s]}); box-shadow:0 0 6px rgba(${SIM_RGB[s]},0.45);`;
-                return `<div class="raid-part-cell" onclick="setByPartSim('${partKey}','${byPartSimBrush}')" style="${style}">${name}<div class="raid-part-hp" style="color:rgb(${SIM_RGB[s]});">${BY_PART_SIM_LABEL[s]}</div></div>`;
+                return `<div class="raid-part-cell" onclick="simBoard.brush && simPaint('${partKey}')" style="${style}">${name}<div class="raid-part-hp" style="color:rgb(${SIM_RGB[s]});">${SIM_LABEL[s]}${hasHp && hp < 1 ? ` ${Math.round(hp * 100)}%` : ''}</div></div>`;
             };
-            const btnStyle = 'font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
             box.innerHTML = `
                 <div style="display:flex; margin-top:6px; border-bottom:1px solid #e5d9c5;">
                     ${BY_PART_GROUPS.map(([g, label, rgb]) => `<button onclick="setByPartGroup('${g}')" style="flex:1; font-size:13px; font-weight:800; padding:7px 0 6px; border:none; border-bottom:3px solid ${byPartGroup === g ? `rgb(${rgb})` : 'transparent'}; background:none; color:${byPartGroup === g ? `rgb(${rgb})` : '#9a8a78'}; font-family:inherit; cursor:pointer; margin-bottom:-1px;">${label}</button>`).join('')}
                 </div>
-                <div style="display:flex; gap:5px; margin-top:8px;">${BY_PART_SIM_CYCLE.map(brushBtn).join('')}</div>
+                <div style="margin-top:8px;">${simToolbarHtml()}</div>
                 <div class="raid-parts-grid" style="margin-top:8px;">
                     ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
-                </div>
-                <div style="display:flex; gap:8px; margin-top:6px; align-items:center;">
-                    <span style="font-size:11px; color:#8a7a6a;">先選上面的狀態，再點部位</span>
-                    <button onclick="setAllByPartSim(byPartSimBrush)" style="${btnStyle} margin-left:auto;">全部設為${BY_PART_SIM_LABEL[byPartSimBrush]}</button>
                 </div>
                 <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
             `;
@@ -9035,8 +8986,8 @@
             const out = document.getElementById('by-part-sim-reco');
             if (!out) return;
             if (!data) { out.textContent = '無法取得統計。伺服器可能還沒更新到支援依部位查詢的版本，或目前連不上。'; return; }
-            const { parts, banned } = byPartSimBuild();
-            const rows = byPartRecoCompute(data, parts, banned);
+            const { parts, banned } = simBuild();
+            const rows = byPartRecoCompute(data, parts, banned, false, simCurseInfo());
             if (rows.length === 0) { out.textContent = '這個狀態沒有可以推薦的牌組（請至少留一個能打的部位）。'; return; }
             byPartRecoTitle = false;
             out.innerHTML = byPartRecoGridHtml(rows);
@@ -10919,23 +10870,99 @@
             renderRaidStatus();
         }
 
-        /* ── 模擬畫面：不連線、不等王，自己設定王與各部位的狀態＋剩餘血量，首頁（王資訊、部位格子、推薦牌組）
-              跟真實連線時一模一樣，用來測試推薦的邏輯。選好狀態（和血量）後點部位格子就套用 ── */
+        /* ── 模擬板（首頁「模擬畫面」跟「牌組參考→依部位」共用同一份）──
+              不連線、不等王，自己設定每個部位的狀態（詛咒甲／盔甲／肉體／骨架／禁打）＋剩餘血量、這隻王的詛咒類型，
+              兩個畫面看到、改到的是同一份設定（記在這台裝置上），推薦牌組都用同一套算法。
+              選好狀態（和血量）後點部位格子就套用 ── */
+        const SIM_STATES = [['cursed', '詛咒甲'], ['armor', '盔甲'], ['body', '肉體'], ['skeleton', '骨架'], ['banned', '禁打']];
+        const SIM_LABEL = { cursed: '詛咒甲', armor: '盔甲', body: '肉體', skeleton: '骨架', banned: '禁打' };
+        const SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
+        const SIM_HPS = [1, 0.6, 0.3, 0.1];
+        const SIM_CURSES = [['', '無詛咒'], ['Burst', '爆裂 −6%'], ['Afflicted', '苦痛 −6%'], ['Body', '肉體 −6%']];
+        const SIM_ARMOR_MAX = 2e9, SIM_BODY_MAX = 1e9;
+        const SIM_KEY = 'tt2_sim_board';
+        const simBoard = { states: {}, hps: {}, boss: 0, curse: '', brush: 'armor', hp: 1 };
+        RAID_PARTS.forEach(p => { simBoard.states[p.key] = 'armor'; simBoard.hps[p.key] = 1; });
+        try {
+            const saved = JSON.parse(localStorage.getItem(SIM_KEY) || 'null');
+            if (saved) {
+                RAID_PARTS.forEach(p => {
+                    if (SIM_LABEL[saved.states && saved.states[p.key]]) simBoard.states[p.key] = saved.states[p.key];
+                    if (SIM_HPS.includes(saved.hps && saved.hps[p.key])) simBoard.hps[p.key] = saved.hps[p.key];
+                });
+                if (Number.isInteger(saved.boss) && saved.boss >= 0 && saved.boss < RAID_BOSS_NAMES.length) simBoard.boss = saved.boss;
+                if (SIM_CURSES.some(x => x[0] === saved.curse)) simBoard.curse = saved.curse;
+            }
+        } catch (e) {}
+        function simSave() { try { localStorage.setItem(SIM_KEY, JSON.stringify({ states: simBoard.states, hps: simBoard.hps, boss: simBoard.boss, curse: simBoard.curse })); } catch (e) {} }
+
+        // 模擬板轉成推薦算法吃的格式：禁打的部位算成盔甲部位（只是不能打）
+        function simBuild() {
+            const parts = {}, banned = [];
+            RAID_PARTS.forEach(({ key }) => {
+                const s = simBoard.states[key], hp = simBoard.hps[key];
+                const armorOn = s === 'armor' || s === 'cursed' || s === 'banned';
+                parts[key] = {
+                    armor: armorOn ? SIM_ARMOR_MAX * hp : 0, armorMax: SIM_ARMOR_MAX,
+                    body: s === 'body' ? SIM_BODY_MAX * hp : (armorOn ? SIM_BODY_MAX : 0), bodyMax: SIM_BODY_MAX,
+                    cursed: s === 'cursed'
+                };
+                if (s === 'banned') banned.push(key);
+            });
+            return { parts, banned };
+        }
+        function simCurseInfo() { return simBoard.curse ? [{ type: simBoard.curse + 'DamagePerCurse', amount: -0.06 }] : []; }
+        function simCounts() {
+            const n = {};
+            RAID_PARTS.forEach(({ key }) => { n[simBoard.states[key]] = (n[simBoard.states[key]] || 0) + 1; });
+            return n;
+        }
+        function simPaint(key) {
+            simBoard.states[key] = simBoard.brush;
+            simBoard.hps[key] = (simBoard.brush === 'cursed' || simBoard.brush === 'armor' || simBoard.brush === 'body') ? simBoard.hp : 1;
+            simSave(); simChanged();
+        }
+        function simPaintAll() { RAID_PARTS.forEach(({ key }) => { simBoard.states[key] = simBoard.brush; simBoard.hps[key] = (simBoard.brush === 'cursed' || simBoard.brush === 'armor' || simBoard.brush === 'body') ? simBoard.hp : 1; }); simSave(); simChanged(); }
+        function setSimBrush(st) { simBoard.brush = st; simChanged(); }
+        function setSimHp(v) { simBoard.hp = v; simChanged(); }
+        function setSimCurse(t) { simBoard.curse = t; simSave(); simChanged(); }
+        function setSimBoss(i) { simBoard.boss = Number(i); simSave(); simChanged(); }
+        // 哪個畫面開著就重畫哪個
+        function simChanged() {
+            if (raidSimActive) raidSimApply();
+            else renderByPart();
+        }
+
+        // 工具列：狀態按鈕（顯示各狀態部位數）、剩餘血量、詛咒類型；首頁跟依部位分頁用同一個
+        function simToolbarHtml(opts) {
+            opts = opts || {};
+            const cnt = simCounts();
+            const hasHp = simBoard.brush === 'cursed' || simBoard.brush === 'armor' || simBoard.brush === 'body';
+            const btn = (on, rgb, text, onclick) => `<button onclick="${onclick}" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:6px 0 5px; border-radius:8px; border:2px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap; line-height:1.25;">${text}</button>`;
+            const small = 'font-size:12px; padding:4px 8px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;';
+            return `
+                ${opts.bossSelect ? `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <select onchange="setSimBoss(this.value)" style="flex:1; font-size:12px; padding:4px; border-radius:6px; border:1px solid #d8c8a8; font-family:inherit;">${RAID_BOSS_NAMES.map((n, i) => `<option value="${i}" ${simBoard.boss === i ? 'selected' : ''}>${n}</option>`).join('')}</select>
+                    <button onclick="toggleRaidSim()" style="${small} font-weight:700;">結束模擬</button></div>` : ''}
+                <div style="display:flex; gap:5px;">${SIM_STATES.map(([st, label]) => btn(simBoard.brush === st, SIM_RGB[st], `${label}<br><span style="font-size:15px;">${cnt[st] || 0}</span>`, `setSimBrush('${st}')`)).join('')}</div>
+                ${hasHp ? `<div style="display:flex; gap:5px; margin-top:5px; align-items:center;"><span style="font-size:11px; color:#8a7a6a; white-space:nowrap;">剩餘血量</span>${SIM_HPS.map(v => btn(simBoard.hp === v, '110,90,60', Math.round(v * 100) + '%', `setSimHp(${v})`)).join('')}</div>` : ''}
+                <div style="display:flex; gap:5px; margin-top:5px; align-items:center;"><span style="font-size:11px; color:#8a7a6a; white-space:nowrap;">詛咒</span>${SIM_CURSES.map(([t, label]) => btn(simBoard.curse === t, '91,42,134', label, `setSimCurse('${t}')`)).join('')}</div>
+                <div style="display:flex; gap:8px; margin-top:6px; align-items:center;">
+                    <span style="font-size:11px; color:#8a7a6a;">先選狀態，再點部位</span>
+                    <button onclick="simPaintAll()" style="${small} margin-left:auto;">全部設為${SIM_LABEL[simBoard.brush]}</button>
+                </div>`;
+        }
+
+        // ── 首頁模擬畫面：把模擬板套到首頁（跟真實連線時的畫面完全一樣）──
         let raidSimActive = false;
         let raidSimBackup = null;
-        let raidSimBrush = 'armor';
-        let raidSimHp = 1;
-        const RAID_SIM_HPS = [1, 0.6, 0.3, 0.1];
-        const RAID_SIM_STATES = [['cursed', '詛咒甲'], ['armor', '盔甲'], ['body', '肉體'], ['skeleton', '骨架'], ['banned', '禁打']];
-        const RAID_SIM_RGB = { cursed: '91,42,134', armor: '69,90,100', body: '21,101,192', skeleton: '138,122,99', banned: '198,40,40' };
-        const RAID_SIM_ARMOR_MAX = 2e9, RAID_SIM_BODY_MAX = 1e9;
-
         function toggleRaidSim() {
             if (raidSimActive) {
                 raidSimActive = false;
                 raidState = raidSimBackup ? raidSimBackup.state : null;
                 raidBannedParts = raidSimBackup ? raidSimBackup.banned : [];
                 raidRecentAttacks = raidSimBackup ? raidSimBackup.recent : [];
+                raidCurseInfo = raidSimBackup ? raidSimBackup.curse : [];
                 raidSimBackup = null;
                 document.getElementById('raid-sim-panel').style.display = 'none';
                 byPartRecoSig = '';
@@ -10944,80 +10971,37 @@
                     document.getElementById('raid-live-wrap').style.display = 'none';
                     document.getElementById('raid-empty-state').style.display = '';
                     document.getElementById('by-part-reco').style.display = 'none';
+                    document.getElementById('raid-curse-tag').style.display = 'none';
                 }
                 return;
             }
             if (raidDemoTimer) toggleRaidDemoMode(); // 示範模式會一直產生假資料，先關掉
-            raidSimBackup = { state: raidState, banned: raidBannedParts, recent: raidRecentAttacks };
+            raidSimBackup = { state: raidState, banned: raidBannedParts, recent: raidRecentAttacks, curse: raidCurseInfo };
             raidSimActive = true;
-            const parts = {};
-            RAID_PARTS.forEach(({ key }) => { parts[key] = { armor: RAID_SIM_ARMOR_MAX, armorMax: RAID_SIM_ARMOR_MAX, body: RAID_SIM_BODY_MAX, bodyMax: RAID_SIM_BODY_MAX, cursed: false }; });
-            raidState = { bossIndex: 0, bossName: RAID_BOSS_NAMES[0], bossOrdinal: 1, parts, maxHp: 0, currentHp: 0, killMaxHp: 0, updatedAt: Date.now() };
-            raidBannedParts = [];
             raidRecentAttacks = [];
             showView('raidStatus');
-            raidSimRefresh();
+            raidSimApply();
         }
-
-        function raidSimRefresh() {
-            const sum = (f) => Object.values(raidState.parts).reduce((s, p) => s + f(p), 0);
-            raidState.maxHp = raidState.killMaxHp = sum(p => p.armorMax + p.bodyMax);
-            raidState.currentHp = sum(p => p.armor + p.body);
-            raidState.updatedAt = Date.now();
+        function raidSimApply() {
+            const { parts, banned } = simBuild();
+            const sum = (f) => Object.values(parts).reduce((s, p) => s + f(p), 0);
+            raidState = { bossIndex: simBoard.boss, bossName: RAID_BOSS_NAMES[simBoard.boss], bossOrdinal: 1, parts, maxHp: sum(p => p.armorMax + p.bodyMax), currentHp: sum(p => p.armor + p.body), killMaxHp: sum(p => p.armorMax + p.bodyMax), updatedAt: Date.now() };
+            raidBannedParts = banned;
+            raidCurseInfo = simCurseInfo();
             renderRaidStatus();
             renderRaidSimPanel();
         }
-
-        function raidSimPaint(key) {
-            const p = raidState.parts[key];
-            const st = raidSimBrush, hp = raidSimHp;
-            raidBannedParts = raidBannedParts.filter(k => k !== key);
-            p.cursed = false;
-            if (st === 'cursed' || st === 'armor') { p.armor = p.armorMax * hp; p.body = p.bodyMax; p.cursed = st === 'cursed'; }
-            else if (st === 'body') { p.armor = 0; p.body = p.bodyMax * hp; }
-            else if (st === 'skeleton') { p.armor = 0; p.body = 0; }
-            else if (st === 'banned') { raidBannedParts.push(key); if (p.armor <= 0 && p.body <= 0) { p.armor = p.armorMax * hp; p.body = p.bodyMax; } }
-            raidSimRefresh();
-        }
-        function raidSimPaintAll() { RAID_PARTS.forEach(({ key }) => raidSimPaint(key)); }
-        function setRaidSimBrush(st) { raidSimBrush = st; renderRaidSimPanel(); }
-        function setRaidSimHp(v) { raidSimHp = v; renderRaidSimPanel(); }
-        function setRaidSimBoss(idx) {
-            raidState.bossIndex = Number(idx);
-            raidState.bossName = RAID_BOSS_NAMES[Number(idx)];
-            raidSimRefresh();
-        }
-
         function renderRaidSimPanel() {
             const box = document.getElementById('raid-sim-panel');
             if (!box) return;
             box.style.display = raidSimActive ? 'block' : 'none';
             if (!raidSimActive) return;
-            const hasHp = raidSimBrush === 'cursed' || raidSimBrush === 'armor' || raidSimBrush === 'body';
-            const cnt = {};
-            RAID_PARTS.forEach(({ key }) => {
-                const p = raidState.parts[key];
-                const s = raidBannedParts.includes(key) ? 'banned' : (p.armor > 0 ? (p.cursed ? 'cursed' : 'armor') : (p.body > 0 ? 'body' : 'skeleton'));
-                cnt[s] = (cnt[s] || 0) + 1;
-            });
-            const btn = (on, rgb, text, onclick) => `<button onclick="${onclick}" style="flex:1; min-width:0; font-size:12px; font-weight:800; padding:7px 0; border-radius:8px; border:2px solid rgb(${rgb}); background:${on ? `rgb(${rgb})` : `rgba(${rgb},0.10)`}; color:${on ? '#fff' : '#4a3a2a'}; font-family:inherit; cursor:pointer; white-space:nowrap;">${text}</button>`;
-            box.innerHTML = `
-                <div style="margin:8px 0 4px; padding:8px; border:1.5px dashed #c9971f; border-radius:10px; background:#fffaf0;">
-                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                        <span style="font-size:12px; font-weight:800; color:#8a5a10;">🧪 模擬畫面</span>
-                        <select onchange="setRaidSimBoss(this.value)" style="flex:1; font-size:12px; padding:4px; border-radius:6px; border:1px solid #d8c8a8; font-family:inherit;">
-                            ${RAID_BOSS_NAMES.map((n, i) => `<option value="${i}" ${raidState.bossIndex === i ? 'selected' : ''}>${n}</option>`).join('')}
-                        </select>
-                        <button onclick="toggleRaidSim()" style="font-size:12px; font-weight:700; padding:5px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">結束模擬</button>
-                    </div>
-                    <div style="display:flex; gap:5px;">${RAID_SIM_STATES.map(([st, label]) => btn(raidSimBrush === st, RAID_SIM_RGB[st], `${label}<br><span style="font-size:15px;">${cnt[st] || 0}</span>`, `setRaidSimBrush('${st}')`)).join('')}</div>
-                    ${hasHp ? `<div style="display:flex; gap:5px; margin-top:5px; align-items:center;"><span style="font-size:11px; color:#8a7a6a; white-space:nowrap;">剩餘血量</span>${RAID_SIM_HPS.map(v => btn(raidSimHp === v, '110,90,60', Math.round(v * 100) + '%', `setRaidSimHp(${v})`)).join('')}</div>` : ''}
-                    <div style="display:flex; gap:6px; margin-top:6px; align-items:center;">
-                        <button onclick="raidSimPaintAll()" style="font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid #d8c8a8; background:#fff; color:#8e6a3a; font-family:inherit; cursor:pointer;">全部設為${(RAID_SIM_STATES.find(s => s[0] === raidSimBrush) || [0, ''])[1]}</button>
-                        <span style="font-size:11px; color:#8a7a6a;">選好狀態後，點上方部位格子</span>
-                    </div>
-                </div>`;
+            box.innerHTML = `<div style="margin:8px 0 4px; padding:8px; border:1.5px dashed #c9971f; border-radius:10px; background:#fffaf0;">
+                <div style="font-size:12px; font-weight:800; color:#8a5a10; margin-bottom:5px;">🧪 模擬畫面</div>
+                ${simToolbarHtml({ bossSelect: true })}</div>`;
         }
+        // 首頁格子點下去：模擬中套用狀態
+        function raidSimPaint(key) { simPaint(key); }
 
         function toggleRaidDemoMode() {
             const btn = document.getElementById('raid-demo-btn');

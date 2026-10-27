@@ -8742,6 +8742,8 @@
               • 瘋狂無效、凱旋行軍、帶刺的晨星照原本的條件（部位數量）限制
               • 強制列出 6 組，彼此完全不共用任何一張卡（找總分最高的 6 組組合）。現在常打的牌組優先，不夠時才用較少打（但現在打得出來）的牌組湊；現在完全打不出來的牌組絕不推薦 ── */
         const BY_PART_RECO_COUNT = 6;
+        // 難度太高、不推薦的卡（帶這張卡的牌組完全不列入）：宇宙激光（Haymaker）
+        const BY_PART_RECO_EXCLUDE = new Set(['Haymaker']);
         /* 推薦分數（0～1 左右，分數越高越前面；現在這種狀態下真的常打的牌組（tier 2）一律排在較少打的前面）：
              頻率  40％：這個搭配的打法在所有場次、所有紀錄（前 15 名）裡出現的次數，相對最常出現的那組（線性，排序以它為主）
              覆蓋  10％：一刀平均打到全王剩餘血量的多少比例（打到血量多的部位、多部位打法分數高）
@@ -8795,7 +8797,7 @@
             const cat = (n) => (BY_PART_NON_DAMAGE.has(n) || !CARD_CATEGORY[n]) ? 'support' : CARD_CATEGORY[n];
             const mul = (n) => 1 - (curseTypes || []).reduce((s, d) => s + Math.abs(d.amount) * cursedK * (((String(d.type).startsWith('Burst') && cat(n) === 'burst') || (String(d.type).startsWith('Afflicted') && cat(n) === 'torment')) ? 1 : 0), 0);
             const usableNow = (n) => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok;
-            const pool = Object.keys(cnt).filter(n => !used.has(n) && usableNow(n) && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
+            const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
                 .sort((a, b) => cnt[b] * Math.max(0.2, mul(b)) - cnt[a] * Math.max(0.2, mul(a)));
             const dmg = pool.filter(n => cat(n) !== 'support'), sup = pool.filter(n => cat(n) === 'support');
             const out = [];
@@ -8835,6 +8837,7 @@
             const catOf = (n) => CARD_CATEGORY[n] || 'support';
             let rows = [];
             data.decks.forEach(d => {
+                if (d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n))) return;
                 // 卡片的部位數量條件
                 const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min);
                 if (reqUnmet) return;

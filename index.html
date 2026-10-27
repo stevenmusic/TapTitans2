@@ -8945,10 +8945,10 @@
 
         /* ── 「這個場次類型＋相同部位狀態」下，前 15 名真的用過的牌組（用伺服器記下的攻擊當下狀態）──
            狀態＝各層部位數量（盔甲／肉體／骨架）＋詛咒甲數量＋詛咒類型，場次類型＝爆裂／苦痛／其他。
-           伺服器是新功能，只有之後的新攻擊才有狀態資料；樣本夠（BY_PART_CTX_MIN_TOTAL 刀以上）才用，
-           每組牌至少 BY_PART_CTX_MIN_DECK 刀，在這些牌組裡挑「6 組不共用卡、使用次數總和最高」的，不夠 6 組的位置交給原本的算法補 ── */
-        const BY_PART_CTX_MIN_TOTAL = 30;
-        const BY_PART_CTX_MIN_DECK = 3;
+           伺服器是新功能，只有之後的新攻擊才有狀態資料；有相同狀態的攻擊就用（筆數少也用），
+           在這些牌組裡挑「6 組不共用卡、使用次數總和最高」的，不夠 6 組的位置交給原本的算法補 ── */
+        const BY_PART_CTX_MIN_TOTAL = 1;   // 筆數很少也用：只要有「相同狀態」的攻擊就先排這些
+        const BY_PART_CTX_MIN_DECK = 1;
         function byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) {
             try {
                 if (!attackCtxMap || attackCtxMap.size === 0 || !attackCacheState.ready || !attackCacheRecords) return null;

@@ -8791,7 +8791,9 @@
         const BY_PART_RECO_W = { pop: 0.40, cover: 0.10, fit: 0.05, card: 0.30, synergyCap: 0.25 };
         // 網頁端統計有每一刀的傷害時，加上「傷害」一項（相對傷害指數，每個人以自己該場平均傷害為 1），比重取自頻率與卡片頻率
         const BY_PART_RECO_W_DMG = { pop: 0.10, dmg: 0.50, cover: 0.10, fit: 0.05, card: 0.10, synergyCap: 0.25 };
-        const BY_PART_RECO_DMG_SHRINK = 50;   // 傷害指數向 1 收斂：(指數−1)×刀數÷(刀數＋30)，刀數少的牌組不會因為運氣好就排很前面
+        const BY_PART_RECO_DMG_SHRINK = 50;
+        const BY_PART_RECO_BLEND_K = 40;
+        const BY_PART_RECO_OVERALL_MIN = 80;   // 這個狀態下樣本少，但這組牌整體至少有這麼多刀（而且 6 位以上玩家）時，也可以入選   // 傷害指數向 1 收斂：(指數−1)×刀數÷(刀數＋30)，刀數少的牌組不會因為運氣好就排很前面
         const BY_PART_RECO_BOOST = {
             CrushingVoid:   { state: 'body',     min: 5, w: 0.30 },   // 瘋狂無效：肉體部位 5 個就能用，6 個達到最大傷害
             PlagueAttack:   { state: 'body',     min: 6, w: 0.25 },   // 瘟疫
@@ -8933,7 +8935,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, cursedBonus: Math.min(0.35, d.cards.reduce((s, n) => s + (BY_PART_RECO_CURSED[n] || 0) * (usable > 0 ? cursedHit / usable : 0), 0)), supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, overall: d.attacks || 0, dmgAll: (d.patternRel ? Object.keys(d.patternRel).reduce((s, k) => s + d.patternRel[k], 0) / Math.max(1, d.attacks) : null), relSum, shareB: d.shareB, shareT: d.shareT, cursedBonus: Math.min(0.35, d.cards.reduce((s, n) => s + (BY_PART_RECO_CURSED[n] || 0) * (usable > 0 ? cursedHit / usable : 0), 0)), supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
@@ -8977,7 +8979,13 @@
                 r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
             });
             // 傷害：只有網頁端統計才有。用 (指數 − 0.6) ÷ (最高指數 − 0.6) 拉開差距，低於 0.6 算 0
-            rows.forEach(r => { if (r.dmg !== null) r.dmg = 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK); });
+            // 這個部位狀態下的樣本常常很少，所以傷害指數向「這組牌所有狀態的整體傷害指數」收斂（整體指數再向 1 收斂），
+            // 不是只看這個狀態下的幾刀：(狀態內傷害總和 ＋ 40 × 整體指數) ÷ (狀態內刀數 ＋ 40)
+            rows.forEach(r => {
+                if (r.dmg === null || r.dmgAll === null) return;
+                const overallAdj = 1 + (r.dmgAll - 1) * r.overall / (r.overall + BY_PART_RECO_DMG_SHRINK);
+                r.dmg = (r.relSum + BY_PART_RECO_BLEND_K * overallAdj) / (r.usable + BY_PART_RECO_BLEND_K);
+            });
             const hasDmg = rows.length > 0 && rows.every(r => r.dmg !== null);
             const maxDmg = hasDmg ? Math.max(...rows.map(r => r.dmg)) : 0;
             const W = hasDmg ? BY_PART_RECO_W_DMG : BY_PART_RECO_W;
@@ -9021,7 +9029,7 @@
             ])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
-                const cand = rows.filter(r => r.usable >= (needSupport ? Math.max(minUse, BY_PART_RECO_SOLID_MIN) : minUse) && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
+                const cand = rows.filter(r => (r.usable >= (needSupport ? Math.max(minUse, BY_PART_RECO_SOLID_MIN) : minUse) || (needSupport && r.supported && r.overall >= BY_PART_RECO_OVERALL_MIN && r.usable >= 3)) && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
                 let bestHere = null, objHere = -1, nodes = 0;

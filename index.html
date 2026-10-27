@@ -7962,7 +7962,6 @@
         }
         function quizSetType(ty) { quizType = ty; quizNext(); renderQuiz(); }
         function quizSetCat(cat) { quizCat = cat; quizNext(); renderQuiz(); }
-        function quizNextClick() { quizNext(); renderQuiz(); }
 
         function renderQuiz() {
             const box = document.getElementById('quiz-result');
@@ -8091,7 +8090,6 @@
         const BY_PART_MIN_HITS = 3;         // 至少要有幾刀符合才列入，避免只靠一兩刀就上榜
         const BY_PART_MULTI_MIN = 6;        // 一刀打到幾個部位以上算「多部位」
         const BY_PART_ANY_MIN_PARTS = 5;    // 單打過幾個不同部位以上算「任一單部位」
-        const BY_PART_STATE_LABEL = { armor: '盔甲', body: '肉體', both: '肉甲' };
         // 卡片本身有「適用部位」限制的卡片（照遊戲卡片頁的「適用部位」整理），顯示在牌組的卡片圖底部。
         // tag＝卡片圖上的短標籤；note＝列表上方的完整說明。層別限制用跟首頁一樣的顏色（盔甲灰、肉體藍），部位限制用金棕色，
         // 發揮條件（不是限制，例如凱旋行軍要骨架部位多才強）用灰褐色
@@ -8134,11 +8132,8 @@
             FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '' },
             LimbSupport:    { tag: '四肢', kind: 'part', note: '只能攻擊四肢' }
         };
-        const byPartSelected = new Set();   // 使用者點選要打的部位（預設都不選，點一下發亮，再點一下取消）
-        const byPartManualState = new Map(); // 沒有突襲狀態時用：部位 -> 'armor' | 'body' | 'both'
         const byPartCache = new Map();      // 前 N 名 -> 伺服器統計
         let byPartRenderToken = 0;
-        let byPartLastSig = '';
 
         async function loadByPartStats(topN, group) {
             const cacheKey = group ? `${topN}|${group}` : topN;
@@ -8172,7 +8167,7 @@
 
         // 目前的目標部位：回傳 Map（部位 -> 可接受的層別 Set）
         function byPartResolveTargets(sel) {
-            sel = sel || byPartSelected;
+            sel = sel || new Set();
             const live = byPartLiveStates();
             const targets = new Map();
             if (live) {
@@ -8182,27 +8177,13 @@
                     if (!sel.has(key)) return;
                     targets.set(key, new Set([s.state]));
                 });
-            } else {
-                byPartManualState.forEach((st, key) => targets.set(key, new Set(st === 'both' ? ['armor', 'body'] : [st])));
             }
             return { live, targets };
         }
 
         // 點部位格子：選取／取消選取（只有還能打的部位可以選；狀態一律用突襲目前的狀態）
-        function toggleByPartTarget(part) {
-            const live = byPartLiveStates();
-            if (!live) return;
-            const s = live[part];
-            if (!s || s.state === 'skeleton' || s.banned) return;
-            if (byPartSelected.has(part)) byPartSelected.delete(part); else byPartSelected.add(part);
-            renderByPart();
-        }
 
         // 沒有突襲狀態時的手動選擇：同一個部位再點一次同一個狀態＝取消
-        function setByPartManual(part, state) {
-            if (byPartManualState.get(part) === state) byPartManualState.delete(part); else byPartManualState.set(part, state);
-            renderByPart();
-        }
 
         // 伺服器給的 patterns（"Head|armor,ChestUpper|armor" -> 刀數）拆成好分析的格式，每個牌組只拆一次
         function byPartParsePatterns(d) {
@@ -8297,11 +8278,6 @@
         }
 
         // 打法標籤的顏色：部位（單打／同時打）咖啡色，任一單部位橘色，多部位紫色
-        const BY_PART_SHAPE_RGB = { single: '74,58,42', combo: '74,58,42', any: '224,160,48', multi: '91,42,134' };
-        function byPartShapeChip(s) {
-            const rgb = BY_PART_SHAPE_RGB[s.kind];
-            return `<span style="font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:99px; white-space:nowrap; background:rgb(${rgb}); color:#fff;">${escapeHtml(s.text)}</span>`;
-        }
 
         // 依目標部位比對牌組，產生「統計說明＋牌組列表」的 HTML（頁籤版和首頁浮動視窗共用）
         function byPartListHtml(data, targets, live, emptyHint) {

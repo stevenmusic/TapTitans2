@@ -8251,9 +8251,10 @@
                             if (cd && mean > 0) cardStats[cn].rel += cd[1] / mean;     // 這張卡這一刀的傷害 ÷ 該玩家這場的平均單刀傷害
                         });
                         const key = [...a[4]].sort().join('|');
-                        if (!decks.has(key)) decks.set(key, { cards: [...a[4]].sort(), attacks: 0, patterns: {}, patternRel: {} });
+                        if (!decks.has(key)) decks.set(key, { cards: [...a[4]].sort(), attacks: 0, patterns: {}, patternRel: {}, byPlayer: {} });
                         const d = decks.get(key);
                         d.attacks++; attackCount++;
+                        d.byPlayer[a[1]] = (d.byPlayer[a[1]] || 0) + 1;
                         const floor = a[3] > 0 ? a[3] : a[2] * 0.12;
                         const hit = [...new Set(a[5].filter(p => p[2] > floor).map(p => `${p[0]}|${p[1]}`))].sort().join(',');
                         d.patterns[hit] = (d.patterns[hit] || 0) + 1;
@@ -8261,7 +8262,7 @@
                     });
                 });
             });
-            const result = { topN, group: group || 'all', sessionCount, attackCount, decks: [...decks.values()], cards: cardStats, source: 'local' };
+            const result = { topN, group: group || 'all', sessionCount, attackCount, decks: [...decks.values()].map(d => { const counts = Object.values(d.byPlayer); d.playerCount = counts.length; d.topShare = Math.max(...counts) / d.attacks; delete d.byPlayer; return d; }), cards: cardStats, source: 'local' };
             localStatsMemo.set(memoKey, result);
             return result;
         }
@@ -8774,6 +8775,10 @@
             '肚手': ['ChestUpper', 'HandLeft', 'HandRight'],
             '四肢': ['ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
         };
+        // 說服力門檻：一組牌除了刀數夠，還要有足夠多不同的人在用（避免一兩個人反覆用同一組就上榜）：
+        // 至少 6 位不同玩家、而且單一玩家的刀數不超過這組牌的一半。只有「放寬到最後兩階」（10 次、5 次以下）湊不滿 6 組時才放寬
+        const BY_PART_RECO_MIN_PLAYERS = 6;
+        const BY_PART_RECO_MAX_TOP_SHARE = 0.5;
         const BY_PART_RECO_BASE_MIN = 10;     // 任何推薦牌組在現在狀態下至少要出現幾次
         const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
@@ -8857,7 +8862,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
@@ -8934,7 +8939,8 @@
                 BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1
             ])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
-                const cand = rows.filter(r => r.usable >= minUse);
+                const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
+                const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
                 let bestHere = null, objHere = -1, nodes = 0;

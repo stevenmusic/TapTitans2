@@ -8839,16 +8839,27 @@
             const usableNow = (n) => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok;
             const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
                 .sort((a, b) => cnt[b] * Math.max(0.2, mul(b)) - cnt[a] * Math.max(0.2, mul(a)));
-            const dmg = pool.filter(n => cat(n) !== 'support'), sup = pool.filter(n => cat(n) === 'support');
+            // 補位的組合要「搭得起來」：三張卡兩兩之間，在前 15 名真的用過的牌組裡至少同組出現過（例如只能打單部位的圖騰之力，
+            // 不會跟多部位的炎燒地獄、核融炸彈湊成一組）。湊不到就依序放寬成「三組配對至少兩組出現過」、最後才不限，確保補滿
+            const pair = {};
+            data.decks.forEach(d => d.cards.forEach(x => d.cards.forEach(y => { if (x < y) pair[x + '|' + y] = (pair[x + '|' + y] || 0) + (d.attacks || 0); })));
+            const seen = (x, y) => (pair[(x < y ? x + '|' + y : y + '|' + x)] || 0) > 0;
+            const left = pool.slice(0, 40);
             const out = [];
             while (out.length < need) {
-                const three = [];
-                while (three.length < 2 && dmg.length) three.push(dmg.shift());
-                if (sup.length) three.push(sup.shift());
-                while (three.length < 3 && dmg.length) three.push(dmg.shift());
-                while (three.length < 3 && sup.length) three.push(sup.shift());
-                if (three.length < 3) break;
-                out.push({ cards: byPartOrderCards(three), rawCards: three, targets: [], usable: 0, synthetic: true, score: -1 });
+                let best = null, bestKey = null;
+                for (let i = 0; i < left.length; i++) for (let j = i + 1; j < left.length; j++) for (let k = j + 1; k < left.length; k++) {
+                    const t = [left[i], left[j], left[k]];
+                    const ok = (seen(t[0], t[1]) ? 1 : 0) + (seen(t[0], t[2]) ? 1 : 0) + (seen(t[1], t[2]) ? 1 : 0);
+                    const dmgN = t.filter(n => cat(n) !== 'support').length;
+                    if (dmgN < 1) continue;
+                    // 配對出現過的越多越好，其次兩張傷害卡＋一張支援卡，最後比卡片本身的使用次數（已依詛咒減傷排序，位置越前越好）
+                    const key = [ok, dmgN === 2 ? 1 : 0, -(i + j + k)];
+                    if (!bestKey || key[0] > bestKey[0] || (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))) { best = t; bestKey = key; }
+                }
+                if (!best) break;
+                best.forEach(n => left.splice(left.indexOf(n), 1));
+                out.push({ cards: byPartOrderCards(best), rawCards: best, targets: [], usable: 0, synthetic: true, score: -1 });
             }
             return out;
         }

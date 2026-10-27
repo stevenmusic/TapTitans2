@@ -323,6 +323,77 @@ const dbReady = (async () => {
   }
 })().catch(e => console.error('[turso] 建立資料表失敗:', e && e.message ? e.message : e));
 
+/* ══════════════════════════════════════════════════════════
+   攻擊當下的狀態（attack_context）：每筆攻擊「打之前」的詛咒類型、還有盔甲的詛咒甲部位、8 個部位各自的層別。
+   刻意放在獨立的資料表、獨立的建表流程、獨立的記憶體 Map，完全不碰 attacks 表、dedup_key、INSERT OR IGNORE，
+   也不放進攻擊紀錄物件（備份、匯入、/full-attack-log 的內容一個位元組都不會變）。
+   所有寫入都 try/catch、不 await 在攻擊寫入的路徑上，這邊出任何錯，攻擊紀錄照樣寫入，只是少一筆狀態。
+   ══════════════════════════════════════════════════════════ */
+const attackCtxByKey = new Map(); // dedupKey -> { ts, ctx }
+const ctxDbReady = (async () => {
+  await dbReady;
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS attack_context (
+      dedup_key TEXT PRIMARY KEY,
+      ts INTEGER NOT NULL,
+      ctx TEXT NOT NULL
+    )
+  `);
+})().catch(e => console.error('[turso] 建立 attack_context 失敗（不影響攻擊紀錄）:', e && e.message ? e.message : e));
+
+async function hydrateAttackCtxFromDb() {
+  try {
+    await ctxDbReady;
+    const result = await db.execute('SELECT dedup_key, ts, ctx FROM attack_context');
+    result.rows.forEach((row) => {
+      try { attackCtxByKey.set(row.dedup_key, { ts: Number(row.ts) || 0, ctx: JSON.parse(row.ctx) }); } catch (e) {}
+    });
+    console.log(`[cache] 已載入 ${attackCtxByKey.size} 筆攻擊當下狀態`);
+  } catch (e) {
+    console.error('[cache] 載入攻擊當下狀態失敗（不影響攻擊紀錄）:', e && e.message ? e.message : e);
+  }
+}
+
+// 這一刀「打之前」的狀態。必須在 watcherHandleAttack 用這一刀的結果更新部位血量之前呼叫。
+// 任何例外都吞掉、回傳 null——絕對不能因為這個讓攻擊紀錄寫不進去。
+function buildAttackContext() {
+  try {
+    const status = watcherPartStatus || {};
+    const titan = (watcherRaidTitans || []).find(t => t.enemy_id === watcherCurrentEnemyId);
+    const curse = ((titan && titan.cursed_debuffs) || []).map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 }));
+    const layers = {};
+    const cursedParts = [];
+    Object.keys(status).forEach((loc) => {
+      const p = status[loc] || {};
+      const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
+      layers[loc] = layer;
+      if (layer === 'armor' && p.cursed) cursedParts.push(loc);
+    });
+    return { v: 1, curse, cursed: cursedParts.length, cursedParts, layers };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 不用 await、內部自己 catch；放在攻擊紀錄 insertAttack 呼叫「之後」。
+function saveAttackContext(entry, ctx) {
+  try {
+    if (!ctx) return;
+    const key = attackDedupKey(entry);
+    attackCtxByKey.set(key, { ts: Number(entry.ts) || 0, ctx });
+    (async () => {
+      try {
+        await ctxDbReady;
+        await db.execute({ sql: 'INSERT OR IGNORE INTO attack_context (dedup_key, ts, ctx) VALUES (?, ?, ?)', args: [key, Number(entry.ts) || 0, JSON.stringify(ctx)] });
+      } catch (e) {
+        console.error('[turso] 寫入攻擊當下狀態失敗（攻擊紀錄不受影響）:', e && e.message ? e.message : e);
+      }
+    })();
+  } catch (e) {
+    console.error('[ctx] 攻擊當下狀態處理失敗（攻擊紀錄不受影響）:', e && e.message ? e.message : e);
+  }
+}
+
 function attackDedupKey(entry) {
   return `${entry.attackDatetime || entry.ts}_${entry.player}`;
 }
@@ -1485,6 +1556,7 @@ function watcherHandleAttack(payload) {
     watcherBossOrdinal = ordinal;
   }
 
+  const attackCtx = buildAttackContext();   // 打之前的狀態（下面就要用這一刀的結果更新部位血量了）
   const curParts = (rs.current && rs.current.parts) || [];
   curParts.forEach((p) => {
     const { layer, loc } = splitPartId(p.part_id);
@@ -1528,7 +1600,7 @@ function watcherHandleAttack(payload) {
   const cardDamage = {};
   Object.keys(cardDamageTotals).forEach((k) => { if (k !== '__tap__') cardDamage[k] = cardDamageTotals[k]; });
 
-  insertAttack({
+  const attackEntry = {
     ts: Date.now(),
     attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null,
     cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
@@ -1546,7 +1618,9 @@ function watcherHandleAttack(payload) {
     tapDamage,
     parts,
     totalDamage
-  });
+  };
+  insertAttack(attackEntry);
+  saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
 }
 
 function handleWatcherRaidEnd(reason) {
@@ -1630,6 +1704,7 @@ function startWatcher() {
 // 跟還原回來的歷史資料用同一個 dedupKey 去重，同時進行不會重複。
 (async () => {
   await hydrateAttacksCacheFromDb();
+  hydrateAttackCtxFromDb();   // 獨立載入，不等它、失敗也不影響攻擊紀錄
   startWatcher();
   await restoreAttackLogFromGitHubBackup();
   if (githubBackupEnabled) {
@@ -1670,6 +1745,15 @@ app.get('/full-attack-log', async (req, res) => {
 // 輕量版：只回傳目前王的血量/部位狀態，完全不碰攻擊紀錄資料表，回應體積是固定的
 // 幾百 bytes（不會隨攻擊紀錄筆數增加而變大）。背景定期同步只需要這個就能畫王血量條，
 // 不需要整場攻擊紀錄。
+// 每筆攻擊「打之前」的詛咒類型／詛咒甲部位／各部位層別（只有這個功能上線之後的新攻擊才有）。
+// key 是攻擊的 dedup key：`${attackDatetime || ts}_${player}`，網頁自己用同樣規則對應。since＝只回這個時間（毫秒）之後的
+app.get('/attack-context', (req, res) => {
+  const since = Number(req.query.since) || 0;
+  const out = {};
+  attackCtxByKey.forEach((v, k) => { if (v.ts >= since) out[k] = v.ctx; });
+  res.json({ ctx: out, count: Object.keys(out).length });
+});
+
 app.get('/current-boss-status', (req, res) => {
   res.json(buildCurrentBossPayload());
 });

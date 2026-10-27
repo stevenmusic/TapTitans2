@@ -9007,7 +9007,7 @@
                     .sort((a, b) => b.attacks - a.attacks);
                 let best = [], bestSum = -1, nodes = 0;
                 const dfs = (i, chosen, used, sum) => {
-                    if (chosen.length > best.length || (chosen.length === best.length && sum > bestSum)) { best = chosen.slice(); bestSum = sum; }
+                    if (sum > bestSum || (sum === bestSum && chosen.length > best.length)) { best = chosen.slice(); bestSum = sum; }   // 使用次數總和最高優先（同分才選組數多的），常用的牌組不會被「湊滿組數」擠掉
                     if (chosen.length >= BY_PART_RECO_COUNT || nodes++ > 200000) return;
                     for (let j = i; j < cand.length; j++) {
                         if (cand[j].cards.some(n => used.has(n))) continue;

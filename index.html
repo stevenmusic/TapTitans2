@@ -8343,9 +8343,9 @@
                 });
                 if (!byPlayer.size) return;
                 const maxCount = Math.max(...[...byPlayer.values()].map(e => e.list.length));
-                // 進行中的本場（還沒結束）每個人的出刀數都還不完整，不套用「出刀數要達最多的 80％」，否則剛打幾刀的新狀態幾乎全被濾掉
-                const minCount = rec.complete === false ? 0 : Math.ceil(maxCount * 0.8);
-                const top = [...byPlayer.values()].filter(e => e.list.length >= minCount).sort((x, y) => y.total - x.total).slice(0, topN);
+                // 進行中的本場（還沒結束）每個人的出刀數都還不完整，門檻放寬（見下）
+                const minCount = Math.ceil(maxCount * (rec.complete === false ? 0.5 : 0.8));   // 均傷排名要有最低出刀數，不然只出一刀、剛好打得很高的人會擠進前 15 名；進行中的本場大家出刀都還不完整，門檻放寬到 50％
+                const top = [...byPlayer.values()].filter(e => e.list.length >= minCount).sort((x, y) => y.total / y.list.length - x.total / x.list.length).slice(0, topN);   // 前 15 名＝均傷（總傷害 ÷ 出刀數）最高的 15 位，不是總傷害
                 if (!top.length) return;
                 sessionCount++;
                 const buff = SESSION_BUFFS[rec.buffType] || null;

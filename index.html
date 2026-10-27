@@ -8143,6 +8143,8 @@
            • 還沒載入完時，先用伺服器的 /deck-part-stats 頂著（沒有傷害資料），載入完自動換成網頁端統計 ── */
         const ATTACK_CACHE_DB = 'tt2_attack_cache';
         const ATTACK_CACHE_LATEST_MS = 30 * 60 * 1000;
+        // 只用這個日期（含）之後的場次：9/20 之後卡片等級與加成的規則跟之前不同，舊場次的牌組傷害不能拿來比
+        const ATTACK_STATS_FROM = '2026-09-20T00:00:00Z';
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
         let attackCacheRecords = null;      // [{ startedAt, buffType, attacks:[...] }]，載入後常駐記憶體
         let attackCacheVersion = 0;
@@ -8170,7 +8172,7 @@
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 const sresp = await fetch(`${relayUrl}/raid-sessions-summary`);
                 if (!sresp.ok) throw new Error('sessions ' + sresp.status);
-                const sessions = (await sresp.json()).sessions || [];
+                const sessions = ((await sresp.json()).sessions || []).filter(s => s.startedAt >= ATTACK_STATS_FROM);   // 新到舊，只留 9/20 之後
                 const db = await acOpen();
                 const stored = new Map((await acReq(db.transaction('sessions').objectStore('sessions').getAll())).map(r => [r.startedAt, r]));
                 attackCacheState.total = sessions.length; attackCacheState.done = 0;

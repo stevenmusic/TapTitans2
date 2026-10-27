@@ -8824,7 +8824,7 @@
         const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
-        const BY_PART_RECO_RATIOS = [0.05, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];   // 比例門檻（佔這個部位數量狀態總打數）,
+        const BY_PART_RECO_RATIO = 0.005;   // 比例門檻（佔這個部位數量狀態總打數）
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
@@ -9027,9 +9027,10 @@
             // 一找到 6 組就停（所以優先用次數多的牌組）；全部放寬還是湊不滿，就只列出找得到的最多組數
             // 門檻從嚴到鬆一階一階放寬（5％→4％→3％→2％→1.5％→1％→0.5％→10 次→5 次→1 次），一找到 6 組就停，
             // 所以結果會盡量用「相同狀態下次數最多」的牌組，不會一下子掉到很低的門檻
-            // 門檻從嚴到鬆一階一階退讓（比例＝佔上面「這個部位數量狀態總打數」的比例），一找到 6 組就停，所以盡量用次數多的牌組；
-            // 比例都湊不滿再退讓到 10 次、5 次、1 次
-            const thresholds = [...new Set([...BY_PART_RECO_RATIOS.map(r => Math.max(BY_PART_RECO_BASE_MIN, stateTotal * r)), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
+            // 門檻：先要求佔「這個部位數量狀態總打數」0.5％以上（至少 10 次），湊不滿 6 組再退讓到 10 次、5 次、1 次。
+            // 實測 547 種狀態，逐階從 5％往下退的結果幾乎都跟直接用 0.5％一樣（挑的是分數總和最高的 6 組，次數多的本來就會被選到），
+            // 只有一個狀態逐階退讓反而更差，所以不再逐階
+            const thresholds = [...new Set([Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_RATIO), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
                 const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));

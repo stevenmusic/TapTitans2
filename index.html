@@ -8175,7 +8175,7 @@
            • 傷害用「相對傷害指數」：每筆攻擊的總傷害 ÷ 該玩家在那一場的平均傷害，不同等級的人才能比較
            • 還沒載入完時，先用伺服器的 /deck-part-stats 頂著（沒有傷害資料），載入完自動換成網頁端統計 ── */
         const ATTACK_CACHE_DB = 'tt2_attack_cache';
-        const ATTACK_CACHE_LATEST_MS = 30 * 60 * 1000;
+        const ATTACK_CACHE_LATEST_MS = 2 * 60 * 1000;   // 打開網頁（或切回網頁）時，本場的攻擊紀錄超過這麼久沒更新就重抓一次；平常不輪詢，新攻擊靠即時事件補進來
         // 只用這個日期（含）之後的場次：9/20 之後卡片等級與加成的規則跟之前不同，舊場次的牌組傷害不能拿來比
         const ATTACK_STATS_FROM = '2026-09-20T00:00:00Z';
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
@@ -8263,6 +8263,11 @@
                 if (typeof byPartRecoRefresh === 'function') byPartRecoRefresh();
             }
         }
+        // 網頁從背景切回來（手機放著、即時連線可能斷過，漏掉的攻擊要補回來）：超過 ATTACK_CACHE_LATEST_MS 沒更新就重抓本場一次
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && attackCacheState.ready && !attackCacheState.loading
+                && typeof indexedDB !== 'undefined' && Date.now() - (attackCacheState.lastRun || 0) > ATTACK_CACHE_LATEST_MS) attackCacheEnsure();
+        });
         function renderByPartLoadingHint() {
             const el = document.getElementById('by-part-sim-reco');
             if (el && attackCacheState.loading) el.textContent = `正在載入攻擊紀錄（${attackCacheState.done}／${attackCacheState.total}），第一次要一點時間…`;

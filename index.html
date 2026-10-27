@@ -8142,7 +8142,7 @@
            • 傷害用「相對傷害指數」：每筆攻擊的總傷害 ÷ 該玩家在那一場的平均傷害，不同等級的人才能比較
            • 還沒載入完時，先用伺服器的 /deck-part-stats 頂著（沒有傷害資料），載入完自動換成網頁端統計 ── */
         const ATTACK_CACHE_DB = 'tt2_attack_cache';
-        const ATTACK_CACHE_LATEST_MS = 30 * 60 * 1000;
+        const ATTACK_CACHE_LATEST_MS = 5 * 60 * 1000;   // 本場（進行中）的攻擊紀錄多久重抓一次（原本 30 分鐘，新攻擊要等很久才進推薦）
         // 只用這個日期（含）之後的場次：9/20 之後卡片等級與加成的規則跟之前不同，舊場次的牌組傷害不能拿來比
         const ATTACK_STATS_FROM = '2026-09-20T00:00:00Z';
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
@@ -8214,7 +8214,7 @@
                 console.error('攻擊紀錄快取失敗', e);
                 attackCacheState.error = true;
             } finally {
-                attackCacheState.loading = false;
+                attackCacheState.loading = false; attackCacheState.lastRun = Date.now();
                 byPartRecoSig = '';
                 if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
                 if (typeof byPartRecoRefresh === 'function') byPartRecoRefresh();
@@ -8273,7 +8273,8 @@
                 });
                 if (!byPlayer.size) return;
                 const maxCount = Math.max(...[...byPlayer.values()].map(e => e.list.length));
-                const minCount = Math.ceil(maxCount * 0.8);
+                // 進行中的本場（還沒結束）每個人的出刀數都還不完整，不套用「出刀數要達最多的 80％」，否則剛打幾刀的新狀態幾乎全被濾掉
+                const minCount = rec.complete === false ? 0 : Math.ceil(maxCount * 0.8);
                 const top = [...byPlayer.values()].filter(e => e.list.length >= minCount).sort((x, y) => y.total - x.total).slice(0, topN);
                 if (!top.length) return;
                 sessionCount++;
@@ -9374,6 +9375,8 @@
         async function byPartRecoRefresh() {
             const box = document.getElementById('by-part-reco');
             if (!box) return;
+            // 本場的新攻擊（含攻擊當下狀態）要進推薦：每次部位狀態更新時，距離上次載入超過 ATTACK_CACHE_LATEST_MS 就重新載入一次
+            if (attackCacheState.ready && !attackCacheState.loading && typeof indexedDB !== 'undefined' && Date.now() - (attackCacheState.lastRun || 0) > ATTACK_CACHE_LATEST_MS) attackCacheEnsure();
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
             // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫

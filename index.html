@@ -8219,12 +8219,34 @@
                     const stale = !rec || (isLatest && Date.now() - (rec.fetchedAt || 0) > ATTACK_CACHE_LATEST_MS)
                         || (!isLatest && !rec.complete) || rec.count !== s.attackCount && !isLatest && rec.complete === false;
                     if (stale) {
+                        // 本場（進行中）已經有快取、而且是新格式（每筆都有 key）：只跟伺服器要「快取之後新增的」攻擊，不整場重抓；
+                        // 伺服器還沒支援這個端點、或快取是舊格式，才整場重抓
+                        let merged = false;
+                        if (isLatest && rec && rec.serverLastTs && rec.complete === false && rec.attacks.every(a => a[7])) {
+                            try {
+                                const ir = await fetch(`${relayUrl}/attacks-since?ts=${rec.serverLastTs - 120000}`);   // 往前多留 2 分鐘重疊，用 key 去重
+                                if (ir.ok) {
+                                    const inc = (await ir.json()).attacks;
+                                    if (Array.isArray(inc)) {
+                                        const have = new Set(rec.attacks.map(a => a[7]));
+                                        inc.forEach(a => { const c = acCompact(a); if (!have.has(c[7])) { have.add(c[7]); rec.attacks.push(c); } });
+                                        rec.serverLastTs = Math.max(rec.serverLastTs, ...inc.map(a => Number(a.ts) || 0));
+                                        rec.count = s.attackCount; rec.fetchedAt = Date.now(); rec.buffType = s.buffType || null;
+                                        await acReq(db.transaction('sessions', 'readwrite').objectStore('sessions').put(rec));
+                                        merged = true;
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                        if (!merged) {
                         const resp = await fetch(`${relayUrl}/full-attack-log?session=${encodeURIComponent(s.startedAt)}`);
                         if (resp.ok) {
                             const data = await resp.json();
-                            const attacks = (Array.isArray(data.attacks) ? data.attacks : []).map(acCompact);
-                            rec = { startedAt: s.startedAt, buffType: s.buffType || null, levelTier: s.levelTier || null, attacks, count: s.attackCount, fetchedAt: Date.now(), complete: !isLatest };
+                            const raw = Array.isArray(data.attacks) ? data.attacks : [];
+                            const attacks = raw.map(acCompact);
+                            rec = { startedAt: s.startedAt, buffType: s.buffType || null, levelTier: s.levelTier || null, attacks, count: s.attackCount, fetchedAt: Date.now(), complete: !isLatest, serverLastTs: raw.reduce((m, a) => Math.max(m, Number(a.ts) || 0), 0) };
                             await acReq(db.transaction('sessions', 'readwrite').objectStore('sessions').put(rec));
+                        }
                         }
                     } else if (rec.buffType !== (s.buffType || null)) {
                         rec.buffType = s.buffType || null;     // 加成類型是後來才偵測到的，更新標籤即可

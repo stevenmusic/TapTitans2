@@ -8824,7 +8824,7 @@
         const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
         const BY_PART_RECO_LOW_RATIO = 0.3;
-        const BY_PART_RECO_FLOOR = 0.01;       // 比例底線：牌組次數至少要佔「相同部位數量狀態下全部攻擊次數」的這個比例，更少的直接拿掉
+        const BY_PART_RECO_RATIOS = [0.05, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];   // 比例門檻（佔這個部位數量狀態總打數）,
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
@@ -8886,15 +8886,13 @@
             keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
 
             const catOf = (n) => CARD_CATEGORY[n] || 'support';
-            let rows = [];
+            let rows = [], stateAll = 0;
             data.decks.forEach(d => {
-                if (d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n))) return;
-                // 卡片的部位數量條件
+                const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n));
+                // 卡片的部位數量條件（不符合的牌組不推薦，但它的刀數仍算進「這個部位數量狀態的總打數」）
                 const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min)
                     || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6);   // 瘟疫、沙漏：肉體部位達 6 個才使用
-                if (reqUnmet) return;
                 const onlyLayers = d.cards.map(n => CARD_ONLY_WHEN[n] ? CARD_ONLY_WHEN[n](all) : undefined);
-                if (onlyLayers.some(l => l === null)) return;
                 const onlyLayer = onlyLayers.find(l => l);
 
                 // 限定部位的卡（頭肚、頭腳、肚手、四肢）：整組牌組能打的部位只剩這些卡都能打的交集
@@ -8937,6 +8935,8 @@
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
                 // 這組牌組現在這個階段「最常打的打法」現在要打得出來（例如專門同時打頭＋肚子的牌組，肚子禁打時，主打法打不出來就不推薦）
+                stateAll += usable;   // 這個部位數量狀態的總打數：所有牌組裡「打法現在打得出來」的刀數（不管這組牌後面會不會被刷掉）
+                if (excluded || reqUnmet || onlyLayers.some(l => l === null)) return;
                 if (!mainOk) return;
                 if (usable === 0) return;   // 只要現在的部位數量、狀態夠，這組牌組真實打過的打法有一種打得出來就可以列入（打得出來的比例只影響分數）；完全打不出來的絕不推薦
                 const tier = usable >= BY_PART_RECO_MIN_HITS ? 2 : 1;   // 2＝現在這種狀態下真的常打；1＝打過但很少
@@ -8948,7 +8948,7 @@
                 rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
-            const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
+            const stateTotal = stateAll;
             // 卡片頻率：組合的可能性太多，同一組三張卡的次數會被切得很零碎（常見的卡搭配各種卡，每個組合只有幾次），
             // 所以另外把「每張卡在現在這種狀態下，所有打得出來的牌組裡總共出現幾次」加總，同類卡（爆裂／苦痛／支援）互比，
             // 牌組的卡片分數＝三張的平均＋最弱一張的平均。這樣一個罕見的組合，只要它的卡本身現在常用，仍然會有分數
@@ -8993,11 +8993,11 @@
             rows.forEach(r => {
                 r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
             });
-            // 排序＝期望傷害貢獻：使用次數（這個部位狀態下前 15 名真的打過幾刀）× 傷害指數 × 詛咒減傷 × 場次加成
+            // 排序＝實際使用次數優先（傷害指數只在 0.8～1.25 之間微調，次數才是主軸）：使用次數（這個部位狀態下前 15 名真的打過幾刀）× 傷害指數 × 詛咒減傷 × 場次加成
             // 傷害指數（每個人以自己該場平均傷害為 1）依刀數向 1 收斂，刀數少的牌組不會因為運氣好就排很前面；沒有傷害資料時當作 1
             rows.forEach(r => {
                 const dmg = r.dmg === null || r.dmg === undefined ? 1 : 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK);
-                r.score = r.usable * Math.max(0.1, dmg) * Math.max(0.2, r.curseMul) * r.buffMul;
+                r.score = r.usable * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul;
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
@@ -9027,7 +9027,9 @@
             // 一找到 6 組就停（所以優先用次數多的牌組）；全部放寬還是湊不滿，就只列出找得到的最多組數
             // 門檻從嚴到鬆一階一階放寬（5％→4％→3％→2％→1.5％→1％→0.5％→10 次→5 次→1 次），一找到 6 組就停，
             // 所以結果會盡量用「相同狀態下次數最多」的牌組，不會一下子掉到很低的門檻
-            const thresholds = [...new Set([0.05, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005].filter(r => r >= BY_PART_RECO_FLOOR).map(r => Math.max(BY_PART_RECO_MIN_HITS, stateTotal * r)))].sort((x, y) => y - x);
+            // 門檻從嚴到鬆一階一階退讓（比例＝佔上面「這個部位數量狀態總打數」的比例），一找到 6 組就停，所以盡量用次數多的牌組；
+            // 比例都湊不滿再退讓到 10 次、5 次、1 次
+            const thresholds = [...new Set([...BY_PART_RECO_RATIOS.map(r => Math.max(BY_PART_RECO_BASE_MIN, stateTotal * r)), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
                 const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));

@@ -8787,6 +8787,30 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
+        function byPartSynthDecks(data, parts, banned, picked, need, curseTypes, cursedK) {
+            const scene = byPartPartsToScene(parts, banned);
+            const used = new Set(picked.flatMap(r => r.rawCards));
+            const cnt = {};
+            data.decks.forEach(d => d.cards.forEach(n => { cnt[n] = (cnt[n] || 0) + (d.attacks || 0); }));
+            const cat = (n) => (BY_PART_NON_DAMAGE.has(n) || !CARD_CATEGORY[n]) ? 'support' : CARD_CATEGORY[n];
+            const mul = (n) => 1 - (curseTypes || []).reduce((s, d) => s + Math.abs(d.amount) * cursedK * (((String(d.type).startsWith('Burst') && cat(n) === 'burst') || (String(d.type).startsWith('Afflicted') && cat(n) === 'torment')) ? 1 : 0), 0);
+            const usableNow = (n) => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok;
+            const pool = Object.keys(cnt).filter(n => !used.has(n) && usableNow(n) && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
+                .sort((a, b) => cnt[b] * Math.max(0.2, mul(b)) - cnt[a] * Math.max(0.2, mul(a)));
+            const dmg = pool.filter(n => cat(n) !== 'support'), sup = pool.filter(n => cat(n) === 'support');
+            const out = [];
+            while (out.length < need) {
+                const three = [];
+                while (three.length < 2 && dmg.length) three.push(dmg.shift());
+                if (sup.length) three.push(sup.shift());
+                while (three.length < 3 && dmg.length) three.push(dmg.shift());
+                while (three.length < 3 && sup.length) three.push(sup.shift());
+                if (three.length < 3) break;
+                out.push({ cards: byPartOrderCards(three), rawCards: three, targets: [], usable: 0, synthetic: true, score: -1 });
+            }
+            return out;
+        }
+
         function byPartRecoCompute(data, partsArg, bannedArg, allRows, curseArg) {
             const parts = partsArg || (raidState && raidState.parts);
             const bannedList = bannedArg || raidBannedParts;
@@ -8969,7 +8993,11 @@
                 if (best && best.length >= K) break;
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
-            return (best || []).slice().sort((a, b) => b.score - a.score);
+            const picked = (best || []).slice().sort((a, b) => b.score - a.score);
+            // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
+            // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
+            if (picked.length < K) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, K - picked.length, curseTypes, cursedK));
+            return picked;
         }
 
         // ── 推薦卡片：依詛咒類型與現在的部位狀態，分爆裂／苦痛／支援推薦「單張卡」──

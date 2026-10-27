@@ -8148,6 +8148,7 @@
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
         let attackCacheRecords = null;      // [{ startedAt, buffType, attacks:[...] }]，載入後常駐記憶體
         let attackCacheVersion = 0;
+        let attackCtxMap = new Map();       // 攻擊 key → { curse:[{type,amount}], cursed, cursedParts, layers }（伺服器新增，只有之後的新攻擊才有）
         const localStatsMemo = new Map();
 
         function acOpen() {
@@ -8163,7 +8164,8 @@
         function acCompact(a) {
             return [a.ts, a.playerCode || a.player, Number(a.totalDamage) || 0, Number(a.tapDamage) || 0,
                 (a.cards || []).map(x => x.name), (a.parts || []).map(p => [p.part, p.layer, Number(p.damage) || 0]),
-                Object.keys(a.cardDamage || {}).map(k => [k, Number(a.cardDamage[k]) || 0])];
+                Object.keys(a.cardDamage || {}).map(k => [k, Number(a.cardDamage[k]) || 0]),
+                `${a.attackDatetime || a.ts}_${a.player}`];   // 對應伺服器 /attack-context 的 key（攻擊當下的詛咒／部位層別狀態）
         }
         async function attackCacheEnsure() {
             if (attackCacheState.loading) return;
@@ -8199,6 +8201,11 @@
                     attackCacheState.done = i + 1;
                     if (stale && i % 3 === 2) renderByPartLoadingHint();
                 }
+                // 每筆攻擊「打之前」的詛咒／部位層別狀態（失敗或還沒有資料都不影響其他統計）
+                try {
+                    const cr = await fetch(`${relayUrl}/attack-context`);
+                    if (cr.ok) attackCtxMap = new Map(Object.entries((await cr.json()).ctx || {}));
+                } catch (e) {}
                 attackCacheRecords = out;
                 attackCacheLatestBuff = sessions[0] ? (sessions[0].buffType || null) : null;
                 attackCacheVersion++; localStatsMemo.clear(); byPartCache.clear();
@@ -8244,8 +8251,15 @@
         }
         // 用每一筆攻擊紀錄算統計：跟伺服器 /deck-part-stats 同一套規則（每場只看總傷前 N 名、出刀數要達最多的 80％、
         // 一刀打到的部位＋層別要大於點擊傷害才算卡片打到的），再加上每種打法的「相對傷害指數」總和
-        function buildLocalDeckStats(topN, group) {
-            const memoKey = `${topN}|${group || 'all'}`;
+        // 攻擊當下的狀態 → 比對用的字串：各層部位數量（盔甲／肉體／骨架）、詛咒甲數量、詛咒類型（爆裂／苦痛／肉體）
+        function acStateKey(layers, cursed, curseTypes) {
+            const c = { armor: 0, body: 0, skeleton: 0 };
+            Object.values(layers || {}).forEach(l => { if (c[l] !== undefined) c[l]++; });
+            const t = (curseTypes && curseTypes[0] && String(curseTypes[0].type || curseTypes[0]).replace(/DamagePerCurse$/, '')) || '';
+            return `${c.armor}-${c.body}-${c.skeleton}|${cursed || 0}|${cursed ? t : ''}`;
+        }
+        function buildLocalDeckStats(topN, group, stateKey) {
+            const memoKey = `${topN}|${group || 'all'}|${stateKey || ''}`;
             if (localStatsMemo.has(memoKey)) return localStatsMemo.get(memoKey);
             const decks = new Map();
             const cardStats = {};   // 單張卡片：出現的刀數、這張卡自己造成的傷害（相對傷害指數）
@@ -8277,9 +8291,11 @@
                     return a[2] / (1 + buff.mul * (buff.type === 'burst' ? sh.b : sh.t));
                 };
                 top.forEach(e => {
+                    // 指定了狀態：只算「攻擊當下狀態跟目前一樣」的刀（平均傷害仍用這個玩家這場全部的刀）
                     const three = e.list.filter(a => a[4].length === 3);
                     const mean = three.length ? three.reduce((s, a) => s + adjTotal(a), 0) / three.length : 0;
                     three.forEach(a => {
+                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || acStateKey(cx.layers, cx.cursed, cx.curse) !== stateKey) return; }
                         a[4].forEach(cn => {
                             if (!cardStats[cn]) cardStats[cn] = { n: 0, rel: 0 };
                             cardStats[cn].n++;
@@ -8927,6 +8943,47 @@
             return rows;
         }
 
+        /* ── 「這個場次類型＋相同部位狀態」下，前 15 名真的用過的牌組（用伺服器記下的攻擊當下狀態）──
+           狀態＝各層部位數量（盔甲／肉體／骨架）＋詛咒甲數量＋詛咒類型，場次類型＝爆裂／苦痛／其他。
+           伺服器是新功能，只有之後的新攻擊才有狀態資料；樣本夠（BY_PART_CTX_MIN_TOTAL 刀以上）才用，
+           每組牌至少 BY_PART_CTX_MIN_DECK 刀，在這些牌組裡挑「6 組不共用卡、使用次數總和最高」的，不夠 6 組的位置交給原本的算法補 ── */
+        const BY_PART_CTX_MIN_TOTAL = 30;
+        const BY_PART_CTX_MIN_DECK = 3;
+        function byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) {
+            try {
+                if (!attackCtxMap || attackCtxMap.size === 0 || !attackCacheState.ready || !attackCacheRecords) return null;
+                const layers = {};
+                RAID_PARTS.forEach(({ key }) => { const p = parts[key]; if (p) layers[key] = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton'); });
+                const cursedK = Object.values(parts).filter(p => p.armor > 0 && p.cursed).length;
+                const stateKey = acStateKey(layers, cursedK, cursedK > 0 ? curseTypes : []);
+                const st = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), stateKey)   // 永遠只抓前 15 名;
+                const total = st.decks.reduce((a, d) => a + d.attacks, 0);
+                if (total < BY_PART_CTX_MIN_TOTAL) return null;
+                const cand = st.decks.filter(d => d.attacks >= BY_PART_CTX_MIN_DECK && !d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n) || cardBlocked(n)))   // 卡片本身現在用不到的（例如 0 個肉體部位時的振奮士氣）就算有人這樣配過也不推薦
+                    .sort((a, b) => b.attacks - a.attacks);
+                let best = [], bestSum = -1, nodes = 0;
+                const dfs = (i, chosen, used, sum) => {
+                    if (chosen.length > best.length || (chosen.length === best.length && sum > bestSum)) { best = chosen.slice(); bestSum = sum; }
+                    if (chosen.length >= BY_PART_RECO_COUNT || nodes++ > 200000) return;
+                    for (let j = i; j < cand.length; j++) {
+                        if (cand[j].cards.some(n => used.has(n))) continue;
+                        chosen.push(cand[j]); cand[j].cards.forEach(n => used.add(n));
+                        dfs(j + 1, chosen, used, sum + cand[j].attacks);
+                        chosen.pop(); cand[j].cards.forEach(n => used.delete(n));
+                    }
+                };
+                dfs(0, [], new Set(), 0);
+                if (!best.length) return null;
+                const rows = best.map(d => {
+                    const top = Object.keys(d.patterns).sort((a, b) => d.patterns[b] - d.patterns[a])[0] || '';
+                    const targets = top ? top.split(',').map(x => x.split('|')).map(([part, layer]) => ({ part, layer, cursed: false })) : [];
+                    return { cards: byPartOrderCards(d.cards), rawCards: d.cards, targets, usable: d.attacks, overall: d.attacks, score: d.attacks, ctx: true };
+                });
+                rows.total = total;
+                return rows;
+            } catch (e) { return null; }
+        }
+
         function byPartSynthDecks(data, parts, banned, picked, need, curseTypes, cursedK) {
             const scene = byPartPartsToScene(parts, banned);
             const used = new Set(picked.flatMap(r => r.rawCards));
@@ -8984,9 +9041,13 @@
             keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
 
             const catOf = (n) => CARD_CATEGORY[n] || 'support';
+            const sceneNow = byPartPartsToScene(parts, bannedList);
+            const cardBlocked = (n) => QUIZ_CARDS[n] && (quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) && !quizCardUsable(n, sceneNow).ok;
             let rows = [];
             data.decks.forEach(d => {
-                const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n));
+                // 單張卡現在要用得到：卡片本身的限制（只能打盔甲／只能打肉體／限定部位／部位數量條件）跟現在的部位狀態不合，整組不推薦
+                // （例如場上 0 個肉體部位時，只作用在肉體的振奮士氣沒有效果）
+                const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n)) || d.cards.some(n => cardBlocked(n));
                 // 卡片的部位數量條件（不符合的牌組不推薦，但它的刀數仍算進「這個部位數量狀態的總打數」）
                 const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min)
                     || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6);   // 瘟疫、沙漏：肉體部位達 6 個才使用
@@ -9055,7 +9116,7 @@
              { cards: ['CrushingVoid', 'PlagueAttack', 'SandsOfTime'], ok: () => bodyHealthy >= 6 && all.body >= 6, targets: () => keys.filter(k => info[k].layer === 'body') }].forEach(f => {
                 const sig = f.cards.slice().sort().join();
                 const d = data.decks.find(x => x.cards.slice().sort().join() === sig);
-                if (!d || !f.ok()) return;
+                if (!d || !f.ok() || d.cards.some(n => cardBlocked(n))) return;
                 forcedSigs.add(sig);
                 if (rows.some(r => r.rawCards.slice().sort().join() === sig)) return;
                 const tg = f.targets();
@@ -9135,10 +9196,12 @@
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
             const gameRows = allRows ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
+            const ctxRows = allRows || gameRows.length ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
+            const seedRows = [...gameRows, ...ctxRows];
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
-            const forcedRows = allRows || gameRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
-            const usedInit = new Set([...gameRows, ...forcedRows].flatMap(r => r.rawCards));
-            const K = BY_PART_RECO_COUNT - gameRows.length - forcedRows.length;
+            const forcedRows = allRows || seedRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
+            const usedInit = new Set([...seedRows, ...forcedRows].flatMap(r => r.rawCards));
+            const K = BY_PART_RECO_COUNT - seedRows.length - forcedRows.length;
             const BIG = 1e9;
             let best = null, bestObj = -1;
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
@@ -9181,11 +9244,12 @@
                 if (best && best.length >= K) break;
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
-            const picked = [...gameRows, ...forcedRows.slice().sort((a, b) => b.score - a.score), ...(best || []).slice().sort((a, b) => b.score - a.score)];
+            const picked = [...seedRows, ...forcedRows.slice().sort((a, b) => b.score - a.score), ...(best || []).slice().sort((a, b) => b.score - a.score)];
             // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
             // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
             if (picked.length < BY_PART_RECO_COUNT) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, BY_PART_RECO_COUNT - picked.length, curseTypes, cursedK));
-            picked.stateTotal = gameRows.length ? 0 : stateTotal;   // 遊戲模擬器的 6 組不顯示總次數與各組次數   // 顯示用：分母（這個部位狀態打得出來的牌組全部紀錄刀數）
+            if (ctxRows.length) picked.forEach(r => { if (!r.ctx) r.hideCount = true; });   // 有「相同狀態」的統計時，補位的牌組次數是別的統計基準，不顯示
+            picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : stateTotal);   // 遊戲模擬器的 6 組不顯示總次數與各組次數   // 顯示用：分母（這個部位狀態打得出來的牌組全部紀錄刀數）
             return picked;
         }
 
@@ -9256,7 +9320,7 @@
                     <button onclick="saveByPartRecoImage()" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
+                    ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall && !r.hideCount ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
                 </div>`;
         }
 

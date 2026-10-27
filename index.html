@@ -8944,7 +8944,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ overall: d.attacks || 0, cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ overall: d.attacks || 0, cursedBonus: Math.min(0.35, d.cards.reduce((a, n) => a + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio, 0)), cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             // 排名用「前 15 名全部紀錄裡這組牌用了幾刀」，部位狀態只決定打不打得出來（盔甲／肉體層別、瘋狂無效、凱旋行軍等規則）；
@@ -8998,7 +8998,7 @@
             // 傷害指數（每個人以自己該場平均傷害為 1）依刀數向 1 收斂，刀數少的牌組不會因為運氣好就排很前面；沒有傷害資料時當作 1
             rows.forEach(r => {
                 const dmg = r.dmg === null || r.dmg === undefined ? 1 : 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK);
-                r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul;
+                r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul * (1 + r.cursedBonus);   // 撼地破甲、毀了雨：場上有詛咒甲時額外加分（打法打到詛咒甲的比例越高越多）
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；

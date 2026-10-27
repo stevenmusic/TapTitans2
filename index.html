@@ -8563,7 +8563,7 @@
                     const set = CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null;
                     if (set) allowed = allowed ? allowed.filter(p => set.includes(p)) : set.slice();
                 });
-                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [];
+                let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [], bodyHit = 0;
                 byPartParsePatterns(d).forEach(({ keys: ks, n }) => {
                     // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有
                     const isStage = ks.every(([, layer]) => layersNow.has(layer));
@@ -8587,6 +8587,7 @@
                     if (isStage && n === mainN) mainOk = true;
                     if (n > bestN) { bestN = n; bestTargets = picked.map(p => ({ part: p, layer: info[p].layer, cursed: info[p].cursed })); }   // 這組牌組現在最常打、而且打得出來的打法要打的部位
                     usable += n;
+                    bodyHit += n * (picked.filter(p => info[p].layer === 'body').length / Math.max(1, picked.length));
                     cursedHit += n * (picked.filter(p => info[p].cursed).length / Math.max(1, picked.length));
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
@@ -8599,7 +8600,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             const stateTotal = rows.reduce((s, r) => s + r.usable, 0);
@@ -8619,9 +8620,25 @@
             // 次數比最常打的那組少太多的牌組降到「少打」那一級，只有湊不滿 6 組時才會用到
             rows.forEach(r => { if (r.tier === 2 && r.usable < maxUsable * BY_PART_RECO_MIN_RATIO) r.tier = 1; });
             const maxCover = Math.max(1e-9, ...rows.map(r => r.cover));
+            // 詛咒減傷：官方資料每隻王有一種詛咒類型（爆裂／苦痛／肉體傷害，每個詛咒甲 −6％）。
+            // 現在場上有 k 個詛咒甲時，牌組的期望傷害乘上 (1 − 6％ × k × 該牌組這種傷害的占比)：
+            // 爆裂／苦痛占比用牌組裡的傷害卡類別估（爆裂卡數 ÷ 傷害卡數），肉體傷害占比用統計裡打肉體層的比例估。
+            // 只有連線中（知道這隻王的詛咒類型）才會套用；依部位分頁自己設定狀態時不知道詛咒類型，不套用
+            const cursedK = !partsArg ? Object.values(parts).filter(p => p.armor > 0 && p.cursed).length : 0;
+            const curseTypes = !partsArg && cursedK > 0 ? raidCurseInfo : [];
+            const damageShare = (r, type) => {
+                if (type === 'Body') return r.bodyShare;
+                const dmgCards = r.rawCards.filter(n => !BY_PART_NON_DAMAGE.has(n) && CARD_CATEGORY[n]);
+                if (!dmgCards.length) return 0;
+                const want = type === 'Burst' ? 'burst' : (type === 'Afflicted' ? 'torment' : null);
+                return want ? dmgCards.filter(n => CARD_CATEGORY[n] === want).length / dmgCards.length : 0;
+            };
+            rows.forEach(r => {
+                r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
+            });
             rows.forEach(r => {
                 const pop = r.usable / maxUsable;   // 排序以出現頻率為主：這個搭配的打法在所有場次、所有紀錄裡出現的次數（相對最常出現的那組）
-                r.score = r.tier * 10 + BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + BY_PART_RECO_W.card * r.cardScore + r.synergy;
+                r.score = r.tier * 10 + Math.max(0, (BY_PART_RECO_W.pop * pop + BY_PART_RECO_W.cover * (r.cover / maxCover) + BY_PART_RECO_W.fit * r.fit + BY_PART_RECO_W.card * r.cardScore + r.synergy) * Math.max(0.2, r.curseMul));
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；

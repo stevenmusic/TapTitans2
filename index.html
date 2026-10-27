@@ -8886,7 +8886,7 @@
             keys.forEach(k => { info[k].low = info[k].hp < avgHp * BY_PART_RECO_LOW_RATIO; });
 
             const catOf = (n) => CARD_CATEGORY[n] || 'support';
-            let rows = [], stateAll = 0;
+            let rows = [];
             data.decks.forEach(d => {
                 const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n));
                 // 卡片的部位數量條件（不符合的牌組不推薦，但它的刀數仍算進「這個部位數量狀態的總打數」）
@@ -8935,7 +8935,6 @@
                     hpShare += n * (picked.reduce((s, p) => s + info[p].hp, 0) / totalHp);
                 });
                 // 這組牌組現在這個階段「最常打的打法」現在要打得出來（例如專門同時打頭＋肚子的牌組，肚子禁打時，主打法打不出來就不推薦）
-                stateAll += usable;   // 這個部位數量狀態的總打數：所有牌組裡「打法現在打得出來」的刀數（不管這組牌後面會不會被刷掉）
                 if (excluded || reqUnmet || onlyLayers.some(l => l === null)) return;
                 if (!mainOk) return;
                 if (usable === 0) return;   // 只要現在的部位數量、狀態夠，這組牌組真實打過的打法有一種打得出來就可以列入（打得出來的比例只影響分數）；完全打不出來的絕不推薦
@@ -8945,10 +8944,12 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ overall: d.attacks || 0, cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
-            const stateTotal = stateAll;
+            // 排名用「前 15 名全部紀錄裡這組牌用了幾刀」，部位狀態只決定打不打得出來（盔甲／肉體層別、瘋狂無效、凱旋行軍等規則）；
+            // 比例門檻的分母＝現在打得出來的牌組全部紀錄刀數總和
+            const stateTotal = rows.reduce((a, r) => a + r.overall, 0);
             // 卡片頻率：組合的可能性太多，同一組三張卡的次數會被切得很零碎（常見的卡搭配各種卡，每個組合只有幾次），
             // 所以另外把「每張卡在現在這種狀態下，所有打得出來的牌組裡總共出現幾次」加總，同類卡（爆裂／苦痛／支援）互比，
             // 牌組的卡片分數＝三張的平均＋最弱一張的平均。這樣一個罕見的組合，只要它的卡本身現在常用，仍然會有分數
@@ -8997,7 +8998,7 @@
             // 傷害指數（每個人以自己該場平均傷害為 1）依刀數向 1 收斂，刀數少的牌組不會因為運氣好就排很前面；沒有傷害資料時當作 1
             rows.forEach(r => {
                 const dmg = r.dmg === null || r.dmg === undefined ? 1 : 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK);
-                r.score = r.usable * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul;
+                r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul;
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
@@ -9013,7 +9014,7 @@
             // 強制列出的牌組，次數要佔相同狀態下全部攻擊次數的 5％（至少 10 次），只靠偶爾幾次的配法不強制
             const forceMin = Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_FORCE_RATIO);
             const mustCards = Object.keys(BY_PART_RECO_FORCE)
-                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.usable >= forceMin));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
+                .filter(card => healthyCount(BY_PART_RECO_FORCE[card]) >= BY_PART_RECO_FORCE[card].min && rows.some(r => r.cards.includes(card) && r.overall >= forceMin));   // 強制列出的牌組在現在這種狀態下至少要打過 5 次，不能只靠幾刀
 
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
@@ -9033,7 +9034,7 @@
             const thresholds = [...new Set([Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_RATIO), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = true;      // 適合大家：不管門檻退到多低，都要有足夠多不同的人在用（至少 6 位、單人不超過一半）
-                const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
+                const cand = rows.filter(r => r.overall >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
                 let bestHere = null, objHere = -1, nodes = 0;

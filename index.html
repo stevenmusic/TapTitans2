@@ -8825,6 +8825,43 @@
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
 
+        /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Armor／Focus Torso／Focus Body）──
+           兩個帳號用同樣的部位模擬，出來的都是這 6 組，所以固定放在推薦最前面（照遊戲的順序）；
+           每組標出要打的部位與部位狀態：
+             Cycle＝輪流打所有能打的部位（盔甲、肉體都打）
+             Focus Armor＝集中打所有還有盔甲（含詛咒甲）的部位
+             Focus Torso＝集中打頭部與肚子
+             Focus Body＝集中打所有露出肉體的部位
+           這個狀態用不到的組合（例如場上沒有盔甲就用不到 Focus Armor、有只能打盔甲的防空高砲）會跳過，由原本的算法補滿 6 組 ── */
+        const BY_PART_GAME_DECKS = [
+            { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+            { cards: ['FlakShot', 'BurstBoost', 'AstralEcho'], role: 'armor' },
+            { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+            { cards: ['MirrorForce', 'ExecutionersAxe', 'TotemFairySkill'], role: 'torso' },
+            { cards: ['Purify', 'Swarm', 'TriangleSupport'], role: 'cycle' },
+            { cards: ['Weaken', 'Shadow', 'ImpactAttack'], role: 'body' }
+        ];
+        function byPartGameRows(parts, banned) {
+            const scene = byPartPartsToScene(parts, banned);
+            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
+            const target = (k) => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' });
+            const rows = [];
+            BY_PART_GAME_DECKS.forEach(g => {
+                if (BY_PART_RECO_EXCLUDE && g.cards.some(n => BY_PART_RECO_EXCLUDE.has(n))) return;
+                let tg;
+                if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
+                else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');
+                else if (g.role === 'torso') tg = attackable.filter(k => k === 'Head' || k === 'ChestUpper');
+                else tg = attackable;
+                if (!tg.length) return;
+                // 卡片本身的可打部位／狀態（沒有資料的卡視為都能用）
+                const usable = g.cards.every(n => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok);
+                if (!usable) return;
+                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, score: 100 - rows.length });
+            });
+            return rows;
+        }
+
         function byPartSynthDecks(data, parts, banned, picked, need, curseTypes, cursedK) {
             const scene = byPartPartsToScene(parts, banned);
             const used = new Set(picked.flatMap(r => r.rawCards));
@@ -8875,7 +8912,8 @@
             data.decks.forEach(d => {
                 if (d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n))) return;
                 // 卡片的部位數量條件
-                const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min);
+                const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min)
+                    || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6);   // 瘟疫、沙漏：肉體部位達 6 個才使用
                 if (reqUnmet) return;
                 const onlyLayers = d.cards.map(n => CARD_ONLY_WHEN[n] ? CARD_ONLY_WHEN[n](all) : undefined);
                 if (onlyLayers.some(l => l === null)) return;
@@ -9000,7 +9038,9 @@
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
-            const K = BY_PART_RECO_COUNT;
+            const gameRows = allRows ? [] : byPartGameRows(parts, bannedList);
+            const usedInit = new Set(gameRows.flatMap(r => r.rawCards));
+            const K = BY_PART_RECO_COUNT - gameRows.length;
             const BIG = 1000;
             let best = null, bestObj = -1;
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
@@ -9014,7 +9054,7 @@
             ])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
-                const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported));
+                const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
                 let bestHere = null, objHere = -1, nodes = 0;
@@ -9036,17 +9076,17 @@
                     }
                 };
                 const mustHere = mustCards.filter(card => cand.some(r => r.cards.includes(card) && r.usable >= forceMin));
-                dfs(0, [], new Set(), 0, mustHere);
+                dfs(0, [], new Set(usedInit), 0, mustHere);
                 // 必出現的卡不可能同時滿足時，退而求其次：不強制，只找最高分組合
-                if (!bestHere) dfs(0, [], new Set(), 0, []);
+                if (!bestHere) dfs(0, [], new Set(usedInit), 0, []);
                 if (bestHere && (!best || bestHere.length > best.length)) { best = bestHere; bestObj = objHere; }
                 if (best && best.length >= K) break;
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
-            const picked = (best || []).slice().sort((a, b) => b.score - a.score);
+            const picked = [...gameRows, ...(best || []).slice().sort((a, b) => b.score - a.score)];
             // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
             // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
-            if (picked.length < K) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, K - picked.length, curseTypes, cursedK));
+            if (picked.length < BY_PART_RECO_COUNT) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, BY_PART_RECO_COUNT - picked.length, curseTypes, cursedK));
             return picked;
         }
 

@@ -8820,8 +8820,8 @@
         const BY_PART_RECO_MIN_PLAYERS = 6;
         const BY_PART_RECO_MAX_TOP_SHARE = 0.5;
         const BY_PART_RECO_SOLID_MIN = 20;   // 有人氣支撐的那幾階，牌組在這個狀態下至少要有這麼多刀（傷害指數才可信）
-        // 詛咒類型把這組牌的傷害砍掉 10％ 以上（例如爆裂詛咒 3 個詛咒甲 −18％、爆裂卡為主的牌組）：這種牌組排在沒被砍的牌組後面，
-        // 兩條固定牌組也不再強制；沒被砍的牌組不夠 6 組才用被砍的補上
+        // 詛咒類型把這組牌的傷害砍掉 10％ 以上（例如爆裂詛咒 3 個詛咒甲 −18％、爆裂卡為主的牌組）：這種牌組完全不推薦，兩條固定牌組也不強制；
+        // 沒被砍的真實牌組不夠 6 組時，用沒被砍的單張卡補（補位組合也不放被詛咒的類型的卡）
         const BY_PART_RECO_CURSE_PENAL = 0.9;
         const BY_PART_RECO_CURSE_TIER = 1e5;
         const BY_PART_RECO_BASE_MIN = 10;     // 任何推薦牌組在現在狀態下至少要出現幾次
@@ -8935,7 +8935,7 @@
             const cat = (n) => (BY_PART_NON_DAMAGE.has(n) || !CARD_CATEGORY[n]) ? 'support' : CARD_CATEGORY[n];
             const mul = (n) => 1 - (curseTypes || []).reduce((s, d) => s + Math.abs(d.amount) * cursedK * (((String(d.type).startsWith('Burst') && cat(n) === 'burst') || (String(d.type).startsWith('Afflicted') && cat(n) === 'torment')) ? 1 : 0), 0);
             const usableNow = (n) => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok;
-            const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
+            const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && mul(n) >= BY_PART_RECO_CURSE_PENAL && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
                 .sort((a, b) => cnt[b] * Math.max(0.2, mul(b)) - cnt[a] * Math.max(0.2, mul(a)));
             // 補位的組合要「搭得起來」：三張卡兩兩之間，在前 15 名真的用過的牌組裡至少同組出現過（例如只能打單部位的圖騰之力，
             // 不會跟多部位的炎燒地獄、核融炸彈湊成一組）。湊不到就依序放寬成「三組配對至少兩組出現過」、最後才不限，確保補滿
@@ -9152,7 +9152,7 @@
             const thresholds = [...new Set([Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_RATIO), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
                 const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階要有足夠多不同玩家在用；最後退讓的階（10 次以下）放寬，寧可用真實紀錄少的牌組，也不用沒紀錄的補位組合
-                const cand = rows.filter(r => r.overall >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
+                const cand = rows.filter(r => r.curseMul >= BY_PART_RECO_CURSE_PENAL && r.overall >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };
                 let bestHere = null, objHere = -1, nodes = 0;

@@ -8820,6 +8820,10 @@
         const BY_PART_RECO_MIN_PLAYERS = 6;
         const BY_PART_RECO_MAX_TOP_SHARE = 0.5;
         const BY_PART_RECO_SOLID_MIN = 20;   // 有人氣支撐的那幾階，牌組在這個狀態下至少要有這麼多刀（傷害指數才可信）
+        // 詛咒類型把這組牌的傷害砍掉 10％ 以上（例如爆裂詛咒 3 個詛咒甲 −18％、爆裂卡為主的牌組）：這種牌組排在沒被砍的牌組後面，
+        // 兩條固定牌組也不再強制；沒被砍的牌組不夠 6 組才用被砍的補上
+        const BY_PART_RECO_CURSE_PENAL = 0.9;
+        const BY_PART_RECO_CURSE_TIER = 1e5;
         const BY_PART_RECO_BASE_MIN = 10;     // 任何推薦牌組在現在狀態下至少要出現幾次
         const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
         const BY_PART_RECO_MIN_RATIO = 0.25; // 還要有最常打那組的這個比例以上，才算「常打」（避免只打過幾刀的冷門牌組上榜）
@@ -9013,7 +9017,7 @@
             // 傷害指數（每個人以自己該場平均傷害為 1）依刀數向 1 收斂，刀數少的牌組不會因為運氣好就排很前面；沒有傷害資料時當作 1
             rows.forEach(r => {
                 const dmg = r.dmg === null || r.dmg === undefined ? 1 : 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK);
-                r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul * (1 + r.cursedBonus);   // 撼地破甲、毀了雨：場上有詛咒甲時額外加分（打法打到詛咒甲的比例越高越多）
+                r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul * (1 + r.cursedBonus) + (r.curseMul < BY_PART_RECO_CURSE_PENAL ? 0 : BY_PART_RECO_CURSE_TIER);   // 撼地破甲、毀了雨：場上有詛咒甲時額外加分（打法打到詛咒甲的比例越高越多）
             });
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
@@ -9035,10 +9039,10 @@
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
-            const forcedRows = allRows ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()));
+            const forcedRows = allRows ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
             const usedInit = new Set(forcedRows.flatMap(r => r.rawCards));
             const K = BY_PART_RECO_COUNT - forcedRows.length;
-            const BIG = 1000;
+            const BIG = 1e9;
             let best = null, bestObj = -1;
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
             // 先用「相同狀態下全部攻擊次數的 5％（不少於 10 次）」，找不到 6 組互不共用卡的組合，才依序降到 3％、1％、10 次、5 次、1 次，

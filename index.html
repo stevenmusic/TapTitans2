@@ -8841,6 +8841,7 @@
              cycle＝輪流打所有能打的部位　armor＝集中打還有盔甲的部位　torso＝集中打頭部與肚子　body＝集中打露出肉體的部位
              head＝集中打頭部　limbs＝集中打肩與手（四肢）
            要加新的情境，在下面加一筆（buff＝加成類型代號，counts＝各種狀態的部位數量）即可 ── */
+        const BY_PART_GAME_MIN_USE = 10;
         const BY_PART_GAME_SCENARIOS = [
             {   // 苦痛機率 ×1.3：3 盔甲、3 肉體、2 禁打
                 buff: 'afflictionChance',
@@ -8896,7 +8897,7 @@
                 ]
             }
         ];
-        function byPartGameRows(parts, banned, buffKey, curseTypes) {
+        function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
             const scene = byPartPartsToScene(parts, banned);
             const base = (s) => (s === 'cursed' ? 'armor' : s);
             const cnt = { armor: 0, body: 0, skeleton: 0, banned: 0 };
@@ -8908,7 +8909,11 @@
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
             const target = (k) => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' });
             const rows = [];
+            const keyOf = (c) => c.slice().sort().join();
             sc.decks.forEach((g, i) => {
+                // 前 15 名真的用過的刀數太少（不到 BY_PART_GAME_MIN_USE 刀，含 0 次）的模擬器組合不放，空出來的位置由原本的算法用常用牌組補
+                const real = data && data.decks ? data.decks.find(d => keyOf(d.cards) === keyOf(g.cards)) : null;
+                if (data && (!real || real.attacks < BY_PART_GAME_MIN_USE)) return;
                 let tg;
                 if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
                 else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');
@@ -9129,7 +9134,7 @@
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
-            const gameRows = allRows ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes);
+            const gameRows = allRows ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
             const forcedRows = allRows || gameRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
             const usedInit = new Set([...gameRows, ...forcedRows].flatMap(r => r.rawCards));

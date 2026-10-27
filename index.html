@@ -8265,7 +8265,7 @@
             const cardStats = {};   // 單張卡片：出現的刀數、這張卡自己造成的傷害（相對傷害指數）
             let sessionCount = 0, attackCount = 0;
             attackCacheRecords.forEach(rec => {
-                if (group && group !== 'all' && acBuffGroup(rec.buffType) !== group) return;
+                if (group && group !== 'all' && (!rec.buffType || acBuffGroup(rec.buffType) !== group)) return;   // 加成類型偵測不到（沒資料）的場次不算進任何一種加成類型
                 const byPlayer = new Map();
                 rec.attacks.forEach(a => {
                     if (!byPlayer.has(a[1])) byPlayer.set(a[1], { list: [], total: 0 });

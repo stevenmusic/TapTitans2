@@ -8854,18 +8854,22 @@
                 let usable = 0, hpShare = 0, cursedHit = 0, relevant = 0, mainN = 0, mainOk = true, bestN = 0, bestTargets = [], bodyHit = 0, relSum = 0, relHas = true;
                 byPartParsePatterns(d).forEach(({ keys: ks, n, rel }) => {
                     // 「現在這個階段的打法」：打到的層別（盔甲／肉體）現在場上都還有
-                    const isStage = ks.every(([, layer]) => layersNow.has(layer));
+                    const hParts = new Set(ks.map(k => k[0])).size;
+                    // 一刀同時打 6 個以上部位的「多部位」打法，會打到場上每個還能打的部位，不管那些部位現在是盔甲還是肉體，
+                    // 所以不用比對當初的層別組成，只要現在能打的部位數量夠就算打得出來
+                    const broad = hParts >= BY_PART_MULTI_MIN && !onlyLayer;
+                    const isStage = broad || ks.every(([, layer]) => layersNow.has(layer));
                     if (isStage) relevant += n;
                     if (onlyLayer && !ks.every(([, layer]) => layer === onlyLayer)) return;
                     // 這種打法一刀同時打幾個部位、各是哪一層，只要現在場上「該層、沒禁打、不是骨架」的部位數量夠（卡片有限定部位時，要在能打的部位裡）就算打得出來，
                     // 不限定要是當初打的那幾個部位（真實紀錄的是某一次剛好打到哪些部位，之後換成別的同層部位也一樣打得到）
                     const h = new Set(ks.map(k => k[0])).size;
                     const need = {};
-                    ks.forEach(([, layer]) => { need[layer] = (need[layer] || 0) + 1; });
+                    ks.forEach(([, layer]) => { need[broad ? 'any' : layer] = (need[broad ? 'any' : layer] || 0) + 1; });
                     const picked = [];
                     let ok = true;
                     Object.keys(need).forEach(layer => {
-                        const pool = keys.filter(p => info[p].layer === layer && (!allowed || allowed.includes(p)) && (h >= BY_PART_MULTI_MIN || !info[p].low))
+                        const pool = keys.filter(p => (layer === 'any' || info[p].layer === layer) && (!allowed || allowed.includes(p)) && (h >= BY_PART_MULTI_MIN || !info[p].low))
                             .sort((x, y) => info[y].hp - info[x].hp);
                         if (pool.length < need[layer]) ok = false;
                         else picked.push(...pool.slice(0, need[layer]));   // 同層取血量最多的部位（覆蓋分數用）

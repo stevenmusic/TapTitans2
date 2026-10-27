@@ -8828,7 +8828,7 @@
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Armor／Focus Torso／Focus Body）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，不是每個狀態都適用，所以只在「加成類型一樣、
            而且各種狀態的部位數量一樣（盔甲＋詛咒甲幾個、肉體幾個、骨架幾個、禁打幾個）」時才用，不管是哪幾個部位、血量也不比對；
-           另外頭部和肚子都要能打（Focus Torso 和只能打頭肚的卡需要），其他狀態一律用原本的算法。
+           另外頭部和肚子至少要有一個能打（Focus Torso 和只能打頭肚的卡需要），其他狀態一律用原本的算法。
            符合時，這 6 組就是遊戲的結果，不再檢查卡片能不能用（例如只有 3 個肉體部位時，遊戲也推含瘟疫、沙漏的牌組）。
            每組標出要打的部位與部位狀態：
              Cycle＝輪流打所有能打的部位　Focus Armor＝集中打還有盔甲的部位　Focus Torso＝集中打頭部與肚子　Focus Body＝集中打露出肉體的部位
@@ -8853,7 +8853,7 @@
             const base = (s) => (s === 'cursed' ? 'armor' : s);
             const cnt = { armor: 0, body: 0, skeleton: 0, banned: 0 };
             RAID_PARTS.forEach(({ key }) => { cnt[base(scene[key])]++; });
-            const torsoOk = ['Head', 'ChestUpper'].every(k => ['armor', 'body', 'cursed'].includes(scene[k]));
+            const torsoOk = ['Head', 'ChestUpper'].some(k => ['armor', 'body', 'cursed'].includes(scene[k]));   // 頭或肚子至少一個能打
             const sc = BY_PART_GAME_SCENARIOS.find(x => x.buff === buffKey && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk));
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

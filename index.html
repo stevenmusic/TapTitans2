@@ -6371,6 +6371,37 @@
         }
         if (window.TT2_DEV_ENV) document.addEventListener('DOMContentLoaded', () => { devRefreshPanel(); });
 
+        // ── 推薦牌組即時更新：網頁自己收到的即時攻擊事件（raid:attack）本來就會送到每個開著的網頁，不用再跟 Render 要資料 ──
+        // 這一刀「打之前」的詛咒／部位層別狀態（格式跟伺服器 attack_context 一樣），用網頁目前知道的部位狀態算
+        function buildLiveAttackCtx() {
+            try {
+                if (!raidState || !raidState.parts) return null;
+                const layers = {}, cursedParts = [];
+                RAID_PARTS.forEach(({ key }) => {
+                    const p = raidState.parts[key];
+                    if (!p) return;
+                    const layer = p.armor > 0 ? 'armor' : (p.body > 0 ? 'body' : 'skeleton');
+                    layers[key] = layer;
+                    if (layer === 'armor' && p.cursed) cursedParts.push(key);
+                });
+                return { v: 1, curse: (raidCurseInfo || []).map(d => ({ type: d.type, amount: d.amount })), cursed: cursedParts.length, cursedParts, layers };
+            } catch (e) { return null; }
+        }
+        // 把這一刀補進推薦牌組用的攻擊資料（只在確定屬於目前最新場次時才補；之後重新載入時伺服器那份會取代，不會重複）
+        function appendLiveAttackToStatsCache(a, ctx) {
+            try {
+                if (!attackCacheState.ready || !attackCacheRecords || !attackCacheRecords[0]) return;
+                const latest = serverSessionsSummary && serverSessionsSummary[0];
+                const rec = attackCacheRecords[0];
+                if (latest ? rec.startedAt !== latest.startedAt : (!rec.attacks.length || Date.now() - rec.attacks[rec.attacks.length - 1][0] > 6 * 3600 * 1000)) return;   // 不確定屬於最新場次就跳過，之後重新載入自然補齊
+                const c = acCompact(a);
+                if (rec.attacks.some(x => x[7] === c[7])) return;
+                rec.attacks.push(c);
+                if (ctx) attackCtxMap.set(c[7], ctx);
+                attackCacheVersion++; localStatsMemo.clear(); byPartCache.clear(); byPartRecoSig = '';
+            } catch (e) {}
+        }
+
         function handleApiAttack(payload) {
             if (window.TT2_DEV_ENV && payload) devRecordAttack(payload);   // 測試站：把這筆攻擊存進測試資料庫
             if (raidSimActive) return;   // 模擬模式中不讓真實連線資料蓋掉自己設定的狀態
@@ -6424,6 +6455,7 @@
             }
 
             if (!raidState) return;
+            const liveCtx = buildLiveAttackCtx();   // 這一刀「打之前」的狀態（下面就要用這一刀的結果更新部位血量了）
             (cur.parts || []).forEach(p => {
                 const { layer, loc } = apiSplitPartId(p.part_id);
                 if (!raidState.parts[loc]) return;
@@ -6478,6 +6510,7 @@
                     attacksRemaining: (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null,
                     cards, cardDamage, tapDamage, parts: hitParts, totalDamage: totalDmg, dedupKey
                 });
+                appendLiveAttackToStatsCache({ attackDatetime, ts: Date.now(), player: playerName, playerCode: (payload.player && payload.player.player_code) || null, totalDamage: totalDmg, tapDamage, cards, parts: hitParts, cardDamage }, liveCtx);
             }
 
             // 完整攻擊紀錄的「歷史資料」還是完全信任伺服器 24 小時背景側錄寫進資料庫的那份
@@ -8142,7 +8175,7 @@
            • 傷害用「相對傷害指數」：每筆攻擊的總傷害 ÷ 該玩家在那一場的平均傷害，不同等級的人才能比較
            • 還沒載入完時，先用伺服器的 /deck-part-stats 頂著（沒有傷害資料），載入完自動換成網頁端統計 ── */
         const ATTACK_CACHE_DB = 'tt2_attack_cache';
-        const ATTACK_CACHE_LATEST_MS = 5 * 60 * 1000;   // 本場（進行中）的攻擊紀錄多久重抓一次（原本 30 分鐘，新攻擊要等很久才進推薦）
+        const ATTACK_CACHE_LATEST_MS = 30 * 60 * 1000;
         // 只用這個日期（含）之後的場次：9/20 之後卡片等級與加成的規則跟之前不同，舊場次的牌組傷害不能拿來比
         const ATTACK_STATS_FROM = '2026-09-20T00:00:00Z';
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
@@ -8201,10 +8234,20 @@
                     attackCacheState.done = i + 1;
                     if (stale && i % 3 === 2) renderByPartLoadingHint();
                 }
-                // 每筆攻擊「打之前」的詛咒／部位層別狀態（失敗或還沒有資料都不影響其他統計）
+                // 每筆攻擊「打之前」的詛咒／部位層別狀態：存在這台裝置的 IndexedDB，每次只跟伺服器要「上次之後新增的」，
+                // 不用每次整份下載（累積幾週後整份會很大，會吃 Render 流量）；失敗或還沒有資料都不影響其他統計
                 try {
-                    const cr = await fetch(`${relayUrl}/attack-context`);
-                    if (cr.ok) attackCtxMap = new Map(Object.entries((await cr.json()).ctx || {}));
+                    const holder = (await acReq(db.transaction('sessions').objectStore('sessions').get('__ctx__'))) || { startedAt: '__ctx__', map: {}, lastTs: 0 };
+                    const fetchedAt = Date.now();
+                    const since = holder.lastTs ? holder.lastTs - 6 * 3600 * 1000 : 0;   // 上次抓的時間往前多留 6 小時重疊，避免漏掉
+                    const cr = await fetch(`${relayUrl}/attack-context?since=${since}`);
+                    if (cr.ok) {
+                        const got = (await cr.json()).ctx || {};
+                        Object.keys(got).forEach(k => { holder.map[k] = got[k]; });
+                        holder.lastTs = fetchedAt;
+                        await acReq(db.transaction('sessions', 'readwrite').objectStore('sessions').put(holder));
+                    }
+                    attackCtxMap = new Map(Object.entries(holder.map));
                 } catch (e) {}
                 attackCacheRecords = out;
                 attackCacheLatestBuff = sessions[0] ? (sessions[0].buffType || null) : null;
@@ -9375,8 +9418,6 @@
         async function byPartRecoRefresh() {
             const box = document.getElementById('by-part-reco');
             if (!box) return;
-            // 本場的新攻擊（含攻擊當下狀態）要進推薦：每次部位狀態更新時，距離上次載入超過 ATTACK_CACHE_LATEST_MS 就重新載入一次
-            if (attackCacheState.ready && !attackCacheState.loading && typeof indexedDB !== 'undefined' && Date.now() - (attackCacheState.lastRun || 0) > ATTACK_CACHE_LATEST_MS) attackCacheEnsure();
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
             // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫

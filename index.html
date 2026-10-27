@@ -8982,7 +8982,12 @@
             const buffKey = buffArg === undefined ? (raidSimActive ? simBuffKey() : currentSessionBuff()) : buffArg;
             const buff = SESSION_BUFFS[buffKey] || null;
             rows.forEach(r => {
-                const sb = (r.shareB !== undefined) ? (buff && buff.type === 'burst' ? r.shareB : (buff && buff.type === 'torment' ? r.shareT : 0)) : (buff && buff.type ? damageShare(r, buff.type === 'burst' ? 'Burst' : 'Afflicted') : 0);
+                // 加成類型要看牌組裡「同類型的卡」：實際傷害占比（統計）跟牌組裡該類型傷害卡的比例（爆裂卡／苦痛卡各幾張）各占一半
+                const type = buff && buff.type === 'burst' ? 'Burst' : 'Afflicted';
+                const dmgCards = r.rawCards.filter(n => !BY_PART_NON_DAMAGE.has(n) && CARD_CATEGORY[n]);
+                const cardShare = dmgCards.length ? dmgCards.filter(n => CARD_CATEGORY[n] === (type === 'Burst' ? 'burst' : 'torment')).length / dmgCards.length : 0;
+                const hitShare = (r.shareB !== undefined) ? (type === 'Burst' ? r.shareB : r.shareT) : cardShare;
+                const sb = buff && buff.type ? (hitShare + cardShare) / 2 : 0;
                 r.buffMul = 1 + (buff ? buff.mul : 0) * sb;
             });
             rows.forEach(r => {

@@ -9032,7 +9032,7 @@
             // 只有一個狀態逐階退讓反而更差，所以不再逐階
             const thresholds = [...new Set([Math.max(BY_PART_RECO_BASE_MIN, stateTotal * BY_PART_RECO_RATIO), BY_PART_RECO_BASE_MIN, BY_PART_RECO_MIN_HITS, 1])].sort((x, y) => y - x);
             for (const minUse of thresholds) {
-                const needSupport = minUse > BY_PART_RECO_BASE_MIN;      // 前面各階都要求「有人氣支撐」，只有最後兩階才放寬
+                const needSupport = true;      // 適合大家：不管門檻退到多低，都要有足夠多不同的人在用（至少 6 位、單人不超過一半）
                 const cand = rows.filter(r => r.usable >= minUse && (!needSupport || r.supported) && r.rawCards.every(n => !usedInit.has(n)));
                 if (cand.length === 0) continue;
                 const topSum = (i, k) => { let s = 0; for (let j = i; j < cand.length && j < i + k; j++) s += cand[j].score; return s; };

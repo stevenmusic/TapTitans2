@@ -8947,6 +8947,21 @@
                 rows.push({ overall: d.attacks || 0, cursedBonus: Math.min(0.35, d.cards.reduce((a, n) => a + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio, 0)), cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
+            // 兩組固定牌組：紀錄裡的打法（一次同時打幾個部位）剛好跟現在的部位湊不上時，規則仍然要有——
+            //   鏡子力＋先祖加護＋破碎本能：頭或肚子至少一個能打（破碎本能只能打頭、肚子）就一定要有
+            //   瘋狂無效＋肆虐瘟疫＋時間之沙：肉體部位 6 個以上（血量夠）就一定要有
+            const bodyHealthy = Object.values(parts).filter(p => !(p.armor > 0) && p.body > 0 && p.bodyMax > 0 && p.body / p.bodyMax >= 0.2).length;
+            const forcedSigs = new Set();
+            [{ cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], ok: () => ['Head', 'ChestUpper'].some(k => info[k]), targets: () => ['Head', 'ChestUpper'].filter(k => info[k]) },
+             { cards: ['CrushingVoid', 'PlagueAttack', 'SandsOfTime'], ok: () => bodyHealthy >= 6 && all.body >= 6, targets: () => keys.filter(k => info[k].layer === 'body') }].forEach(f => {
+                const sig = f.cards.slice().sort().join();
+                const d = data.decks.find(x => x.cards.slice().sort().join() === sig);
+                if (!d || !f.ok()) return;
+                forcedSigs.add(sig);
+                if (rows.some(r => r.rawCards.slice().sort().join() === sig)) return;
+                const tg = f.targets();
+                rows.push({ overall: d.attacks || 0, cursedBonus: 0, cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: tg.map(p => ({ part: p, layer: info[p].layer, cursed: info[p].cursed })), usable: 1, bodyShare: tg.length ? tg.filter(p => info[p].layer === 'body').length / tg.length : 0, dmg: null, cover: 0, fit: 0, synergy: 0, tier: 1, forced: true });
+            });
             // 排名用「前 15 名全部紀錄裡這組牌用了幾刀」，部位狀態只決定打不打得出來（盔甲／肉體層別、瘋狂無效、凱旋行軍等規則）；
             // 比例門檻的分母＝現在打得出來的牌組全部紀錄刀數總和
             const stateTotal = rows.reduce((a, r) => a + r.overall, 0);
@@ -9019,8 +9034,10 @@
             // 精確搜尋（分支界限法，不是貪心也不截斷候選）：在「6 組彼此完全不共用卡、而且每張必出現的卡都有一組帶它」的所有組合裡，
             // 找出「組數最多、分數總和最高」的那一個。組數優先（滿 6 組），同組數比分數總和；
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
-            const usedInit = new Set();
-            const K = BY_PART_RECO_COUNT;
+            // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
+            const forcedRows = allRows ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()));
+            const usedInit = new Set(forcedRows.flatMap(r => r.rawCards));
+            const K = BY_PART_RECO_COUNT - forcedRows.length;
             const BIG = 1000;
             let best = null, bestObj = -1;
             // 卡片「無論如何都不能重複」，所以湊不滿 6 組時不是放寬重複，而是放寬次數門檻：
@@ -9063,7 +9080,7 @@
                 if (best && best.length >= K) break;
             }
             if (allRows) return rows;   // 題庫用：所有「現在打得出來」的牌組（不挑 6 組）
-            const picked = (best || []).slice().sort((a, b) => b.score - a.score);
+            const picked = [...forcedRows.slice().sort((a, b) => b.score - a.score), ...(best || []).slice().sort((a, b) => b.score - a.score)];
             // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
             // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
             if (picked.length < BY_PART_RECO_COUNT) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, BY_PART_RECO_COUNT - picked.length, curseTypes, cursedK));

@@ -2615,7 +2615,9 @@
         }
         @keyframes spin360 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .is-spinning { animation: spin360 0.7s linear infinite; }
-        .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .raid-recent-time { font-size: 9.5px; font-weight: 600; color: #9a7f78; line-height: 1.1; }
+        .raid-recent-name { line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
         .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
@@ -11731,7 +11733,7 @@
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 return `
                     <div class="raid-recent-item">
-                        <span class="raid-recent-player">${timeStr} ${escapeHtml(a.player)}</span>
+                        <span class="raid-recent-player"><span class="raid-recent-time">${timeStr}</span><span class="raid-recent-name">${escapeHtml(a.player)}</span></span>
                         <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`

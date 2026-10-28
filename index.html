@@ -9629,7 +9629,9 @@
             const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
             const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
             const focusBadge = r.focus ? `<span style="font-size:11px; font-weight:800; color:#6b4a8a; background:#efe6f7; border-radius:5px; padding:0 5px; margin-left:2px;">${r.focus}部位</span>` : '';   // 模擬器指定要集中打幾個部位（Focus Three／Four…）
-            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${escapeHtml(raidPartShortCombined(r.targets))}<span class="raid-layer-badge layer-${kind}">${label}</span>${focusBadge}</span>`;
+            // Focus Three／Four 只指定「集中打幾個部位」，不指定是哪幾個部位：不顯示部位名稱，只標層別跟部位數量
+            const partText = r.focus >= 3 ? '' : escapeHtml(raidPartShortCombined(r.targets));
+            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${partText}<span class="raid-layer-badge layer-${kind}">${label}</span>${focusBadge}</span>`;
         }
 
         // 六組存成一張大圖：兩欄三列、卡片放大，沿用其他報表的圖片視窗（長按圖片即可儲存到相簿）

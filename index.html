@@ -9565,6 +9565,13 @@
             // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）
             const armorNow = keys.filter(k => info[k].layer === 'armor').map(k => ({ part: k, layer: 'armor', cursed: info[k].cursed }));
             picked.forEach(r => { if (r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length) { r.targets = armorNow; r.allParts = false; r.focus = 0; } });
+            // 防空高砲＋先祖加護：先祖加護是單部位，所以只針對「最厚的盔甲」（現在還有盔甲的部位裡，盔甲剩餘血量最多的 1 個）
+            picked.forEach(r => {
+                if (r.rawCards && r.rawCards.includes('FlakShot') && r.rawCards.includes('BurstBoost') && armorNow.length) {
+                    const top = armorNow.map(x => x.part).sort((x, y) => info[y].hp - info[x].hp)[0];
+                    r.targets = [{ part: top, layer: 'armor', cursed: info[top].cursed }]; r.allParts = false; r.focus = 0;
+                }
+            });
             picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : (t3Used ? rows3.reduce((x, r) => x + r.overall, 0) : stateTotal));   // 遊戲模擬器的 6 組不顯示總次數與各組次數
             return picked;
         }

@@ -1754,6 +1754,16 @@ app.get('/attack-context', (req, res) => {
   res.json({ ctx: out, count: Object.keys(out).length });
 });
 
+// 增量：只回傳某個時間（毫秒）之後的攻擊（完整內容，跟 /full-attack-log 同樣的欄位）。純讀記憶體快取、不寫入任何東西。
+// 網頁打開時本場已經有快取，只要補「快取之後新增的幾筆」，不用整場（約 400 筆）重抓，省 Render 流量
+app.get('/attacks-since', (req, res) => {
+  const since = Number(req.query.ts) || 0;
+  const attacks = [];
+  attacksByDedupKey.forEach((a) => { if (a.ts > since) attacks.push(a); });
+  attacks.sort((x, y) => x.ts - y.ts);
+  res.json({ attacks: attacks.slice(0, 3000), now: Date.now() });
+});
+
 app.get('/current-boss-status', (req, res) => {
   res.json(buildCurrentBossPayload());
 });

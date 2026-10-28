@@ -2605,6 +2605,7 @@
             border-radius: 8px;
             padding: 5px 8px;
             font-size: 10.5px;
+            min-height: 40px;
             box-sizing: border-box;
             animation: raidRecentFadeIn 0.3s ease;
         }
@@ -2626,6 +2627,8 @@
         .raid-layer-badge.layer-mixed { background: linear-gradient(90deg, #455a64 50%, #1565c0 50%); }
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
+        .raid-recent-cards { flex-shrink: 0; display: inline-flex; gap: 3px; width: 99px; justify-content: flex-start; }
+        .raid-recent-cards img { width: 31px; height: 31px; border-radius: 6px; object-fit: cover; display: block; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
         .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
 
@@ -2865,6 +2868,8 @@
             .raid-recent-item { font-size: 12px; padding: 6px 8px; }
             .raid-recent-part { min-width: 56px; }
             .raid-recent-dmg { width: 58px; }
+            .raid-recent-cards { width: 87px; gap: 2px; }
+            .raid-recent-cards img { width: 28px; height: 28px; }
             .raid-log-part-cell { font-size: 10.5px; }
         }
     </style>
@@ -6493,7 +6498,7 @@
                 const playerName = (payload.player && payload.player.name) || '?';
                 const attackDatetime = payload.attack_log && payload.attack_log.attack_datetime;
                 const dedupKey = attackDatetime ? `${attackDatetime}_${playerName}` : null;
-                pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey);
+                pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey, Object.keys(cardDamageTotals).filter(k => k !== '__tap__'));
 
                 // 網頁自己收到這筆即時攻擊事件時，順便直接補進「攻擊紀錄」排行榜的資料裡，
                 // 不用等使用者按重新載入。用的是這個事件本來就會收到的payload，不會多打
@@ -11635,8 +11640,8 @@
            所有部位清單 [{part, layer}]（已去重），dmg 是這次攻擊的總傷害，不是單一部位的數字。
            dedupKey 是這次攻擊真正的識別碼（attackDatetime_player，跟伺服器 attackDedupKey
            算法一致），有這個真正的鍵，mergeRecentAttacks 才不用只靠時間+傷害去猜是不是同一筆 */
-        function pushRaidRecentAttack(playerName, parts, dmg, dedupKey) {
-            raidRecentAttacks.unshift({ player: playerName, parts: parts || [], dmg: dmg, ts: Date.now(), dedupKey: dedupKey || null });
+        function pushRaidRecentAttack(playerName, parts, dmg, dedupKey, cards) {
+            raidRecentAttacks.unshift({ player: playerName, parts: parts || [], dmg: dmg, ts: Date.now(), dedupKey: dedupKey || null, cards: cards || [] });
             if (raidRecentAttacks.length > RAID_RECENT_MAX) raidRecentAttacks.length = RAID_RECENT_MAX;
         }
 
@@ -11652,6 +11657,7 @@
                     parts: a.parts || [],
                     dmg: a.totalDamage,
                     ts: a.ts,
+                    cards: Array.isArray(a.cards) ? a.cards : [],
                     dedupKey: `${a.attackDatetime || a.ts}_${a.player}`
                 }));
         }
@@ -11665,6 +11671,10 @@
         function mergeRecentAttacks(existing, incoming) {
             const merged = [...(existing || []), ...(incoming || [])];
             merged.sort((a, b) => b.ts - a.ts);
+            // 同一筆攻擊只有其中一個來源帶卡片（/recent-attacks 沒有），把卡片補到留下來的那筆
+            const cardsByKey = new Map();
+            merged.forEach(m => { if (m.dedupKey && m.cards && m.cards.length && !cardsByKey.has(m.dedupKey)) cardsByKey.set(m.dedupKey, m.cards); });
+            merged.forEach(m => { if (m.dedupKey && !(m.cards && m.cards.length) && cardsByKey.has(m.dedupKey)) m.cards = cardsByKey.get(m.dedupKey); });
             const kept = [];
             const seenKeys = new Set();
             for (const item of merged) {
@@ -11716,6 +11726,7 @@
                     <div class="raid-recent-item">
                         <span class="raid-recent-player">${timeStr} ${escapeHtml(a.player)}</span>
                         <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
+                        <span class="raid-recent-cards">${(a.cards || []).slice(0, 3).map(c => `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}">`).join('')}</span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');

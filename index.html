@@ -10847,18 +10847,22 @@
                         } finally { byPartRecoAllowCards = null; }
                     };
                     const all = [];
-                    const usedCards = new Set(info.used);
+                    // 這一波已經用過的卡，只有「這一波剩下的刀數」不能用；打完這一波就換新的一波、卡片重新可用，
+                    // 所以後面的組可以用（整份清單裡每張卡仍然只出現一次）
+                    const usedCards = new Set();
+                    const waveLeft = Math.min(info.remaining, RAID_ATTACKS_PER_CYCLE - info.waveDone);   // 這一波還能打幾刀（這幾組不能用已用過的卡）
+                    const laterN = info.remaining - waveLeft;                                             // 下一波以後的刀數（可以用這一波用過的卡）
                     let left = info.remaining;
                     // 首頁算法挑出的最佳 6 組（品質最好），只當作「優先選」，不先鎖死——
                     // 再跟所有場次前 15 名打過的牌組（跟「依部位」分頁一樣、現在打得到的）一起找：組數最多優先（用到最多張卡），
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
-                    const top = recoWith(usedCards, Math.min(left, RAID_ATTACKS_PER_CYCLE));
+                    const top = recoWith(info.used, Math.min(left, RAID_ATTACKS_PER_CYCLE));
                     const topSigs = new Map(top.map((r, i) => [sigOf(r.rawCards || r.cards), i]));
                     const dataAll = (await loadByPartStats(byPartTop)) || data;
                     const bySig = new Map();
                     top.forEach(r => bySig.set(sigOf(r.rawCards || r.cards), { cards: r.rawCards || r.cards, attacks: 0, row: r }));
                     dataAll.decks.forEach(d => {
-                        if (d.cards.length !== 3 || d.cards.some(c => usedCards.has(c)) || !playable(d.cards)) return;
+                        if (d.cards.length !== 3 || !playable(d.cards)) return;
                         const k = sigOf(d.cards);
                         if (bySig.has(k)) bySig.get(k).attacks = d.attacks || 0; else bySig.set(k, { cards: d.cards, attacks: d.attacks || 0 });
                     });
@@ -10868,10 +10872,13 @@
                     const cap = Math.min(left, Math.floor(cardsLeft.size / 3));   // 組數上限：剩下的卡最多湊幾組
                     // 搜尋量有上限（手機上也要很快算完）；組數已經到上限、最佳那幾組也都放進去了，就不用再找
                     const topW = pool.filter(d => topSigs.has(sigOf(d.cards))).reduce((a, d) => a + Math.floor(weight(d) / 1e7) * 1e7, 0);
+                    const tainted = (d) => d.cards.some(c => info.used.has(c));   // 含這一波已用過的卡：只能排在下一波
                     let best = [], bestW = -1, nodes = 0, done = false;
-                    const dfs = (start, chosen, used, w) => {
+                    const dfs = (start, chosen, used, w, tc) => {
                         if (done) return;
-                        if (chosen.length > best.length || (chosen.length === best.length && w > bestW)) { best = chosen.slice(); bestW = w; }
+                        // 合法：這一波剩下的刀數都要有不含已用卡的組可以排（總組數不到這麼多時，全部都要是乾淨的）
+                        const valid = chosen.length - tc >= Math.min(waveLeft, chosen.length);
+                        if (valid && (chosen.length > best.length || (chosen.length === best.length && w > bestW))) { best = chosen.slice(); bestW = w; }
                         if (best.length >= cap && bestW >= topW) { done = true; return; }
                         if (chosen.length >= cap || nodes++ > 60000) return;
                         let free = 0; cardsLeft.forEach(c => { if (!used.has(c)) free++; });
@@ -10880,15 +10887,19 @@
                             if (chosen.length + (pool.length - i) < best.length) return;
                             const d = pool[i];
                             if (d.cards.some(c => used.has(c))) continue;
+                            const t = tainted(d) ? 1 : 0;
+                            if (tc + t > laterN) continue;   // 含已用卡的組，最多只能放滿下一波以後的刀數
                             chosen.push(d); d.cards.forEach(c => used.add(c));
-                            dfs(i + 1, chosen, used, w + weight(d));
+                            dfs(i + 1, chosen, used, w + weight(d), tc + t);
                             chosen.pop(); d.cards.forEach(c => used.delete(c));
                         }
                     };
-                    dfs(0, [], new Set(usedCards), 0);
+                    dfs(0, [], new Set(), 0, 0);
                     const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
-                    // 排列：最佳那幾組照原本順序在前，其他依前 15 名使用次數
-                    best.sort((x, y) => weight(y) - weight(x)).forEach(d => {
+                    // 排列：這一波剩下的刀數排不含已用卡的組（最佳那幾組照原本順序在前），含已用卡的組排在下一波
+                    const clean = best.filter(d => !tainted(d)).sort((x, y) => weight(y) - weight(x));
+                    const later = best.filter(d => tainted(d)).sort((x, y) => weight(y) - weight(x));
+                    [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort((x, y) => weight(y) - weight(x))].forEach(d => {
                         if (d.row) { all.push(d.row); return; }
                         const tg = attackable.filter(k => d.cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok))
                             .map(k => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' }));

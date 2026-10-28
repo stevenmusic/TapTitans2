@@ -8809,6 +8809,14 @@
         function toggleByPartPoolOpen() { byPartPoolOpen = !byPartPoolOpen; byPartPoolRefresh(); }
 
         // 一張卡的圖片（含底部的限制標籤）
+        // 推薦牌組顯示時的禁打部位：限定部位卡的標籤（頭肚、肚手、頭腳）拿掉現在禁打的部位，例如肚子禁打時「頭肚」只寫「頭」
+        let byPartBadgeBanned = null;
+        const BY_PART_BADGE_PARTS = { 頭: ['Head'], 肚: ['ChestUpper'], 手: ['HandLeft', 'HandRight'], 腳: ['LegUpperLeft', 'LegUpperRight'] };
+        function byPartBadgeText(limit) {
+            if (!limit || limit.kind !== 'part' || !byPartBadgeBanned || !byPartBadgeBanned.length || limit.tag === '四肢') return limit ? limit.tag : '';
+            const kept = [...limit.tag].filter(ch => !BY_PART_BADGE_PARTS[ch] || BY_PART_BADGE_PARTS[ch].some(k => !byPartBadgeBanned.includes(k)));
+            return kept.join('') || limit.tag;
+        }
         function byPartCardHtml(name, size) {
             size = size || 38;
             const img = raidCardImage(name);
@@ -8818,7 +8826,7 @@
                 ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(name))}" title="${escapeHtml(tip)}" style="width:${size}px; height:${size}px; border-radius:7px; object-fit:cover; display:block;">`
                 : `<span style="width:${size}px; font-size:20px; text-align:center; display:block;">🃏</span>`;
             // 有適用部位限制的卡片，在卡片圖底部加標籤（4 個字的標籤字級小一點才塞得下）
-            const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${limit.tag.length >= 4 ? 9 : 10}px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${limit.tag}</span>` : '';
+            const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${limit.tag.length >= 4 ? 9 : 10}px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${byPartBadgeText(limit)}</span>` : '';
             const glow = byPartPoolSel.has(name) ? 'box-shadow:0 0 0 2px rgba(38,198,218,0.95); border-radius:7px;' : '';
             return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0; ${glow}">${thumb}${tag}</div>`;
         }
@@ -10100,6 +10108,10 @@
         function byPartRecoGridHtml(rows, view) {
             byPartRecoLast = rows;
             byPartRecoSaved[view || 'home'] = { rows, title: byPartRecoTitle, bossName: raidState && raidState.bossName || '', ordinal: raidState && raidState.bossOrdinal };
+            byPartBadgeBanned = view === 'sim' ? (simBuild().banned || []) : (raidBannedParts || []);
+            try { return byPartRecoGridHtmlInner(rows, view); } finally { byPartBadgeBanned = null; }
+        }
+        function byPartRecoGridHtmlInner(rows, view) {
             return `
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
                     <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
@@ -10888,7 +10900,8 @@
             box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
             const info = raidPlayerCycleInfo(r.player, r.attacks);
             const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">推薦牌組</div>`;
-            const deckGrid = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+            const deckGrid = (rows) => { byPartBadgeBanned = raidBannedParts || []; try { return deckGridInner(rows); } finally { byPartBadgeBanned = null; } };
+            const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 組</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
             </div>`;
             let html;
@@ -10904,7 +10917,11 @@
                     const sigOf = (cards) => cards.slice().sort().join();
                     const realSigs = new Set(data.decks.map(d => sigOf(d.cards)));
                     const scene = byPartPartsToScene(raidState.parts, raidBannedParts);
-                    const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene);
+                    // 照現在王的部位狀態判斷：三張卡（含限定部位的卡：頭肚、頭腳、肚手、四肢）都要打得到同一個現在能打的部位（禁打、骨架不算）
+                    const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
+                    const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
+                    const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
+                    const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
                     const recoWith = (exclude, n) => {
                         const allow = new Set([...info.owned].filter(c => !exclude.has(c) && !BY_PART_RECO_EXCLUDE.has(c)));
                         byPartRecoAllowCards = allow;
@@ -10962,13 +10979,12 @@
                         }
                     };
                     dfs(0, [], new Set(), 0, 0);
-                    const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
                     // 排列：這一波剩下的刀數排不含已用卡的組（最佳那幾組照原本順序在前），含已用卡的組排在下一波
                     const clean = best.filter(d => !tainted(d)).sort((x, y) => weight(y) - weight(x));
                     const later = best.filter(d => tainted(d)).sort((x, y) => weight(y) - weight(x));
                     [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort((x, y) => weight(y) - weight(x))].forEach(d => {
                         if (d.row) { all.push(d.row); return; }
-                        const tg = attackable.filter(k => d.cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok))
+                        const tg = hitParts(d.cards)
                             .map(k => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' }));
                         all.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: tg, allParts: tg.length >= attackable.length });
                     });

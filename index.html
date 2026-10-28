@@ -9620,6 +9620,10 @@
 
         // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
         function byPartRecoTagHtml(r) {
+            // 帶防空高砲的牌組：不指定部位名稱，任何還有盔甲的部位都可以打，只標「盔甲」
+            if (r.rawCards && r.rawCards.includes('FlakShot')) {
+                return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;"><span class="raid-layer-badge layer-armor">${t('raidLayerArmor')}</span></span>`;
+            }
             if (!r.targets || r.targets.length === 0) return '';
             const layers = new Set(r.targets.map(x => x.layer));
             const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');

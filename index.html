@@ -9543,6 +9543,17 @@
             const t3Used = !ctxRows.length && picked.some(r => r.src === 't3');
             if (ctxRows.length) picked.forEach(r => { if (!r.ctx) r.hideCount = true; });
             else if (t3Used) picked.forEach(r => { if (r.src !== 't3') r.hideCount = true; });
+            // 指定牌組的部位標記：電擊＋時間之沙＋戰鼓 → 剩餘血量最多的 1 個部位；鏡子力＋先祖加護＋破碎本能 → 頭或肚子裡剩餘血量較多的那個
+            const sameDeck = (r, cards) => r.rawCards && r.rawCards.length === cards.length && cards.every(n => r.rawCards.includes(n));
+            const asTarget = (k) => ({ part: k, layer: info[k].layer === 'armor' ? 'armor' : 'body', cursed: info[k].cursed });
+            const hpMost = (ks) => ks.slice().sort((x, y) => info[y].hp - info[x].hp)[0];
+            picked.forEach(r => {
+                if (sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']) && keys.length) { r.targets = [asTarget(hpMost(keys))]; r.allParts = false; r.focus = 0; }
+                else if (sameDeck(r, ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'])) {
+                    const ht = keys.filter(k => k === 'Head' || k === 'ChestUpper');
+                    if (ht.length) { r.targets = [asTarget(hpMost(ht))]; r.allParts = false; r.focus = 0; }
+                }
+            });
             // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）
             const armorNow = keys.filter(k => info[k].layer === 'armor').map(k => ({ part: k, layer: 'armor', cursed: info[k].cursed }));
             picked.forEach(r => { if (r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length) { r.targets = armorNow; r.allParts = false; r.focus = 0; } });

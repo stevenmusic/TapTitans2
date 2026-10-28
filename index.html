@@ -7768,10 +7768,11 @@
             return n;
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
-        function quizCardUsable(card, scene) {
+        // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
+        function quizCardUsable(card, scene, onlyPart) {
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
-            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
+            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]) && (!onlyPart || k === onlyPart));
             const cond = QUIZ_STATE_COND[card];
             if (cond) {
                 const need = cond === '肉體部位達6個' ? n.body : n.skeleton;
@@ -7801,6 +7802,12 @@
             if (allowedLayers) bits.push(`只能打${allowedLayers.join('、')}`);
             if (parts && parts.size < 4) bits.push(`只能打${[...parts].join('、')}`);
             return { ok: false, why: `${bits.join('，') || '條件不符'}，現在沒有符合的部位` };
+        }
+        // 整組牌能不能用：現在要有一個能打的部位，三張卡都打得到它（例如只能打四肢的卡跟只能打頭肚的卡不能同組，
+        // 只能打盔甲的卡跟只能打肉體的卡也不能同組）
+        function deckPlayableNow(cards, scene) {
+            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
+            return attackable.some(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok));
         }
         const quizSceneCards = () => Object.keys(QUIZ_CARDS).filter(n => quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers'));
         function quizShuffle(a) { return a.slice().sort(() => Math.random() - 0.5); }
@@ -9046,7 +9053,7 @@
         const BY_PART_CURSE_HIST_BONUS = 1e6;   // 同詛咒類型的歷史統計（第 3 層）優先於只看場次類型的歷史統計（第 4 層）
         const BY_PART_CTX_MIN_TOTAL = 1;   // 筆數很少也用：只要有「相同狀態」的攻擊就先排這些
         const BY_PART_CTX_MIN_DECK = 1;
-        function byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) {
+        function byPartCtxRows(parts, curseTypes, buffKey, cardBlocked, sceneForDeck) {
             try {
                 if (!attackCtxMap || attackCtxMap.size === 0 || !attackCacheState.ready || !attackCacheRecords) return null;
                 const layers = {};
@@ -9075,7 +9082,7 @@
                 const decks = [...merged.values()];
                 const total = decks.reduce((a, d) => a + d.attacks, 0);
                 if (total < BY_PART_CTX_MIN_TOTAL) return null;
-                const cand = decks.filter(d => d.attacks >= BY_PART_CTX_MIN_DECK && !d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n) || cardBlocked(n)))   // 卡片本身現在用不到的（例如 0 個肉體部位時的振奮士氣）就算有人這樣配過也不推薦
+                const cand = decks.filter(d => d.attacks >= BY_PART_CTX_MIN_DECK && !d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n) || cardBlocked(n)) && deckPlayableNow(d.cards, sceneForDeck))   // 卡片本身現在用不到的（例如 0 個肉體部位時的振奮士氣）就算有人這樣配過也不推薦
                     .sort((a, b) => b.attacks - a.attacks);
                 let best = [], bestSum = -1, nodes = 0;
                 const dfs = (i, chosen, used, sum) => {
@@ -9124,6 +9131,7 @@
                     const ok = (seen(t[0], t[1]) ? 1 : 0) + (seen(t[0], t[2]) ? 1 : 0) + (seen(t[1], t[2]) ? 1 : 0);
                     const dmgN = t.filter(n => cat(n) !== 'support').length;
                     if (dmgN < 1) continue;
+                    if (!deckPlayableNow(t, scene)) continue;   // 三張卡要打得到同一個部位（只能打四肢的卡不能跟只能打頭肚的卡同組）
                     // 配對出現過的越多越好，其次兩張傷害卡＋一張支援卡，最後比卡片本身的使用次數（已依詛咒減傷排序，位置越前越好）
                     const key = [ok, dmgN === 2 ? 1 : 0, -(i + j + k)];
                     if (!bestKey || key[0] > bestKey[0] || (key[0] === bestKey[0] && (key[1] > bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))) { best = t; bestKey = key; }
@@ -9163,7 +9171,7 @@
             data.decks.forEach(d => {
                 // 單張卡現在要用得到：卡片本身的限制（只能打盔甲／只能打肉體／限定部位／部位數量條件）跟現在的部位狀態不合，整組不推薦
                 // （例如場上 0 個肉體部位時，只作用在肉體的振奮士氣沒有效果）
-                const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n)) || d.cards.some(n => cardBlocked(n));
+                const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n)) || d.cards.some(n => cardBlocked(n)) || !deckPlayableNow(d.cards, sceneNow);
                 // 卡片的部位數量條件（不符合的牌組不推薦，但它的刀數仍算進「這個部位數量狀態的總打數」）
                 const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min)
                     || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6);   // 瘟疫、沙漏：肉體部位達 6 個才使用
@@ -9232,7 +9240,7 @@
              { cards: ['CrushingVoid', 'PlagueAttack', 'SandsOfTime'], ok: () => bodyHealthy >= 6 && all.body >= 6, targets: () => keys.filter(k => info[k].layer === 'body') }].forEach(f => {
                 const sig = f.cards.slice().sort().join();
                 const d = data.decks.find(x => x.cards.slice().sort().join() === sig);
-                if (!d || !f.ok() || d.cards.some(n => cardBlocked(n))) return;
+                if (!d || !f.ok() || d.cards.some(n => cardBlocked(n)) || !deckPlayableNow(d.cards, sceneNow)) return;
                 forcedSigs.add(sig);
                 if (rows.some(r => r.rawCards.slice().sort().join() === sig)) return;
                 const tg = f.targets();
@@ -9329,7 +9337,7 @@
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
             // 有「相同狀態」的真實攻擊資料就用真實資料，不用模擬器的 6 組；沒有真實資料才看模擬器情境
-            const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
+            const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked, sceneNow) || []);
             const gameRows = allRows || ctxRows.length ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
             // 有「相同狀態」的真實攻擊資料時，先排這些（當下部位狀態前 15 名玩家真的用過的牌組）；不到 6 組（剛換王、新狀態資料還很少）
             // 剩下的位置依序用：第 3 層（同詛咒類型的歷史）、第 4 層（同場次類型的歷史）補滿；補位的牌組不顯示次數

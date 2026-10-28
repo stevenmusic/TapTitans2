@@ -9457,9 +9457,9 @@
                 else if (g.role === 'head') tg = attackable.filter(k => k === 'Head');
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));
                 else if (g.role === 'cursed1') {
-                    // 詛咒甲位置放最後考慮：情境只決定牌組，這組要先打哪個詛咒甲，看現在的狀況——剩餘盔甲最少、最快打掉的那個
+                    // 詛咒甲位置放最後考慮：情境只決定牌組，這組要先打哪個詛咒甲，看現在的狀況——剩餘盔甲血量最厚的那個
                     const armorLeft = (k) => Number(parts && parts[k] && parts[k].armor) || 0;
-                    tg = attackable.filter(k => scene[k] === 'cursed').sort((x, y) => armorLeft(x) - armorLeft(y)).slice(0, 1);
+                    tg = attackable.filter(k => scene[k] === 'cursed').sort((x, y) => armorLeft(y) - armorLeft(x)).slice(0, 1);
                 }
                 else if (g.role === 'limbs') tg = attackable.filter(k => /Arm|Hand/.test(k));   // 肩（ArmUpper）與手
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));   // Focus One Limb：單一四肢部位

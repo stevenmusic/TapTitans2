@@ -9440,6 +9440,7 @@
                 ]
             }
         ];
+        let byPartRecoAllowCards = null;   // 玩家專屬推薦：只能用這些卡（Set）；null＝不限
         function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
             const scene = byPartPartsToScene(parts, banned);
             const base = (s) => (s === 'cursed' ? 'armor' : s);
@@ -9461,6 +9462,7 @@
                 // 禁打的部位每次都不一樣（情境只記禁打幾個）：這組牌裡「限定部位」的卡（頭肚、頭腳、肚手、四肢）要至少有一個現在能打的部位，
                 // 三張卡都打得到才放；放不了的（例如頭和肚子都禁打時的鏡子力＋破碎本能那組）不放，空出來的位置由歷史統計補。
                 // 只看部位限制，不看盔甲／肉體、詛咒、肉體數量這些狀態條件（這些照模擬器）
+                if (byPartRecoAllowCards && !g.cards.every(n => byPartRecoAllowCards.has(n))) return;   // 玩家專屬推薦：有用不到的卡（這輪用過或沒有）就不放
                 const setsOf = g.cards.map(n => (CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null).filter(Boolean);
                 if (setsOf.length && !attackable.some(k => setsOf.every(st => st.includes(k)))) return;
                 const real = data && data.decks ? data.decks.find(d => keyOf(d.cards) === keyOf(g.cards)) : null;
@@ -10641,8 +10643,10 @@
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
+                            ${raidLogIsLatestSession(r) ? `<button onclick="showRaidLogPlayerReco(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
+                        <div id="raidlog-player-reco-${rIdx}" style="display:none; margin-bottom:8px;"></div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:5px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
@@ -10650,6 +10654,56 @@
                 </div>
             `;
             }).join('');
+        }
+
+        /* ── 玩家專屬推薦牌組：這一輪（cycle）還沒用過的卡，組出最適合現在王狀態的牌組 ──
+           可用的卡＝這個玩家所有場次用過的卡（攻擊紀錄看得到的才算他有），扣掉這一輪已經用過的；
+           組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
+        const RAID_ATTACKS_PER_CYCLE = 6;
+        function raidLogIsLatestSession(r) {
+            const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            return !!(latest && r && r.attacks && r.attacks[0] && r.attacks[0].raidStartedAt === latest && raidState && raidState.parts);
+        }
+        function raidPlayerCycleInfo(playerName) {
+            const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : [];
+            const cycles = log.map(a => a.cycle).filter(c => typeof c === 'number');
+            const cycle = cycles.length ? Math.max(...cycles) : null;
+            const mine = log.filter(a => a.player === playerName);
+            const inCycle = mine.filter(a => a.cycle === cycle).sort((x, y) => x.ts - y.ts);
+            const nameOf = (c) => (c && typeof c === 'object') ? (c.name || c.id) : c;
+            const used = new Set(inCycle.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
+            const last = inCycle[inCycle.length - 1];
+            const remaining = last ? (typeof last.attacksRemaining === 'number' ? last.attacksRemaining : Math.max(0, RAID_ATTACKS_PER_CYCLE - inCycle.length)) : RAID_ATTACKS_PER_CYCLE;
+            // 他有的卡：這場的紀錄＋本機快取的所有場次（快取用玩家代碼對應）
+            const owned = new Set(mine.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
+            const codes = new Set(mine.map(a => a.playerCode).filter(Boolean));
+            if (attackCacheRecords) attackCacheRecords.forEach(rec => (rec.attacks || []).forEach(t => { if (codes.has(t[1]) || t[1] === playerName) (t[4] || []).forEach(n => owned.add(n)); }));
+            return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length };
+        }
+        async function showRaidLogPlayerReco(rIdx) {
+            const r = raidLogLastRanked[rIdx];
+            const box = document.getElementById(`raidlog-player-reco-${rIdx}`);
+            if (!r || !box) return;
+            if (box.style.display !== 'none' && box.dataset.player === r.player) { box.style.display = 'none'; return; }   // 再按一次收起來
+            box.dataset.player = r.player;
+            box.style.display = 'block';
+            box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
+            const info = raidPlayerCycleInfo(r.player);
+            const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">${escapeHtml(r.player)} 的推薦牌組 <span style="font-size:11px; font-weight:600; color:#8a7a6a;">第 ${info.cycle ?? '?'} 輪：已打 ${info.attackedThisCycle} 刀、剩 ${info.remaining} 刀，已用 ${info.used.size} 張卡</span></div>`;
+            if (info.remaining <= 0) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">這一輪的攻擊次數已經用完。</div>'; return; }
+            const allow = new Set([...info.owned].filter(n => !info.used.has(n) && !BY_PART_RECO_EXCLUDE.has(n)));
+            const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));
+            if (!data) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">統計還沒載入好，請稍後再按一次。</div>'; return; }
+            let rows = [];
+            byPartRecoAllowCards = allow;
+            try {
+                rows = byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(n => allow.has(n))) }).slice(0, info.remaining);
+            } finally { byPartRecoAllowCards = null; }
+            if (!rows.length) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>'; return; }
+            box.innerHTML = head + `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+                ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 刀</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
+            </div>`;
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄

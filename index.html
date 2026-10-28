@@ -2628,6 +2628,7 @@
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
         .raid-recent-cards { flex-shrink: 0; display: inline-flex; gap: 3px; width: 99px; justify-content: flex-start; }
+        .raid-recent-cardtxt { width: 31px; height: 31px; border-radius: 6px; background: #ece3e0; color: #5a4036; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; }
         .raid-recent-cards img { width: 31px; height: 31px; border-radius: 6px; object-fit: cover; display: block; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
         .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
@@ -11732,7 +11733,9 @@
                     <div class="raid-recent-item">
                         <span class="raid-recent-player">${timeStr} ${escapeHtml(a.player)}</span>
                         <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
-                        <span class="raid-recent-cards">${(a.cards || []).slice(0, 3).map(c => `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}">`).join('')}</span>
+                        <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
+                            ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
+                            : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');

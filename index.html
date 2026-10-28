@@ -9122,6 +9122,20 @@
                     { cards: ['Weaken', 'Shadow', 'SuperheatMetal'], role: 'limbs' },
                     { cards: ['Purify', 'Swarm', 'TriangleSupport'], role: 'cycle' }
                 ]
+            },
+            {   // 苦痛機率 ×1.3：6 個盔甲、2 禁打、沒有詛咒甲
+                buff: 'afflictionChance',
+                cursed: 0,
+                counts: { armor: 6, body: 0, skeleton: 0, banned: 2 },
+                needTorso: true,
+                decks: [
+                    { cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], role: 'torso' },
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+                    { cards: ['Weaken', 'Shadow', 'TriangleSupport'], role: 'limbs' },
+                    { cards: ['Purify', 'MagicPotion', 'TotemFairySkill'], role: 'torso' },
+                    { cards: ['Fuse', 'Swarm', 'SuperheatMetal'], role: 'armor' }
+                ]
             }
         ];
         function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
@@ -9131,7 +9145,7 @@
             RAID_PARTS.forEach(({ key }) => { cnt[base(scene[key])]++; });
             const torsoOk = ['Head', 'ChestUpper'].some(k => ['armor', 'body', 'cursed'].includes(scene[k]));
             const cursedN = RAID_PARTS.filter(({ key }) => scene[key] === 'cursed').length;
-            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (x.cursed === undefined || (cursedN === x.cursed && (curseTypes || []).some(d => String(d.type).startsWith(x.curse)))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk));
+            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk));
             const sc = matches.find(x => x.cursed !== undefined) || matches[0];   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

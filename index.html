@@ -3,6 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <script>
+    /* 手機封鎖網站資料（無痕、關閉 Cookie）時，存取 localStorage／sessionStorage 會直接丟錯，整個網頁會停在空白。
+       這種情況改用只存在記憶體的替代品（關掉網頁就不見），網頁其他功能照常運作 */
+    (function () {
+        function memStore() {
+            const m = new Map();
+            return { getItem: k => (m.has(String(k)) ? m.get(String(k)) : null), setItem: (k, v) => { m.set(String(k), String(v)); }, removeItem: k => { m.delete(String(k)); },
+                clear: () => m.clear(), key: i => [...m.keys()][i] ?? null, get length() { return m.size; } };
+        }
+        ['localStorage', 'sessionStorage'].forEach(name => {
+            try { const st = window[name]; st.getItem('__probe__'); }
+            catch (e) { try { Object.defineProperty(window, name, { configurable: true, value: memStore() }); } catch (e2) {} }
+        });
+    })();
+    </script>
+    <script>
     /* 測試環境隔離：只有網址帶 ?env=dev 或 ?env=dev2（由 /tt2_dev、/tt2_dev2 轉址過來）時才啟動，正式網址完全不受影響。
        - 測試站的 localStorage／sessionStorage 全部加上前綴（tt2_dev:、tt2_dev2:），跟正式網站（同一個網域）的資料完全分開，
          不會讀到、也不會改到正式環境的設定（帳號 token、中繼伺服器網址…）
@@ -3287,7 +3302,7 @@
                         <button class="btn-backup export" onclick="exportAllAppData()" data-i18n="btnExportBackup">📤 匯出備份檔</button>
                         <button class="btn-backup import" onclick="document.getElementById('backup-file-input').click()" data-i18n="btnImportBackup">📥 匯入備份檔</button>
                     </div>
-                    <input type="file" id="backup-file-input" accept="application/json" style="display:none;" onchange="importAllAppData(this.files[0])">
+                    <input type="file" id="backup-file-input" accept="application/json" style="display:none;" onchange="importAllAppData(this.files[0]); this.value = '';">
                 </div>
 
             </div>
@@ -3501,7 +3516,7 @@
                 <div class="backup-section" id="panel-report" style="display:none;">
                     <div id="raid-report-export" class="raid-report-export"></div>
                     <div id="raid-report-actions" style="display:none; gap:8px; margin-top:10px;">
-                        <button class="btn-analysis export btn-save-deco" style="flex:1;" onclick="saveRaidReportImage()">✨ 儲存圖片 ✨</button>
+                        <button class="btn-analysis export btn-save-deco" style="flex:1;" onclick="saveRaidReportPanelImage()">✨ 儲存圖片 ✨</button>
                     </div>
                     <div style="text-align:center; margin-top:14px;">
                         <button onclick="analysisReturnView = 'raidStatus'; showView('analysis');" style="background:none; border:none; color:#8e6a3a; font-size:12px; text-decoration:underline; font-family:inherit; cursor:pointer;">手動貼上遊戲匯出的 CSV →</button>
@@ -3887,7 +3902,7 @@
             }
         };
 
-        let currentLang = localStorage.getItem('tt2_lang') || 'zh';
+        let currentLang = (() => { try { return localStorage.getItem('tt2_lang') || 'zh'; } catch (e) { return 'zh'; } })();
 
         function t(key) {
             return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key]
@@ -3937,7 +3952,7 @@
 
         function toggleLanguage() {
             currentLang = (currentLang === 'zh') ? 'en' : 'zh';
-            localStorage.setItem('tt2_lang', currentLang);
+            try { localStorage.setItem('tt2_lang', currentLang); } catch (e) {}   // 存不下（空間滿）也要照常切換語言
             applyLanguage();
             renderAppNav();
         }
@@ -4114,7 +4129,7 @@
                             blockData.cards.forEach((cardSrc, zoneIdx) => {
                                 if (zones[zoneIdx]) {
                                     if (cardSrc) {
-                                        zones[zoneIdx].innerHTML = `<img src="${cardSrc}">`;
+                                        zones[zoneIdx].innerHTML = `<img src="${escapeHtml(cardSrc)}">`;   // 備份檔可能被改過，路徑要跳脫
                                     } else {
                                         zones[zoneIdx].innerHTML = getDefaultZoneHTML();
                                     }
@@ -4317,8 +4332,7 @@
             const zone = document.createElement('div');
             zone.className = 'drop-zone';
             zone.innerHTML = getDefaultZoneHTML();
-            setupZoneTouchClear(zone);
-            return zone;
+            return zone;   // 雙擊／雙點清除由 setupCrystalZoneClear 在整個水晶頁統一處理（頁面原本就有的卡槽也適用）
         }
 
         function addCrystalSlot(button) {
@@ -4374,7 +4388,7 @@
                     while (slotsEl.querySelectorAll('.drop-zone').length > cardsArr.length) slotsEl.removeChild(slotsEl.lastChild);
                     const zones = slotsEl.querySelectorAll('.drop-zone');
                     cardsArr.forEach((src, i) => {
-                        if (zones[i] && src) zones[i].innerHTML = `<img src="${src}">`;
+                        if (zones[i] && src) zones[i].innerHTML = `<img src="${escapeHtml(src)}">`;
                     });
                 });
             } catch (e) {
@@ -4438,6 +4452,22 @@
                     e.preventDefault();
                 }
                 lastTap = now;
+            }, { passive: false });
+        }
+
+        // 水晶頁：頁面 HTML 原本就有的預設卡槽沒有掛清除事件，所以改成在整頁掛一次（事件委派），新增的卡槽也自動適用
+        function setupCrystalZoneClear() {
+            const view = document.getElementById('view-raidcrystal');
+            if (!view || view.dataset.zoneClear) return;
+            view.dataset.zoneClear = '1';
+            view.addEventListener('dblclick', (e) => { const z = e.target.closest('.drop-zone'); if (z) handleZoneClear(z); });
+            let lastTap = 0, lastZone = null;
+            view.addEventListener('touchstart', (e) => {
+                const z = e.target.closest('.drop-zone');
+                if (!z) return;
+                const now = Date.now();
+                if (z === lastZone && now - lastTap < 300) { handleZoneClear(z); e.preventDefault(); }
+                lastTap = now; lastZone = z;
             }, { passive: false });
         }
 
@@ -4555,6 +4585,7 @@
 
         /* ── DOMContentLoaded ── */
         window.addEventListener('DOMContentLoaded', () => {
+            setupCrystalZoneClear();
             window.scrollTo(0, 0);
             restoreState();
             restoreAnalysisState();
@@ -4658,9 +4689,13 @@
             void swiperContainer.offsetHeight;
         }
 
+        // 方向鎖定：手指先往上下移動就當作捲動頁面，這次不切換分頁（以前上滑帶一點左右偏移就會跳到下一頁）
+        let startY = 0, swipeDir = null;   // null＝還沒決定、'x'＝左右滑、'y'＝上下捲動
         swiperContainer.addEventListener('touchstart', (e) => {
             if (isDraggingCard || isDraggingGlobal) return;
             startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            swipeDir = null;
             swipeStartTime = Date.now();
             isSwiping = true;
             swiperContainer.style.transition = 'none';
@@ -4669,6 +4704,12 @@
         swiperContainer.addEventListener('touchmove', (e) => {
             if (!isSwiping) return;
             const deltaX = e.touches[0].clientX - startX;
+            const deltaY = e.touches[0].clientY - startY;
+            if (!swipeDir) {
+                if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+                swipeDir = Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y';
+            }
+            if (swipeDir !== 'x') return;
             let base = -currentPage * swiperWidth;
             let target = base + deltaX;
             const maxOffset = -(TOTAL_PAGES - 1) * swiperWidth;
@@ -4681,14 +4722,18 @@
         swiperContainer.addEventListener('touchend', (e) => {
             if (!isSwiping) return;
             isSwiping = false;
-            const deltaX = e.changedTouches[0].clientX - startX;
-            const velocity = Math.abs(deltaX) / (Date.now() - swipeStartTime);
-            if (velocity > 0.4 || Math.abs(deltaX) > swiperWidth / 2) {
-                if (deltaX < 0 && currentPage < TOTAL_PAGES - 1) currentPage++;
-                else if (deltaX > 0 && currentPage > 0) currentPage--;
+            if (swipeDir === 'x') {
+                const deltaX = e.changedTouches[0].clientX - startX;
+                const velocity = Math.abs(deltaX) / Math.max(1, Date.now() - swipeStartTime);
+                if ((velocity > 0.4 && Math.abs(deltaX) > 30) || Math.abs(deltaX) > swiperWidth / 2) {
+                    if (deltaX < 0 && currentPage < TOTAL_PAGES - 1) currentPage++;
+                    else if (deltaX > 0 && currentPage > 0) currentPage--;
+                }
             }
             switchPage(currentPage);
         });
+        // 系統中斷手勢（來電、通知列）時把頁面歸位，不會停在半路
+        swiperContainer.addEventListener('touchcancel', () => { if (!isSwiping) return; isSwiping = false; switchPage(currentPage); });
 
         function switchPage(pageIndex) {
             currentPage = pageIndex;
@@ -5079,7 +5124,8 @@
         function escapeHtml(str) {
             const div = document.createElement('div');
             div.textContent = str;
-            return div.innerHTML;
+            // 也要跳脫引號：很多地方把字串放進 HTML 屬性（title="…"、data-…="…"），名字裡有引號會跑出屬性外
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function formatNum(n) {
@@ -5322,6 +5368,7 @@
             }));
 
             renderAnalysisTable();
+            saveAnalysisState();   // 分析結果存起來，重新整理後還在（以前只有讀、從來沒存）
         }
 
         /* 貼上／輸入 CSV 後自動分析，不需要再手動按「分析」鈕 */
@@ -5747,6 +5794,7 @@
                 PLAYERS_STORAGE_KEY,    // 玩家資料庫
                 RAID_APP_TOKEN_KEY,     // 突襲 Application Token
                 RAID_PLAYER_TOKEN_KEY,  // 突襲 Player Token
+                CRYSTAL_STORAGE_KEY,    // 突襲水晶頁
                 'tt2_lang'              // 語言偏好
             ];
         }
@@ -5798,9 +5846,11 @@
                 }
                 if (!confirm(t('backupImportConfirm'))) return;
 
-                foundKeys.forEach(key => {
-                    localStorage.setItem(key, data[key]);
-                });
+                try {
+                    foundKeys.forEach(key => {
+                        localStorage.setItem(key, typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key]));
+                    });
+                } catch (err) { alert(t('backupInvalidFile')); return; }   // 手機儲存空間滿了之類的錯誤，不要卡在半路沒有任何提示
 
                 alert(t('backupImportedToast'));
                 location.reload();
@@ -6114,6 +6164,7 @@
                 if (!parts[loc]) return;
                 if (layer === 'armor') { parts[loc].armorMax = p.total_hp; parts[loc].armor = p.current_hp; }
                 else if (layer === 'body') { parts[loc].bodyMax = p.total_hp; parts[loc].body = p.current_hp; }
+                if (p.cursed) parts[loc].cursed = true;   // 詛咒甲標記（跟伺服器 server.js 的做法一樣），不然換王後詛咒甲會被當成一般盔甲
             });
             return parts;
         }
@@ -6259,6 +6310,16 @@
             // 場次開始時間／等級不再由瀏覽器自己記錄場次清單——伺服器 24 小時背景側錄
             // 已經在做一樣的事（見 server.js 的 upsertRaidSessionIfNew），比只有網頁開著
             // 才記得到更可靠，網頁需要場次清單時直接跟伺服器要（serverSessionsSummary）
+            // 新一場突襲開始了、網頁還開著：場次清單還是舊的，即時攻擊會被記到上一場（輪次、已用卡也跟著算錯）。
+            // 先在本機補一筆新場次當「最新一場」，這場的攻擊紀錄從空的開始；完整資料下次跟伺服器同步時會補齊
+            const rsa = payload && typeof payload.raid_started_at === 'string' ? payload.raid_started_at : null;
+            if (rsa && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt !== rsa
+                && Date.parse(rsa) > Date.parse(serverSessionsSummary[0].startedAt) && !serverSessionsSummary.some(x => x.startedAt === rsa)) {
+                serverSessionsSummary = [{ startedAt: rsa, levelTier: null, buffType: null, attackCount: 0 }, ...serverSessionsSummary];
+                serverAttackLogCache = [];
+                sessionAttacksCache.set(rsa, serverAttackLogCache);
+                raidSessionFilter = null;
+            }
             const titans = payload && payload.raid && payload.raid.titans;
             const spawnSeq = payload && payload.raid && payload.raid.spawn_sequence;
             if (Array.isArray(spawnSeq) && spawnSeq.length > 0) {
@@ -6442,6 +6503,7 @@
                         if (!fallbackParts[loc]) return;
                         if (layer === 'armor') { fallbackParts[loc].armor = p.current_hp; fallbackParts[loc].armorMax = p.current_hp; }
                         else if (layer === 'body') { fallbackParts[loc].body = p.current_hp; fallbackParts[loc].bodyMax = p.current_hp; }
+                        if (p.cursed) fallbackParts[loc].cursed = true;
                     });
                     raidState = {
                         bossIndex: RAID_BOSS_NAMES.indexOf(fallbackName),
@@ -6455,6 +6517,8 @@
                     };
                     raidRecentAttacks = [];
                     raidBossChangedAt = Date.now();
+                    raidBannedParts = []; raidCurseInfo = [];   // 換王：上一隻的禁打部位、詛咒類型不沿用
+                    restoreBannedPartsCache(); updateCurseInfo();
                 }
             } else if (raidState) {
                 // 同一隻王，只是 ordinal 有可能是第一次確立（之前用預設值 1），這裡順便校正
@@ -6687,10 +6751,13 @@
             // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
             // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
             apiHasReceivedAttack = true;
+            // 王換了：上一隻的禁打部位、詛咒類型不能沿用到新王（等新王的資料進來，或從這隻王的本機快取還原）
+            if (cb.enemyId && apiCurrentEnemyId && cb.enemyId !== apiCurrentEnemyId) { raidBannedParts = []; raidCurseInfo = []; }
             apiCurrentEnemyId = cb.enemyId || null;
             raidBossOrdinal = cb.ordinal || 1;
             apiBossTotal = cb.total || 6;
             restoreBannedPartsCache();
+            updateCurseInfo();
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
                 bossName: cb.name || '—',
@@ -6754,7 +6821,10 @@
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 await fetchServerRaidData(relayUrl, silent);
             } catch (e) {
-                serverAttackLogCache = loadRaidFullLogBackup(); // 離線/伺服器連不上時，退回本機備份
+                // 離線/伺服器連不上時，退回本機備份——備份裡有所有場次，只取最新那一場（不然輪次、已用卡、排行會把舊場次混進來）
+                const backup = loadRaidFullLogBackup() || [];
+                const latestStart = backup.reduce((m, a) => (a.raidStartedAt && (!m || a.raidStartedAt > m)) ? a.raidStartedAt : m, null);
+                serverAttackLogCache = latestStart ? backup.filter(a => a.raidStartedAt === latestStart) : backup;
             }
         }
 
@@ -7844,14 +7914,19 @@
         // 牌組判斷題：只出「統計裡真的出現過」的牌組（前 15 名玩家真的用過）。
         // 現在這個部位狀態下「可以」＝統計裡這組牌有現在打得出來的打法（而且最常打的打法也打得出來，至少 10 次）；其他＝「不行」
         let quizStats = null, quizStatsLoading = false;
+        let quizStatsFailedAt = 0;
         function quizLoadStats() {
             if (quizStats || quizStatsLoading) return;
+            // 上次抓失敗：隔 30 秒才重抓（以前失敗會立刻重畫→又重抓，伺服器連不上時會不停打 Render）
+            if (quizStatsFailedAt && Date.now() - quizStatsFailedAt < 30000) return;
             quizStatsLoading = true;
             loadByPartStats(byPartTop).then(data => {
                 quizStats = data && Array.isArray(data.decks) ? data : null;
+                quizStatsFailedAt = quizStats ? 0 : Date.now();
                 quizStatsLoading = false;
-                if (deckSubtab === 'quiz') { quizQ = null; renderQuiz(); }
-            });
+                if (deckSubtab === 'quiz' && quizStats) { quizQ = null; renderQuiz(); }
+                else if (deckSubtab === 'quiz') setTimeout(() => { if (deckSubtab === 'quiz' && !quizStats) { quizQ = null; renderQuiz(); } }, 30500);
+            }).catch(() => { quizStatsLoading = false; quizStatsFailedAt = Date.now(); });
         }
         function quizSceneToParts(scene) {
             const parts = {}, banned = [];
@@ -8198,6 +8273,12 @@
         // 只用這個日期（含）之後的場次：9/20 之後卡片等級與加成的規則跟之前不同，舊場次的牌組傷害不能拿來比
         const ATTACK_STATS_FROM = '2026-09-20T00:00:00Z';
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
+        // 可以開始載入攻擊紀錄嗎：沒在載入中；上次失敗的話隔 60 秒可以重試（以前失敗一次就要重新整理網頁才會再試）
+        const ATTACK_CACHE_RETRY_MS = 60 * 1000;
+        function attackCacheCanStart() {
+            return typeof indexedDB !== 'undefined' && !attackCacheState.loading
+                && (!attackCacheState.error || Date.now() - (attackCacheState.lastRun || 0) > ATTACK_CACHE_RETRY_MS);
+        }
         let attackCacheRecords = null;      // [{ startedAt, buffType, attacks:[...] }]，載入後常駐記憶體
         let attackCacheVersion = 0;
         let bossCurseBySession = new Map(); // 場次 startedAt → [第 1 隻王的詛咒類型, 第 2 隻…]（爆裂／苦痛／肉體；來自伺服器的場次快照，只有部分場次有）
@@ -8438,7 +8519,7 @@
         async function loadByPartStats(topN, group) {
             // 網頁端統計：攻擊紀錄載入好了就直接算；還沒載入就在背景載入，這段時間先用伺服器的統計頂著
             if (attackCacheState.ready && attackCacheRecords) return buildLocalDeckStats(topN, group);
-            if (!attackCacheState.loading && !attackCacheState.error && typeof indexedDB !== 'undefined') attackCacheEnsure();
+            if (attackCacheCanStart()) attackCacheEnsure();
             const cacheKey = group ? `${topN}|${group}` : topN;
             if (byPartCache.has(cacheKey)) return byPartCache.get(cacheKey);
             try {
@@ -9939,12 +10020,15 @@
         let byPartRecoTitle = true;   // 存成圖片時標題要不要帶王名（依部位分頁是自己設定的狀態，不帶）
 
         // 推薦牌組區塊（標題＋存成圖片按鈕＋六組牌組）
-        function byPartRecoGridHtml(rows) {
+        // 首頁（home）跟依部位分頁（sim）各自記自己的牌組，存成圖片時存的是按鈕所在那一區的內容，不會互相蓋掉
+        const byPartRecoSaved = {};
+        function byPartRecoGridHtml(rows, view) {
             byPartRecoLast = rows;
+            byPartRecoSaved[view || 'home'] = { rows, title: byPartRecoTitle, bossName: raidState && raidState.bossName || '', ordinal: raidState && raidState.bossOrdinal };
             return `
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
                     <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
-                    <button onclick="saveByPartRecoImage()" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
+                    <button onclick="saveByPartRecoImage('${view || 'home'}')" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                     ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall && !r.hideCount ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
@@ -9966,8 +10050,9 @@
         }
 
         // 六組存成一張大圖：兩欄三列、卡片放大，沿用其他報表的圖片視窗（長按圖片即可儲存到相簿）
-        function saveByPartRecoImage() {
-            if (!byPartRecoLast.length) return;
+        function saveByPartRecoImage(view) {
+            const sv = byPartRecoSaved[view || 'home'] || { rows: byPartRecoLast, title: byPartRecoTitle, bossName: raidState && raidState.bossName || '', ordinal: raidState && raidState.bossOrdinal };
+            if (!sv.rows || !sv.rows.length) return;
             const modal = document.getElementById('result-modal');
             const imgContainer = document.getElementById('image-container');
             imgContainer.innerHTML = t('generatingAnalysisImage');
@@ -9980,11 +10065,11 @@
             node.style.cssText = 'position:fixed; left:-9999px; top:0; width:400px; padding:16px; background:#fdf6e8; font-family:inherit; color:#4a3728; box-sizing:border-box;';
             node.innerHTML = `
                 <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;">
-                    <div style="font-size:20px; font-weight:800;">推薦牌組　${byPartRecoTitle ? escapeHtml(raidState && raidState.bossName || '') : ''}${byPartRecoTitle && raidState && raidState.bossOrdinal ? ` ${raidState.bossOrdinal}/${apiBossTotal}` : ''}</div>
+                    <div style="font-size:20px; font-weight:800;">推薦牌組　${sv.title ? escapeHtml(sv.bossName) : ''}${sv.title && sv.ordinal ? ` ${sv.ordinal}/${apiBossTotal}` : ''}</div>
                     <div style="font-size:11px; color:#8a7a6a;">${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}</div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 10px;">
-                    ${byPartRecoLast.map(r => `
+                    ${sv.rows.map(r => `
                         <div style="padding:6px; border-radius:10px; background:#fbf2e2; border:1px solid #ead9b8;">
                             <div style="display:flex; gap:3px; justify-content:center;">${r.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
                             <div style="text-align:center; margin-top:6px; font-size:15px; font-weight:800; min-height:22px;">${byPartRecoTagHtml(r)}</div>
@@ -10014,6 +10099,7 @@
             if (!box) return;
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
+            if (!attackCacheState.ready && attackCacheCanStart() && attackCacheState.error) attackCacheEnsure();   // 上次失敗、已經隔夠久：重試（這次先用伺服器統計顯示）
             if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error) {
                 if (!attackCacheState.loading) attackCacheEnsure();
                 if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; margin:8px 0;">推薦牌組載入中…</div>'; byPartRecoHtmlLast = ''; }
@@ -10025,7 +10111,9 @@
                 const hp = p ? (p.armor > 0 ? p.armor : p.body) : 0;
                 const max = p ? (p.armor > 0 ? p.armorMax : p.bodyMax) : 1;
                 return [live[key] && live[key].state, live[key] && live[key].banned, live[key] && live[key].cursed, Math.round(hp / (max || 1) * 20)];
-            })) + raidState.bossName;
+            })) + raidState.bossName
+                // 加成類型、詛咒類型也會改變推薦（模擬器情境要比對這兩個），變了也要重算
+                + '|' + (raidSimActive ? simBuffKey() : currentSessionBuff()) + '|' + (raidCurseInfo || []).map(d => d.type).join(',');
             if (sig === byPartRecoSig) return;
             byPartRecoSig = sig;
             const token = ++byPartRecoToken;
@@ -10037,7 +10125,7 @@
             box.style.display = 'block';
             byPartRecoTitle = true;
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
-            const html = byPartRecoGridHtml(rows);
+            const html = byPartRecoGridHtml(rows, 'home');
             if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
         }
 
@@ -10085,7 +10173,7 @@
             if (rows.length === 0) { out.textContent = '這個狀態沒有可以推薦的牌組（請至少留一個能打的部位）。'; return; }
             byPartRecoTitle = false;
             byPartRecoBuffNow = simBuffKey();
-            out.innerHTML = byPartRecoGridHtml(rows);
+            out.innerHTML = byPartRecoGridHtml(rows, 'sim');
         }
 
         /* ══════════════════════════════════════════════════════════
@@ -10646,7 +10734,7 @@
                             ${raidLogIsLatestSession(r) ? `<button onclick="showRaidLogPlayerReco(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
-                        <div id="raidlog-player-reco-${rIdx}" style="display:none; margin-bottom:8px;"></div>
+                        <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; margin-bottom:8px;"></div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:5px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
@@ -10654,6 +10742,7 @@
                 </div>
             `;
             }).join('');
+            raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
         }
 
         /* ── 玩家專屬推薦牌組：這一輪（cycle）還沒用過的卡，組出最適合現在王狀態的牌組 ──
@@ -10664,11 +10753,15 @@
             const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             return !!(latest && r && r.attacks && r.attacks[0] && r.attacks[0].raidStartedAt === latest && raidState && raidState.parts);
         }
-        function raidPlayerCycleInfo(playerName) {
+        // identityAttacks：排行榜裡這個玩家（同一人改過名字也算同一人）這場的攻擊，用來找出他所有的名字與玩家代碼
+        function raidPlayerCycleInfo(playerName, identityAttacks) {
             const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : [];
             const cycles = log.map(a => a.cycle).filter(c => typeof c === 'number');
             const cycle = cycles.length ? Math.max(...cycles) : null;
-            const mine = log.filter(a => a.player === playerName);
+            const names = new Set([playerName, ...(identityAttacks || []).map(a => a.player)].filter(Boolean));
+            const codes = new Set((identityAttacks || []).map(a => a.playerCode).filter(Boolean));
+            log.forEach(a => { if (names.has(a.player) && a.playerCode) codes.add(a.playerCode); });
+            const mine = log.filter(a => names.has(a.player) || (a.playerCode && codes.has(a.playerCode)));
             const inCycle = mine.filter(a => a.cycle === cycle).sort((x, y) => x.ts - y.ts);
             const nameOf = (c) => (c && typeof c === 'object') ? (c.name || c.id) : c;
             const used = new Set(inCycle.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
@@ -10676,34 +10769,66 @@
             const remaining = last ? (typeof last.attacksRemaining === 'number' ? last.attacksRemaining : Math.max(0, RAID_ATTACKS_PER_CYCLE - inCycle.length)) : RAID_ATTACKS_PER_CYCLE;
             // 他有的卡：這場的紀錄＋本機快取的所有場次（快取用玩家代碼對應）
             const owned = new Set(mine.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
-            const codes = new Set(mine.map(a => a.playerCode).filter(Boolean));
-            if (attackCacheRecords) attackCacheRecords.forEach(rec => (rec.attacks || []).forEach(t => { if (codes.has(t[1]) || t[1] === playerName) (t[4] || []).forEach(n => owned.add(n)); }));
+            if (attackCacheRecords) attackCacheRecords.forEach(rec => (rec.attacks || []).forEach(t => { if (codes.has(t[1]) || names.has(t[1])) (t[4] || []).forEach(n => owned.add(n)); }));
             return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length };
         }
-        async function showRaidLogPlayerReco(rIdx) {
+        // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）
+        const raidLogRecoOpen = new Set();
+        const raidLogRecoHtml = new Map();   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白
+        function raidLogRecoBox(name) {
+            return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
+        }
+        function showRaidLogPlayerReco(rIdx) {
             const r = raidLogLastRanked[rIdx];
-            const box = document.getElementById(`raidlog-player-reco-${rIdx}`);
-            if (!r || !box) return;
-            if (box.style.display !== 'none' && box.dataset.player === r.player) { box.style.display = 'none'; return; }   // 再按一次收起來
-            box.dataset.player = r.player;
+            if (!r) return;
+            const box = raidLogRecoBox(r.player);
+            if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 再按一次收起來
+                raidLogRecoOpen.delete(r.player);
+                box.style.display = 'none';
+                return;
+            }
+            raidLogRecoOpen.add(r.player);
+            return raidLogRenderPlayerReco(r);
+        }
+        // 排行榜重畫後（有人出刀、切換場次），把打開中的玩家推薦補回去並重新計算
+        function raidLogRestorePlayerRecos() {
+            raidLogRecoOpen.forEach(name => {
+                const r = raidLogLastRanked.find(x => x.player === name);
+                if (!r || !raidLogIsLatestSession(r)) { raidLogRecoOpen.delete(name); return; }
+                raidLogRenderPlayerReco(r);
+            });
+        }
+        async function raidLogRenderPlayerReco(r) {
+            let box = raidLogRecoBox(r.player);
+            if (!box) return;
             box.style.display = 'block';
-            box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
-            const info = raidPlayerCycleInfo(r.player);
+            box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
+            const info = raidPlayerCycleInfo(r.player, r.attacks);
             const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">${escapeHtml(r.player)} 的推薦牌組 <span style="font-size:11px; font-weight:600; color:#8a7a6a;">第 ${info.cycle ?? '?'} 輪：已打 ${info.attackedThisCycle} 刀、剩 ${info.remaining} 刀，已用 ${info.used.size} 張卡</span></div>`;
-            if (info.remaining <= 0) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">這一輪的攻擊次數已經用完。</div>'; return; }
-            const allow = new Set([...info.owned].filter(n => !info.used.has(n) && !BY_PART_RECO_EXCLUDE.has(n)));
-            const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
-            const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));
-            if (!data) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">統計還沒載入好，請稍後再按一次。</div>'; return; }
-            let rows = [];
-            byPartRecoAllowCards = allow;
-            try {
-                rows = byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(n => allow.has(n))) }).slice(0, info.remaining);
-            } finally { byPartRecoAllowCards = null; }
-            if (!rows.length) { box.innerHTML = head + '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>'; return; }
-            box.innerHTML = head + `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+            let html;
+            if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">這一輪的攻擊次數已經用完。</div>';
+            else {
+                const allow = new Set([...info.owned].filter(n => !info.used.has(n) && !BY_PART_RECO_EXCLUDE.has(n)));
+                const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
+                const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));
+                if (!data) html = head + '<div style="font-size:12px; color:#8a7a6a;">統計還沒載入好，請稍後再按一次。</div>';
+                else {
+                    let rows = [];
+                    byPartRecoAllowCards = allow;
+                    try {
+                        rows = byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(n => allow.has(n))) }).slice(0, info.remaining);
+                    } finally { byPartRecoAllowCards = null; }
+                    html = !rows.length ? head + '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>'
+                        : head + `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 刀</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
             </div>`;
+                }
+            }
+            // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
+            if (!raidLogRecoOpen.has(r.player)) return;
+            raidLogRecoHtml.set(r.player, html);
+            box = raidLogRecoBox(r.player);
+            if (box) { box.style.display = 'block'; box.innerHTML = html; }
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄
@@ -11190,7 +11315,15 @@
             saveRaidReportImage();
         }
 
+        // 面板上目前顯示的那一場（跟場次列的「戰報」按鈕分開記，面板的儲存圖片永遠存面板上看到的那場）
+        let raidReportPanelCurrent = null, raidReportPanelToken = 0;
+        function saveRaidReportPanelImage() {
+            if (!raidReportPanelCurrent) return;
+            raidReportCurrent = raidReportPanelCurrent;
+            saveRaidReportImage();
+        }
         async function renderRaidReportPanel(session) {
+            const token = ++raidReportPanelToken;   // 快速切換場次：只有最後一次的結果可以畫上去
             const box = document.getElementById('raid-report-export');
             const actions = document.getElementById('raid-report-actions');
             actions.style.display = 'none';
@@ -11198,11 +11331,12 @@
             let report;
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
             try { report = await loadSessionReport(session); }
-            catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">取得戰報失敗，請稍後再試</div>'; return; }
+            catch (e) { if (token === raidReportPanelToken) box.innerHTML = '<div style="font-size:12px; color:#c0392b;">取得戰報失敗，請稍後再試</div>'; return; }
+            if (token !== raidReportPanelToken) return;   // 等待期間又選了別場，這次的結果作廢
             if (!report.attackCount) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
             const a = analyzeReportCsv(report.csv);
             if (!a) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場目前沒有攻擊紀錄</div>'; return; }
-            raidReportCurrent = { session, report, a };
+            raidReportCurrent = raidReportPanelCurrent = { session, report, a };
             const d = new Date(parseRaidSessionTs(session.startedAt));
             const buff = report.buffType && RAID_BUFF_ZH[report.buffType];
             const titleParts = [
@@ -11582,6 +11716,9 @@
 
         function disconnectRaidAPI() {
             if (raidSocket) {
+                // 先拿掉舊連線的事件處理，再斷線：不然舊連線的 'disconnect' 會在重新連線途中把狀態改成「已斷線」、
+                // 又排一次自動重連，伺服器剛喚醒、訂閱比較慢時，會把正在建立的新連線拆掉、一直循環
+                try { raidSocket.removeAllListeners(); } catch (e) {}
                 raidSocket.disconnect();
                 raidSocket = null;
             }
@@ -12765,7 +12902,7 @@
             if (!scope) return;
             const zone = [...scope.querySelectorAll('.drop-zone')].find(z => !z.querySelector('img'));
             if (!zone) { showPlayerCopyToastLike('沒有空格了，請先雙擊清除一格或按「＋」加一列'); return; }
-            zone.innerHTML = `<img src="${src}">`;
+            zone.innerHTML = `<img src="${escapeHtml(src)}">`;
             if (drawerId === 'card-pool-drawer-crystal') saveCrystalState(); else autoSave();
             zone.classList.add('drag-hover');
             setTimeout(() => zone.classList.remove('drag-hover'), 400);
@@ -13047,7 +13184,7 @@
 
             const target = lastHoveredZone || findZone(currentTouchX, currentTouchY);
             if (target) {
-                target.innerHTML = `<img src="${activeSrc}">`;
+                target.innerHTML = `<img src="${escapeHtml(activeSrc)}">`;
                 if (target.closest('#view-raidcrystal')) saveCrystalState(); else autoSave();
             }
             cancelDrag();

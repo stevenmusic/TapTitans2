@@ -10754,7 +10754,7 @@
         }
 
         /* ── 玩家專屬推薦牌組：這一輪（cycle）還沒用過的卡，組出最適合現在王狀態的牌組 ──
-           可用的卡＝這個玩家所有場次用過的卡（攻擊紀錄看得到的才算他有），扣掉這一輪已經用過的；
+           可用的卡＝所有卡片（不限這個玩家以前用過的），扣掉這一波（每 6 刀一波）已經用過的；
            組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
         const RAID_ATTACKS_PER_CYCLE = 6;
         function raidLogIsLatestSession(r) {
@@ -10778,9 +10778,8 @@
             const used = new Set(wave.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
             const last = inCycle[inCycle.length - 1];
             const remaining = last ? (typeof last.attacksRemaining === 'number' ? last.attacksRemaining : Math.max(0, RAID_ATTACKS_PER_CYCLE - inCycle.length)) : RAID_ATTACKS_PER_CYCLE;
-            // 他有的卡：這場的紀錄＋本機快取的所有場次（快取用玩家代碼對應）
-            const owned = new Set(mine.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
-            if (attackCacheRecords) attackCacheRecords.forEach(rec => (rec.attacks || []).forEach(t => { if (codes.has(t[1]) || names.has(t[1])) (t[4] || []).forEach(n => owned.add(n)); }));
+            // 可以配的卡：所有卡片都可以，不管這個玩家以前有沒有用過（只排除這一波已經用掉的，見 used）
+            const owned = new Set(Object.keys(RAID_CARD_IMAGE));
             return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length, waveNo: Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) + 1, waveDone: wave.length };
         }
         // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）

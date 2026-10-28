@@ -9041,7 +9041,7 @@
                 // 只要「還有盔甲或肉體的部位數量」、詛咒甲數量與詛咒類型、場次類型都一樣，這些攻擊都算進它的次數（只放寬盔甲／肉體的分布）
                 const st2 = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), acCountKey(layers, cursedK, cursedK > 0 ? curseTypes : []));
                 const layerFree = (n) => {
-                    if (CARD_ONLY_WHEN[n]) return false;   // 帶刺的晨星：依盔甲／肉體數量才能用，要看狀態
+                    if (CARD_ONLY_WHEN[n] || QUIZ_STATE_COND[n]) return false;   // 帶刺的晨星、瘋狂無效／肆虐瘟疫／時間之沙（肉體 6 個以上）、凱旋行軍（骨架 6 個以上）：要看部位數量，不放寬
                     const l = (QUIZ_CARDS[n] && QUIZ_CARDS[n].l) || [];
                     return !l.length || l.includes('任意') || l.includes('兩者') || (l.includes('盔甲') && l.includes('肉體'));
                 };

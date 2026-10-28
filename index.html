@@ -6501,7 +6501,11 @@
                 const playerName = (payload.player && payload.player.name) || '?';
                 const attackDatetime = payload.attack_log && payload.attack_log.attack_datetime;
                 const dedupKey = attackDatetime ? `${attackDatetime}_${playerName}` : null;
-                pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey, Object.keys(cardDamageTotals).filter(k => k !== '__tap__'));
+                pushRaidRecentAttack(playerName, hitParts, totalDmg, dedupKey, (() => {
+                    // 輔助卡（沒有造成傷害的）不會出現在 cards_damage，要用 cards_level 才拿得到完整的三張
+                    const lv = ((payload.attack_log && payload.attack_log.cards_level) || []).map(cl => cl.id).filter(Boolean);
+                    return lv.length ? lv : Object.keys(cardDamageTotals).filter(k => k !== '__tap__');
+                })());
 
                 // 網頁自己收到這筆即時攻擊事件時，順便直接補進「攻擊紀錄」排行榜的資料裡，
                 // 不用等使用者按重新載入。用的是這個事件本來就會收到的payload，不會多打

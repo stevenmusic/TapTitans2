@@ -10776,8 +10776,14 @@
             const waveStart = Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) * RAID_ATTACKS_PER_CYCLE;
             const wave = inCycle.slice(waveStart);
             const used = new Set(wave.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
-            const last = inCycle[inCycle.length - 1];
-            const remaining = last ? (typeof last.attacksRemaining === 'number' ? last.attacksRemaining : Math.max(0, RAID_ATTACKS_PER_CYCLE - inCycle.length)) : RAID_ATTACKS_PER_CYCLE;
+            // 剩餘次數會累積：每過一輪多 6 刀，沒打完的留到下一輪。
+            // 用他這場最後一刀回報的剩餘次數＋之後經過幾輪 × 6；這場還沒打過＝目前第幾輪 × 6
+            const mineSorted = mine.filter(a => typeof a.cycle === 'number').sort((x, y) => x.ts - y.ts);
+            const lastAny = mineSorted[mineSorted.length - 1];
+            let remaining;
+            if (lastAny && typeof lastAny.attacksRemaining === 'number') remaining = lastAny.attacksRemaining + RAID_ATTACKS_PER_CYCLE * Math.max(0, (cycle || 0) - lastAny.cycle);
+            else if (lastAny) remaining = Math.max(0, (cycle || 1) * RAID_ATTACKS_PER_CYCLE - mineSorted.length);
+            else remaining = (cycle || 1) * RAID_ATTACKS_PER_CYCLE;
             // 可以配的卡：所有卡片都可以，不管這個玩家以前有沒有用過（只排除這一波已經用掉的，見 used）
             const owned = new Set(Object.keys(RAID_CARD_IMAGE));
             return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length, waveNo: Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) + 1, waveDone: wave.length };

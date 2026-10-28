@@ -10772,13 +10772,16 @@
             const mine = log.filter(a => names.has(a.player) || (a.playerCode && codes.has(a.playerCode)));
             const inCycle = mine.filter(a => a.cycle === cycle).sort((x, y) => x.ts - y.ts);
             const nameOf = (c) => (c && typeof c === 'object') ? (c.name || c.id) : c;
-            const used = new Set(inCycle.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
+            // 每 6 刀一波：同一波裡卡片不能重複，打滿 6 刀就換新的一波、卡片全部重新可用（還有剩餘次數就繼續打）
+            const waveStart = Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) * RAID_ATTACKS_PER_CYCLE;
+            const wave = inCycle.slice(waveStart);
+            const used = new Set(wave.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
             const last = inCycle[inCycle.length - 1];
             const remaining = last ? (typeof last.attacksRemaining === 'number' ? last.attacksRemaining : Math.max(0, RAID_ATTACKS_PER_CYCLE - inCycle.length)) : RAID_ATTACKS_PER_CYCLE;
             // 他有的卡：這場的紀錄＋本機快取的所有場次（快取用玩家代碼對應）
             const owned = new Set(mine.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
             if (attackCacheRecords) attackCacheRecords.forEach(rec => (rec.attacks || []).forEach(t => { if (codes.has(t[1]) || names.has(t[1])) (t[4] || []).forEach(n => owned.add(n)); }));
-            return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length };
+            return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length, waveNo: Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) + 1, waveDone: wave.length };
         }
         // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）
         const raidLogRecoOpen = new Set();
@@ -10812,24 +10815,35 @@
             box.style.display = 'block';
             box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
             const info = raidPlayerCycleInfo(r.player, r.attacks);
-            const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">${escapeHtml(r.player)} 的推薦牌組 <span style="font-size:11px; font-weight:600; color:#8a7a6a;">第 ${info.cycle ?? '?'} 輪：已打 ${info.attackedThisCycle} 刀、剩 ${info.remaining} 刀，已用 ${info.used.size} 張卡</span></div>`;
+            const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">${escapeHtml(r.player)} 的推薦牌組 <span style="font-size:11px; font-weight:600; color:#8a7a6a;">第 ${info.cycle ?? '?'} 輪：已打 ${info.attackedThisCycle} 刀、剩 ${info.remaining} 刀｜第 ${info.waveNo} 波已打 ${info.waveDone} 刀、已用 ${info.used.size} 張卡</span></div>`;
+            const deckGrid = (rows, from, title) => `${title ? `<div style="font-size:11.5px; font-weight:800; color:#6b4a8a; margin:6px 0 2px;">${title}</div>` : ''}<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+                ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${from + i} 刀</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
+            </div>`;
             let html;
-            if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">這一輪的攻擊次數已經用完。</div>';
+            if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">攻擊次數已經用完。</div>';
             else {
-                const allow = new Set([...info.owned].filter(n => !info.used.has(n) && !BY_PART_RECO_EXCLUDE.has(n)));
                 const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
                 const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));
                 if (!data) html = head + '<div style="font-size:12px; color:#8a7a6a;">統計還沒載入好，請稍後再按一次。</div>';
                 else {
-                    let rows = [];
-                    byPartRecoAllowCards = allow;
-                    try {
-                        rows = byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(n => allow.has(n))) }).slice(0, info.remaining);
-                    } finally { byPartRecoAllowCards = null; }
-                    html = !rows.length ? head + '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>'
-                        : head + `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 刀</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
-            </div>`;
+                    const recoWith = (exclude, n) => {
+                        const allow = new Set([...info.owned].filter(c => !exclude.has(c) && !BY_PART_RECO_EXCLUDE.has(c)));
+                        byPartRecoAllowCards = allow;
+                        try { return byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(c => allow.has(c))) }).slice(0, n); }
+                        finally { byPartRecoAllowCards = null; }
+                    };
+                    // 這一波還能打幾刀（最多打滿 6 刀），用這一波還沒用過的卡；剩下的次數進下一波，卡片全部重新可用
+                    const nowN = Math.min(info.remaining, RAID_ATTACKS_PER_CYCLE - info.waveDone);
+                    const nextN = Math.min(info.remaining - nowN, RAID_ATTACKS_PER_CYCLE);
+                    const rowsNow = recoWith(info.used, nowN);
+                    const rowsNext = nextN > 0 ? recoWith(new Set(), nextN) : [];
+                    const base = info.attackedThisCycle + 1;
+                    // 他有的卡不夠組出那麼多組不重複的牌組時，說明少了幾刀
+                    const short = (got, want) => got < want ? `<div style="font-size:11px; color:#a07a6a; margin-top:2px;">另外 ${want - got} 刀：他剩下的卡湊不出不重複又打得到的牌組</div>` : '';
+                    html = head
+                        + (rowsNow.length ? deckGrid(rowsNow, base, rowsNext.length ? `第 ${info.waveNo} 波（${info.waveDone ? `剩 ${nowN} 刀，用這波還沒用過的卡` : `${nowN} 刀`}）` : '') : '<div style="font-size:12px; color:#8a7a6a;">這一波剩下的卡湊不出現在打得到的牌組。</div>')
+                        + (rowsNow.length ? short(rowsNow.length, nowN) : '')
+                        + (rowsNext.length ? deckGrid(rowsNext, base + nowN, `第 ${info.waveNo + 1} 波（卡片重新可用${info.remaining - nowN > RAID_ATTACKS_PER_CYCLE ? `，先列 ${nextN} 刀` : ''}）`) + short(rowsNext.length, nextN) : '');
                 }
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫

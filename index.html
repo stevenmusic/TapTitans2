@@ -10000,11 +10000,23 @@
             }).catch(() => { node.remove(); alert(t('generateFailed')); closeModal(); });
         }
 
-        async function byPartRecoRefresh() {
+        // 計算跟顯示分開：狀態連續變動（剛開網頁時部位、禁打、詛咒、場次加成會陸續進來）先合併成一次，
+        // 而且本機攻擊紀錄沒載好之前不畫（以前會先用伺服器統計畫一次、載好又換成本機統計畫第二次，看起來一直閃）
+        let byPartRecoTimer = null, byPartRecoHtmlLast = '';
+        function byPartRecoRefresh() {
+            clearTimeout(byPartRecoTimer);
+            byPartRecoTimer = setTimeout(byPartRecoRefreshNow, 300);
+        }
+        async function byPartRecoRefreshNow() {
             const box = document.getElementById('by-part-reco');
             if (!box) return;
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
+            if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error) {
+                if (!attackCacheState.loading) attackCacheEnsure();
+                if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; margin:8px 0;">推薦牌組載入中…</div>'; byPartRecoHtmlLast = ''; }
+                return;   // 載好之後 attackCacheEnsure 結束時會再呼叫一次
+            }
             // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫
             const sig = JSON.stringify(RAID_PARTS.map(({ key }) => {
                 const p = raidState.parts[key];
@@ -10023,7 +10035,8 @@
             box.style.display = 'block';
             byPartRecoTitle = true;
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
-            box.innerHTML = byPartRecoGridHtml(rows);
+            const html = byPartRecoGridHtml(rows);
+            if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
         }
 
         function byPartOnRaidStatusChanged() {

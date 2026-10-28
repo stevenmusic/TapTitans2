@@ -9277,6 +9277,11 @@
             const keyOf = (c) => c.slice().sort().join();
             sc.decks.forEach((g, i) => {
                 // 前 15 名真的用過的刀數太少（不到 BY_PART_GAME_MIN_USE 刀，含 0 次）的模擬器組合不放，空出來的位置由原本的算法用常用牌組補
+                // 禁打的部位每次都不一樣（情境只記禁打幾個）：這組牌裡「限定部位」的卡（頭肚、頭腳、肚手、四肢）要至少有一個現在能打的部位，
+                // 三張卡都打得到才放；放不了的（例如頭和肚子都禁打時的鏡子力＋破碎本能那組）不放，空出來的位置由歷史統計補。
+                // 只看部位限制，不看盔甲／肉體、詛咒、肉體數量這些狀態條件（這些照模擬器）
+                const setsOf = g.cards.map(n => (CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null).filter(Boolean);
+                if (setsOf.length && !attackable.some(k => setsOf.every(st => st.includes(k)))) return;
                 const real = data && data.decks ? data.decks.find(d => keyOf(d.cards) === keyOf(g.cards)) : null;
                 if (BY_PART_GAME_MIN_USE > 0 && data && (!real || real.attacks < BY_PART_GAME_MIN_USE)) return;
                 let tg;

@@ -8960,7 +8960,7 @@
              cycle＝輪流打所有能打的部位　armor＝集中打還有盔甲的部位　torso＝集中打頭部與肚子　body＝集中打露出肉體的部位
              head＝集中打頭部　limbs＝集中打肩與手（四肢）
            要加新的情境，在下面加一筆（buff＝加成類型代號，counts＝各種狀態的部位數量）即可 ── */
-        const BY_PART_GAME_MIN_USE = 10;
+        const BY_PART_GAME_MIN_USE = 0;   // 模擬器是遊戲算出的最高傷害最佳解：符合情境時 6 組整組使用，不看前 15 名用過幾刀（要過濾時改成最少刀數）
         const BY_PART_GAME_SCENARIOS = [
             {   // 苦痛機率 ×1.3：3 盔甲、3 肉體、2 禁打
                 buff: 'afflictionChance',
@@ -9045,7 +9045,7 @@
             sc.decks.forEach((g, i) => {
                 // 前 15 名真的用過的刀數太少（不到 BY_PART_GAME_MIN_USE 刀，含 0 次）的模擬器組合不放，空出來的位置由原本的算法用常用牌組補
                 const real = data && data.decks ? data.decks.find(d => keyOf(d.cards) === keyOf(g.cards)) : null;
-                if (data && (!real || real.attacks < BY_PART_GAME_MIN_USE)) return;
+                if (BY_PART_GAME_MIN_USE > 0 && data && (!real || real.attacks < BY_PART_GAME_MIN_USE)) return;
                 let tg;
                 if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
                 else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');

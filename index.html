@@ -4513,7 +4513,9 @@
                 }
                 if (headerResizeObserver && headerEl !== observedHeaderEl) {
                     if (observedHeaderEl) headerResizeObserver.unobserve(observedHeaderEl);
-                    headerResizeObserver.observe(headerEl);
+                    // 要量「含 padding 的外框」：iPhone 加到主畫面時，動態島的 safe-area 間距（padding-top）常在網頁載入後才生效，
+                    // 只看內容大小的話這個變化偵測不到，標題列變高了內容卻沒跟著往下，血條、王的圖示就被蓋住一截
+                    try { headerResizeObserver.observe(headerEl, { box: 'border-box' }); } catch (e) { headerResizeObserver.observe(headerEl); }
                     observedHeaderEl = headerEl;
                 }
             }
@@ -4653,9 +4655,15 @@
         window.addEventListener('load', () => setTimeout(checkForNewVersion, 1500));
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(); });
 
-        window.addEventListener('load', () => window.scrollTo(0, 0));
+        window.addEventListener('load', () => {
+            window.scrollTo(0, 0);
+            // 保險：載入完成後再量幾次標題列高度（safe-area、字型載入完都可能讓標題列變高）
+            [0, 300, 1000, 2500].forEach(ms => setTimeout(syncHeaderHeight, ms));
+        });
+        window.addEventListener('orientationchange', () => setTimeout(syncHeaderHeight, 300));
         window.addEventListener('pageshow', (e) => {
             window.scrollTo(0, 0);
+            setTimeout(syncHeaderHeight, 300);
             // event.persisted 為 true，代表這次不是重新載入，而是 iOS/Android
             // 把加到主畫面的 App「凍結畫面」直接解凍恢復（沒有重新連網抓最新版本）。
             // 這正是「打開看到舊首頁、關掉重開才變新版」的原因，這裡偵測到就強制重新整理一次。

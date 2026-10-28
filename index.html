@@ -8941,7 +8941,7 @@
         const BY_PART_RECO_SOLID_MIN = 20;   // 有人氣支撐的那幾階，牌組在這個狀態下至少要有這麼多刀（傷害指數才可信）
         // 詛咒類型把這組牌的傷害砍掉 10％ 以上（例如爆裂詛咒 3 個詛咒甲 −18％、爆裂卡為主的牌組）：這種牌組完全不推薦，兩條固定牌組也不強制；
         // 沒被砍的真實牌組不夠 6 組時，用沒被砍的單張卡補（補位組合也不放被詛咒的類型的卡）
-        const BY_PART_RECO_CURSE_PENAL = 0.9;
+        const BY_PART_RECO_CURSE_PENAL = 0.85;   // 3 個詛咒甲時只有「幾乎全是被詛咒那一類卡」的牌組（−15％ 以上）才不推薦；遊戲模擬器在苦痛詛咒 3 個詛咒甲時仍然大量使用苦痛卡
         const BY_PART_RECO_CURSE_TIER = 1e5;
         const BY_PART_RECO_BASE_MIN = 10;     // 任何推薦牌組在現在狀態下至少要出現幾次
         const BY_PART_RECO_FORCE_RATIO = 0.05; // 次數至少要佔「現在這個狀態（相同狀態）下打得出來的全部攻擊次數」的這個比例（5％）
@@ -9013,6 +9013,20 @@
                     { cards: ['BurningAttack', 'Fuse', 'SuperheatMetal'], role: 'cycle' },
                     { cards: ['PlagueAttack', 'RuneAttack', 'AstralEcho'], role: 'limbs' }
                 ]
+            },
+            {   // 苦痛機率 ×1.3、苦痛詛咒：3 個詛咒甲、3 個盔甲、2 禁打
+                buff: 'afflictionChance',
+                curse: 'Afflicted', cursed: 3,
+                counts: { armor: 6, body: 0, skeleton: 0, banned: 2 },
+                needTorso: true,
+                decks: [
+                    { cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], role: 'torso' },
+                    { cards: ['RuinousRust', 'InnerTruth', 'TotemFairySkill'], role: 'torso' },
+                    { cards: ['SandsOfTime', 'CosmicBarb', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['Purify', 'MagicPotion', 'TriangleSupport'], role: 'limbs' },
+                    { cards: ['PlagueAttack', 'RuneAttack', 'MentalFocus'], role: 'cycle' },
+                    { cards: ['Fragmentize', 'Weaken', 'AstralEcho'], role: 'cursed1' }
+                ]
             }
         ];
         function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
@@ -9050,6 +9064,9 @@
            狀態＝各層部位數量（盔甲／肉體／骨架）＋詛咒甲數量＋詛咒類型，場次類型＝爆裂／苦痛／其他。
            伺服器是新功能，只有之後的新攻擊才有狀態資料；有相同狀態的攻擊就用（筆數少也用），
            在這些牌組裡挑「6 組不共用卡、使用次數總和最高」的，不夠 6 組的位置交給原本的算法補 ── */
+        // 推薦牌組以「同加成類型的歷史場次（9/20 之後）＋前 15 名均傷玩家＋依部位數量判斷打不打得出來」為主（原本的算法）。
+        // 「同狀態／放寬／同詛咒類型歷史」這幾層（依伺服器記下的攻擊當下狀態）先關掉，程式保留，要用時改成 true
+        const BY_PART_USE_STATE_HISTORY = false;
         const BY_PART_CURSE_HIST_BONUS = 1e6;   // 同詛咒類型的歷史統計（第 3 層）優先於只看場次類型的歷史統計（第 4 層）
         const BY_PART_CTX_MIN_TOTAL = 1;   // 筆數很少也用：只要有「相同狀態」的攻擊就先排這些
         const BY_PART_CTX_MIN_DECK = 1;
@@ -9297,7 +9314,7 @@
             // 再用打法比對現在的部位；有這份資料的牌組用它的次數，優先於只看場次類型的歷史統計（第 4 層）
             const sigOf = (r) => r.rawCards.slice().sort().join('|');
             let rows3 = [];
-            if (!allRows && cursedK > 0 && curseTypes.length && attackCacheState.ready && attackCacheRecords) {
+            if (BY_PART_USE_STATE_HISTORY && !allRows && cursedK > 0 && curseTypes.length && attackCacheState.ready && attackCacheRecords) {
                 try {
                     const ctype = String(curseTypes[0].type || '').replace(/DamagePerCurse$/, '');
                     const bk = buffArg === undefined ? (raidSimActive ? simBuffKey() : currentSessionBuff()) : buffArg;
@@ -9337,7 +9354,7 @@
             // 上界＝目前總和＋剩下名額能拿到的最高分，上界打不贏目前最佳就整支剪掉
             // 遊戲模擬器的 6 組（byPartGameRows 的情境表，加成類型與各種狀態的部位數量一樣才用）；符合時整組照用，不再套用兩組固定牌組
             // 有「相同狀態」的真實攻擊資料就用真實資料，不用模擬器的 6 組；沒有真實資料才看模擬器情境
-            const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked, sceneNow) || []);
+            const ctxRows = allRows || !BY_PART_USE_STATE_HISTORY ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked, sceneNow) || []);
             const gameRows = allRows || ctxRows.length ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
             // 有「相同狀態」的真實攻擊資料時，先排這些（當下部位狀態前 15 名玩家真的用過的牌組）；不到 6 組（剛換王、新狀態資料還很少）
             // 剩下的位置依序用：第 3 層（同詛咒類型的歷史）、第 4 層（同場次類型的歷史）補滿；補位的牌組不顯示次數

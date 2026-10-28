@@ -9297,13 +9297,8 @@
             const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
             const gameRows = allRows || ctxRows.length ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
             const seedRows = [...gameRows, ...ctxRows];
-            // 有「相同狀態」的真實攻擊資料時，推薦只用這份（當下部位狀態的前 15 名玩家真的用過的牌組），不用別的狀態的統計補位，
-            // 所以資料少的時候可能不到 6 組；沒有這個狀態的真實資料才用模擬器情境或原本的算法
-            if (ctxRows.length) {
-                const only = ctxRows.slice().sort((x, y) => y.overall - x.overall);
-                only.stateTotal = ctxRows.total;
-                return only;
-            }
+            // 有「相同狀態」的真實攻擊資料時，先排這些（當下部位狀態前 15 名玩家真的用過的牌組）；不到 6 組（剛換王、新狀態資料還很少）
+            // 剩下的位置用「同場次類型」的歷史統計補滿（卡片現在用得到、詛咒類型砍太多的不放），補位的牌組不顯示次數
             // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
             const forcedRows = allRows || seedRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
             const usedInit = new Set([...seedRows, ...forcedRows].flatMap(r => r.rawCards));

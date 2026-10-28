@@ -8329,8 +8329,10 @@
             return `${c.armor}-${c.body}-${c.skeleton}|${cursed || 0}|${cursed ? t : ''}`;
         }
         // 放寬用：只看「還有盔甲或肉體的部位有幾個」（不分盔甲／肉體、不看詛咒）
-        function acCountKey(layers) {
-            return 'n=' + Object.values(layers || {}).filter(l => l === 'armor' || l === 'body').length;
+        // 詛咒甲數量跟詛咒類型（爆裂／苦痛／肉體）還是要一樣：爆裂詛咒跟苦痛詛咒適合的牌組不同
+        function acCountKey(layers, cursed, curseTypes) {
+            const t = (curseTypes && curseTypes[0] && String(curseTypes[0].type || curseTypes[0]).replace(/DamagePerCurse$/, '')) || '';
+            return 'n=' + Object.values(layers || {}).filter(l => l === 'armor' || l === 'body').length + `|${cursed || 0}|${cursed ? t : ''}`;
         }
         function buildLocalDeckStats(topN, group, stateKey) {
             const memoKey = `${topN}|${group || 'all'}|${stateKey || ''}`;
@@ -8370,7 +8372,7 @@
                     const three = e.list.filter(a => a[4].length === 3);
                     const mean = three.length ? three.reduce((s, a) => s + adjTotal(a), 0) / three.length : 0;
                     three.forEach(a => {
-                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || (stateKey.startsWith('n=') ? acCountKey(cx.layers) : acStateKey(cx.layers, cx.cursed, cx.curse)) !== stateKey) return; }
+                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || (stateKey.startsWith('n=') ? acCountKey(cx.layers, cx.cursed, cx.curse) : acStateKey(cx.layers, cx.cursed, cx.curse)) !== stateKey) return; }
                         a[4].forEach(cn => {
                             if (!cardStats[cn]) cardStats[cn] = { n: 0, rel: 0 };
                             cardStats[cn].n++;
@@ -9036,8 +9038,8 @@
                 const st = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), stateKey);   // 永遠只抓前 15 名
                 // 放寬：「不看狀態」的牌組＝可以打肉體也可以打盔甲的牌組（每張卡都沒有「只能打盔甲／只能打肉體」的限制），
                 // 例如核融炸彈＋炎燒地獄＋戰鼓、鏡子力＋先祖加護＋破碎本能。這種牌組不一定要完全相同的部位狀態，
-                // 只要「還有盔甲或肉體的部位數量」一樣、場次類型一樣，這些攻擊都算進它的次數（不分盔甲／肉體、不看詛咒）
-                const st2 = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), acCountKey(layers));
+                // 只要「還有盔甲或肉體的部位數量」、詛咒甲數量與詛咒類型、場次類型都一樣，這些攻擊都算進它的次數（只放寬盔甲／肉體的分布）
+                const st2 = buildLocalDeckStats(byPartTop, acBuffGroup(buffKey), acCountKey(layers, cursedK, cursedK > 0 ? curseTypes : []));
                 const layerFree = (n) => {
                     if (CARD_ONLY_WHEN[n]) return false;   // 帶刺的晨星：依盔甲／肉體數量才能用，要看狀態
                     const l = (QUIZ_CARDS[n] && QUIZ_CARDS[n].l) || [];

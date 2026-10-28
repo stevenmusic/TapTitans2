@@ -9178,7 +9178,7 @@
                 else if (g.role === 'limbs') tg = attackable.filter(k => /Shoulder|Hand/.test(k));
                 else tg = attackable;
                 if (!tg.length) tg = attackable;
-                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || 0, score: 100 - i });
+                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || 0, allParts: g.role === 'cycle', score: 100 - i });
             });
             return rows;
         }
@@ -9368,7 +9368,7 @@
                     const b = BY_PART_RECO_BOOST[n];
                     return s + (b && all[b.state] >= b.min ? b.w : 0) + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio;
                 }, 0));
-                rows.push({ overall: d.attacks || 0, cursedBonus: Math.min(0.35, d.cards.reduce((a, n) => a + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio, 0)), cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
+                rows.push({ overall: d.attacks || 0, cursedBonus: Math.min(0.35, d.cards.reduce((a, n) => a + (BY_PART_RECO_CURSED[n] || 0) * cursedRatio, 0)), cards: byPartOrderCards(d.cards), rawCards: d.cards, shareB: d.shareB, shareT: d.shareT, supported: d.playerCount === undefined || (d.playerCount >= BY_PART_RECO_MIN_PLAYERS && d.topShare <= BY_PART_RECO_MAX_TOP_SHARE), targets: bestTargets, allParts: bestTargets.length >= 2 && bestTargets.length >= keys.length, usable, bodyShare: usable > 0 ? bodyHit / usable : 0, dmg: relHas && usable > 0 ? relSum / usable : null, cover: usable > 0 ? hpShare / usable : 0, fit: Math.min(1, usable / Math.max(1, relevant)), synergy, tier });
             });
             // 比例的分母是「現在這個狀態（剩餘部位數量與層別）下打得出來的全部攻擊次數」，不是所有紀錄的總攻擊次數
             // 兩組固定牌組：紀錄裡的打法（一次同時打幾個部位）剛好跟現在的部位湊不上時，規則仍然要有——
@@ -9543,6 +9543,9 @@
             const t3Used = !ctxRows.length && picked.some(r => r.src === 't3');
             if (ctxRows.length) picked.forEach(r => { if (!r.ctx) r.hideCount = true; });
             else if (t3Used) picked.forEach(r => { if (r.src !== 't3') r.hideCount = true; });
+            // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）
+            const armorNow = keys.filter(k => info[k].layer === 'armor').map(k => ({ part: k, layer: 'armor', cursed: info[k].cursed }));
+            picked.forEach(r => { if (r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length) { r.targets = armorNow; r.allParts = false; r.focus = 0; } });
             picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : (t3Used ? rows3.reduce((x, r) => x + r.overall, 0) : stateTotal));   // 遊戲模擬器的 6 組不顯示總次數與各組次數
             return picked;
         }
@@ -9620,17 +9623,15 @@
 
         // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
         function byPartRecoTagHtml(r) {
-            // 帶防空高砲的牌組：不指定部位名稱，任何還有盔甲的部位都可以打，只標「盔甲」
-            if (r.rawCards && r.rawCards.includes('FlakShot')) {
-                return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;"><span class="raid-layer-badge layer-armor">${t('raidLayerArmor')}</span></span>`;
-            }
             if (!r.targets || r.targets.length === 0) return '';
             const layers = new Set(r.targets.map(x => x.layer));
             const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
             const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
-            const focusBadge = r.focus ? `<span style="font-size:11px; font-weight:800; color:#6b4a8a; background:#efe6f7; border-radius:5px; padding:0 5px; margin-left:2px;">${r.focus}部位</span>` : '';   // 模擬器指定要集中打幾個部位（Focus Three／Four…）
+            // 原本算法的牌組也一樣：每個能打的部位都打＝「全部位」（allParts）；集中打 3 個以上、但不是全部的部位，只標部位數量不列名稱
+            const focusN = r.focus || ((!r.game && !r.allParts && r.targets.length >= 3) ? r.targets.length : 0);
+            const focusBadge = focusN ? `<span style="font-size:11px; font-weight:800; color:#6b4a8a; background:#efe6f7; border-radius:5px; padding:0 5px; margin-left:2px;">${focusN}部位</span>` : '';   // 模擬器指定要集中打幾個部位（Focus Three／Four…）
             // Focus Three／Four 只指定「集中打幾個部位」，不指定是哪幾個部位：不顯示部位名稱，只標層別跟部位數量
-            const partText = r.focus >= 3 ? '' : escapeHtml(raidPartShortCombined(r.targets));
+            const partText = focusN >= 3 ? '' : (r.allParts ? '全部位' : escapeHtml(raidPartShortCombined(r.targets)));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
             return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${partText}<span class="raid-layer-badge layer-${kind}">${label}</span>${focusBadge}</span>`;
         }
 

@@ -11698,6 +11698,12 @@
                 listEl.innerHTML = `<div class="raid-recent-empty">${t('raidNoRecentAttacks')}</div>`;
                 return;
             }
+            // 沒帶卡片的（/recent-attacks 沒有卡片）用已載入的攻擊紀錄補上
+            if (raidRecentAttacks.some(a => !(a.cards && a.cards.length)) && Array.isArray(serverAttackLogCache)) {
+                const byKey = new Map();
+                serverAttackLogCache.forEach(x => { if (x.cards && x.cards.length) byKey.set(`${x.attackDatetime || x.ts}_${x.player}`, x.cards); });
+                raidRecentAttacks.forEach(a => { if (!(a.cards && a.cards.length) && a.dedupKey && byKey.has(a.dedupKey)) a.cards = byKey.get(a.dedupKey); });
+            }
             listEl.innerHTML = raidRecentAttacks.map(a => {
                 const allParts = Array.isArray(a.parts) ? a.parts : [];
                 // 傷害低於這一刀 5% 的部位不列出（濺射的零星傷害）

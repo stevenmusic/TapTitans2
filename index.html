@@ -7547,10 +7547,30 @@
                 const lowDamageThreshold = avgOwnDamage / 2;
                 attacks.forEach(a => { a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < lowDamageThreshold; });
                 const hasLowAttack = attacks.some(a => a.isLowDamage);
-                return { player: playerName, attackCount: attacks.length, totalDamage, attacks, hasLowAttack, raidLevel };
+                // 伺服器漏收的刀：遊戲每一刀都會回報剩餘次數（每輪多 6 刀、沒打完會累積），前後兩刀的剩餘次數跳號就是中間有刀沒收到。
+                // 卡片、傷害拿不回來，只補一筆「漏記」的佔位，讓攻擊次數對得上（不算進傷害、均傷、低傷判斷）
+                const missed = raidLogMissedPlaceholders(attacks);
+                const shown = missed.length ? attacks.concat(missed).sort((a, b) => b.ts - a.ts) : attacks;
+                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
+        }
+
+        function raidLogMissedPlaceholders(attacks) {
+            const asc = attacks.filter(a => !a.placeholder && typeof a.cycle === 'number' && typeof a.attacksRemaining === 'number').sort((a, b) => a.ts - b.ts);
+            const out = [];
+            let prev = null;
+            asc.forEach(a => {
+                const expect = prev ? prev.attacksRemaining + RAID_ATTACKS_PER_CYCLE * (a.cycle - prev.cycle) - 1 : a.cycle * RAID_ATTACKS_PER_CYCLE - 1;
+                const miss = expect - a.attacksRemaining;
+                if (miss > 0 && miss < 2 * RAID_ATTACKS_PER_CYCLE) {
+                    out.push({ placeholder: true, missedCount: miss, ts: prev ? prev.ts + 1 : a.ts - 1, cycle: a.cycle, player: a.player, playerCode: a.playerCode, raidStartedAt: a.raidStartedAt,
+                        boss: a.boss, bossOrdinal: a.bossOrdinal, bossTotal: a.bossTotal, totalDamage: 0, cards: [], parts: [], afterTs: prev ? prev.ts : null, beforeTs: a.ts, isLowDamage: false });
+                }
+                prev = a;
+            });
+            return out;
         }
 
         // 相對日期顯示：今天/昨天/幾天前，搭配時間（沿用畫面上其他地方一致的 24 小時制）
@@ -11040,6 +11060,11 @@
         }
 
         function renderRaidLogAttackCard(a, rIdx, aIdx, expandByDefault) {
+            if (a.placeholder) {
+                const when = a.afterTs ? `${raidLogRelativeDate(a.afterTs)}～${raidLogRelativeDate(a.beforeTs).split(' ').pop()} 之間` : `${raidLogRelativeDate(a.beforeTs)} 之前`;
+                return `<div style="border:1px dashed #d8c8b8; border-radius:8px; padding:8px 10px; background:#f7f3ee; color:#8a7a6a; font-size:12px;">
+                    <b style="color:#6b5a4a;">漏記 ${a.missedCount} 刀</b>（第 ${a.cycle} 輪，${escapeHtml(when)}）：伺服器沒收到這${a.missedCount > 1 ? '幾' : ''}筆，卡片與傷害不明</div>`;
+            }
             const uid = `raidlog-detail-${rIdx}-${aIdx}`;
             const cardDamage = a.cardDamage || {};
             const tapDamage = a.tapDamage || 0;

@@ -6510,7 +6510,7 @@
                     attacksRemaining: (payload.player && typeof payload.player.attacks_remaining === 'number') ? payload.player.attacks_remaining : null,
                     cards, cardDamage, tapDamage, parts: hitParts, totalDamage: totalDmg, dedupKey
                 });
-                appendLiveAttackToStatsCache({ attackDatetime, ts: Date.now(), player: playerName, playerCode: (payload.player && payload.player.player_code) || null, totalDamage: totalDmg, tapDamage, cards, parts: hitParts, cardDamage }, liveCtx);
+                appendLiveAttackToStatsCache({ attackDatetime, ts: Date.now(), bossOrdinal: raidBossOrdinal || 0, player: playerName, playerCode: (payload.player && payload.player.player_code) || null, totalDamage: totalDmg, tapDamage, cards, parts: hitParts, cardDamage }, liveCtx);
             }
 
             // 完整攻擊紀錄的「歷史資料」還是完全信任伺服器 24 小時背景側錄寫進資料庫的那份
@@ -8181,6 +8181,7 @@
         const attackCacheState = { loading: false, done: 0, total: 0, ready: false, error: false };
         let attackCacheRecords = null;      // [{ startedAt, buffType, attacks:[...] }]，載入後常駐記憶體
         let attackCacheVersion = 0;
+        let bossCurseBySession = new Map(); // 場次 startedAt → [第 1 隻王的詛咒類型, 第 2 隻…]（爆裂／苦痛／肉體；來自伺服器的場次快照，只有部分場次有）
         let attackCtxMap = new Map();       // 攻擊 key → { curse:[{type,amount}], cursed, cursedParts, layers }（伺服器新增，只有之後的新攻擊才有）
         const localStatsMemo = new Map();
 
@@ -8198,7 +8199,8 @@
             return [a.ts, a.playerCode || a.player, Number(a.totalDamage) || 0, Number(a.tapDamage) || 0,
                 (a.cards || []).map(x => x.name), (a.parts || []).map(p => [p.part, p.layer, Number(p.damage) || 0]),
                 Object.keys(a.cardDamage || {}).map(k => [k, Number(a.cardDamage[k]) || 0]),
-                `${a.attackDatetime || a.ts}_${a.player}`];   // 對應伺服器 /attack-context 的 key（攻擊當下的詛咒／部位層別狀態）
+                `${a.attackDatetime || a.ts}_${a.player}`,   // 對應伺服器 /attack-context 的 key（攻擊當下的詛咒／部位層別狀態）
+                a.bossOrdinal || 0];                          // 第幾隻王（配合場次快照的詛咒類型，查「這隻王的詛咒類型」）
         }
         async function attackCacheEnsure() {
             if (attackCacheState.loading) return;
@@ -8208,6 +8210,19 @@
                 const sresp = await fetch(`${relayUrl}/raid-sessions-summary`);
                 if (!sresp.ok) throw new Error('sessions ' + sresp.status);
                 const sessions = ((await sresp.json()).sessions || []).filter(s => s.startedAt >= ATTACK_STATS_FROM);   // 新到舊，只留 9/20 之後
+                // 每場每隻王的詛咒類型（伺服器場次快照）：失敗或沒有資料都不影響其他統計
+                try {
+                    const sr = await fetch(`${relayUrl}/raid-raw-snapshots?limit=20`);
+                    if (sr.ok) {
+                        const m = new Map();
+                        ((await sr.json()).snapshots || []).forEach(sn => {
+                            const titans = sn.data && sn.data.raid && sn.data.raid.titans;
+                            if (!Array.isArray(titans) || !sn.startedAt) return;
+                            m.set(sn.startedAt, titans.map(t => { const d = (t.cursed_debuffs || [])[0]; return d ? String(d.bonus_type || '').replace(/DamagePerCurse$/, '') : ''; }));
+                        });
+                        bossCurseBySession = m;
+                    }
+                } catch (e) {}
                 const db = await acOpen();
                 const stored = new Map((await acReq(db.transaction('sessions').objectStore('sessions').getAll())).map(r => [r.startedAt, r]));
                 attackCacheState.total = sessions.length; attackCacheState.done = 0;
@@ -8216,13 +8231,14 @@
                     const s = sessions[i];
                     let rec = stored.get(s.startedAt);
                     const isLatest = i === 0;
-                    const stale = !rec || (isLatest && Date.now() - (rec.fetchedAt || 0) > ATTACK_CACHE_LATEST_MS)
+                    const needOrd = rec && bossCurseBySession.has(s.startedAt) && rec.attacks.some(a => a[8] === undefined);   // 舊格式快取沒有「第幾隻王」，有詛咒快照的場次重抓一次
+                    const stale = !rec || needOrd || (isLatest && Date.now() - (rec.fetchedAt || 0) > ATTACK_CACHE_LATEST_MS)
                         || (!isLatest && !rec.complete) || rec.count !== s.attackCount && !isLatest && rec.complete === false;
                     if (stale) {
                         // 本場（進行中）已經有快取、而且是新格式（每筆都有 key）：只跟伺服器要「快取之後新增的」攻擊，不整場重抓；
                         // 伺服器還沒支援這個端點、或快取是舊格式，才整場重抓
                         let merged = false;
-                        if (isLatest && rec && rec.serverLastTs && rec.complete === false && rec.attacks.every(a => a[7])) {
+                        if (isLatest && rec && rec.serverLastTs && rec.complete === false && rec.attacks.every(a => a[7] && a[8] !== undefined)) {
                             try {
                                 const ir = await fetch(`${relayUrl}/attacks-since?ts=${rec.serverLastTs - 120000}`);   // 往前多留 2 分鐘重疊，用 key 去重
                                 if (ir.ok) {
@@ -8372,7 +8388,8 @@
                     const three = e.list.filter(a => a[4].length === 3);
                     const mean = three.length ? three.reduce((s, a) => s + adjTotal(a), 0) / three.length : 0;
                     three.forEach(a => {
-                        if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || (stateKey.startsWith('n=') ? acCountKey(cx.layers, cx.cursed, cx.curse) : acStateKey(cx.layers, cx.cursed, cx.curse)) !== stateKey) return; }
+                        if (stateKey && stateKey.startsWith('c=')) { const bc = bossCurseBySession.get(rec.startedAt); if (!bc || !a[8] || bc[a[8] - 1] !== stateKey.slice(2)) return; }
+                        else if (stateKey) { const cx = attackCtxMap.get(a[7]); if (!cx || (stateKey.startsWith('n=') ? acCountKey(cx.layers, cx.cursed, cx.curse) : acStateKey(cx.layers, cx.cursed, cx.curse)) !== stateKey) return; }
                         a[4].forEach(cn => {
                             if (!cardStats[cn]) cardStats[cn] = { n: 0, rel: 0 };
                             cardStats[cn].n++;
@@ -9026,6 +9043,7 @@
            狀態＝各層部位數量（盔甲／肉體／骨架）＋詛咒甲數量＋詛咒類型，場次類型＝爆裂／苦痛／其他。
            伺服器是新功能，只有之後的新攻擊才有狀態資料；有相同狀態的攻擊就用（筆數少也用），
            在這些牌組裡挑「6 組不共用卡、使用次數總和最高」的，不夠 6 組的位置交給原本的算法補 ── */
+        const BY_PART_CURSE_HIST_BONUS = 1e6;   // 同詛咒類型的歷史統計（第 3 層）優先於只看場次類型的歷史統計（第 4 層）
         const BY_PART_CTX_MIN_TOTAL = 1;   // 筆數很少也用：只要有「相同狀態」的攻擊就先排這些
         const BY_PART_CTX_MIN_DECK = 1;
         function byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) {
@@ -9267,12 +9285,29 @@
             rows.forEach(r => {
                 r.curseMul = 1 - curseTypes.reduce((s, d) => s + Math.abs(d.amount) * cursedK * damageShare(r, String(d.type).replace(/DamagePerCurse$/, '')), 0);
             });
+            // 第 3 層：場次類型一樣、而且「這隻王的詛咒類型」一樣的歷史攻擊（伺服器場次快照有記每隻王的詛咒類型，只有部分場次有），
+            // 再用打法比對現在的部位；有這份資料的牌組用它的次數，優先於只看場次類型的歷史統計（第 4 層）
+            const sigOf = (r) => r.rawCards.slice().sort().join('|');
+            let rows3 = [];
+            if (!allRows && cursedK > 0 && curseTypes.length && attackCacheState.ready && attackCacheRecords) {
+                try {
+                    const ctype = String(curseTypes[0].type || '').replace(/DamagePerCurse$/, '');
+                    const bk = buffArg === undefined ? (raidSimActive ? simBuffKey() : currentSessionBuff()) : buffArg;
+                    const d3 = buildLocalDeckStats(byPartTop, bk && SESSION_BUFFS[bk] ? acBuffGroup(bk) : undefined, 'c=' + ctype);
+                    if (d3.attackCount > 0) rows3 = byPartRecoCompute(d3, partsArg, bannedArg, true, curseArg, buffArg).map(r => ({ ...r, src: 't3' }));
+                } catch (e) { rows3 = []; }
+            }
+            if (rows3.length) {
+                const k3 = new Set(rows3.map(sigOf));
+                rows = rows.filter(r => !k3.has(sigOf(r))).concat(rows3);
+            }
             // 排序＝實際使用次數優先（傷害指數只在 0.8～1.25 之間微調，次數才是主軸）：使用次數（這個部位狀態下前 15 名真的打過幾刀）× 傷害指數 × 詛咒減傷 × 場次加成
             // 傷害指數（每個人以自己該場平均傷害為 1）依刀數向 1 收斂，刀數少的牌組不會因為運氣好就排很前面；沒有傷害資料時當作 1
             rows.forEach(r => {
                 const dmg = r.dmg === null || r.dmg === undefined ? 1 : 1 + (r.dmg - 1) * r.usable / (r.usable + BY_PART_RECO_DMG_SHRINK);
                 r.score = r.overall * Math.min(1.25, Math.max(0.8, dmg)) * Math.max(0.2, r.curseMul) * r.buffMul * (1 + r.cursedBonus) + (r.curseMul < BY_PART_RECO_CURSE_PENAL ? 0 : BY_PART_RECO_CURSE_TIER);   // 撼地破甲、毀了雨：場上有詛咒甲時額外加分（打法打到詛咒甲的比例越高越多）
             });
+            rows.forEach(r => { if (r.src === 't3') r.score += BY_PART_CURSE_HIST_BONUS; });   // 第 3 層的牌組優先於第 4 層
             // 強制列出 6 組，而且 6 組之間完全不能有相同的卡：
             // 先試著找「6 組彼此完全不共用卡」的組合，分數總和最高的那個（分數高的牌組優先，現在真的常打的排在前面）；
             // 找不到 6 組時退而求其次，列出能找到的最多組數
@@ -9296,11 +9331,18 @@
             // 有「相同狀態」的真實攻擊資料就用真實資料，不用模擬器的 6 組；沒有真實資料才看模擬器情境
             const ctxRows = allRows ? [] : (byPartCtxRows(parts, curseTypes, buffKey, cardBlocked) || []);
             const gameRows = allRows || ctxRows.length ? [] : byPartGameRows(parts, bannedList, buffKey, curseTypes, data);
-            const seedRows = [...gameRows, ...ctxRows];
             // 有「相同狀態」的真實攻擊資料時，先排這些（當下部位狀態前 15 名玩家真的用過的牌組）；不到 6 組（剛換王、新狀態資料還很少）
-            // 剩下的位置用「同場次類型」的歷史統計補滿（卡片現在用得到、詛咒類型砍太多的不放），補位的牌組不顯示次數
-            // 兩組固定牌組整組放進去（三張卡要同組，不能被拆開），其餘 4 組才用搜尋挑
-            const forcedRows = allRows || seedRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
+            // 剩下的位置依序用：第 3 層（同詛咒類型的歷史）、第 4 層（同場次類型的歷史）補滿；補位的牌組不顯示次數
+            // 兩組固定牌組（鏡子力＋先祖加護＋破碎本能、瘋狂無效＋肆虐瘟疫＋時間之沙）每一層都套用：條件符合就整組放進去（三張卡要同組，不能被拆開），
+            // 跟它共用卡的同狀態牌組讓出位置，其餘的組數才用搜尋挑
+            let forcedRows = allRows || gameRows.length ? [] : rows.filter(r => forcedSigs.has(r.rawCards.slice().sort().join()) && r.curseMul >= BY_PART_RECO_CURSE_PENAL);
+            const ctxSigs = new Set(ctxRows.map(sigOf));
+            forcedRows = forcedRows.filter(r => !ctxSigs.has(sigOf(r)));
+            const ctxSorted = ctxRows.slice().sort((x, y) => y.overall - x.overall);
+            let ctxKeep = ctxSorted.filter(r => !forcedRows.some(f => f.rawCards.some(n => r.rawCards.includes(n))));
+            while (ctxKeep.length + forcedRows.length > BY_PART_RECO_COUNT) ctxKeep.pop();
+            ctxKeep.total = ctxRows.total;
+            const seedRows = [...gameRows, ...ctxKeep];
             const usedInit = new Set([...seedRows, ...forcedRows].flatMap(r => r.rawCards));
             const K = BY_PART_RECO_COUNT - seedRows.length - forcedRows.length;
             const BIG = 1e9;
@@ -9349,8 +9391,11 @@
             // 強制 6 組：真實出現過的牌組（卡片不重複）湊不滿時，用「現在場上用得到的單張卡」補組合——
             // 沒用過的卡不拿來湊，每張卡都要符合現在的部位狀態；組合方式是 兩張傷害卡＋一張支援卡（傷害卡不夠就用支援卡補）
             if (picked.length < BY_PART_RECO_COUNT) picked.push(...byPartSynthDecks(data, parts, bannedList, picked, BY_PART_RECO_COUNT - picked.length, curseTypes, cursedK));
-            if (ctxRows.length) picked.forEach(r => { if (!r.ctx) r.hideCount = true; });   // 有「相同狀態」的統計時，補位的牌組次數是別的統計基準，不顯示
-            picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : stateTotal);   // 遊戲模擬器的 6 組不顯示總次數與各組次數   // 顯示用：分母（這個部位狀態打得出來的牌組全部紀錄刀數）
+            // 次數只顯示「排名依據」那一層的：有同狀態資料就只顯示同狀態的；否則有同詛咒類型的歷史就只顯示那層的；補位的牌組不顯示次數
+            const t3Used = !ctxRows.length && picked.some(r => r.src === 't3');
+            if (ctxRows.length) picked.forEach(r => { if (!r.ctx) r.hideCount = true; });
+            else if (t3Used) picked.forEach(r => { if (r.src !== 't3') r.hideCount = true; });
+            picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : (t3Used ? rows3.reduce((x, r) => x + r.overall, 0) : stateTotal));   // 遊戲模擬器的 6 組不顯示總次數與各組次數
             return picked;
         }
 

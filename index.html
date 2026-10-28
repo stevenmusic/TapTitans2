@@ -9392,6 +9392,22 @@
                     { cards: ['Weaken', 'Shadow', 'ImpactAttack'], focus: 2, role: 'limbs' }
                 ]
             }
+            ,{   // 苦痛機率 ×1.3、爆裂詛咒：2 個詛咒甲（左肩＋左手）、3 個盔甲（共 5 盔甲）、2 肉體、1 禁打（肚子禁打）；詛咒甲位置在四肢，牌組跟詛咒甲在雙腳那份不一樣
+                buff: 'afflictionChance',
+                curse: 'Burst', cursed: 2,
+                cursedAt: ['ArmUpperLeft', 'HandLeft'],
+                counts: { armor: 5, body: 2, skeleton: 0, banned: 1 },
+                bannedParts: ['ChestUpper'],
+                needTorso: true,
+                decks: [
+                    { cards: ['RuinousRust', 'MentalFocus', 'TotemFairySkill'], role: 'cursed1' },
+                    { cards: ['BurningAttack', 'Fuse', 'BattleDrums'], role: 'cycle' },
+                    { cards: ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'], role: 'head' },
+                    { cards: ['PlagueAttack', 'SandsOfTime', 'LimbSupport'], role: 'limbs' },
+                    { cards: ['Weaken', 'Shadow', 'TriangleSupport'], focus: 2, role: 'any' },
+                    { cards: ['CosmicBarb', 'InnerTruth', 'AstralEcho'], role: 'head' }
+                ]
+            }
         ];
         function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
             const scene = byPartPartsToScene(parts, banned);
@@ -9399,10 +9415,11 @@
             const cnt = { armor: 0, body: 0, skeleton: 0, banned: 0 };
             RAID_PARTS.forEach(({ key }) => { cnt[base(scene[key])]++; });
             const torsoOk = ['Head', 'ChestUpper'].some(k => ['armor', 'body', 'cursed'].includes(scene[k]));
-            const cursedN = RAID_PARTS.filter(({ key }) => scene[key] === 'cursed').length;
+            const cursedKeys = RAID_PARTS.map(p => p.key).filter(k => scene[k] === 'cursed');
+            const cursedN = cursedKeys.length;
             const attackableNow = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
-            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.bannedParts || x.bannedParts.every(k => (banned || []).includes(k))));
-            const sc = matches.find(x => x.cursed !== undefined) || matches[0];   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
+            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (!x.bannedParts || x.bannedParts.every(k => (banned || []).includes(k))));
+            const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed !== undefined) || matches[0];   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
             const target = (k) => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' });
@@ -9428,7 +9445,7 @@
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));   // Focus One Limb：單一四肢部位
                 else tg = attackable;
                 if (!tg.length) tg = attackable;
-                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || 0, partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
+                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || 0, partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
             });
             return rows;
         }
@@ -9907,7 +9924,7 @@
             const focusN = r.focus || ((!r.game && !r.allParts && r.targets.length >= 3) ? r.targets.length : 0);
             const focusBadge = focusN ? `<span style="font-size:11px; font-weight:800; color:#6b4a8a; background:#efe6f7; border-radius:5px; padding:0 5px; margin-left:2px;">${focusN}部位</span>` : '';   // 模擬器指定要集中打幾個部位（Focus Three／Four…）
             // Focus Three／Four 只指定「集中打幾個部位」，不指定是哪幾個部位：不顯示部位名稱，只標層別跟部位數量
-            const partText = focusN >= 3 ? '' : (r.allParts ? '全部位' : (r.partLabel || escapeHtml(raidPartShortCombined(r.targets))));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
+            const partText = (focusN >= 3 || r.hideParts) ? '' : (r.allParts ? '全部位' : (r.partLabel || escapeHtml(raidPartShortCombined(r.targets))));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
             return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${partText}<span class="raid-layer-badge layer-${kind}">${label}</span>${focusBadge}</span>`;
         }
 

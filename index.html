@@ -9903,7 +9903,7 @@
             const asTarget = (k) => ({ part: k, layer: info[k].layer === 'armor' ? 'armor' : 'body', cursed: info[k].cursed });
             const hpMost = (ks) => ks.slice().sort((x, y) => info[y].hp - info[x].hp)[0];
             // 帶圖騰之力的牌組本來就是單部位牌組：只標 1 個部位——整組牌都打得到的部位裡，剩餘血量最多的那個
-            // （帶毀了雨、撼地破甲、而且場上有詛咒甲時，優先選詛咒甲）
+            // （場上有詛咒甲時，優先選詛咒甲）
             // 帶毀了雨的牌組（不管是哪一種牌組類型）：場上有詛咒甲就打「詛咒甲血量最厚的那個部位」，只標這 1 個部位
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('RuinousRust'))) return;
@@ -9915,15 +9915,21 @@
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('TotemFairySkill'))) return;
                 let cand = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok) && (!r.limbOnly || /Arm|Hand|Leg/.test(k)));
-                if (r.rawCards.some(n => BY_PART_RECO_CURSED[n])) { const cc = cand.filter(k => info[k].cursed); if (cc.length) cand = cc; }
+                { const cc = cand.filter(k => info[k].cursed); if (cc.length) cand = cc; }   // 有詛咒甲先拆詛咒甲
                 if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; r.focus = 0; }
             });
             picked.forEach(r => {
-                if (sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']) && keys.length) { r.targets = [asTarget(hpMost(keys))]; r.allParts = false; r.focus = 0; }
-                // 淨化爆裂＋輻射萬花筒（第三張放大、暴食蜂擁…都一樣）→ 盔甲血量最多的 1 個部位；沒有盔甲就打肉體血量最多的部位
+                // 電擊＋時間之沙＋戰鼓：有詛咒甲先拆詛咒甲（血量最多的那個），沒有詛咒甲再打血量最多的部位
+                if (sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']) && keys.length) {
+                    const cursedNow = keys.filter(k => info[k].cursed);
+                    r.targets = [asTarget(hpMost(cursedNow.length ? cursedNow : keys))]; r.allParts = false; r.focus = 0;
+                }
+                // 淨化爆裂＋輻射萬花筒（第三張放大、暴食蜂擁…都一樣）→ 有詛咒甲先拆詛咒甲；沒有就打盔甲血量最多的部位；沒有盔甲就打肉體血量最多的部位
                 else if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && keys.length) {
                     const arm = keys.filter(k => info[k].layer === 'armor');
-                    const pool2 = (arm.length ? arm : keys).slice().sort((x, y) => info[y].hp - info[x].hp);
+                    // 有詛咒甲先拆詛咒甲
+                    const cursedNow = keys.filter(k => info[k].cursed);
+                    const pool2 = (cursedNow.length ? cursedNow : (arm.length ? arm : keys)).slice().sort((x, y) => info[y].hp - info[x].hp);
                     // 血量最多的 1～2 個部位：第一名血量特別多（≥ 第二名 1.5 倍）就只寫它，否則寫前兩名
                     const pick = pool2.length > 1 && info[pool2[0]].hp < info[pool2[1]].hp * BY_PART_TOP_HP_RATIO ? pool2.slice(0, 2) : pool2.slice(0, 1);
                     r.targets = pick.map(asTarget); r.allParts = false; r.focus = 0;
@@ -9946,7 +9952,8 @@
                 while (stack.length) (adj[stack.pop()] || []).forEach(n => { if (set.has(n) && !seen.has(n)) { seen.add(n); stack.push(n); } });
                 return seen.size === set.size;
             })();
-            const flakTargets = armorLinked ? armorNow : [armorNow.slice().sort((x, y) => info[y.part].hp - info[x.part].hp)[0]].filter(Boolean);
+            const flakPool = armorNow.some(x => x.cursed) ? armorNow.filter(x => x.cursed) : armorNow;   // 不連貫時只標 1 個：有詛咒甲先拆詛咒甲
+            const flakTargets = armorLinked ? armorNow : [flakPool.slice().sort((x, y) => info[y.part].hp - info[x.part].hp)[0]].filter(Boolean);
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length)) return;
                 // 同組有核融炸彈（多部位卡）：部位以核融炸彈為優先，標所有還有盔甲的部位，不套用連貫／最厚的規則
@@ -9960,17 +9967,18 @@
                 }
                 r.targets = flakTargets; r.allParts = false; r.focus = 0;
             });
-            // 防空高砲＋先祖加護：先祖加護是單部位，所以只針對「最厚的盔甲」（現在還有盔甲的部位裡，盔甲剩餘血量最多的 1 個）
+            // 防空高砲＋先祖加護：先祖加護是單部位，所以只針對「最厚的盔甲」（有詛咒甲先挑詛咒甲，再挑盔甲剩餘血量最多的 1 個）
             picked.forEach(r => {
                 if (r.rawCards && r.rawCards.includes('FlakShot') && r.rawCards.includes('BurstBoost') && armorNow.length) {
-                    const top = armorNow.map(x => x.part).sort((x, y) => info[y].hp - info[x].hp)[0];
+                    const cursedArm = armorNow.filter(x => x.cursed);   // 有詛咒甲先拆詛咒甲
+                    const top = (cursedArm.length ? cursedArm : armorNow).map(x => x.part).sort((x, y) => info[y].hp - info[x].hp)[0];
                     r.targets = [{ part: top, layer: 'armor', cursed: info[top].cursed }]; r.allParts = false; r.focus = 0;
                 }
             });
             // 最後再用卡片本身的限制過濾標的部位：只能打盔甲的卡只留有盔甲的部位、只能打肉體的卡只留露出肉體的部位、
             // 指定部位的卡（繁藤蝕骨、皎月光束、靈魂之火、破碎本能…）只留它能打的部位；過濾完一個都不剩就維持原本的標示。
             // 有單部位卡（圖騰之力、先祖加護）的牌組只標 1 個：原本標的都不能打時，改從場上整組都能打的部位挑；
-            // 帶毀了雨優先詛咒甲，再挑血量最多的
+            // 有詛咒甲優先詛咒甲，再挑血量最多的
             const fitsCards = (r, k) => r.rawCards.every(n => {
                 const lim = CARD_LIMITS[n];
                 if (!lim) return true;
@@ -9988,13 +9996,24 @@
                 if (!tg.length) return;
                 if (single && tg.length > 1) {
                     let pool = tg.map(t => t.part);
-                    if (r.rawCards.includes('RuinousRust') && pool.some(k => info[k].cursed)) pool = pool.filter(k => info[k].cursed);
+                    if (pool.some(k => info[k].cursed)) pool = pool.filter(k => info[k].cursed);   // 有詛咒甲先拆詛咒甲
                     tg = [asTarget(hpMost(pool))];
                 }
                 // 補位的組合（targets 是空的）：整組都能打的部位就是全部能打的部位時標「全部」，否則標那些部位
                 if (r.synthetic && !(r.targets || []).length) {
                     if (tg.length === keys.length && !single) { r.targets = tg; r.allParts = true; return; }
                 } else if (!r.allParts && tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) tg = null;
+                // 一般算法的牌組集中打 1～2 個部位、卡片也沒指定部位時：有詛咒甲先拆詛咒甲（血量最多的），沒有詛咒甲就打血量最多的部位
+                // （有自己規則的牌組不套用：毀了雨、圖騰之力、防空高砲、淨化爆裂＋輻射萬花筒、電擊＋時間之沙＋戰鼓）
+                const ownRule = r.rawCards.some(n => n === 'RuinousRust' || n === 'TotemFairySkill' || n === 'FlakShot')
+                    || (r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport')) || sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']);
+                const cur = tg || r.targets || [];
+                if (!r.game && !r.allParts && !ownRule && cur.length >= 1 && cur.length <= 2 && !r.rawCards.some(n => CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part')) {
+                    const cand = keys.filter(k => fitsCards(r, k));
+                    const cursedC = cand.filter(k => info[k].cursed);
+                    const pick = (cursedC.length ? cursedC : cand).slice().sort((x, y) => info[y].hp - info[x].hp).slice(0, cur.length);
+                    if (pick.length && !(pick.length === cur.length && pick.every(k => cur.some(t => t.part === k)))) tg = pick.map(asTarget);
+                }
                 if (tg) { r.targets = tg; r.allParts = false; }
                 // 「N部位」但能打的部位只有 N 個以下：直接標那幾個部位，不顯示 N部位
                 if (r.focus && !r.allParts && (r.targets || []).length && r.targets.length <= r.focus) { r.focus = 0; r.hideParts = false; }

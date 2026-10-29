@@ -9941,31 +9941,17 @@
             });
             // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）
             const armorNow = keys.filter(k => info[k].layer === 'armor').map(k => ({ part: k, layer: 'armor', cursed: info[k].cursed }));
-            // 盔甲部位要「連在一起」才一起標（頭－肩、肩－手、頭／肩－肚子、肚子－腳、兩腳）；不連貫（例如頭＋腳、頭＋手、肩＋腳）
-            // 就不寫在一起，只標盔甲血量最高的那個部位
-            const armorLinked = (() => {
-                if (armorNow.length <= 1) return true;
-                const adj = { Head: ['ArmUpperLeft', 'ArmUpperRight', 'ChestUpper'], ArmUpperLeft: ['Head', 'HandLeft', 'ChestUpper'], ArmUpperRight: ['Head', 'HandRight', 'ChestUpper'],
-                    HandLeft: ['ArmUpperLeft'], HandRight: ['ArmUpperRight'], ChestUpper: ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'LegUpperLeft', 'LegUpperRight'],
-                    LegUpperLeft: ['ChestUpper', 'LegUpperRight'], LegUpperRight: ['ChestUpper', 'LegUpperLeft'] };
-                const set = new Set(armorNow.map(x => x.part)), seen = new Set([armorNow[0].part]), stack = [armorNow[0].part];
-                while (stack.length) (adj[stack.pop()] || []).forEach(n => { if (set.has(n) && !seen.has(n)) { seen.add(n); stack.push(n); } });
-                return seen.size === set.size;
-            })();
-            const flakPool = armorNow.some(x => x.cursed) ? armorNow.filter(x => x.cursed) : armorNow;   // 不連貫時只標 1 個：有詛咒甲先拆詛咒甲
-            const flakTargets = armorLinked ? armorNow : [flakPool.slice().sort((x, y) => info[y.part].hp - info[x.part].hp)[0]].filter(Boolean);
+            // 標「當下實際還有盔甲的部位」（含詛咒甲），有幾個就標幾個；同組有單部位卡（先祖加護、圖騰之力）時，後面再縮成 1 個
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length)) return;
-                // 同組有核融炸彈（多部位卡）：部位以核融炸彈為優先，標所有還有盔甲的部位，不套用連貫／最厚的規則
-                if (r.rawCards.includes('Fuse')) { r.targets = armorNow; r.allParts = false; r.focus = 0; return; }
-                // 同組有指定部位的卡（頭肚、頭腳、肚手肩、四肢…）：部位由那些卡決定（還有盔甲、而且那些卡都打得到的部位），不套用上面的連貫規則
+                // 同組有指定部位的卡（頭肚、頭腳、肚手肩、四肢…）：只標那些卡都打得到、而且還有盔甲的部位
                 const sets = r.rawCards.filter(n => n !== 'FlakShot' && CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part').map(n => BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag]).filter(Boolean);
                 if (sets.length) {
                     const tg = armorNow.filter(x => sets.every(st => st.includes(x.part)));
                     if (tg.length) { r.targets = tg; r.allParts = false; r.focus = 0; }
                     return;
                 }
-                r.targets = flakTargets; r.allParts = false; r.focus = 0;
+                r.targets = armorNow; r.allParts = false; r.focus = 0;
             });
             // 防空高砲＋先祖加護：先祖加護是單部位，所以只針對「最厚的盔甲」（有詛咒甲先挑詛咒甲，再挑盔甲剩餘血量最多的 1 個）
             picked.forEach(r => {

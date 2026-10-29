@@ -10421,6 +10421,14 @@
             const hpMost = (ks) => ks.slice().sort((x, y) => info[y].hp - info[x].hp)[0];
             // 帶圖騰之力的牌組本來就是單部位牌組：只標 1 個部位——整組牌都打得到的部位裡，剩餘血量最多的那個
             // （帶毀了雨、撼地破甲、而且場上有詛咒甲時，優先選詛咒甲）
+            // 帶毀了雨的牌組（不管是哪一種牌組類型）：場上有詛咒甲就打「詛咒甲血量最厚的那個部位」，只標這 1 個部位
+            picked.forEach(r => {
+                if (!(r.rawCards && r.rawCards.includes('RuinousRust'))) return;
+                const okParts = keys.filter(k => info[k].cursed && r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
+                let cc = r.limbOnly ? okParts.filter(k => /Arm|Hand|Leg/.test(k)) : okParts;
+                if (!cc.length) cc = okParts;
+                if (cc.length) { r.targets = [asTarget(hpMost(cc))]; r.allParts = false; r.focus = 0; }
+            });
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('TotemFairySkill'))) return;
                 let cand = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok) && (!r.limbOnly || /Arm|Hand|Leg/.test(k)));
@@ -11439,6 +11447,10 @@
                     [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort(ord)].forEach(d => {
                         if (d.row) { all.push(d.row); return; }
                         let tgKeys = hitParts(d.cards);
+                        if (d.cards.includes('RuinousRust')) {   // 毀了雨：打詛咒甲血量最厚的部位
+                            const cur = tgKeys.filter(k => scene[k] === 'cursed');
+                            if (cur.length) tgKeys = [cur.sort((x, y) => (Number(raidState.parts[y] && raidState.parts[y].armor) || 0) - (Number(raidState.parts[x] && raidState.parts[x].armor) || 0))[0]];
+                        }
                         if (d.cards.includes('Purify') && d.cards.includes('TriangleSupport') && tgKeys.length) {   // 跟首頁同一個規則：盔甲血量最多的部位，沒有盔甲就打肉體血量最多的
                             const hpOf = (k) => { const p = raidState.parts[k]; return p ? (p.armor > 0 ? p.armor : p.body) : 0; };
                             const arm = tgKeys.filter(k => scene[k] !== 'body');

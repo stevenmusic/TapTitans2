@@ -9743,11 +9743,7 @@
                     #sim-import-modal .si-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
                     #sim-import-modal .si-field { display:flex; flex-direction:column; gap:4px; font-size:12.5px; font-weight:700; color:#6b5a48; min-width:0; }
                     #sim-import-modal .si-field input, #sim-import-modal .si-field select { width:100%; }
-                    #sim-import-modal .si-chips { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
-                    #sim-import-modal .si-chip { position:relative; }
-                    #sim-import-modal .si-chip input { position:absolute; opacity:0; inset:0; width:100%; height:100%; margin:0; cursor:pointer; }
-                    #sim-import-modal .si-chip span { display:block; text-align:center; padding:9px 0; border-radius:8px; border:1px solid #ddd0bb; background:#fbf6ee; font-size:13.5px; font-weight:700; }
-                    #sim-import-modal .si-chip input:checked + span { background:#fbe6e3; border-color:#d9776c; color:#b03a2e; }
+                    #sim-import-modal .si-part.is-banned .si-part-st { color:#d32f2f !important; font-weight:800; }
                     #sim-import-modal .si-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#8e6a3a; color:#fff; font:inherit; font-size:16px; font-weight:800; cursor:pointer; }
                     #sim-import-modal .si-btn.ghost { background:#fff; color:#6b4a8a; border:1px solid #d9cce8; font-size:14px; padding:9px; }
                     #sim-import-modal .si-file { display:block; width:100%; padding:14px; border:2px dashed #d9cce8; border-radius:10px; text-align:center; font-weight:700; color:#6b4a8a; background:#faf6ff; cursor:pointer; box-sizing:border-box; }
@@ -9792,7 +9788,10 @@
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
-            const partChips = RAID_PARTS.map(p => `<label class="si-chip"><input type="checkbox" class="sim-imp-ban" value="${p.key}" onchange="simImportCheckSum()"><span>${escapeHtml(raidPartLabel(p.key))}</span></label>`).join('');
+            // 禁打部位：跟首頁一樣的部位格子（右肩 頭 左肩／右手 肚 左手／右腳 左腳），點一下切換禁打（紅框＋✗）
+            const partChips = `<div class="raid-parts-grid" style="margin-top:2px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<label class="raid-part-cell si-part" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;">
+                <input type="checkbox" class="sim-imp-ban" value="${k}" onchange="this.parentElement.classList.toggle('is-banned', this.checked); this.parentElement.querySelector('.si-part-st').textContent = this.checked ? '禁打' : '可打'; simImportCheckSum();" style="position:absolute; opacity:0; inset:0; width:100%; height:100%; margin:0;">
+                <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp si-part-st" style="color:#8a7a6a;">可打</div></label>`).join('')}</div>`).join('')}</div>`;
             m.innerHTML = `<div class="si-panel">
                 <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="si-x" onclick="closeSimImport()" aria-label="關閉">✕</button></div>
                 <div class="si-body">
@@ -9815,8 +9814,8 @@
                             ${num('sim-imp-cursed', '詛咒甲數量')}${num('sim-imp-armor', '盔甲數量（含詛咒甲）')}
                             ${num('sim-imp-body', '肉體數量')}${num('sim-imp-skel', '骨架數量')}
                         </div>
-                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點一下選取）</div>
-                        <div class="si-chips">${partChips}</div>
+                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點部位切換，紅框＝禁打）</div>
+                        ${partChips}
                         <div id="sim-imp-sum" class="si-tip" style="margin-top:10px; font-weight:700;"></div>
                     </div>` : ''}
                     <div class="si-card">

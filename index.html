@@ -9643,17 +9643,17 @@
 
         // 牌組類型（模擬器每組牌上面的標題）→ 情境裡的 role／focus
         const SIM_DECK_TYPES = [
-            ['cycle', 'Cycle／Fuse／Bait（全部位）', { role: 'cycle' }],
-            ['head', 'Focus Head（頭）', { role: 'head' }],
-            ['torso', 'Focus Torso（頭＋肚）', { role: 'torso' }],
-            ['armor', 'Focus Armor（盔甲）', { role: 'armor' }],
-            ['body', 'Focus Body（肉體）', { role: 'body' }],
-            ['cursed1', 'Focus One Cursed Armor（1 個詛咒甲）', { role: 'cursed1' }],
-            ['limbs', 'Focus Limbs（四肢）', { role: 'limbs' }],
-            ['limb1', 'Focus One Limb（1 個四肢）', { role: 'limb1' }],
-            ['any2', 'Focus Two（任意 2 部位）', { role: 'any', focus: 2 }],
-            ['any3', 'Focus Three（任意 3 部位）', { role: 'any', focus: 3 }],
-            ['any4', 'Focus Four（任意 4 部位）', { role: 'any', focus: 4 }],
+            ['cycle', 'Cycle／Fuse／Bait', { role: 'cycle' }],
+            ['head', 'Focus Head', { role: 'head' }],
+            ['torso', 'Focus Torso', { role: 'torso' }],
+            ['armor', 'Focus Armor', { role: 'armor' }],
+            ['body', 'Focus Body', { role: 'body' }],
+            ['cursed1', 'Focus One Cursed Armor', { role: 'cursed1' }],
+            ['limbs', 'Focus Limbs', { role: 'limbs' }],
+            ['limb1', 'Focus One Limb', { role: 'limb1' }],
+            ['any2', 'Focus Two', { role: 'any', focus: 2 }],
+            ['any3', 'Focus Three', { role: 'any', focus: 3 }],
+            ['any4', 'Focus Four', { role: 'any', focus: 4 }],
             ['limbs2', 'Focus Two Limbs', { role: 'limbs', focus: 2 }],
             ['limbs3', 'Focus Three Limbs', { role: 'limbs', focus: 3 }],
             ['limbs4', 'Focus Four Limbs', { role: 'limbs', focus: 4 }]
@@ -9717,65 +9717,117 @@
         function openSimImport() {
             let m = document.getElementById('sim-import-modal');
             if (!m) {
+                const st = document.createElement('style');
+                st.textContent = `
+                    #sim-import-modal { position:fixed; inset:0; z-index:10002; background:rgba(40,28,20,0.55); display:none; justify-content:center; align-items:stretch; }
+                    #sim-import-modal .si-panel { width:100%; max-width:520px; height:100%; background:#fbf6ee; display:flex; flex-direction:column; color:#4a3728; box-sizing:border-box; }
+                    #sim-import-modal .si-head { flex:none; display:flex; align-items:center; justify-content:space-between; padding:calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px 16px; background:linear-gradient(135deg,#6b5544,#524338); color:#fff; }
+                    #sim-import-modal .si-head b { font-size:16px; }
+                    #sim-import-modal .si-x { width:44px; height:44px; margin:-6px -8px -6px 0; border:none; background:transparent; color:#fff; font-size:22px; cursor:pointer; }
+                    #sim-import-modal .si-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 14px 18px; }
+                    #sim-import-modal .si-foot { flex:none; padding:10px 14px calc(env(safe-area-inset-bottom, 0px) + 10px); background:#fff; border-top:1px solid #e8dcc8; }
+                    #sim-import-modal .si-card { background:#fff; border:1px solid #eadfcc; border-radius:12px; padding:12px; margin-bottom:12px; }
+                    #sim-import-modal .si-title { font-size:13px; font-weight:800; color:#6b4a8a; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+                    #sim-import-modal .si-tip { font-size:12px; color:#8a7a6a; line-height:1.5; }
+                    #sim-import-modal select, #sim-import-modal input[type=number] { font:inherit; font-size:16px; color:#4a3728; background:#fbf6ee; border:1px solid #ddd0bb; border-radius:8px; padding:6px 8px; box-sizing:border-box; max-width:100%; }
+                    #sim-import-modal .si-deck { border:1px solid #eadfcc; border-radius:10px; padding:8px; margin-bottom:8px; background:#fffdf8; }
+                    #sim-import-modal .si-deck-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+                    #sim-import-modal .si-deck-top .si-no { flex:none; width:26px; height:26px; border-radius:50%; background:#6b4a8a; color:#fff; font-size:13px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+                    #sim-import-modal .si-deck-top select { flex:1; min-width:0; }
+                    #sim-import-modal .si-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+                    #sim-import-modal .si-cell { text-align:center; min-width:0; }
+                    #sim-import-modal .si-cell img { width:52px; height:52px; border-radius:10px; object-fit:cover; display:block; margin:0 auto 4px; }
+                    #sim-import-modal .si-cell img.unsure { outline:3px solid #e67e22; outline-offset:1px; }
+                    #sim-import-modal .si-cell select { width:100%; padding:5px 2px; font-size:14px; text-align:center; text-align-last:center; }
+                    #sim-import-modal .si-cell select.unsure { border-color:#e67e22; }
+                    #sim-import-modal .si-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+                    #sim-import-modal .si-field { display:flex; flex-direction:column; gap:4px; font-size:12.5px; font-weight:700; color:#6b5a48; min-width:0; }
+                    #sim-import-modal .si-field input, #sim-import-modal .si-field select { width:100%; }
+                    #sim-import-modal .si-chips { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+                    #sim-import-modal .si-chip { position:relative; }
+                    #sim-import-modal .si-chip input { position:absolute; opacity:0; inset:0; width:100%; height:100%; margin:0; cursor:pointer; }
+                    #sim-import-modal .si-chip span { display:block; text-align:center; padding:9px 0; border-radius:8px; border:1px solid #ddd0bb; background:#fbf6ee; font-size:13.5px; font-weight:700; }
+                    #sim-import-modal .si-chip input:checked + span { background:#fbe6e3; border-color:#d9776c; color:#b03a2e; }
+                    #sim-import-modal .si-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#8e6a3a; color:#fff; font:inherit; font-size:16px; font-weight:800; cursor:pointer; }
+                    #sim-import-modal .si-btn.ghost { background:#fff; color:#6b4a8a; border:1px solid #d9cce8; font-size:14px; padding:9px; }
+                    #sim-import-modal .si-file { display:block; width:100%; padding:14px; border:2px dashed #d9cce8; border-radius:10px; text-align:center; font-weight:700; color:#6b4a8a; background:#faf6ff; cursor:pointer; box-sizing:border-box; }
+                    #sim-import-modal .si-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #f0e6d4; font-size:12.5px; }
+                    #sim-import-modal .si-row:first-of-type { border-top:none; }
+                    #sim-import-modal .si-del { flex:none; border:1px solid #e0c0c0; background:#fff; color:#c0392b; border-radius:8px; padding:6px 12px; font:inherit; font-size:13px; cursor:pointer; }
+                `;
+                document.head.appendChild(st);
                 m = document.createElement('div');
                 m.id = 'sim-import-modal';
-                m.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:10002; display:flex; align-items:flex-start; justify-content:center; padding:12px; box-sizing:border-box; overflow-y:auto;';
                 m.addEventListener('click', (e) => { if (e.target === m) closeSimImport(); });
                 document.body.appendChild(m);
             }
             m.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
             renderSimImport();
         }
-        function closeSimImport() { const m = document.getElementById('sim-import-modal'); if (m) m.style.display = 'none'; }
+        function closeSimImport() {
+            const m = document.getElementById('sim-import-modal');
+            if (m) m.style.display = 'none';
+            document.body.style.overflow = '';
+        }
         function simOptionsHtml(list, sel) { return list.map(([v, l]) => `<option value="${v}"${String(v) === String(sel) ? ' selected' : ''}>${escapeHtml(l)}</option>`).join(''); }
 
         function renderSimImport() {
             const m = document.getElementById('sim-import-modal');
             if (!m) return;
+            const body = m.querySelector('.si-body'), keepScroll = body ? body.scrollTop : 0;
             const cardOpts = Object.keys(RAID_CARD_IMAGE).map(id => [id, raidCardLabel(id)]);
             const a = simImp.analysis;
             const saved = byPartUserScenarios();
             const buffOpts = Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label]);
-            const nums = (id, v) => `<input id="${id}" type="number" min="0" max="8" value="${v}" style="width:46px; padding:4px; border:1px solid #d9cce8; border-radius:6px; font:inherit; text-align:center;">`;
+            const num = (id, label) => `<label class="si-field">${label}<input id="${id}" type="number" inputmode="numeric" min="0" max="8" value="0" oninput="simImportCheckSum()"></label>`;
             const deckHtml = a ? a.decks.map((row, di) => {
                 const guess = simGuessDeckType(row.map(c => c.id));
-                return `<div style="border:1px solid #e8dcc8; border-radius:8px; padding:6px; margin-bottom:6px; background:#fffaf0;">
-                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                        <b style="font-size:12px; color:#6b4a8a;">第 ${di + 1} 組</b>
-                        <select id="sim-imp-type-${di}" style="font:inherit; font-size:12px; padding:3px; border:1px solid #d9cce8; border-radius:6px; flex:1; min-width:0;">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select>
-                    </div>
-                    <div style="display:flex; gap:6px; margin-top:5px;">${row.map((c, ci) => `<div style="flex:1; min-width:0; text-align:center;">
-                        <img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" style="width:44px; height:44px; border-radius:7px; object-fit:cover; ${c.uncertain ? 'outline:2px solid #e67e22;' : ''}">
-                        <select id="sim-imp-card-${di}-${ci}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''" style="width:100%; font:inherit; font-size:11px; padding:2px; margin-top:2px; border:1px solid ${c.uncertain ? '#e67e22' : '#d9cce8'}; border-radius:6px;">${simOptionsHtml(cardOpts, c.id)}</select>
+                return `<div class="si-deck">
+                    <div class="si-deck-top"><span class="si-no">${di + 1}</span>
+                        <select id="sim-imp-type-${di}">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select></div>
+                    <div class="si-cards">${row.map((c, ci) => `<div class="si-cell">
+                        <img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}">
+                        <select id="sim-imp-card-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''">${simOptionsHtml(cardOpts, c.id)}</select>
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
-            const partChips = RAID_PARTS.map(p => `<label style="display:inline-flex; align-items:center; gap:3px; margin:2px 6px 2px 0; font-size:12.5px;"><input type="checkbox" class="sim-imp-ban" value="${p.key}" onchange="simImportCheckSum()"> ${escapeHtml(raidPartLabel(p.key))}</label>`).join('');
-            m.innerHTML = `<div style="background:#fffdf8; border-radius:12px; width:100%; max-width:520px; padding:14px; box-sizing:border-box; font-size:13px; color:#4a3728;">
-                <div style="display:flex; justify-content:space-between; align-items:center;"><b style="font-size:15px;">🖼 匯入模擬器圖片</b><button onclick="closeSimImport()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button></div>
-                <div style="margin:8px 0; color:#8a7a6a; font-size:12px;">選一張模擬器「Sim Results」的截圖，我會辨識 6 組牌的卡片；確認後選好狀態，存起來，推薦牌組就會照這張排。</div>
-                <input type="file" id="sim-imp-file" accept="image/*" onchange="simImportPick(this.files[0]); this.value='';">
-                <div id="sim-imp-msg" style="margin:6px 0; font-size:12px; color:#8a7a6a;"></div>
-                ${a ? `<div style="font-size:12px; color:#8a7a6a; margin-bottom:4px;">橘框＝不確定，請核對圖示和下拉選單的卡名是否一致，不一致就用選單改。<br>每組的「牌組類型」是我依內建情境猜的，請照截圖上每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）重新確認。</div>${deckHtml}
-                <div style="border-top:1px dashed #e0d4c0; margin-top:8px; padding-top:8px;">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
-                        <label>加成類型 <select id="sim-imp-buff" style="font:inherit; padding:3px; border:1px solid #d9cce8; border-radius:6px;">${simOptionsHtml(buffOpts, 'afflictionChance')}</select></label>
-                        <label>詛咒類型 <select id="sim-imp-curse" style="font:inherit; padding:3px; border:1px solid #d9cce8; border-radius:6px;">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], '')}</select></label>
+            const partChips = RAID_PARTS.map(p => `<label class="si-chip"><input type="checkbox" class="sim-imp-ban" value="${p.key}" onchange="simImportCheckSum()"><span>${escapeHtml(raidPartLabel(p.key))}</span></label>`).join('');
+            m.innerHTML = `<div class="si-panel">
+                <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="si-x" onclick="closeSimImport()" aria-label="關閉">✕</button></div>
+                <div class="si-body">
+                    <div class="si-card">
+                        <div class="si-title">① 選截圖</div>
+                        <label class="si-file" for="sim-imp-file">📷 選擇模擬器「Sim Results」截圖</label>
+                        <input type="file" id="sim-imp-file" accept="image/*" style="display:none;" onchange="simImportPick(this.files[0]); this.value='';">
+                        <div id="sim-imp-msg" class="si-tip" style="margin-top:8px;">選好之後我會辨識 6 組牌的 18 張卡，你核對、填狀態，存起來，推薦牌組就會照這張排。</div>
                     </div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
-                        <label>詛咒甲 ${nums('sim-imp-cursed', 0)}</label><label>盔甲（含詛咒甲） ${nums('sim-imp-armor', 0)}</label><label>肉體 ${nums('sim-imp-body', 0)}</label><label>骨架 ${nums('sim-imp-skel', 0)}</label>
+                    ${a ? `<div class="si-card">
+                        <div class="si-title">② 核對卡片與牌組類型</div>
+                        <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定，請看圖示跟卡名是否一致。「牌組類型」是我猜的，請照截圖每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）確認。</div>
+                        ${deckHtml}
                     </div>
-                    <div style="margin-bottom:4px;">禁打部位：${partChips}</div>
-                    <div id="sim-imp-sum" style="font-size:12px; color:#8a7a6a; margin-bottom:6px;"></div>
-                    <button onclick="simImportSave()" style="padding:8px 14px; border:none; border-radius:8px; background:#8e6a3a; color:#fff; font:inherit; font-weight:700; cursor:pointer;">儲存並更新推薦牌組</button>
-                </div>` : ''}
-                <div style="border-top:1px solid #e8dcc8; margin-top:12px; padding-top:8px;">
-                    <b style="font-size:13px;">已儲存的自訂情境（${saved.length}）</b>
-                    ${saved.length ? saved.map((sc, i) => `<div style="display:flex; gap:6px; align-items:center; margin-top:5px; font-size:12px;">
-                        <span style="flex:1; min-width:0;">${escapeHtml(simScenarioTitle(sc))}</span>
-                        <button onclick="simImportDelete(${i})" style="border:1px solid #e0c0c0; background:#fff; color:#c0392b; border-radius:6px; padding:2px 8px; font:inherit; cursor:pointer;">刪除</button></div>`).join('') : '<div style="color:#8a7a6a; font-size:12px; margin-top:4px;">還沒有。</div>'}
-                    ${saved.length ? '<button onclick="simImportCopy()" style="margin-top:8px; padding:4px 10px; border:1px solid #d9cce8; background:#fff; border-radius:6px; font:inherit; font-size:12px; cursor:pointer;">📋 複製全部（文字備份）</button>' : ''}
-                </div></div>`;
+                    <div class="si-card">
+                        <div class="si-title">③ 這張圖的狀態</div>
+                        <div class="si-grid2" style="margin-bottom:12px;">
+                            <label class="si-field">加成類型<select id="sim-imp-buff">${simOptionsHtml(buffOpts, 'afflictionChance')}</select></label>
+                            <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], '')}</select></label>
+                            ${num('sim-imp-cursed', '詛咒甲數量')}${num('sim-imp-armor', '盔甲數量（含詛咒甲）')}
+                            ${num('sim-imp-body', '肉體數量')}${num('sim-imp-skel', '骨架數量')}
+                        </div>
+                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點一下選取）</div>
+                        <div class="si-chips">${partChips}</div>
+                        <div id="sim-imp-sum" class="si-tip" style="margin-top:10px; font-weight:700;"></div>
+                    </div>` : ''}
+                    <div class="si-card">
+                        <div class="si-title">已儲存的自訂情境（${saved.length}）</div>
+                        ${saved.length ? saved.map((sc, i) => `<div class="si-row"><span style="flex:1; min-width:0; line-height:1.5;">${escapeHtml(simScenarioTitle(sc))}</span><button class="si-del" onclick="simImportDelete(${i})">刪除</button></div>`).join('') : '<div class="si-tip">還沒有。</div>'}
+                        ${saved.length ? '<button class="si-btn ghost" style="margin-top:8px;" onclick="simImportCopy()">📋 複製全部（文字備份）</button>' : ''}
+                    </div>
+                </div>
+                ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave()">儲存並更新推薦牌組</button></div>' : ''}
+            </div>`;
+            const nb = m.querySelector('.si-body'); if (nb) nb.scrollTop = keepScroll;
             if (a) simImportCheckSum();
         }
         function simScenarioTitle(sc) {
@@ -9790,7 +9842,7 @@
             const v = (id) => Number(document.getElementById(id).value) || 0;
             const ban = document.querySelectorAll('.sim-imp-ban:checked').length;
             const total = v('sim-imp-armor') + v('sim-imp-body') + v('sim-imp-skel') + ban;
-            el.textContent = `盔甲＋肉體＋骨架＋禁打＝${total}（要等於 8）` + (total === 8 ? ' ✔' : ' ✘');
+            el.textContent = `盔甲 ${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋骨架 ${v('sim-imp-skel')}＋禁打 ${ban}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
             el.style.color = total === 8 ? '#2e7d32' : '#c0392b';
         }
         async function simImportPick(file) {
@@ -9804,6 +9856,8 @@
                 URL.revokeObjectURL(url);
                 simImp.analysis = result;
                 renderSimImport();
+                const bd = document.querySelector('#sim-import-modal .si-body'), c2 = bd && bd.querySelectorAll('.si-card')[1];
+                if (c2) bd.scrollTop = c2.offsetTop - 8;   // 辨識完直接捲到「核對卡片」
                 const m2 = document.getElementById('sim-imp-msg');
                 if (m2) m2.textContent = (result.aspect < 2.0 || result.aspect > 2.35) ? '這張圖的長寬比跟一般 iPhone 截圖不同，位置可能對不準，請逐張核對卡片。' : '辨識完成，請核對卡片後填下面的狀態。';
             } catch (e) {
@@ -9818,7 +9872,7 @@
             const counts = { armor: v('sim-imp-armor'), body: v('sim-imp-body'), skeleton: v('sim-imp-skel'), banned: banned.length };
             const cursed = v('sim-imp-cursed'), curse = document.getElementById('sim-imp-curse').value;
             const msg = document.getElementById('sim-imp-msg');
-            const fail = (t) => { if (msg) { msg.textContent = t; msg.style.color = '#c0392b'; msg.scrollIntoView({ block: 'center' }); } };
+            const fail = (t) => { alert(t); };
             if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋骨架＋禁打 要等於 8。');
             if (cursed > counts.armor) return fail('詛咒甲不能比盔甲多（盔甲數要含詛咒甲）。');
             if (cursed > 0 && !curse) return fail('有詛咒甲的話，請選詛咒類型。');
@@ -9841,8 +9895,9 @@
             byPartRecoSig = ''; byPartRecoRefresh();
             if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
             renderSimImport();
+            const bd2 = document.querySelector('#sim-import-modal .si-body'); if (bd2) bd2.scrollTop = 0;
             const m2 = document.getElementById('sim-imp-msg');
-            if (m2) { m2.textContent = '已儲存，推薦牌組已更新。'; m2.style.color = '#2e7d32'; }
+            if (m2) { m2.textContent = '✔ 已儲存，推薦牌組已更新。'; m2.style.color = '#2e7d32'; m2.style.fontWeight = '700'; }
         }
         function simImportDelete(i) {
             const list = byPartUserScenarios().slice();

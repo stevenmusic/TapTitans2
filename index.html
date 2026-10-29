@@ -9942,9 +9942,9 @@
             }
             if (tg) { r.targets = tg; r.allParts = false; }
             // 「N部位」但能打的部位只有 N 個以下：直接標那幾個部位，不顯示 N部位
-            if (r.focus && !r.allParts && (r.targets || []).length && r.targets.length <= r.focus) { r.focus = 0; r.hideParts = false; }
+            if (!r.game && r.focus && !r.allParts && (r.targets || []).length && r.targets.length <= r.focus) { r.focus = 0; r.hideParts = false; }   // 模擬器的牌組有寫數量，照樣顯示 N部位
             // 詛咒甲是所有牌組第一優先要拆的部位（只打肉體的卡除外）：在這組牌能打的範圍內，詛咒甲排最前面（血量多的先），
-            // 原本標幾個部位就標幾個，不夠再用原本標的其他部位補。全部位、多部位牌組（瘟疫、核融、炎燒）、只寫數量的 N部位不套用
+            // 原本標幾個部位就標幾個（模擬器寫了 Focus 幾個就標幾個），不夠再用原本標的其他部位補。全部位、多部位牌組（瘟疫、核融、炎燒）、只寫數量的 N部位不套用
             const now = r.targets || [];
             const multiPart = r.rawCards.some(n => n === 'PlagueAttack' || n === 'Fuse' || n === 'BurningAttack');
             const bodyCard = r.rawCards.some(n => CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'body');
@@ -9955,8 +9955,10 @@
                 const cursedC = region.filter(k => info[k].cursed && fitsCards(r, k)).sort((x, y) => info[y].hp - info[x].hp);
                 if (cursedC.length) {
                     const order = [...cursedC, ...now.map(t => t.part).filter(k => !cursedC.includes(k))];
-                    const pick = order.slice(0, now.length);
+                    const pick = order.slice(0, r.game && r.focus ? Math.min(r.focus, order.length) : now.length);
                     if (!(pick.length === now.length && pick.every(k => now.some(t => t.part === k)))) r.targets = pick.map(asTarget);
+                } else if (r.game && r.focus && now.length > r.focus) {   // 沒有詛咒甲：模擬器 Focus 幾個就標血量最多的幾個
+                    r.targets = now.map(t => t.part).sort((x, y) => info[y].hp - info[x].hp).slice(0, r.focus).map(asTarget);
                 }
             }
         });

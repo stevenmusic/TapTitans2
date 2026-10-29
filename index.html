@@ -9612,7 +9612,10 @@
             const cursedKeys = RAID_PARTS.map(p => p.key).filter(k => scene[k] === 'cursed');
             const cursedN = cursedKeys.length;
             const attackableNow = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
-            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (!x.bannedParts || x.bannedParts.every(k => (banned || []).includes(k))));
+            // 禁打的部位：只有「頭、肚子有沒有禁打」會讓模擬器配卡不同；四肢（肩、手、腳）哪幾個禁打不影響，只看數量。
+            // 所以情境的禁打頭肚組合（沒禁打頭肚／只禁肚子／只禁頭／頭肚都禁）要跟現在一樣才套用
+            const torsoBanKey = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
+            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && torsoBanKey(x.bannedParts || []) === torsoBanKey(banned || []));
             const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed !== undefined) || matches[0];   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

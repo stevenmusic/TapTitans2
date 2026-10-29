@@ -1469,11 +1469,47 @@ function watcherSubscribe() {
   }).catch((e) => console.error('[watcher] 訂閱請求失敗:', e));
 }
 
+// 下一場的預告：上一場打完、下一場還沒開打時，官方會送來下一場的資料（有 start_at、沒有 raid_started_at）。
+// 這段時間畫面顯示下一場的第 1 隻王（部位血量、詛咒甲、詛咒類型、公會標的禁打、加成），不動目前這場的王狀態；
+// 下一場開打（收到 raid_started_at 或攻擊事件）就清掉
+let watcherPreview = null;
+const PREVIEW_BUFF_FROM_API = { AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportEffect: 'support', RaidAttackDuration: 'timeBoost' };
+function buildRaidPreview(payload) {
+  const raid = payload.raid || {};
+  const seq = Array.isArray(raid.spawn_sequence) ? raid.spawn_sequence : [];
+  const titans = Array.isArray(raid.titans) ? raid.titans : [];
+  const titan = seq.length ? titans.find(t => t.enemy_name === seq[0]) : null;
+  if (!titan) return null;
+  const target = (payload.titan_target || []).find(t => t.enemy_id === titan.enemy_id);
+  let parts = buildPartStatusFromTitan(titan);
+  // 預告資料沒有各部位血量時：開打時每個部位都是滿血盔甲（看不到詛咒甲在哪），先這樣顯示
+  if (!Object.keys(parts).length) {
+    const per = Math.round((titan.total_hp || 0) / 8);
+    ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
+      .forEach(loc => { parts[loc] = { armor: per, armorMax: per, body: per, bodyMax: per, cursed: false }; });
+  }
+  return {
+    name: titan.enemy_name, ordinal: 1, total: seq.length, enemyId: titan.enemy_id,
+    parts, killMaxHp: titan.total_hp || 0, bossCurrentHp: titan.current_hp || titan.total_hp || 0,
+    banned: target && Array.isArray(target.state) ? target.state.filter(x => String(x.state) === '1').map(x => x.id) : [],
+    curse: (titan.cursed_debuffs || []).map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 })),
+    buff: (raid.area_buffs || []).map(b => PREVIEW_BUFF_FROM_API[b.bonus_type]).find(Boolean) || null,
+    startAt: payload.start_at, level: raid.level || null
+  };
+}
+
 function watcherHandleRaidSnapshot(payload, event) {
   saveRawRaidSnapshot(event, payload);
   saveRawEventSample(event, payload && payload.raid_started_at, payload);
   // 新一輪開始（cycle_reset）時重新訂閱，拿一份含突襲設定（加成）的 sub_start 完整快照
   if (event === 'cycle_reset') setTimeout(watcherSubscribe, 3000);
+  // 下一場還沒開打的預告：只記預告，不拿來改目前這場的王總數、王狀態
+  if (payload && payload.raid && !payload.raid_started_at && typeof payload.start_at === 'string' && Date.parse(payload.start_at) > Date.now()) {
+    const pv = buildRaidPreview(payload);
+    if (pv) watcherPreview = pv;
+    return;
+  }
+  if (payload && typeof payload.raid_started_at === 'string') watcherPreview = null;
   // 自動偵測新場次：sub_start / start / sub_cycle 都帶有場次開始時間（和等級），
   // 24 小時常駐在這裡收，不用等剛好有瀏覽器開著才記得到
   if (payload && typeof payload.raid_started_at === 'string') {
@@ -1529,6 +1565,7 @@ function watcherHandleRaidSnapshot(payload, event) {
 }
 
 function watcherHandleAttack(payload) {
+  watcherPreview = null;   // 有人出刀＝下一場已經開打，預告結束
   saveRawEventSample('attack', watcherCurrentRaidStartedAt, payload);
   if (typeof payload.cycle === 'number') watcherLastCycle = payload.cycle;
   const rs = payload && payload.raid_state;
@@ -1714,6 +1751,8 @@ function startWatcher() {
 })();
 
 function buildCurrentBossPayload() {
+  // 下一場預告期間：回傳下一場第 1 隻王（網頁看到 preview 就套用它帶的禁打、詛咒、加成）
+  if (watcherPreview) return { ...watcherPreview, preview: true, hasReceivedAttack: true };
   return {
     name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
     enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,

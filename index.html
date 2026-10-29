@@ -6214,6 +6214,7 @@
            打開網頁時同一隻王就先直接顯示，之後有新事件再校正。完全不需要伺服器 ── */
         const RAID_CURSE_CACHE_KEY = 'tt2_raid_curse';
         let raidCurseInfo = [];   // [{ type, amount }]
+        let raidPreview = null;   // 下一場預告（伺服器 /current-boss-status 帶 preview）：{ buff, startAt, level }；有值時禁打、詛咒、加成都用預告的
         function raidCurseTypeLabel(type) {
             const base = String(type || '').replace(/PerCurse$/, '').replace(/Damage$/, '');
             const map = { Burst: '爆裂傷害', Afflicted: '苦痛傷害', Affliction: '苦痛傷害', Support: '支援傷害', Raid: '突襲傷害', Tap: '點擊傷害' };
@@ -6221,6 +6222,7 @@
         }
         function updateCurseInfo() {
             if (raidSimActive) return;   // 模擬中的詛咒類型由模擬板決定
+            if (raidPreview) return;     // 下一場預告：詛咒類型用預告帶來的
             const titan = apiCurrentEnemyId ? apiFindTitanByEnemyId(apiCurrentEnemyId) : null;
             if (titan && Array.isArray(titan.cursed_debuffs)) {
                 raidCurseInfo = titan.cursed_debuffs.map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 }));
@@ -6316,6 +6318,7 @@
         /* sub_start / start / sub_cycle / cycle_reset 都帶有完整的 raid.titans 清單，共用同一個處理函式 */
         function handleApiRaidStart(payload) {
             if (raidSimActive) return;
+            if (payload && payload.raid && !payload.raid_started_at && typeof payload.start_at === 'string' && Date.parse(payload.start_at) > Date.now()) return;   // 下一場預告
             // 場次開始時間／等級不再由瀏覽器自己記錄場次清單——伺服器 24 小時背景側錄
             // 已經在做一樣的事（見 server.js 的 upsertRaidSessionIfNew），比只有網頁開著
             // 才記得到更可靠，網頁需要場次清單時直接跟伺服器要（serverSessionsSummary）
@@ -6765,8 +6768,15 @@
             apiCurrentEnemyId = cb.enemyId || null;
             raidBossOrdinal = cb.ordinal || 1;
             apiBossTotal = cb.total || 6;
-            restoreBannedPartsCache();
-            updateCurseInfo();
+            if (cb.preview) {   // 下一場預告：禁打、詛咒、加成都用預告帶來的
+                raidPreview = { buff: cb.buff || null, startAt: cb.startAt || null, level: cb.level || null };
+                raidBannedParts = Array.isArray(cb.banned) ? cb.banned.slice() : [];
+                raidCurseInfo = Array.isArray(cb.curse) ? cb.curse : [];
+            } else {
+                if (raidPreview) { raidPreview = null; raidBannedParts = []; raidCurseInfo = []; }
+                restoreBannedPartsCache();
+                updateCurseInfo();
+            }
             raidState = {
                 bossIndex: RAID_BOSS_NAMES.indexOf(cb.name),
                 bossName: cb.name || '—',
@@ -8455,6 +8465,7 @@
         };
         let attackCacheLatestBuff = null;   // 最新一場（本場）的加成類型
         function currentSessionBuff() {
+            if (raidPreview && raidPreview.buff) return raidPreview.buff;   // 下一場預告：用下一場的加成
             if (attackCacheLatestBuff) return attackCacheLatestBuff;
             const s = typeof serverSessionsSummary !== 'undefined' && serverSessionsSummary[0];
             return s && s.buffType ? s.buffType : null;
@@ -12897,7 +12908,8 @@
             const ordinalEl = document.getElementById('raid-boss-ordinal');
             if (ordinalEl && raidState.bossOrdinal) {
                 const bossTotal = raidDemoTimer ? 6 : apiBossTotal; // 示範模式固定用 6，真實連線用偵測到的實際總數
-                ordinalEl.textContent = `${raidState.bossOrdinal} / ${bossTotal}`;
+                const pvAt = raidPreview && raidPreview.startAt ? new Date(raidPreview.startAt) : null;
+                ordinalEl.textContent = `${raidState.bossOrdinal} / ${bossTotal}` + (raidPreview ? `（下一場預告${pvAt ? `・${pvAt.getMonth() + 1}/${pvAt.getDate()} ${String(pvAt.getHours()).padStart(2, '0')}:${String(pvAt.getMinutes()).padStart(2, '0')} 開打` : ''}）` : '');
                 ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === bossTotal ? ' is-last' : '');
             }
             updateRaidBossIcon(raidState.bossName);

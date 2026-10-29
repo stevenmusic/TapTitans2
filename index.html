@@ -9353,7 +9353,9 @@
             for (let c = C0; c >= 0; c--) for (let a = N - C0; a >= 0; a--) for (let sk = 0; sk <= N - c - a; sk++) if (sk < N) rows.push({ c, a, b: N - c - a - sk, s: sk });
             // 沒有骨架的排前面，骨架越多越後面；再來打掉越少部位的排前面；同樣打掉幾個時，詛咒甲先被打掉的排前面（詛咒甲通常最先拆）
             rows.sort((x, y) => (x.s - y.s) || (x.b - y.b) || (x.c - y.c));
-            rows.forEach(r => { r.ok = has(r.c, r.a, r.b, r.s); r.now = live && r.c === now.c && r.a === now.a && r.b === now.b && r.s === now.s; });
+            // 常見：詛咒甲通常最先拆——沒有骨架時，打掉的盔甲都是詛咒甲（詛咒甲沒拆完前普通盔甲都還在）；有骨架時，詛咒甲已經拆完
+            rows.forEach(r => { r.ok = has(r.c, r.a, r.b, r.s); r.now = live && r.c === now.c && r.a === now.a && r.b === now.b && r.s === now.s;
+                r.common = r.s > 0 ? r.c === 0 : (r.c === 0 || r.a === N - C0); });
             return { buff, curse, banned, rows };
         }
         function simTodoSet(field, v) {
@@ -9418,12 +9420,14 @@
                             <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp" style="color:#8a7a6a;">${todo.banned.includes(k) ? '禁打' : '可打'}</div></div>`).join('')}</div>`).join('')}</div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
                         <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
-                        ${todo.rows.map((r, i) => `${r.s > 0 && (i === 0 || todo.rows[i - 1].s === 0) ? `<details ${simImp.target && simImp.target.skeleton ? 'open' : ''}><summary class="si-title" style="margin:10px 0 2px; cursor:pointer;">骨架階段（${todo.rows.filter(x => x.s > 0).length} 個，缺 ${todo.rows.filter(x => x.s > 0 && !x.ok).length} 個，點開）</summary>` : ''}<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
+                        ${[true, false].map(common => { const list = todo.rows.filter(r => r.common === common); if (!list.length) return '';
+                            const open = common || (simImp.target && list.some(r => simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s));
+                            return `<details ${open ? 'open' : ''}><summary class="si-title" style="margin:10px 0 2px; cursor:pointer;">${common ? '常見' : '少見'}（${list.length} 個，缺 ${list.filter(x => !x.ok).length} 個）</summary>${list.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
                             <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
                             <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.s ? `｜骨架 ${r.s}` : ''}</span>
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
                             ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
-                        </div>${r.s > 0 && i === todo.rows.length - 1 ? '</details>' : ''}`).join('')}
+                        </div>`).join('')}</details>`; }).join('')}
                     </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>

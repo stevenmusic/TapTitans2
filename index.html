@@ -9329,15 +9329,15 @@
             const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
             return { buff: currentSessionBuff() || 'afflictionChance', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
         }
-        function simTodoList() {
-            const cond = simImp.todoCond || simTodoCondNow();
+        function simTodoList(condArg) {
+            const cond = condArg || simImp.todoCond || simTodoCondNow();
             const { buff, curse } = cond;
             const banned = cond.banned.slice();
             const attack = RAID_PARTS.map(p => p.key).filter(k => !banned.includes(k));
             const N = attack.length;
             if (!N) return null;
             const curseT = curse;
-            const live = !simImp.todoCond && raidState && raidState.parts;   // 用這一場的條件時，才標「現在」
+            const live = !condArg && !simImp.todoCond && raidState && raidState.parts;   // 用這一場的條件時，才標「現在」
             const P = (k) => (live ? raidState.parts[k] : null) || {};
             const cursedNow = attack.filter(k => P(k).cursed && P(k).armor > 0).length;
             const C0 = curse ? Math.min(N, Math.max(cursedNow, 3)) : 0;   // 詛咒甲一開始有幾個（現在看得到的跟 3 取大的）
@@ -9362,9 +9362,28 @@
             const cond = simImp.todoCond ? { ...simImp.todoCond, banned: simImp.todoCond.banned.slice() } : simTodoCondNow();
             if (field === 'ban') cond.banned = cond.banned.includes(v) ? cond.banned.filter(k => k !== v) : [...cond.banned, v];
             else if (field === 'reset') { simImp.todoCond = null; simImp.target = null; renderSimImport(); return; }
+            else if (field === 'all') { Object.assign(cond, v); }
             else cond[field] = v;
             simImp.todoCond = cond; simImp.target = null;
             renderSimImport();
+        }
+        // 所有條件總覽：每種加成 × 詛咒（爆裂／苦痛）× 禁打（0～4 個；禁打的有沒有頭、肚子），常見的情境補了幾個
+        // 禁打的四肢用代表部位（先雙腿，再左肩、左手）：配對只看四肢禁打的數量
+        const SIM_SUM_LIMBS = ['LegUpperLeft', 'LegUpperRight', 'ArmUpperLeft', 'HandLeft'];
+        function simTodoSummary() {
+            const pats = [];
+            for (let n = 0; n <= 4; n++) for (const t of [[], ['Head'], ['ChestUpper'], ['Head', 'ChestUpper']]) if (t.length <= n && (n > 0 || !t.length)) pats.push([...t, ...SIM_SUM_LIMBS.slice(0, n - t.length)]);
+            const banText = (b) => { const h = b.includes('Head'), c = b.includes('ChestUpper'), l = b.filter(k => k !== 'Head' && k !== 'ChestUpper').length;
+                return b.length ? [h ? '頭' : '', c ? '肚' : '', l ? `${l}個四肢` : ''].filter(Boolean).join('＋') : '無禁打'; };
+            return Object.keys(SESSION_BUFFS).map(buff => {
+                const rows = [];
+                ['Burst', 'Afflicted'].forEach(curse => pats.forEach(banned => {
+                    const t = simTodoList({ buff, curse, banned });
+                    const com = t.rows.filter(r => r.common);
+                    rows.push({ curse, banned, text: `${curse === 'Burst' ? '爆裂' : '苦痛'}｜${banText(banned)}`, have: com.filter(r => r.ok).length, total: com.length });
+                }));
+                return { buff, rows, miss: rows.reduce((x, r) => x + r.total - r.have, 0) };
+            });
         }
         function simTodoPick(c, a, b, sk) {
             const t = simTodoList();
@@ -9428,6 +9447,15 @@
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
                             ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
                         </div>`).join('')}</details>`; }).join('')}
+                    </div>` : ''}
+                    ${!a ? `<div class="si-card">
+                        <details ${simImp.sumOpen ? 'open' : ''} ontoggle="simImp.sumOpen = this.open"><summary class="si-title" style="cursor:pointer;">所有條件總覽（點開）</summary>
+                        <div class="si-tip" style="margin:4px 0 6px;">每種加成、詛咒、禁打組合的「常見」情境補了幾個。禁打只分有沒有頭、肚子，其他四肢禁哪幾個都一樣。點一列，上面的清單就換成那個條件。</div>
+                        ${simImp.sumOpen ? simTodoSummary().map(g => `<details><summary class="si-field" style="cursor:pointer; padding:6px 0; font-weight:800;">${escapeHtml(SESSION_BUFFS[g.buff].label)}｜常見缺 ${g.miss} 個</summary>
+                            ${g.rows.map(r => `<div class="si-row" style="cursor:pointer;" onclick="simTodoSet('all', { buff: '${g.buff}', curse: '${r.curse}', banned: ${escapeHtml(JSON.stringify(r.banned))} }); document.querySelector('#sim-import-modal .si-body').scrollTop = 0;">
+                                <span style="width:22px;">${r.have === r.total ? '✅' : r.have ? '🟡' : '⬜'}</span><span style="flex:1;">${r.text}</span><span style="font-weight:700; ${r.have === r.total ? 'color:#2e7d32;' : ''}">${r.have}／${r.total}</span></div>`).join('')}
+                        </details>`).join('') : ''}
+                        </details>
                     </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>

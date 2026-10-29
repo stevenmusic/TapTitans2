@@ -10876,10 +10876,9 @@
             const mine = log.filter(a => names.has(a.player) || (a.playerCode && codes.has(a.playerCode)));
             const inCycle = mine.filter(a => a.cycle === cycle).sort((x, y) => x.ts - y.ts);
             const nameOf = (c) => (c && typeof c === 'object') ? (c.name || c.id) : c;
-            // 每 6 刀一波：同一波裡卡片不能重複，打滿 6 刀就換新的一波、卡片全部重新可用（還有剩餘次數就繼續打）
-            const waveStart = Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) * RAID_ATTACKS_PER_CYCLE;
-            const wave = inCycle.slice(waveStart);
-            const used = new Set(wave.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
+            // 同一輪（cycle）裡同一張卡只能用一次，不管這一輪打了幾刀（累積的次數一口氣打完也一樣）：這一輪用過的卡全部排除
+            const wave = inCycle;
+            const used = new Set(inCycle.flatMap(a => (a.cards || []).map(nameOf)).filter(Boolean));
             // 剩餘次數會累積：每過一輪多 6 刀，沒打完的留到下一輪。
             // 用他這場最後一刀回報的剩餘次數＋之後經過幾輪 × 6；這場還沒打過＝目前第幾輪 × 6
             const mineSorted = mine.filter(a => typeof a.cycle === 'number').sort((x, y) => x.ts - y.ts);
@@ -10959,8 +10958,8 @@
                     // 這一波已經用過的卡，只有「這一波剩下的刀數」不能用；打完這一波就換新的一波、卡片重新可用，
                     // 所以後面的組可以用（整份清單裡每張卡仍然只出現一次）
                     const usedCards = new Set();
-                    const waveLeft = Math.min(info.remaining, RAID_ATTACKS_PER_CYCLE - info.waveDone);   // 這一波還能打幾刀（這幾組不能用已用過的卡）
-                    const laterN = info.remaining - waveLeft;                                             // 下一波以後的刀數（可以用這一波用過的卡）
+                    const waveLeft = info.remaining;   // 這一輪剩下的刀數全部都不能用這一輪已經用過的卡
+                    const laterN = 0;
                     let left = info.remaining;
                     // 首頁算法挑出的最佳 6 組（品質最好），只當作「優先選」，不先鎖死——
                     // 再跟所有場次前 15 名打過的牌組（跟「依部位」分頁一樣、現在打得到的）一起找：組數最多優先（用到最多張卡），

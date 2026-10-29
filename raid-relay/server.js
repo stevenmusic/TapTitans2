@@ -1745,14 +1745,14 @@ app.get('/full-attack-log', async (req, res) => {
 // 輕量版：只回傳目前王的血量/部位狀態，完全不碰攻擊紀錄資料表，回應體積是固定的
 // 幾百 bytes（不會隨攻擊紀錄筆數增加而變大）。背景定期同步只需要這個就能畫王血量條，
 // 不需要整場攻擊紀錄。
-// 每筆攻擊「打之前」的詛咒類型／詛咒甲部位／各部位層別（只有這個功能上線之後的新攻擊才有）。
-// key 是攻擊的 dedup key：`${attackDatetime || ts}_${player}`，網頁自己用同樣規則對應。since＝只回這個時間（毫秒）之後的
 /* ══════════════════════════════════════════════════════════
-   推薦牌組的模擬器情境（deck_scenarios）：原本寫死在網頁裡，改存在 Turso。
-   兩個來源：deck-scenarios.json（source='file'），開機時同步進 Turso（新的新增、有改的更新、
-   檔案裡已經拿掉的刪除）；手機用 POST /deck-scenarios 上傳的（source='upload'），開機同步不會動它，
-   檔案裡也不會蓋掉同條件的上傳情境。讀進記憶體後網頁用 GET /deck-scenarios 來要。
-   上傳要帶管理密碼（環境變數 SCENARIO_ADMIN_KEY）。出任何錯都不影響攻擊紀錄；Turso 讀不到時直接用檔案內容頂著。
+   推薦牌組的模擬器情境（deck_scenarios）：存在 Turso，Turso 是唯一的來源。
+   • 啟動時從 Turso 讀進記憶體，網頁用 GET /deck-scenarios 來要（就是整份情境檔）。
+     只有 Turso 裡一筆都沒有時（第一次），才用 deck-scenarios.json 當初始資料寫進去；之後這個檔案不再使用。
+   • 手機 POST /deck-scenarios 更新，同時寫進 Turso 和記憶體，不用重開伺服器：
+       { scenarios: [...] } → 整份情境檔取代；{ scenario: {...} } → 新增一筆（同一組條件已經有的就取代）
+     要帶管理密碼（header x-admin-key ＝ 環境變數 SCENARIO_ADMIN_KEY）。
+   出任何錯都不影響攻擊紀錄。
    ══════════════════════════════════════════════════════════ */
 const DECK_SCENARIOS_FILE = path.join(__dirname, 'deck-scenarios.json');
 let deckScenarios = [];
@@ -1762,10 +1762,20 @@ function deckScenarioKey(s) {
   return [s.buff, s.curse || '', s.cursed ?? '', c.armor, c.body, c.skeleton, c.banned,
     (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|');
 }
+async function loadDeckScenariosFromDb() {
+  const result = await db.execute('SELECT data FROM deck_scenarios ORDER BY sort, updated_at');
+  deckScenarios = result.rows.map(r => JSON.parse(r.data));
+}
+// 整份取代：先刪光再依序寫入（同一個 batch，全部成功或全部不變）
+async function replaceDeckScenarios(list) {
+  const now = Date.now();
+  await db.batch([
+    'DELETE FROM deck_scenarios',
+    ...list.map((s, i) => ({ sql: 'INSERT OR REPLACE INTO deck_scenarios (skey, sort, data, updated_at) VALUES (?, ?, ?, ?)', args: [deckScenarioKey(s), i, JSON.stringify(s), now] }))
+  ], 'write');
+  await loadDeckScenariosFromDb();
+}
 const deckScenariosReady = (async () => {
-  let seed = [];
-  try { seed = JSON.parse(fs.readFileSync(DECK_SCENARIOS_FILE, 'utf8')); } catch (e) { console.error('[scenarios] 讀取 deck-scenarios.json 失敗:', e.message); }
-  deckScenarios = seed;
   try {
     await dbReady;
     await db.execute(`
@@ -1776,78 +1786,76 @@ const deckScenariosReady = (async () => {
         updated_at INTEGER NOT NULL
       )
     `);
-    try { await db.execute(`ALTER TABLE deck_scenarios ADD COLUMN source TEXT NOT NULL DEFAULT 'file'`); } catch (e) { /* 已經有這個欄位 */ }
-    if (seed.length) {
-      const now = Date.now();
-      const keys = seed.map(deckScenarioKey);
-      await db.batch([
-        ...seed.map((s, i) => ({
-          sql: `INSERT INTO deck_scenarios (skey, sort, data, updated_at) VALUES (?, ?, ?, ?)
-                ON CONFLICT(skey) DO UPDATE SET sort = excluded.sort, data = excluded.data, updated_at = excluded.updated_at
-                WHERE deck_scenarios.source = 'file' AND (deck_scenarios.data <> excluded.data OR deck_scenarios.sort <> excluded.sort)`,
-          args: [keys[i], i, JSON.stringify(s), now]
-        })),
-        { sql: `DELETE FROM deck_scenarios WHERE source = 'file' AND skey NOT IN (${keys.map(() => '?').join(',')})`, args: keys }
-      ], 'write');
-    }
     await loadDeckScenariosFromDb();
-    console.log(`[scenarios] 已從 Turso 載入 ${deckScenarios.length} 個推薦牌組情境`);
+    if (!deckScenarios.length) {
+      const seed = JSON.parse(fs.readFileSync(DECK_SCENARIOS_FILE, 'utf8'));
+      if (Array.isArray(seed) && seed.length) await replaceDeckScenarios(seed);
+      console.log(`[scenarios] Turso 裡還沒有情境，已用 deck-scenarios.json 寫入 ${deckScenarios.length} 個`);
+    } else console.log(`[scenarios] 已從 Turso 載入 ${deckScenarios.length} 個推薦牌組情境`);
   } catch (e) {
-    console.error('[turso] 推薦牌組情境同步失敗（先用 deck-scenarios.json）:', e && e.message ? e.message : e);
+    console.error('[turso] 讀取推薦牌組情境失敗:', e && e.message ? e.message : e);
   }
 })();
-// 手機上傳的排在檔案的後面；同一組條件只會有一筆，所以順序不影響配對
-async function loadDeckScenariosFromDb() {
-  const result = await db.execute(`SELECT data FROM deck_scenarios ORDER BY CASE source WHEN 'file' THEN 0 ELSE 1 END, sort, updated_at`);
-  if (result.rows.length) deckScenarios = result.rows.map(r => JSON.parse(r.data));
-}
 
 app.get('/deck-scenarios', async (req, res) => {
   await deckScenariosReady;
   res.json({ scenarios: deckScenarios });
 });
 
-// 手機上傳一個情境（同一組條件已經有的就取代）。要帶管理密碼：header x-admin-key ＝ 環境變數 SCENARIO_ADMIN_KEY
 const SCENARIO_ADMIN_KEY = process.env.SCENARIO_ADMIN_KEY || '';
-function validDeckScenario(s) {
+// 檢查一個情境的格式，整理成只留需要的欄位；格式不對回傳 null
+function cleanDeckScenario(s) {
   const n = (x) => Number.isInteger(x) && x >= 0 && x <= 8;
-  if (!s || typeof s !== 'object' || typeof s.buff !== 'string' || !s.buff) return false;
+  const parts = ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'ChestUpper', 'LegUpperLeft', 'LegUpperRight'];
+  if (!s || typeof s !== 'object' || typeof s.buff !== 'string' || !s.buff) return null;
   const c = s.counts;
-  if (!c || !['armor', 'body', 'skeleton', 'banned'].every(k => n(c[k])) || c.armor + c.body + c.skeleton + c.banned !== 8) return false;
-  if (s.cursed !== undefined && !(n(s.cursed) && s.cursed <= c.armor)) return false;
-  if (!Array.isArray(s.decks) || s.decks.length < 1 || s.decks.length > 6) return false;
-  return s.decks.every(d => d && Array.isArray(d.cards) && d.cards.length === 3 && d.cards.every(x => typeof x === 'string' && x.length <= 40) && typeof d.role === 'string');
+  if (!c || !['armor', 'body', 'skeleton', 'banned'].every(k => n(c[k])) || c.armor + c.body + c.skeleton + c.banned !== 8) return null;
+  if (s.cursed !== undefined && !(n(s.cursed) && s.cursed <= c.armor)) return null;
+  if (!Array.isArray(s.decks) || s.decks.length < 1 || s.decks.length > 6) return null;
+  if (!s.decks.every(d => d && Array.isArray(d.cards) && d.cards.length === 3 && d.cards.every(x => typeof x === 'string' && x.length <= 40) && typeof d.role === 'string')) return null;
+  return {
+    ...(typeof s.note === 'string' && s.note ? { note: s.note.slice(0, 300) } : {}), buff: s.buff,
+    ...(s.cursed !== undefined ? { cursed: s.cursed } : {}), ...(s.curse ? { curse: String(s.curse) } : {}),
+    counts: { armor: c.armor, body: c.body, skeleton: c.skeleton, banned: c.banned },
+    ...(Array.isArray(s.bannedParts) ? { bannedParts: s.bannedParts.filter(x => x === 'Head' || x === 'ChestUpper') } : {}),
+    ...(s.needTorso ? { needTorso: true } : {}),
+    ...(Array.isArray(s.cursedAt) && s.cursedAt.length ? { cursedAt: s.cursedAt.filter(x => parts.includes(x)) } : {}),
+    ...(parts.includes(s.only) ? { only: s.only } : {}),
+    decks: s.decks.map(d => ({ cards: d.cards, role: d.role, ...(Number.isInteger(d.focus) && d.focus > 0 ? { focus: d.focus } : {}) }))
+  };
 }
 app.post('/deck-scenarios', async (req, res) => {
   if (!SCENARIO_ADMIN_KEY) return res.status(503).json({ error: '伺服器還沒設定 SCENARIO_ADMIN_KEY' });
   const key = String(req.get('x-admin-key') || '');
   const a = Buffer.from(key), b = Buffer.from(SCENARIO_ADMIN_KEY);
   if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) return res.status(401).json({ error: '管理密碼不對' });
-  const s = req.body && req.body.scenario;
-  if (!validDeckScenario(s)) return res.status(400).json({ error: '情境格式不對' });
-  const clean = {
-    note: typeof s.note === 'string' ? s.note.slice(0, 300) : '', buff: s.buff,
-    ...(s.cursed !== undefined ? { cursed: s.cursed } : {}), ...(s.curse ? { curse: String(s.curse) } : {}),
-    counts: { armor: s.counts.armor, body: s.counts.body, skeleton: s.counts.skeleton, banned: s.counts.banned },
-    ...(Array.isArray(s.bannedParts) && s.bannedParts.length ? { bannedParts: s.bannedParts.filter(x => x === 'Head' || x === 'ChestUpper') } : {}),
-    ...(s.needTorso ? { needTorso: true } : {}),
-    decks: s.decks.map(d => ({ cards: d.cards, role: d.role, ...(Number.isInteger(d.focus) && d.focus > 0 ? { focus: d.focus } : {}) }))
-  };
+  const body = req.body || {};
   try {
     await deckScenariosReady;
-    await db.execute({
-      sql: `INSERT INTO deck_scenarios (skey, sort, data, updated_at, source) VALUES (?, ?, ?, ?, 'upload')
-            ON CONFLICT(skey) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, source = 'upload'`,
-      args: [deckScenarioKey(clean), 100000, JSON.stringify(clean), Date.now()]
-    });
-    await loadDeckScenariosFromDb();
+    if (Array.isArray(body.scenarios)) {   // 整份情境檔取代
+      const list = body.scenarios.map(cleanDeckScenario);
+      const bad = list.findIndex(x => !x);
+      if (bad >= 0) return res.status(400).json({ error: `第 ${bad + 1} 個情境格式不對` });
+      if (!list.length) return res.status(400).json({ error: '情境檔是空的' });
+      await replaceDeckScenarios(list);
+    } else {   // 新增一筆（同一組條件已經有的就取代，位置不變）
+      const s = cleanDeckScenario(body.scenario);
+      if (!s) return res.status(400).json({ error: '情境格式不對' });
+      const k = deckScenarioKey(s);
+      const list = deckScenarios.slice();
+      const i = list.findIndex(x => deckScenarioKey(x) === k);
+      if (i >= 0) list[i] = s; else list.push(s);
+      await replaceDeckScenarios(list);
+    }
     res.json({ ok: true, count: deckScenarios.length });
   } catch (e) {
-    console.error('[turso] 上傳推薦牌組情境失敗:', e && e.message ? e.message : e);
+    console.error('[turso] 更新推薦牌組情境失敗:', e && e.message ? e.message : e);
     res.status(500).json({ error: '寫入資料庫失敗' });
   }
 });
 
+// 每筆攻擊「打之前」的詛咒類型／詛咒甲部位／各部位層別（只有這個功能上線之後的新攻擊才有）。
+// key 是攻擊的 dedup key：`${attackDatetime || ts}_${player}`，網頁自己用同樣規則對應。since＝只回這個時間（毫秒）之後的
 app.get('/attack-context', (req, res) => {
   const since = Number(req.query.since) || 0;
   const out = {};

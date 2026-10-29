@@ -9378,6 +9378,13 @@
                         ${saved.length ? saved.map((sc, i) => `<div class="si-row"><span style="flex:1; min-width:0; line-height:1.5;">${escapeHtml(simScenarioTitle(sc))}</span><button class="si-del" onclick="simImportDelete(${i})">刪除</button></div>`).join('') : '<div class="si-tip">還沒有。</div>'}
                         ${saved.length ? '<button class="si-btn ghost" style="margin-top:8px;" onclick="simImportCopy()">📋 複製全部（文字備份）</button>' : ''}
                     </div>
+                    <div class="si-card">
+                        <div class="si-title">伺服器上的情境檔（${BY_PART_GAME_SCENARIOS.length} 個）</div>
+                        <div class="si-tip" style="margin-bottom:8px;">所有人看到的推薦牌組都用這份。上傳新的情境檔會整份取代（要管理密碼）。</div>
+                        <button class="si-btn ghost" onclick="simScenarioFileDownload()">⬇️ 下載目前的情境檔</button>
+                        <label class="si-btn ghost" style="margin-top:6px; display:block; text-align:center; box-sizing:border-box; width:100%;" for="sim-scen-file">⬆️ 上傳情境檔（整份取代）</label>
+                        <input type="file" id="sim-scen-file" accept=".json,application/json" style="display:none;" onchange="simScenarioFileUpload(this.files[0]); this.value='';">
+                    </div>
                 </div>
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
             </div>`;
@@ -9461,21 +9468,9 @@
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };
             // 上傳到伺服器（存進 Turso，所有人開網頁都會拿到）：要管理密碼，第一次輸入後記在這支手機
             if (toServer) {
-                let adminKey = '';
-                try { adminKey = localStorage.getItem(SIM_ADMIN_KEY_STORE) || ''; } catch (e) {}
-                if (!adminKey) adminKey = (prompt('請輸入管理密碼（第一次輸入後會記在這支手機）') || '').trim();
-                if (!adminKey) return;
                 const { user, banned: _b, savedAt, ...up } = sc;
                 up.note = simScenarioTitle(sc) + '（手機上傳）';
-                try {
-                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                    const res = await fetch(`${relayUrl}/deck-scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify({ scenario: up }) });
-                    const j = await res.json().catch(() => ({}));
-                    if (res.status === 401) { try { localStorage.removeItem(SIM_ADMIN_KEY_STORE); } catch (e) {} return fail('管理密碼不對，請再按一次重新輸入。'); }
-                    if (!res.ok) return fail('上傳失敗：' + (j.error || res.status));
-                    try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
-                } catch (e) { return fail('上傳失敗：連不到伺服器，請稍後再試。'); }
-                await byPartScenariosFetch();
+                if (!(await simAdminPost({ scenario: up }))) return;
                 simImp.analysis = null;
                 byPartRecoSig = ''; byPartRecoRefresh();
                 renderSimImport();
@@ -9495,6 +9490,47 @@
             const bd2 = document.querySelector('#sim-import-modal .si-body'); if (bd2) bd2.scrollTop = 0;
             const m2 = document.getElementById('sim-imp-msg');
             if (m2) { m2.textContent = '✔ 已儲存，推薦牌組已更新。'; m2.style.color = '#2e7d32'; m2.style.fontWeight = '700'; }
+        }
+        // 帶管理密碼 POST 情境到伺服器（寫進 Turso），成功後重新拿最新的情境。密碼第一次輸入後記在這支手機，密碼錯就清掉
+        async function simAdminPost(body) {
+            let adminKey = '';
+            try { adminKey = localStorage.getItem(SIM_ADMIN_KEY_STORE) || ''; } catch (e) {}
+            if (!adminKey) adminKey = (prompt('請輸入管理密碼（第一次輸入後會記在這支手機）') || '').trim();
+            if (!adminKey) return false;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const res = await fetch(`${relayUrl}/deck-scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify(body) });
+                const j = await res.json().catch(() => ({}));
+                if (res.status === 401) { try { localStorage.removeItem(SIM_ADMIN_KEY_STORE); } catch (e) {} alert('管理密碼不對，請再按一次重新輸入。'); return false; }
+                if (!res.ok) { alert('上傳失敗：' + (j.error || res.status)); return false; }
+                try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
+            } catch (e) { alert('上傳失敗：連不到伺服器，請稍後再試。'); return false; }
+            await byPartScenariosFetch();
+            return true;
+        }
+        // 下載目前伺服器上的情境檔（JSON），可以在電腦或手機上改好再上傳
+        async function simScenarioFileDownload() {
+            await byPartScenariosFetch();
+            const txt = '[\n' + BY_PART_GAME_SCENARIOS.map(x => '  ' + JSON.stringify(x)).join(',\n') + '\n]\n';
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' }));
+            a.download = 'deck-scenarios.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+        // 上傳情境檔：整份取代伺服器（Turso）上的情境
+        async function simScenarioFileUpload(file) {
+            if (!file) return;
+            let list;
+            try { list = JSON.parse(await file.text()); } catch (e) { alert('這個檔案不是正確的 JSON。'); return; }
+            if (Array.isArray(list && list.scenarios)) list = list.scenarios;
+            if (!Array.isArray(list) || !list.length) { alert('檔案裡沒有情境。'); return; }
+            if (!confirm(`要用這個檔案的 ${list.length} 個情境，整份取代伺服器上現在的 ${BY_PART_GAME_SCENARIOS.length} 個嗎？`)) return;
+            if (!(await simAdminPost({ scenarios: list }))) return;
+            byPartRecoSig = ''; byPartRecoRefresh();
+            renderSimImport();
+            const m = document.getElementById('sim-imp-msg');
+            if (m) { m.textContent = `✔ 情境檔已更新（${BY_PART_GAME_SCENARIOS.length} 個），所有人的推薦牌組都會更新。`; m.style.color = '#2e7d32'; m.style.fontWeight = '700'; }
         }
         function simImportDelete(i) {
             const list = byPartUserScenarios().slice();

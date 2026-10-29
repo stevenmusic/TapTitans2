@@ -9324,15 +9324,21 @@
 
         // 這一場會用到的情境：照現在這隻王的加成、詛咒類型、禁打部位，列出打下去會經過的部位狀態（詛咒甲／盔甲／肉體／骨架），
         // 標出已經有模擬器情境的（✅）和還缺的（❌）。點缺的那一列，選截圖後會自動帶入那個狀態
+        // 條件預設是這一場的（加成、詛咒類型、禁打部位），也可以在清單上方自己改（simImp.todoCond）
+        function simTodoCondNow() {
+            const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
+            return { buff: currentSessionBuff() || 'afflictionChance', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
+        }
         function simTodoList() {
-            const buff = currentSessionBuff();
-            if (!raidState || !raidState.parts || !buff) return null;
-            const banned = (raidBannedParts || []).slice();
+            const cond = simImp.todoCond || simTodoCondNow();
+            const { buff, curse } = cond;
+            const banned = cond.banned.slice();
             const attack = RAID_PARTS.map(p => p.key).filter(k => !banned.includes(k));
             const N = attack.length;
-            const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
-            const curse = curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : '');
-            const P = (k) => raidState.parts[k] || {};
+            if (!N) return null;
+            const curseT = curse;
+            const live = !simImp.todoCond && raidState && raidState.parts;   // 用這一場的條件時，才標「現在」
+            const P = (k) => (live ? raidState.parts[k] : null) || {};
             const cursedNow = attack.filter(k => P(k).cursed && P(k).armor > 0).length;
             const C0 = curse ? Math.min(N, Math.max(cursedNow, 3)) : 0;   // 詛咒甲一開始有幾個（現在看得到的跟 3 取大的）
             const torso = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
@@ -9347,8 +9353,16 @@
             for (let c = C0; c >= 0; c--) for (let a = N - C0; a >= 0; a--) for (let sk = 0; sk <= N - c - a; sk++) if (sk < N) rows.push({ c, a, b: N - c - a - sk, s: sk });
             // 沒有骨架的排前面，骨架越多越後面；再來打掉越少部位的排前面；同樣打掉幾個時，詛咒甲先被打掉的排前面（詛咒甲通常最先拆）
             rows.sort((x, y) => (x.s - y.s) || (x.b - y.b) || (x.c - y.c));
-            rows.forEach(r => { r.ok = has(r.c, r.a, r.b, r.s); r.now = r.c === now.c && r.a === now.a && r.b === now.b && r.s === now.s; });
+            rows.forEach(r => { r.ok = has(r.c, r.a, r.b, r.s); r.now = live && r.c === now.c && r.a === now.a && r.b === now.b && r.s === now.s; });
             return { buff, curse, banned, rows };
+        }
+        function simTodoSet(field, v) {
+            const cond = simImp.todoCond ? { ...simImp.todoCond, banned: simImp.todoCond.banned.slice() } : simTodoCondNow();
+            if (field === 'ban') cond.banned = cond.banned.includes(v) ? cond.banned.filter(k => k !== v) : [...cond.banned, v];
+            else if (field === 'reset') { simImp.todoCond = null; simImp.target = null; renderSimImport(); return; }
+            else cond[field] = v;
+            simImp.todoCond = cond; simImp.target = null;
+            renderSimImport();
         }
         function simTodoPick(c, a, b, sk) {
             const t = simTodoList();
@@ -9394,14 +9408,21 @@
                         <div id="sim-imp-msg" class="si-tip" style="margin-top:8px;">選好之後我會辨識 6 組牌的 18 張卡，你核對、填狀態，存起來，推薦牌組就會照這張排。</div>
                     </div>
                     ${!a && todo ? `<div class="si-card">
-                        <div class="si-title">這一場會用到的情境（${escapeHtml((SESSION_BUFFS[todo.buff] || {}).label || todo.buff)}｜${todo.curse === 'Burst' ? '爆裂詛咒' : todo.curse ? '苦痛詛咒' : '沒有詛咒'}｜禁打 ${todo.banned.map(k => escapeHtml(raidPartLabel(k))).join('、') || '無'}）</div>
+                        <div class="si-title">${simImp.todoCond ? '情境清單（自選條件）' : '這一場會用到的情境'}</div>
+                        <div class="si-grid2" style="margin-bottom:8px;">
+                            <label class="si-field">加成類型<select onchange="simTodoSet('buff', this.value)">${simOptionsHtml(buffOpts, todo.buff)}</select></label>
+                            <label class="si-field">詛咒類型<select onchange="simTodoSet('curse', this.value)">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], todo.curse)}</select></label>
+                        </div>
+                        <div class="si-field" style="margin-bottom:4px;">禁打部位（點一下切換）</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px;">${RAID_PARTS.map(({ key }) => `<button class="si-del" style="${todo.banned.includes(key) ? 'background:#c0392b; color:#fff; border-color:#c0392b;' : 'background:#fff; color:#6a5a4a;'}" onclick="simTodoSet('ban', '${key}')">${escapeHtml(raidPartLabel(key))}</button>`).join('')}</div>
+                        ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
                         <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
-                        ${todo.rows.map((r, i) => `${r.s > 0 && (i === 0 || todo.rows[i - 1].s === 0) ? '<div class="si-title" style="margin:10px 0 2px;">骨架階段</div>' : ''}<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
+                        ${todo.rows.map((r, i) => `${r.s > 0 && (i === 0 || todo.rows[i - 1].s === 0) ? `<details ${simImp.target && simImp.target.skeleton ? 'open' : ''}><summary class="si-title" style="margin:10px 0 2px; cursor:pointer;">骨架階段（${todo.rows.filter(x => x.s > 0).length} 個，缺 ${todo.rows.filter(x => x.s > 0 && !x.ok).length} 個，點開）</summary>` : ''}<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
                             <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
                             <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.s ? `｜骨架 ${r.s}` : ''}</span>
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
                             ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
-                        </div>`).join('')}
+                        </div>${r.s > 0 && i === todo.rows.length - 1 ? '</details>' : ''}`).join('')}
                     </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>

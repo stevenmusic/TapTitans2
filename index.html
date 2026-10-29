@@ -10971,12 +10971,27 @@
                         if (bySig.has(k)) bySig.get(k).attacks = d.attacks || 0; else bySig.set(k, { cards: d.cards, attacks: d.attacks || 0 });
                     });
                     const weight = (d) => (topSigs.has(sigOf(d.cards)) ? 1e7 * (RAID_ATTACKS_PER_CYCLE - topSigs.get(sigOf(d.cards))) : 0) + d.attacks;
-                    const pool = [...bySig.values()].sort((x, y) => weight(y) - weight(x)).slice(0, 400);
+                    const tainted = (d) => d.cards.some(c => info.used.has(c));   // 含這一波已用過的卡：只能排在下一波
+                    // 模擬器情境（加成類型、詛咒、部位狀態符合）的牌組最優先：照模擬器的順序先放進去，
+                    // 含這一波已用過卡的那幾組放到下一波；跟已放的組共用卡、或刀數不夠放的才跳過，其餘的組數再用下面的搜尋補
+                    const cursedNow = Object.values(raidState.parts).filter(p => p.armor > 0 && p.cursed).length;
+                    const simRows = byPartGameRows(raidState.parts, raidBannedParts, raidSimActive ? simBuffKey() : currentSessionBuff(), cursedNow > 0 ? raidCurseInfo : [], data) || [];
+                    const locked = [], lockedCards = new Set();
+                    let lockedTainted = 0;
+                    simRows.forEach(r => {
+                        const d = { cards: r.rawCards || r.cards, attacks: 0, row: r, sim: true };
+                        if (locked.length >= left || d.cards.some(c => lockedCards.has(c) || BY_PART_RECO_EXCLUDE.has(c))) return;
+                        const t = tainted(d) ? 1 : 0;
+                        if (lockedTainted + t > laterN) return;
+                        locked.push(d); lockedTainted += t; d.cards.forEach(c => lockedCards.add(c));
+                    });
+                    const lockedSigs = new Set(locked.map(d => sigOf(d.cards)));
+                    const pool = [...bySig.values()].filter(d => !lockedSigs.has(sigOf(d.cards)) && !d.cards.some(c => lockedCards.has(c)))
+                        .sort((x, y) => weight(y) - weight(x)).slice(0, 400);
                     const cardsLeft = new Set(pool.flatMap(d => d.cards));
-                    const cap = Math.min(left, Math.floor(cardsLeft.size / 3));   // 組數上限：剩下的卡最多湊幾組
+                    const cap = Math.min(left, locked.length + Math.floor(cardsLeft.size / 3));   // 組數上限：模擬器的組＋剩下的卡最多湊幾組
                     // 搜尋量有上限（手機上也要很快算完）；組數已經到上限、最佳那幾組也都放進去了，就不用再找
                     const topW = pool.filter(d => topSigs.has(sigOf(d.cards))).reduce((a, d) => a + Math.floor(weight(d) / 1e7) * 1e7, 0);
-                    const tainted = (d) => d.cards.some(c => info.used.has(c));   // 含這一波已用過的卡：只能排在下一波
                     let best = [], bestW = -1, nodes = 0, done = false;
                     const dfs = (start, chosen, used, w, tc) => {
                         if (done) return;
@@ -10998,11 +11013,13 @@
                             chosen.pop(); d.cards.forEach(c => used.delete(c));
                         }
                     };
-                    dfs(0, [], new Set(), 0, 0);
+                    dfs(0, locked.slice(), new Set(lockedCards), 0, lockedTainted);
                     // 排列：這一波剩下的刀數排不含已用卡的組（最佳那幾組照原本順序在前），含已用卡的組排在下一波
-                    const clean = best.filter(d => !tainted(d)).sort((x, y) => weight(y) - weight(x));
-                    const later = best.filter(d => tainted(d)).sort((x, y) => weight(y) - weight(x));
-                    [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort((x, y) => weight(y) - weight(x))].forEach(d => {
+                    // 模擬器的組照模擬器順序排最前面，其他依權重
+                    const ord = (x, y) => (x.sim ? 0 : 1) - (y.sim ? 0 : 1) || (x.sim ? locked.indexOf(x) - locked.indexOf(y) : weight(y) - weight(x));
+                    const clean = best.filter(d => !tainted(d)).sort(ord);
+                    const later = best.filter(d => tainted(d)).sort(ord);
+                    [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort(ord)].forEach(d => {
                         if (d.row) { all.push(d.row); return; }
                         const tg = hitParts(d.cards)
                             .map(k => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' }));

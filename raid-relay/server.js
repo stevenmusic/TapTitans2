@@ -1747,6 +1747,60 @@ app.get('/full-attack-log', async (req, res) => {
 // 不需要整場攻擊紀錄。
 // 每筆攻擊「打之前」的詛咒類型／詛咒甲部位／各部位層別（只有這個功能上線之後的新攻擊才有）。
 // key 是攻擊的 dedup key：`${attackDatetime || ts}_${player}`，網頁自己用同樣規則對應。since＝只回這個時間（毫秒）之後的
+/* ══════════════════════════════════════════════════════════
+   推薦牌組的模擬器情境（deck_scenarios）：原本寫死在網頁裡，改存在 Turso。
+   deck-scenarios.json 是情境清單的來源；開機時同步進 Turso（新的新增、有改的更新、
+   檔案裡已經拿掉的刪除），再從 Turso 讀進記憶體，網頁用 /deck-scenarios 來要。
+   出任何錯都不影響攻擊紀錄；Turso 讀不到時直接用檔案內容頂著。
+   ══════════════════════════════════════════════════════════ */
+const DECK_SCENARIOS_FILE = path.join(__dirname, 'deck-scenarios.json');
+let deckScenarios = [];
+// 同一組條件（加成、詛咒、各狀態部位數量、禁打的頭／肚子、詛咒甲位置、只剩單一部位）只會有一筆
+function deckScenarioKey(s) {
+  const c = s.counts || {};
+  return [s.buff, s.curse || '', s.cursed ?? '', c.armor, c.body, c.skeleton, c.banned,
+    (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|');
+}
+const deckScenariosReady = (async () => {
+  let seed = [];
+  try { seed = JSON.parse(fs.readFileSync(DECK_SCENARIOS_FILE, 'utf8')); } catch (e) { console.error('[scenarios] 讀取 deck-scenarios.json 失敗:', e.message); }
+  deckScenarios = seed;
+  try {
+    await dbReady;
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS deck_scenarios (
+        skey TEXT PRIMARY KEY,
+        sort INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    if (seed.length) {
+      const now = Date.now();
+      const keys = seed.map(deckScenarioKey);
+      await db.batch([
+        ...seed.map((s, i) => ({
+          sql: `INSERT INTO deck_scenarios (skey, sort, data, updated_at) VALUES (?, ?, ?, ?)
+                ON CONFLICT(skey) DO UPDATE SET sort = excluded.sort, data = excluded.data, updated_at = excluded.updated_at
+                WHERE deck_scenarios.data <> excluded.data OR deck_scenarios.sort <> excluded.sort`,
+          args: [keys[i], i, JSON.stringify(s), now]
+        })),
+        { sql: `DELETE FROM deck_scenarios WHERE skey NOT IN (${keys.map(() => '?').join(',')})`, args: keys }
+      ], 'write');
+    }
+    const result = await db.execute('SELECT data FROM deck_scenarios ORDER BY sort');
+    if (result.rows.length) deckScenarios = result.rows.map(r => JSON.parse(r.data));
+    console.log(`[scenarios] 已從 Turso 載入 ${deckScenarios.length} 個推薦牌組情境`);
+  } catch (e) {
+    console.error('[turso] 推薦牌組情境同步失敗（先用 deck-scenarios.json）:', e && e.message ? e.message : e);
+  }
+})();
+
+app.get('/deck-scenarios', async (req, res) => {
+  await deckScenariosReady;
+  res.json({ scenarios: deckScenarios });
+});
+
 app.get('/attack-context', (req, res) => {
   const since = Number(req.query.since) || 0;
   const out = {};

@@ -9682,7 +9682,10 @@
             const ids = Object.keys(RAID_CARD_IMAGE);
             simCardLibPromise = Promise.all(ids.map(id => new Promise(resolve => {
                 const img = new Image();
-                img.onload = () => resolve([id, simVec(img, 0, 0, img.naturalWidth, img.naturalHeight)]);
+                img.onload = () => {   // 截圖那邊只取圖示中間 76/92，圖庫也取同樣的中間區域（去掉外框）才比得準
+                    const w = img.naturalWidth, h = img.naturalHeight;
+                    resolve([id, simVec(img, w * 8 / 92, h * 8 / 92, w * 76 / 92, h * 76 / 92)]);
+                };
                 img.onerror = () => resolve([id, null]);
                 img.src = RAID_CARD_IMAGE[id];
             }))).then(list => list.filter(x => x[1]));
@@ -9697,22 +9700,70 @@
             return out;
         }
         function simMse(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return s / a.length; }
+        // 最小成本指派（Hungarian）：n 列配到 m 欄（n ≤ m），每欄最多用一次；回傳每列選到的欄
+        function simHungarian(cost) {
+            const n = cost.length, m = cost[0].length, INF = 1e18;
+            const u = new Array(n + 1).fill(0), v = new Array(m + 1).fill(0), p = new Array(m + 1).fill(0), way = new Array(m + 1).fill(0);
+            for (let i = 1; i <= n; i++) {
+                p[0] = i; let j0 = 0;
+                const minv = new Array(m + 1).fill(INF), used = new Array(m + 1).fill(false);
+                do {
+                    used[j0] = true;
+                    const i0 = p[j0]; let delta = INF, j1 = 0;
+                    for (let j = 1; j <= m; j++) if (!used[j]) {
+                        const cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+                        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                        if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+                    }
+                    for (let j = 0; j <= m; j++) { if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta; }
+                    j0 = j1;
+                } while (p[j0] !== 0);
+                do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+            }
+            const ans = new Array(n).fill(0);
+            for (let j = 1; j <= m; j++) if (p[j]) ans[p[j] - 1] = j - 1;
+            return ans;
+        }
+        // 辨識：先找出整張圖的位置偏移（不同機型／狀態列高度會讓圖示位置差幾個像素），再把 18 格一起做「不重複」的最佳配對
+        // （模擬器 6 組之間不會重複用卡，所以一張卡只能配給一格——這樣兩格長得像的時候，不會兩格都選到同一張卡）
         async function simAnalyzeImage(img) {
             const lib = await simCardLib();
+            const ids = lib.map(x => x[0]), L = lib.map(x => x[1]);
             const sc = img.naturalWidth / 923;
+            const costAt = (dx, dy) => {
+                const cells = [];
+                SIM_ICON_Y.forEach(y => SIM_ICON_X.forEach(x => cells.push(simVec(img, (x + 8 + dx) * sc, (y + 8 + dy) * sc, 76 * sc, 76 * sc))));
+                const M = cells.map(v => L.map(l => simMse(v, l)));
+                return M;
+            };
+            const objective = (M, dx, dy) => { const asg = simHungarian(M); return asg.reduce((a, j, i) => a + M[i][j], 0) + 3 * (dx * dx + dy * dy); };
+            let best = null;
+            for (let dy = -24; dy <= 24; dy += 6) for (let dx = -18; dx <= 18; dx += 6) {
+                const c = objective(costAt(dx, dy), dx, dy);
+                if (!best || c < best.c) best = { c, dx, dy };
+            }
+            const bx = best.dx, by = best.dy;
+            for (let dy = by - 4; dy <= by + 4; dy += 2) for (let dx = bx - 4; dx <= bx + 4; dx += 2) {
+                const c = objective(costAt(dx, dy), dx, dy);
+                if (c < best.c) best = { c, dx, dy };
+            }
+            const M = costAt(best.dx, best.dy), asg = simHungarian(M);
             const decks = [];
-            SIM_ICON_Y.forEach(y => {
-                const row = SIM_ICON_X.map(x => {
-                    const v = simVec(img, (x + 8) * sc, (y + 8) * sc, 76 * sc, 76 * sc);
+            for (let d = 0; d < 6; d++) {
+                const row = [];
+                for (let k = 0; k < 3; k++) {
+                    const i = d * 3 + k, j = asg[i];
+                    const x = SIM_ICON_X[k], y = SIM_ICON_Y[d];
                     const tc = document.createElement('canvas'); tc.width = 64; tc.height = 64;
-                    tc.getContext('2d').drawImage(img, (x + 8) * sc, (y + 8) * sc, 76 * sc, 76 * sc, 0, 0, 64, 64);
-                    const ranked = lib.map(([id, lv]) => [id, simMse(v, lv)]).sort((a, b) => a[1] - b[1]);
-                    const best = ranked[0], second = ranked[1];
-                    return { id: best[0], score: best[1], crop: tc.toDataURL('image/png'), uncertain: best[1] > 6500 || second[1] / Math.max(1, best[1]) < 1.12, alt: ranked.slice(0, 3).map(r => r[0]) };
-                });
+                    tc.getContext('2d').drawImage(img, (x + 8 + best.dx) * sc, (y + 8 + best.dy) * sc, 76 * sc, 76 * sc, 0, 0, 64, 64);
+                    const ranked = M[i].map((c, jj) => [jj, c]).sort((a, b) => a[1] - b[1]);
+                    const alt = ranked.find(r => r[0] !== j);
+                    row.push({ id: ids[j], score: M[i][j], crop: tc.toDataURL('image/png'), uncertain: M[i][j] > 6500 || (alt && alt[1] / Math.max(1, M[i][j]) < 1.08) || ranked[0][0] !== j,
+                        alt: ranked.slice(0, 3).map(r => ids[r[0]]) });
+                }
                 decks.push(row);
-            });
-            return { decks, aspect: img.naturalHeight / img.naturalWidth };
+            }
+            return { decks, aspect: img.naturalHeight / img.naturalWidth, offset: { dx: best.dx, dy: best.dy } };
         }
 
         const simImp = { analysis: null, imgUrl: null };

@@ -9095,6 +9095,7 @@
         // 情境存在 Turso，由伺服器的 /deck-scenarios 提供（新增情境改 raid-relay/deck-scenarios.json）。
         // 上次查到的存在這台裝置，開網頁先用它，背景再向伺服器查最新的；查到不一樣就重新排推薦牌組
         const BY_PART_SCEN_CACHE_KEY = 'tt2_deck_scenarios_cache';
+        const SIM_ADMIN_KEY_STORE = 'tt2_scenario_admin_key';   // 上傳情境用的管理密碼（只存在這支手機）
         let BY_PART_GAME_SCENARIOS = (() => {
             try { const x = JSON.parse(localStorage.getItem(BY_PART_SCEN_CACHE_KEY) || '[]'); return Array.isArray(x) ? x : []; } catch (e) { return []; }
         })();
@@ -9378,7 +9379,7 @@
                         ${saved.length ? '<button class="si-btn ghost" style="margin-top:8px;" onclick="simImportCopy()">📋 複製全部（文字備份）</button>' : ''}
                     </div>
                 </div>
-                ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave()">儲存並更新推薦牌組</button></div>' : ''}
+                ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
             </div>`;
             const nb = m.querySelector('.si-body'); if (nb) nb.scrollTop = keepScroll;
             if (a) { simImportCheckSum(); simImportMarkDup(); }
@@ -9435,7 +9436,7 @@
                 if (msg()) msg().textContent = '讀取圖片失敗，請換一張再試。';
             }
         }
-        function simImportSave() {
+        async function simImportSave(toServer) {
             const a = simImp.analysis;
             if (!a) return;
             const v = (id) => Number(document.getElementById(id).value) || 0;
@@ -9458,6 +9459,30 @@
             const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
             const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts, banned, bannedParts: torsoBanned,
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };
+            // 上傳到伺服器（存進 Turso，所有人開網頁都會拿到）：要管理密碼，第一次輸入後記在這支手機
+            if (toServer) {
+                let adminKey = '';
+                try { adminKey = localStorage.getItem(SIM_ADMIN_KEY_STORE) || ''; } catch (e) {}
+                if (!adminKey) adminKey = (prompt('請輸入管理密碼（第一次輸入後會記在這支手機）') || '').trim();
+                if (!adminKey) return;
+                const { user, banned: _b, savedAt, ...up } = sc;
+                up.note = simScenarioTitle(sc) + '（手機上傳）';
+                try {
+                    const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    const res = await fetch(`${relayUrl}/deck-scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify({ scenario: up }) });
+                    const j = await res.json().catch(() => ({}));
+                    if (res.status === 401) { try { localStorage.removeItem(SIM_ADMIN_KEY_STORE); } catch (e) {} return fail('管理密碼不對，請再按一次重新輸入。'); }
+                    if (!res.ok) return fail('上傳失敗：' + (j.error || res.status));
+                    try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
+                } catch (e) { return fail('上傳失敗：連不到伺服器，請稍後再試。'); }
+                await byPartScenariosFetch();
+                simImp.analysis = null;
+                byPartRecoSig = ''; byPartRecoRefresh();
+                renderSimImport();
+                const m3 = document.getElementById('sim-imp-msg');
+                if (m3) { m3.textContent = '✔ 已上傳到伺服器，所有人的推薦牌組都會更新。'; m3.style.color = '#2e7d32'; m3.style.fontWeight = '700'; }
+                return;
+            }
             // 同樣條件（加成、詛咒、數量、禁打）已經有自訂情境就取代
             const key = (x) => [x.buff, x.curse || '', x.cursed, x.counts.armor, x.counts.body, x.counts.skeleton, x.counts.banned, (x.bannedParts || []).slice().sort().join('+')].join('|');
             const list = byPartUserScenarios().filter(x => key(x) !== key(sc));

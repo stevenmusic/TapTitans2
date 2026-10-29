@@ -10978,7 +10978,8 @@
                     const simRows = byPartGameRows(raidState.parts, raidBannedParts, raidSimActive ? simBuffKey() : currentSessionBuff(), cursedNow > 0 ? raidCurseInfo : [], data) || [];
                     const locked = [], lockedCards = new Set();
                     let lockedTainted = 0;
-                    simRows.forEach(r => {
+                    // 剩 6 刀以內才鎖定模擬器的組；剩超過 6 刀時以「組數最多」優先（模擬器的組仍然優先選，但可以為了多湊幾組換掉）
+                    (info.remaining <= RAID_ATTACKS_PER_CYCLE ? simRows : []).forEach(r => {
                         const d = { cards: r.rawCards || r.cards, attacks: 0, row: r, sim: true };
                         if (locked.length >= left || d.cards.some(c => lockedCards.has(c) || BY_PART_RECO_EXCLUDE.has(c))) return;
                         const t = tainted(d) ? 1 : 0;

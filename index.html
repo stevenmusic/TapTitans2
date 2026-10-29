@@ -3531,6 +3531,7 @@
     <div class="app-nav-menu" id="app-nav-menu">
         <button onclick="closeAppNavMenu(); showView('players');">👥 <span data-nav-label="players"></span></button>
         <button onclick="closeAppNavMenu(); showView('raidStatus'); toggleRaidSettingsSheet(true);">⚙️ <span data-nav-label="settings"></span></button>
+        <button onclick="closeAppNavMenu(); openSimImport();">🖼 匯入模擬器圖片</button>
         <button onclick="closeAppNavMenu(); toggleLanguage();">🌐 中文／English</button>
     </div>
 
@@ -9619,6 +9620,245 @@
             }
         ];
         let byPartRecoAllowCards = null;   // 玩家專屬推薦：只能用這些卡（Set）；null＝不限
+        /* ══════════════════════════════════════════════════════════
+           匯入模擬器圖片：選一張模擬器（Sim Results）截圖 → 自動辨識 6 組牌的 18 張卡 → 你確認／修正，
+           再選加成類型、詛咒類型、詛咒甲／盔甲／肉體／骨架數量、禁打部位 → 存成「自訂情境」，推薦牌組立刻照它排。
+           自訂情境存在這台裝置的瀏覽器（localStorage），優先於程式內建的情境；可以刪除，也可以複製成文字備份
+           ══════════════════════════════════════════════════════════ */
+        const BY_PART_USER_SCEN_KEY = 'tt2_user_scenarios';
+        let byPartUserScenCache = null;
+        function byPartUserScenarios() {
+            if (byPartUserScenCache) return byPartUserScenCache;
+            try {
+                const raw = JSON.parse(localStorage.getItem(BY_PART_USER_SCEN_KEY) || '[]');
+                byPartUserScenCache = Array.isArray(raw) ? raw.filter(x => x && x.decks && x.counts && x.buff) : [];
+            } catch (e) { byPartUserScenCache = []; }
+            return byPartUserScenCache;
+        }
+        function byPartUserScenSave(list) {
+            byPartUserScenCache = list;
+            try { localStorage.setItem(BY_PART_USER_SCEN_KEY, JSON.stringify(list)); return true; } catch (e) { return false; }
+        }
+        function byPartAllScenarios() { return [...byPartUserScenarios(), ...BY_PART_GAME_SCENARIOS]; }
+
+        // 牌組類型（模擬器每組牌上面的標題）→ 情境裡的 role／focus
+        const SIM_DECK_TYPES = [
+            ['cycle', 'Cycle／Fuse／Bait（全部位）', { role: 'cycle' }],
+            ['head', 'Focus Head（頭）', { role: 'head' }],
+            ['torso', 'Focus Torso（頭＋肚）', { role: 'torso' }],
+            ['armor', 'Focus Armor（盔甲）', { role: 'armor' }],
+            ['body', 'Focus Body（肉體）', { role: 'body' }],
+            ['cursed1', 'Focus One Cursed Armor（1 個詛咒甲）', { role: 'cursed1' }],
+            ['limbs', 'Focus Limbs（四肢）', { role: 'limbs' }],
+            ['limb1', 'Focus One Limb（1 個四肢）', { role: 'limb1' }],
+            ['any2', 'Focus Two（任意 2 部位）', { role: 'any', focus: 2 }],
+            ['any3', 'Focus Three（任意 3 部位）', { role: 'any', focus: 3 }],
+            ['any4', 'Focus Four（任意 4 部位）', { role: 'any', focus: 4 }],
+            ['limbs2', 'Focus Two Limbs', { role: 'limbs', focus: 2 }],
+            ['limbs3', 'Focus Three Limbs', { role: 'limbs', focus: 3 }],
+            ['limbs4', 'Focus Four Limbs', { role: 'limbs', focus: 4 }]
+        ];
+        function simDeckTypeKeyOf(deck) {
+            const f = deck.focus || 0;
+            if (deck.role === 'any') return 'any' + (f || 3);
+            if (deck.role === 'limbs' && f) return 'limbs' + f;
+            return deck.role || 'cycle';
+        }
+        // 內建情境裡出現過的牌組 → 自動猜它是哪一種牌組類型
+        function simGuessDeckType(cards) {
+            const sig = cards.slice().sort().join();
+            for (const sc of BY_PART_GAME_SCENARIOS) {
+                const d = sc.decks.find(x => x.cards.slice().sort().join() === sig);
+                if (d) return simDeckTypeKeyOf(d);
+            }
+            return 'cycle';
+        }
+
+        // 模擬器截圖上 6 組牌的圖示位置（以 923 寬為基準；iPhone 直式截圖通用），每個圖示取中間 76×76，避開綠框
+        const SIM_ICON_X = [95, 208, 321], SIM_ICON_Y = [565, 795, 1025, 1257, 1487, 1717];
+        let simCardLibPromise = null;
+        function simCardLib() {
+            if (simCardLibPromise) return simCardLibPromise;
+            const ids = Object.keys(RAID_CARD_IMAGE);
+            simCardLibPromise = Promise.all(ids.map(id => new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => resolve([id, simVec(img, 0, 0, img.naturalWidth, img.naturalHeight)]);
+                img.onerror = () => resolve([id, null]);
+                img.src = RAID_CARD_IMAGE[id];
+            }))).then(list => list.filter(x => x[1]));
+            return simCardLibPromise;
+        }
+        function simVec(img, sx, sy, sw, sh) {
+            const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+            const g = c.getContext('2d', { willReadFrequently: true });
+            g.drawImage(img, sx, sy, sw, sh, 0, 0, 32, 32);
+            const d = g.getImageData(0, 0, 32, 32).data, out = new Float32Array(32 * 32 * 3);
+            for (let i = 0, j = 0; i < d.length; i += 4) { out[j++] = d[i]; out[j++] = d[i + 1]; out[j++] = d[i + 2]; }
+            return out;
+        }
+        function simMse(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return s / a.length; }
+        async function simAnalyzeImage(img) {
+            const lib = await simCardLib();
+            const sc = img.naturalWidth / 923;
+            const decks = [];
+            SIM_ICON_Y.forEach(y => {
+                const row = SIM_ICON_X.map(x => {
+                    const v = simVec(img, (x + 8) * sc, (y + 8) * sc, 76 * sc, 76 * sc);
+                    const ranked = lib.map(([id, lv]) => [id, simMse(v, lv)]).sort((a, b) => a[1] - b[1]);
+                    const best = ranked[0], second = ranked[1];
+                    return { id: best[0], score: best[1], uncertain: best[1] > 6500 || second[1] / Math.max(1, best[1]) < 1.12, alt: ranked.slice(0, 3).map(r => r[0]) };
+                });
+                decks.push(row);
+            });
+            return { decks, aspect: img.naturalHeight / img.naturalWidth };
+        }
+
+        const simImp = { analysis: null, imgUrl: null };
+        function openSimImport() {
+            let m = document.getElementById('sim-import-modal');
+            if (!m) {
+                m = document.createElement('div');
+                m.id = 'sim-import-modal';
+                m.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:10002; display:flex; align-items:flex-start; justify-content:center; padding:12px; box-sizing:border-box; overflow-y:auto;';
+                m.addEventListener('click', (e) => { if (e.target === m) closeSimImport(); });
+                document.body.appendChild(m);
+            }
+            m.style.display = 'flex';
+            renderSimImport();
+        }
+        function closeSimImport() { const m = document.getElementById('sim-import-modal'); if (m) m.style.display = 'none'; }
+        function simOptionsHtml(list, sel) { return list.map(([v, l]) => `<option value="${v}"${String(v) === String(sel) ? ' selected' : ''}>${escapeHtml(l)}</option>`).join(''); }
+
+        function renderSimImport() {
+            const m = document.getElementById('sim-import-modal');
+            if (!m) return;
+            const cardOpts = Object.keys(RAID_CARD_IMAGE).map(id => [id, raidCardLabel(id)]);
+            const a = simImp.analysis;
+            const saved = byPartUserScenarios();
+            const buffOpts = Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label]);
+            const nums = (id, v) => `<input id="${id}" type="number" min="0" max="8" value="${v}" style="width:46px; padding:4px; border:1px solid #d9cce8; border-radius:6px; font:inherit; text-align:center;">`;
+            const deckHtml = a ? a.decks.map((row, di) => {
+                const guess = simGuessDeckType(row.map(c => c.id));
+                return `<div style="border:1px solid #e8dcc8; border-radius:8px; padding:6px; margin-bottom:6px; background:#fffaf0;">
+                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                        <b style="font-size:12px; color:#6b4a8a;">第 ${di + 1} 組</b>
+                        <select id="sim-imp-type-${di}" style="font:inherit; font-size:12px; padding:3px; border:1px solid #d9cce8; border-radius:6px; flex:1; min-width:0;">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select>
+                    </div>
+                    <div style="display:flex; gap:6px; margin-top:5px;">${row.map((c, ci) => `<div style="flex:1; min-width:0; text-align:center;">
+                        <img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" style="width:44px; height:44px; border-radius:7px; object-fit:cover; ${c.uncertain ? 'outline:2px solid #e67e22;' : ''}">
+                        <select id="sim-imp-card-${di}-${ci}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''" style="width:100%; font:inherit; font-size:11px; padding:2px; margin-top:2px; border:1px solid ${c.uncertain ? '#e67e22' : '#d9cce8'}; border-radius:6px;">${simOptionsHtml(cardOpts, c.id)}</select>
+                    </div>`).join('')}</div>
+                </div>`;
+            }).join('') : '';
+            const partChips = RAID_PARTS.map(p => `<label style="display:inline-flex; align-items:center; gap:3px; margin:2px 6px 2px 0; font-size:12.5px;"><input type="checkbox" class="sim-imp-ban" value="${p.key}" onchange="simImportCheckSum()"> ${escapeHtml(raidPartLabel(p.key))}</label>`).join('');
+            m.innerHTML = `<div style="background:#fffdf8; border-radius:12px; width:100%; max-width:520px; padding:14px; box-sizing:border-box; font-size:13px; color:#4a3728;">
+                <div style="display:flex; justify-content:space-between; align-items:center;"><b style="font-size:15px;">🖼 匯入模擬器圖片</b><button onclick="closeSimImport()" style="border:none; background:none; font-size:20px; cursor:pointer;">✕</button></div>
+                <div style="margin:8px 0; color:#8a7a6a; font-size:12px;">選一張模擬器「Sim Results」的截圖，我會辨識 6 組牌的卡片；確認後選好狀態，存起來，推薦牌組就會照這張排。</div>
+                <input type="file" id="sim-imp-file" accept="image/*" onchange="simImportPick(this.files[0]); this.value='';">
+                <div id="sim-imp-msg" style="margin:6px 0; font-size:12px; color:#8a7a6a;"></div>
+                ${a ? `<div style="font-size:12px; color:#8a7a6a; margin-bottom:4px;">橘框＝不確定，請核對圖示和下拉選單的卡名是否一致，不一致就用選單改。<br>每組的「牌組類型」是我依內建情境猜的，請照截圖上每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）重新確認。</div>${deckHtml}
+                <div style="border-top:1px dashed #e0d4c0; margin-top:8px; padding-top:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+                        <label>加成類型 <select id="sim-imp-buff" style="font:inherit; padding:3px; border:1px solid #d9cce8; border-radius:6px;">${simOptionsHtml(buffOpts, 'afflictionChance')}</select></label>
+                        <label>詛咒類型 <select id="sim-imp-curse" style="font:inherit; padding:3px; border:1px solid #d9cce8; border-radius:6px;">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], '')}</select></label>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+                        <label>詛咒甲 ${nums('sim-imp-cursed', 0)}</label><label>盔甲（含詛咒甲） ${nums('sim-imp-armor', 0)}</label><label>肉體 ${nums('sim-imp-body', 0)}</label><label>骨架 ${nums('sim-imp-skel', 0)}</label>
+                    </div>
+                    <div style="margin-bottom:4px;">禁打部位：${partChips}</div>
+                    <div id="sim-imp-sum" style="font-size:12px; color:#8a7a6a; margin-bottom:6px;"></div>
+                    <button onclick="simImportSave()" style="padding:8px 14px; border:none; border-radius:8px; background:#8e6a3a; color:#fff; font:inherit; font-weight:700; cursor:pointer;">儲存並更新推薦牌組</button>
+                </div>` : ''}
+                <div style="border-top:1px solid #e8dcc8; margin-top:12px; padding-top:8px;">
+                    <b style="font-size:13px;">已儲存的自訂情境（${saved.length}）</b>
+                    ${saved.length ? saved.map((sc, i) => `<div style="display:flex; gap:6px; align-items:center; margin-top:5px; font-size:12px;">
+                        <span style="flex:1; min-width:0;">${escapeHtml(simScenarioTitle(sc))}</span>
+                        <button onclick="simImportDelete(${i})" style="border:1px solid #e0c0c0; background:#fff; color:#c0392b; border-radius:6px; padding:2px 8px; font:inherit; cursor:pointer;">刪除</button></div>`).join('') : '<div style="color:#8a7a6a; font-size:12px; margin-top:4px;">還沒有。</div>'}
+                    ${saved.length ? '<button onclick="simImportCopy()" style="margin-top:8px; padding:4px 10px; border:1px solid #d9cce8; background:#fff; border-radius:6px; font:inherit; font-size:12px; cursor:pointer;">📋 複製全部（文字備份）</button>' : ''}
+                </div></div>`;
+            if (a) simImportCheckSum();
+        }
+        function simScenarioTitle(sc) {
+            const c = sc.counts;
+            const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
+            const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
+            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${c.skeleton}｜禁打 ${ban}`;
+        }
+        function simImportCheckSum() {
+            const el = document.getElementById('sim-imp-sum');
+            if (!el) return;
+            const v = (id) => Number(document.getElementById(id).value) || 0;
+            const ban = document.querySelectorAll('.sim-imp-ban:checked').length;
+            const total = v('sim-imp-armor') + v('sim-imp-body') + v('sim-imp-skel') + ban;
+            el.textContent = `盔甲＋肉體＋骨架＋禁打＝${total}（要等於 8）` + (total === 8 ? ' ✔' : ' ✘');
+            el.style.color = total === 8 ? '#2e7d32' : '#c0392b';
+        }
+        async function simImportPick(file) {
+            const msg = () => document.getElementById('sim-imp-msg');
+            if (!file) return;
+            if (msg()) msg().textContent = '辨識中…';
+            try {
+                const url = URL.createObjectURL(file);
+                const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+                const result = await simAnalyzeImage(img);
+                URL.revokeObjectURL(url);
+                simImp.analysis = result;
+                renderSimImport();
+                const m2 = document.getElementById('sim-imp-msg');
+                if (m2) m2.textContent = (result.aspect < 2.0 || result.aspect > 2.35) ? '這張圖的長寬比跟一般 iPhone 截圖不同，位置可能對不準，請逐張核對卡片。' : '辨識完成，請核對卡片後填下面的狀態。';
+            } catch (e) {
+                if (msg()) msg().textContent = '讀取圖片失敗，請換一張再試。';
+            }
+        }
+        function simImportSave() {
+            const a = simImp.analysis;
+            if (!a) return;
+            const v = (id) => Number(document.getElementById(id).value) || 0;
+            const banned = [...document.querySelectorAll('.sim-imp-ban:checked')].map(e => e.value);
+            const counts = { armor: v('sim-imp-armor'), body: v('sim-imp-body'), skeleton: v('sim-imp-skel'), banned: banned.length };
+            const cursed = v('sim-imp-cursed'), curse = document.getElementById('sim-imp-curse').value;
+            const msg = document.getElementById('sim-imp-msg');
+            const fail = (t) => { if (msg) { msg.textContent = t; msg.style.color = '#c0392b'; msg.scrollIntoView({ block: 'center' }); } };
+            if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋骨架＋禁打 要等於 8。');
+            if (cursed > counts.armor) return fail('詛咒甲不能比盔甲多（盔甲數要含詛咒甲）。');
+            if (cursed > 0 && !curse) return fail('有詛咒甲的話，請選詛咒類型。');
+            const decks = a.decks.map((row, di) => {
+                const cards = row.map((c, ci) => document.getElementById(`sim-imp-card-${di}-${ci}`).value);
+                const t2 = SIM_DECK_TYPES.find(x => x[0] === document.getElementById(`sim-imp-type-${di}`).value) || SIM_DECK_TYPES[0];
+                return { cards, ...t2[2] };
+            });
+            const all = decks.flatMap(d => d.cards);
+            if (new Set(all).size !== all.length) return fail('18 張卡裡有重複的卡，請核對辨識結果（模擬器 6 組之間不會重複用卡）。');
+            const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
+            const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts, banned, bannedParts: torsoBanned,
+                needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };
+            // 同樣條件（加成、詛咒、數量、禁打）已經有自訂情境就取代
+            const key = (x) => [x.buff, x.curse || '', x.cursed, x.counts.armor, x.counts.body, x.counts.skeleton, x.counts.banned, (x.bannedParts || []).slice().sort().join('+')].join('|');
+            const list = byPartUserScenarios().filter(x => key(x) !== key(sc));
+            list.unshift(sc);
+            if (!byPartUserScenSave(list)) return fail('儲存失敗（瀏覽器儲存空間不夠或被封鎖）。');
+            simImp.analysis = null;
+            byPartRecoSig = ''; byPartRecoRefresh();
+            if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+            renderSimImport();
+            const m2 = document.getElementById('sim-imp-msg');
+            if (m2) { m2.textContent = '已儲存，推薦牌組已更新。'; m2.style.color = '#2e7d32'; }
+        }
+        function simImportDelete(i) {
+            const list = byPartUserScenarios().slice();
+            list.splice(i, 1);
+            byPartUserScenSave(list);
+            byPartRecoSig = ''; byPartRecoRefresh();
+            if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+            renderSimImport();
+        }
+        function simImportCopy() {
+            const text = JSON.stringify(byPartUserScenarios());
+            const done = () => { const m2 = document.getElementById('sim-imp-msg'); if (m2) m2.textContent = '已複製。'; };
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => prompt('複製這段文字：', text));
+            else prompt('複製這段文字：', text);
+        }
+
         function byPartGameRows(parts, banned, buffKey, curseTypes, data) {
             const scene = byPartPartsToScene(parts, banned);
             const base = (s) => (s === 'cursed' ? 'armor' : s);
@@ -9631,7 +9871,7 @@
             // 禁打的部位：只有「頭、肚子有沒有禁打」會讓模擬器配卡不同；四肢（肩、手、腳）哪幾個禁打不影響，只看數量。
             // 所以情境的禁打頭肚組合（沒禁打頭肚／只禁肚子／只禁頭／頭肚都禁）要跟現在一樣才套用
             const torsoBanKey = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
-            const matches = BY_PART_GAME_SCENARIOS.filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && torsoBanKey(x.bannedParts || []) === torsoBanKey(banned || []));
+            const matches = byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && torsoBanKey(x.bannedParts || []) === torsoBanKey(banned || []));
             const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed !== undefined) || matches[0];   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

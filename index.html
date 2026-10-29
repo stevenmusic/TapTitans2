@@ -8282,7 +8282,7 @@
             InnerTruth:     { tag: '頭肚', kind: 'part', note: '只能攻擊頭部和肚子' },
             ExecutionersAxe:{ tag: '頭肚', kind: 'part', note: '只能攻擊頭部和肚子' },
             SkullBash:      { tag: '頭腳', kind: 'part', note: '只能攻擊頭部和雙腳' },
-            MoonBeam:       { tag: '肚手', kind: 'part', note: '只能攻擊肚子和雙手' },
+            MoonBeam:       { tag: '肚手肩', kind: 'part', note: '只能攻擊肚子、雙手和雙肩' },
             CelestialStatic:{ tag: '頭肚觸發', kind: 'part', note: '爆發只在敲擊非四肢部位（頭部、肚子）時觸發；敲四肢只會累積電荷' },
             LimbBurst:      { tag: '四肢', kind: 'part', note: '只能攻擊四肢' },
             FinisherAttack: { tag: '骨架≥6', kind: 'cond', note: '' },
@@ -8830,9 +8830,9 @@
         function toggleByPartPoolOpen() { byPartPoolOpen = !byPartPoolOpen; byPartPoolRefresh(); }
 
         // 一張卡的圖片（含底部的限制標籤）
-        // 推薦牌組顯示時的禁打部位：限定部位卡的標籤（頭肚、肚手、頭腳）拿掉現在禁打的部位，例如肚子禁打時「頭肚」只寫「頭」
+        // 推薦牌組顯示時的禁打部位：限定部位卡的標籤（頭肚、肚手肩、頭腳）拿掉現在禁打的部位，例如肚子禁打時「頭肚」只寫「頭」
         let byPartBadgeBanned = null;
-        const BY_PART_BADGE_PARTS = { 頭: ['Head'], 肚: ['ChestUpper'], 手: ['HandLeft', 'HandRight'], 腳: ['LegUpperLeft', 'LegUpperRight'] };
+        const BY_PART_BADGE_PARTS = { 頭: ['Head'], 肚: ['ChestUpper'], 手: ['HandLeft', 'HandRight'], 肩: ['ArmUpperLeft', 'ArmUpperRight'], 腳: ['LegUpperLeft', 'LegUpperRight'] };
         function byPartBadgeText(limit) {
             if (!limit || limit.kind !== 'part' || !byPartBadgeBanned || !byPartBadgeBanned.length || limit.tag === '四肢') return limit ? limit.tag : '';
             const kept = [...limit.tag].filter(ch => !BY_PART_BADGE_PARTS[ch] || BY_PART_BADGE_PARTS[ch].some(k => !byPartBadgeBanned.includes(k)));
@@ -9062,7 +9062,7 @@
         const BY_PART_RECO_PART_SETS = {
             '頭肚': ['Head', 'ChestUpper'],
             '頭腳': ['Head', 'LegUpperLeft', 'LegUpperRight'],
-            '肚手': ['ChestUpper', 'HandLeft', 'HandRight'],
+            '肚手肩': ['ChestUpper', 'HandLeft', 'HandRight', 'ArmUpperLeft', 'ArmUpperRight'],
             '四肢': ['ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
         };
         // 說服力門檻：一組牌除了刀數夠，還要有足夠多不同的人在用（避免一兩個人反覆用同一組就上榜）：
@@ -9507,7 +9507,7 @@
             const keyOf = (c) => c.slice().sort().join();
             sc.decks.forEach((g, i) => {
                 // 前 15 名真的用過的刀數太少（不到 BY_PART_GAME_MIN_USE 刀，含 0 次）的模擬器組合不放，空出來的位置由原本的算法用常用牌組補
-                // 禁打的部位每次都不一樣（情境只記禁打幾個）：這組牌裡「限定部位」的卡（頭肚、頭腳、肚手、四肢）要至少有一個現在能打的部位，
+                // 禁打的部位每次都不一樣（情境只記禁打幾個）：這組牌裡「限定部位」的卡（頭肚、頭腳、肚手肩、四肢）要至少有一個現在能打的部位，
                 // 三張卡都打得到才放；放不了的（例如頭和肚子都禁打時的鏡子力＋破碎本能那組）不放，空出來的位置由歷史統計補。
                 // 只看部位限制，不看盔甲／肉體、詛咒、肉體數量這些狀態條件（這些照模擬器）
                 if (byPartRecoAllowCards && !g.cards.every(n => byPartRecoAllowCards.has(n))) return;
@@ -9670,7 +9670,7 @@
                 const onlyLayers = d.cards.map(n => CARD_ONLY_WHEN[n] ? CARD_ONLY_WHEN[n](all) : undefined);
                 const onlyLayer = onlyLayers.find(l => l);
 
-                // 限定部位的卡（頭肚、頭腳、肚手、四肢）：整組牌組能打的部位只剩這些卡都能打的交集
+                // 限定部位的卡（頭肚、頭腳、肚手肩、四肢）：整組牌組能打的部位只剩這些卡都能打的交集
                 let allowed = null;
                 d.cards.forEach(n => {
                     const set = CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null;
@@ -9948,7 +9948,7 @@
                 if (!(r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length)) return;
                 // 同組有核融炸彈（多部位卡）：部位以核融炸彈為優先，標所有還有盔甲的部位，不套用連貫／最厚的規則
                 if (r.rawCards.includes('Fuse')) { r.targets = armorNow; r.allParts = false; r.focus = 0; return; }
-                // 同組有指定部位的卡（頭肚、頭腳、肚手、四肢…）：部位由那些卡決定（還有盔甲、而且那些卡都打得到的部位），不套用上面的連貫規則
+                // 同組有指定部位的卡（頭肚、頭腳、肚手肩、四肢…）：部位由那些卡決定（還有盔甲、而且那些卡都打得到的部位），不套用上面的連貫規則
                 const sets = r.rawCards.filter(n => n !== 'FlakShot' && CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part').map(n => BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag]).filter(Boolean);
                 if (sets.length) {
                     const tg = armorNow.filter(x => sets.every(st => st.includes(x.part)));
@@ -10875,7 +10875,7 @@
                     const sigOf = (cards) => cards.slice().sort().join();
                     const realSigs = new Set(data.decks.map(d => sigOf(d.cards)));
                     const scene = byPartPartsToScene(raidState.parts, raidBannedParts);
-                    // 照現在王的部位狀態判斷：三張卡（含限定部位的卡：頭肚、頭腳、肚手、四肢）都要打得到同一個現在能打的部位（禁打、骨架不算）
+                    // 照現在王的部位狀態判斷：三張卡（含限定部位的卡：頭肚、頭腳、肚手肩、四肢）都要打得到同一個現在能打的部位（禁打、骨架不算）
                     const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
                     const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
                     const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));

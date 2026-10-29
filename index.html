@@ -9704,9 +9704,11 @@
             SIM_ICON_Y.forEach(y => {
                 const row = SIM_ICON_X.map(x => {
                     const v = simVec(img, (x + 8) * sc, (y + 8) * sc, 76 * sc, 76 * sc);
+                    const tc = document.createElement('canvas'); tc.width = 64; tc.height = 64;
+                    tc.getContext('2d').drawImage(img, (x + 8) * sc, (y + 8) * sc, 76 * sc, 76 * sc, 0, 0, 64, 64);
                     const ranked = lib.map(([id, lv]) => [id, simMse(v, lv)]).sort((a, b) => a[1] - b[1]);
                     const best = ranked[0], second = ranked[1];
-                    return { id: best[0], score: best[1], uncertain: best[1] > 6500 || second[1] / Math.max(1, best[1]) < 1.12, alt: ranked.slice(0, 3).map(r => r[0]) };
+                    return { id: best[0], score: best[1], crop: tc.toDataURL('image/png'), uncertain: best[1] > 6500 || second[1] / Math.max(1, best[1]) < 1.12, alt: ranked.slice(0, 3).map(r => r[0]) };
                 });
                 decks.push(row);
             });
@@ -9736,7 +9738,12 @@
                     #sim-import-modal .si-deck-top select { flex:1; min-width:0; }
                     #sim-import-modal .si-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
                     #sim-import-modal .si-cell { text-align:center; min-width:0; }
-                    #sim-import-modal .si-cell img { width:52px; height:52px; border-radius:10px; object-fit:cover; display:block; margin:0 auto 4px; }
+                    #sim-import-modal .si-pair { display:flex; justify-content:center; gap:4px; margin-bottom:4px; }
+                    #sim-import-modal .si-pair > div { text-align:center; }
+                    #sim-import-modal .si-pair small { display:block; font-size:10px; color:#8a7a6a; margin-top:1px; }
+                    #sim-import-modal .si-cell img { width:40px; height:40px; border-radius:8px; object-fit:cover; display:block; margin:0 auto; }
+                    #sim-import-modal .si-cell select.dup { border-color:#d32f2f; background:#fdeaea; color:#b71c1c; }
+                    #sim-import-modal .si-dupmsg { font-size:12px; color:#b71c1c; background:#fdeaea; border-radius:8px; padding:6px 10px; margin-bottom:8px; display:none; }
                     #sim-import-modal .si-cell img.unsure { outline:3px solid #e67e22; outline-offset:1px; }
                     #sim-import-modal .si-cell select { width:100%; padding:5px 2px; font-size:14px; text-align:center; text-align-last:center; }
                     #sim-import-modal .si-cell select.unsure { border-color:#e67e22; }
@@ -9783,8 +9790,8 @@
                     <div class="si-deck-top"><span class="si-no">${di + 1}</span>
                         <select id="sim-imp-type-${di}">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select></div>
                     <div class="si-cards">${row.map((c, ci) => `<div class="si-cell">
-                        <img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}">
-                        <select id="sim-imp-card-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''">${simOptionsHtml(cardOpts, c.id)}</select>
+                        <div class="si-pair"><div><img src="${c.crop}" class="${c.uncertain ? 'unsure' : ''}"><small>截圖</small></div><div><img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}"><small>選的卡</small></div></div>
+                        <select id="sim-imp-card-${di}-${ci}" data-d="${di}" data-c="${ci}" class="${c.uncertain ? 'unsure' : ''}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''; simImportMarkDup();">${simOptionsHtml(cardOpts, c.id)}</select>
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
@@ -9804,6 +9811,7 @@
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>
                         <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定，請看圖示跟卡名是否一致。「牌組類型」是我猜的，請照截圖每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）確認。</div>
+                        <div id="sim-imp-dupmsg" class="si-dupmsg"></div>
                         ${deckHtml}
                     </div>
                     <div class="si-card">
@@ -9827,13 +9835,31 @@
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave()">儲存並更新推薦牌組</button></div>' : ''}
             </div>`;
             const nb = m.querySelector('.si-body'); if (nb) nb.scrollTop = keepScroll;
-            if (a) simImportCheckSum();
+            if (a) { simImportCheckSum(); simImportMarkDup(); }
         }
         function simScenarioTitle(sc) {
             const c = sc.counts;
             const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
             const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
             return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${c.skeleton}｜禁打 ${ban}`;
+        }
+        // 重複的卡：下拉選單標紅、上面列出哪張卡在第幾組
+        function simImportDupInfo() {
+            const pos = {};
+            document.querySelectorAll('#sim-import-modal select[id^="sim-imp-card-"]').forEach(sel => {
+                (pos[sel.value] = pos[sel.value] || []).push(Number(sel.dataset.d) + 1);
+            });
+            return Object.entries(pos).filter(([, l]) => l.length > 1);
+        }
+        function simImportMarkDup() {
+            const dups = new Set(simImportDupInfo().map(x => x[0]));
+            document.querySelectorAll('#sim-import-modal select[id^="sim-imp-card-"]').forEach(sel => sel.classList.toggle('dup', dups.has(sel.value)));
+            const box = document.getElementById('sim-imp-dupmsg');
+            if (box) {
+                const info = simImportDupInfo();
+                box.style.display = info.length ? 'block' : 'none';
+                box.textContent = info.length ? '重複的卡：' + info.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。請對照「截圖」那張小圖，確認是不是選錯了。' : '';
+            }
         }
         function simImportCheckSum() {
             const el = document.getElementById('sim-imp-sum');
@@ -9881,7 +9907,8 @@
                 return { cards, ...t2[2] };
             });
             const all = decks.flatMap(d => d.cards);
-            if (new Set(all).size !== all.length) return fail('18 張卡裡有重複的卡，請核對辨識結果（模擬器 6 組之間不會重複用卡）。');
+            const dupInfo = simImportDupInfo();
+            if (dupInfo.length && !confirm('有重複的卡：' + dupInfo.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。\n如果截圖上真的是同一張卡出現在不同組，按「確定」照樣儲存；不是的話按「取消」回去修改。')) return;
             const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
             const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts, banned, bannedParts: torsoBanned,
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };

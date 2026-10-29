@@ -10324,10 +10324,10 @@
             const focusN = r.focus || ((!r.game && !r.allParts && r.targets.length >= 3) ? r.targets.length : 0);
             // 「N部位」也是範圍資訊，跟部位名稱一樣放在層別標籤的左邊：Focus 3 以上沒有部位名稱，直接寫「3部位」；
             // Focus 2 有部位名稱，名稱後面接小字「2部位」（不用色塊，省寬度）
-            const focusText = focusN ? (focusN >= 3 || r.hideParts ? `${focusN}部位` : '') : '';
+            const focusText = focusN ? (focusN >= 3 || r.hideParts || r.focus ? `${focusN}部位` : '') : '';   // 有寫數量（Focus Two…）就只寫「N部位」，不列部位名稱（「肚手」看不出是幾個部位）
             const focusSmall = focusN && !focusText ? `<span style="font-size:10.5px; font-weight:700; color:#8a6aa8; margin-left:-1px;">${focusN}部位</span>` : '';
             // Focus Three／Four 只指定「集中打幾個部位」，不指定是哪幾個部位：不顯示部位名稱，只標層別跟部位數量
-            const partText = (focusN >= 3 || r.hideParts) ? '' : (r.allParts ? '全部位' : (r.partLabel || escapeHtml(raidPartShortCombined(r.targets))));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
+            const partText = (focusN >= 3 || r.hideParts || r.focus) ? '' : (r.allParts ? '全部位' : (r.partLabel || escapeHtml(raidPartShortCombined(r.targets))));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
             return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">${partText || focusText}${focusSmall}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
         }
 

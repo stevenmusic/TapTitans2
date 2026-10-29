@@ -10162,10 +10162,13 @@
             const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
             // 原本算法的牌組也一樣：每個能打的部位都打＝「全部位」（allParts）；集中打 3 個以上、但不是全部的部位，只標部位數量不列名稱
             const focusN = r.focus || ((!r.game && !r.allParts && r.targets.length >= 3) ? r.targets.length : 0);
-            const focusBadge = focusN ? `<span style="font-size:11px; font-weight:800; color:#6b4a8a; background:#efe6f7; border-radius:5px; padding:0 5px; margin-left:2px;">${focusN}部位</span>` : '';   // 模擬器指定要集中打幾個部位（Focus Three／Four…）
+            // 「N部位」也是範圍資訊，跟部位名稱一樣放在層別標籤的左邊：Focus 3 以上沒有部位名稱，直接寫「3部位」；
+            // Focus 2 有部位名稱，名稱後面接小字「2部位」（不用色塊，省寬度）
+            const focusText = focusN ? (focusN >= 3 || r.hideParts ? `${focusN}部位` : '') : '';
+            const focusSmall = focusN && !focusText ? `<span style="font-size:10.5px; font-weight:700; color:#8a6aa8; margin-left:-1px;">${focusN}部位</span>` : '';
             // Focus Three／Four 只指定「集中打幾個部位」，不指定是哪幾個部位：不顯示部位名稱，只標層別跟部位數量
             const partText = (focusN >= 3 || r.hideParts) ? '' : (r.allParts ? '全部位' : (r.partLabel || escapeHtml(raidPartShortCombined(r.targets))));   // 每個能打的部位都打（Cycle）：標「全部位」，不列部位名稱
-            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px;">${partText}<span class="raid-layer-badge layer-${kind}">${label}</span>${focusBadge}</span>`;
+            return `<span class="raid-recent-part" style="display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">${partText || focusText}${focusSmall}<span class="raid-layer-badge layer-${kind}">${label}</span></span>`;
         }
 
         // 六組存成一張大圖：兩欄三列、卡片放大，沿用其他報表的圖片視窗（長按圖片即可儲存到相簿）

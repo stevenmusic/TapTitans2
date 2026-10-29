@@ -9607,7 +9607,9 @@
             const cat = (n) => (BY_PART_NON_DAMAGE.has(n) || !CARD_CATEGORY[n]) ? 'support' : CARD_CATEGORY[n];
             const mul = (n) => 1 - (curseTypes || []).reduce((s, d) => s + Math.abs(d.amount) * cursedK * (((String(d.type).startsWith('Burst') && cat(n) === 'burst') || (String(d.type).startsWith('Afflicted') && cat(n) === 'torment')) ? 1 : 0), 0);
             const usableNow = (n) => !QUIZ_CARDS[n] || !(quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers') || QUIZ_STATE_COND[n]) || quizCardUsable(n, scene).ok;
-            const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && mul(n) >= BY_PART_RECO_CURSE_PENAL && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n])
+            const sc = quizSceneCounts(scene);
+            const pool = Object.keys(cnt).filter(n => !used.has(n) && !BY_PART_RECO_EXCLUDE.has(n) && usableNow(n) && mul(n) >= BY_PART_RECO_CURSE_PENAL && !CARD_REQUIREMENTS[n] && !CARD_ONLY_WHEN[n]
+                    && (n !== 'ImpactAttack' || (sc.armor + sc.cursed === 0 && sc.body > 0)))   // 振奮士氣：能打的部位全部都是肉體才使用
                 .sort((a, b) => cnt[b] * Math.max(0.2, mul(b)) - cnt[a] * Math.max(0.2, mul(a)));
             // 補位的組合要「搭得起來」：三張卡兩兩之間，在前 15 名真的用過的牌組裡至少同組出現過（例如只能打單部位的圖騰之力，
             // 不會跟多部位的炎燒地獄、核融炸彈湊成一組）。湊不到就依序放寬成「三組配對至少兩組出現過」、最後才不限，確保補滿
@@ -9666,7 +9668,8 @@
                 const excluded = d.cards.some(n => BY_PART_RECO_EXCLUDE.has(n)) || d.cards.some(n => cardBlocked(n)) || !deckPlayableNow(d.cards, sceneNow);
                 // 卡片的部位數量條件（不符合的牌組不推薦，但它的刀數仍算進「這個部位數量狀態的總打數」）
                 const reqUnmet = d.cards.some(n => CARD_REQUIREMENTS[n] && all[CARD_REQUIREMENTS[n].state] < CARD_REQUIREMENTS[n].min)
-                    || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6);   // 瘟疫、沙漏：肉體部位達 6 個才使用
+                    || d.cards.some(n => (n === 'PlagueAttack' || n === 'SandsOfTime') && all.body < 6)   // 瘟疫、沙漏：肉體部位達 6 個才使用
+                    || (d.cards.includes('ImpactAttack') && keys.some(k => info[k].layer !== 'body'));   // 振奮士氣：能打的部位全部都是肉體才使用
                 const onlyLayers = d.cards.map(n => CARD_ONLY_WHEN[n] ? CARD_ONLY_WHEN[n](all) : undefined);
                 const onlyLayer = onlyLayers.find(l => l);
 

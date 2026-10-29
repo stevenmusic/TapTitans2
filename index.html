@@ -9057,6 +9057,7 @@
             FinisherAttack: { state: 'skeleton', min: 6 }
         };
         // 卡片「只能攻擊」的部位組合（對應 CARD_LIMITS 的 part 標籤）
+        const BY_PART_TOP_HP_RATIO = 1.5;   // 淨化爆裂＋輻射萬花筒：第一名血量要是第二名的幾倍以上，才只寫第一名
         const BY_PART_RECO_PART_SETS = {
             '頭肚': ['Head', 'ChestUpper'],
             '頭腳': ['Head', 'LegUpperLeft', 'LegUpperRight'],
@@ -10026,10 +10027,13 @@
             });
             picked.forEach(r => {
                 if (sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']) && keys.length) { r.targets = [asTarget(hpMost(keys))]; r.allParts = false; r.focus = 0; }
-                // 淨化爆裂＋放大＋輻射萬花筒 → 盔甲血量最多的 1 個部位；沒有盔甲就打肉體血量最多的部位
-                else if (sameDeck(r, ['Purify', 'MagicPotion', 'TriangleSupport']) && keys.length) {
+                // 淨化爆裂＋輻射萬花筒（第三張放大、暴食蜂擁…都一樣）→ 盔甲血量最多的 1 個部位；沒有盔甲就打肉體血量最多的部位
+                else if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && keys.length) {
                     const arm = keys.filter(k => info[k].layer === 'armor');
-                    r.targets = [asTarget(hpMost(arm.length ? arm : keys))]; r.allParts = false; r.focus = 0;
+                    const pool2 = (arm.length ? arm : keys).slice().sort((x, y) => info[y].hp - info[x].hp);
+                    // 血量最多的 1～2 個部位：第一名血量特別多（≥ 第二名 1.5 倍）就只寫它，否則寫前兩名
+                    const pick = pool2.length > 1 && info[pool2[0]].hp < info[pool2[1]].hp * BY_PART_TOP_HP_RATIO ? pool2.slice(0, 2) : pool2.slice(0, 1);
+                    r.targets = pick.map(asTarget); r.allParts = false; r.focus = 0;
                 }
                 else if (sameDeck(r, ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'])) {
                     const ht = keys.filter(k => k === 'Head' || k === 'ChestUpper');
@@ -11030,14 +11034,15 @@
                     [...clean.slice(0, waveLeft), ...[...clean.slice(waveLeft), ...later].sort(ord)].forEach(d => {
                         if (d.row) { all.push(d.row); return; }
                         let tgKeys = hitParts(d.cards);
-                        if (sigOf(d.cards) === sigOf(['Purify', 'MagicPotion', 'TriangleSupport']) && tgKeys.length) {   // 跟首頁同一個規則：盔甲血量最多的部位，沒有盔甲就打肉體血量最多的
+                        if (d.cards.includes('Purify') && d.cards.includes('TriangleSupport') && tgKeys.length) {   // 跟首頁同一個規則：盔甲血量最多的部位，沒有盔甲就打肉體血量最多的
                             const hpOf = (k) => { const p = raidState.parts[k]; return p ? (p.armor > 0 ? p.armor : p.body) : 0; };
                             const arm = tgKeys.filter(k => scene[k] !== 'body');
-                            tgKeys = [(arm.length ? arm : tgKeys).sort((x, y) => hpOf(y) - hpOf(x))[0]];
+                            const pool2 = (arm.length ? arm : tgKeys).slice().sort((x, y) => hpOf(y) - hpOf(x));
+                            tgKeys = pool2.length > 1 && hpOf(pool2[0]) < hpOf(pool2[1]) * BY_PART_TOP_HP_RATIO ? pool2.slice(0, 2) : pool2.slice(0, 1);
                         }
                         const tg = tgKeys
                             .map(k => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' }));
-                        all.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: tg, allParts: tg.length > 1 && tg.length >= attackable.length });
+                        all.push({ cards: byPartOrderCards(d.cards), rawCards: d.cards, targets: tg, allParts: tg.length > 2 && tg.length >= attackable.length });
                     });
                     left -= best.length;
                     html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');   // 只列排得出來的牌組，不另外說明少幾組

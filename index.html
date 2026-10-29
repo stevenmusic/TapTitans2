@@ -9322,6 +9322,41 @@
         }
         function simOptionsHtml(list, sel) { return list.map(([v, l]) => `<option value="${v}"${String(v) === String(sel) ? ' selected' : ''}>${escapeHtml(l)}</option>`).join(''); }
 
+        // 這一場會用到的情境：照現在這隻王的加成、詛咒類型、禁打部位，列出打下去會經過的部位狀態（詛咒甲／盔甲／肉體，不含骨架），
+        // 標出已經有模擬器情境的（✅）和還缺的（❌）。點缺的那一列，選截圖後會自動帶入那個狀態
+        function simTodoList() {
+            const buff = currentSessionBuff();
+            if (!raidState || !raidState.parts || !buff) return null;
+            const banned = (raidBannedParts || []).slice();
+            const attack = RAID_PARTS.map(p => p.key).filter(k => !banned.includes(k));
+            const N = attack.length;
+            const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
+            const curse = curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : '');
+            const P = (k) => raidState.parts[k] || {};
+            const cursedNow = attack.filter(k => P(k).cursed && P(k).armor > 0).length;
+            const C0 = curse ? Math.min(N, Math.max(cursedNow, 3)) : 0;   // 詛咒甲一開始有幾個（現在看得到的跟 3 取大的）
+            const torso = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
+            const has = (c, a, b) => byPartAllScenarios().some(x => x.buff === buff && !x.only && !x.cursedAt
+                && (x.cursed === undefined || (x.cursed === c && (c === 0 || curseT.startsWith(x.curse))))
+                && x.counts.armor === c + a && x.counts.body === b && x.counts.skeleton === 0 && x.counts.banned === banned.length
+                && torso(x.bannedParts || []) === torso(banned));
+            const now = { c: cursedNow, a: attack.filter(k => P(k).armor > 0 && !P(k).cursed).length, b: attack.filter(k => !(P(k).armor > 0) && P(k).body > 0).length };
+            const rows = [];
+            for (let c = C0; c >= 0; c--) for (let a = N - C0; a >= 0; a--) rows.push({ c, a, b: N - c - a });
+            // 打掉越少部位的排越前面；同樣打掉幾個時，詛咒甲先被打掉的排前面（詛咒甲通常最先拆）
+            rows.sort((x, y) => (x.b - y.b) || (x.c - y.c));
+            rows.forEach(r => { r.ok = has(r.c, r.a, r.b); r.now = r.c === now.c && r.a === now.a && r.b === now.b; });
+            return { buff, curse, banned, rows };
+        }
+        function simTodoPick(c, a, b) {
+            const t = simTodoList();
+            if (!t) return;
+            simImp.target = { buff: t.buff, curse: c > 0 ? t.curse : '', cursed: c, armor: c + a, body: b, banned: t.banned };
+            renderSimImport();
+            const m = document.getElementById('sim-imp-msg');
+            if (m) { m.textContent = `已選：詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${b}。請選這個狀態的模擬器截圖，條件會自動帶入。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
+            const bd = document.querySelector('#sim-import-modal .si-body'); if (bd) bd.scrollTop = 0;
+        }
         function renderSimImport() {
             const m = document.getElementById('sim-import-modal');
             if (!m) return;
@@ -9329,6 +9364,7 @@
             const cardOpts = Object.keys(RAID_CARD_IMAGE).map(id => [id, raidCardLabel(id)]);
             const a = simImp.analysis;
             const saved = byPartUserScenarios();
+            const todo = simTodoList();
             const buffOpts = Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label]);
             const num = (id, label) => `<label class="si-field">${label}<input id="${id}" type="number" inputmode="numeric" min="0" max="8" value="0" oninput="simImportCheckSum()"></label>`;
             const deckHtml = a ? a.decks.map((row, di) => {
@@ -9355,6 +9391,16 @@
                         <input type="file" id="sim-imp-file" accept="image/*" style="display:none;" onchange="simImportPick(this.files[0]); this.value='';">
                         <div id="sim-imp-msg" class="si-tip" style="margin-top:8px;">選好之後我會辨識 6 組牌的 18 張卡，你核對、填狀態，存起來，推薦牌組就會照這張排。</div>
                     </div>
+                    ${!a && todo ? `<div class="si-card">
+                        <div class="si-title">這一場會用到的情境（${escapeHtml((SESSION_BUFFS[todo.buff] || {}).label || todo.buff)}｜${todo.curse === 'Burst' ? '爆裂詛咒' : todo.curse ? '苦痛詛咒' : '沒有詛咒'}｜禁打 ${todo.banned.map(k => escapeHtml(raidPartLabel(k))).join('、') || '無'}）</div>
+                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。（不含骨架）</div>
+                        ${todo.rows.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b})" style="cursor:pointer;"`}>
+                            <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
+                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}</span>
+                            ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
+                            ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
+                        </div>`).join('')}
+                    </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>
                         <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定，請看圖示跟卡名是否一致。「牌組類型」是我猜的，請照截圖每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）確認。</div>
@@ -9389,6 +9435,13 @@
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
             </div>`;
             const nb = m.querySelector('.si-body'); if (nb) nb.scrollTop = keepScroll;
+            const tg = simImp.target;
+            if (a && tg) {   // 從「這一場會用到的情境」選的狀態：自動帶入
+                const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+                setv('sim-imp-buff', tg.buff); setv('sim-imp-curse', tg.curse); setv('sim-imp-cursed', tg.cursed);
+                setv('sim-imp-armor', tg.armor); setv('sim-imp-body', tg.body); setv('sim-imp-skel', 0);
+                m.querySelectorAll('.sim-imp-ban').forEach(e => { if (tg.banned.includes(e.value) !== e.checked) e.click(); });
+            }
             if (a) { simImportCheckSum(); simImportMarkDup(); }
         }
         function simScenarioTitle(sc) {
@@ -9471,7 +9524,7 @@
                 const { user, banned: _b, savedAt, ...up } = sc;
                 up.note = simScenarioTitle(sc) + '（手機上傳）';
                 if (!(await simAdminPost({ scenario: up }))) return;
-                simImp.analysis = null;
+                simImp.analysis = null; simImp.target = null;
                 byPartRecoSig = ''; byPartRecoRefresh();
                 renderSimImport();
                 const m3 = document.getElementById('sim-imp-msg');
@@ -9483,7 +9536,7 @@
             const list = byPartUserScenarios().filter(x => key(x) !== key(sc));
             list.unshift(sc);
             if (!byPartUserScenSave(list)) return fail('儲存失敗（瀏覽器儲存空間不夠或被封鎖）。');
-            simImp.analysis = null;
+            simImp.analysis = null; simImp.target = null;
             byPartRecoSig = ''; byPartRecoRefresh();
             if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
             renderSimImport();

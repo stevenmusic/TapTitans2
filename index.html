@@ -9946,6 +9946,8 @@
             const flakTargets = armorLinked ? armorNow : [armorNow.slice().sort((x, y) => info[y.part].hp - info[x.part].hp)[0]].filter(Boolean);
             picked.forEach(r => {
                 if (!(r.rawCards && r.rawCards.includes('FlakShot') && armorNow.length)) return;
+                // 同組有核融炸彈（多部位卡）：部位以核融炸彈為優先，標所有還有盔甲的部位，不套用連貫／最厚的規則
+                if (r.rawCards.includes('Fuse')) { r.targets = armorNow; r.allParts = false; r.focus = 0; return; }
                 // 同組有指定部位的卡（頭肚、頭腳、肚手、四肢…）：部位由那些卡決定（還有盔甲、而且那些卡都打得到的部位），不套用上面的連貫規則
                 const sets = r.rawCards.filter(n => n !== 'FlakShot' && CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part').map(n => BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag]).filter(Boolean);
                 if (sets.length) {

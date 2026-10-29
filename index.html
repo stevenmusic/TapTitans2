@@ -9964,6 +9964,34 @@
                     r.targets = [{ part: top, layer: 'armor', cursed: info[top].cursed }]; r.allParts = false; r.focus = 0;
                 }
             });
+            // 最後再用卡片本身的限制過濾標的部位：只能打盔甲的卡只留有盔甲的部位、只能打肉體的卡只留露出肉體的部位、
+            // 指定部位的卡（繁藤蝕骨、皎月光束、靈魂之火、破碎本能…）只留它能打的部位；過濾完一個都不剩就維持原本的標示。
+            // 有單部位卡（圖騰之力、先祖加護）的牌組只標 1 個：原本標的都不能打時，改從場上整組都能打的部位挑；
+            // 帶毀了雨優先詛咒甲，再挑血量最多的
+            const fitsCards = (r, k) => r.rawCards.every(n => {
+                const lim = CARD_LIMITS[n];
+                if (!lim) return true;
+                if (lim.kind === 'armor') return info[k].layer === 'armor';
+                if (lim.kind === 'body') return info[k].layer === 'body';
+                if (lim.kind === 'part' && BY_PART_RECO_PART_SETS[lim.tag]) return BY_PART_RECO_PART_SETS[lim.tag].includes(k);
+                return true;
+            });
+            picked.forEach(r => {
+                if (!r.rawCards || !keys.length) return;
+                const base = r.allParts || !(r.targets || []).length ? keys.map(asTarget) : r.targets;
+                let tg = base.filter(t => fitsCards(r, t.part));
+                const single = r.rawCards.some(n => n === 'TotemFairySkill' || n === 'BurstBoost');
+                if (!tg.length && single) tg = keys.filter(k => fitsCards(r, k)).map(asTarget);
+                if (!tg.length) return;
+                if (single && tg.length > 1) {
+                    let pool = tg.map(t => t.part);
+                    if (r.rawCards.includes('RuinousRust') && pool.some(k => info[k].cursed)) pool = pool.filter(k => info[k].cursed);
+                    tg = [asTarget(hpMost(pool))];
+                }
+                if (!r.allParts && tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) return;
+                r.targets = tg; r.allParts = false;
+                if (r.focus && tg.length <= r.focus) r.focus = 0;
+            });
             picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : (t3Used ? rows3.reduce((x, r) => x + r.overall, 0) : stateTotal));   // 遊戲模擬器的 6 組不顯示總次數與各組次數
             return picked;
         }

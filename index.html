@@ -2642,6 +2642,9 @@
         .raid-layer-badge.layer-body { background: #1565c0; }
         .raid-layer-badge.layer-cursed { background: #5b2a86; }
         .raid-layer-badge.layer-mixed { background: linear-gradient(90deg, #455a64 50%, #1565c0 50%); }
+        .raid-layer-badge.layer-cursedarmor { background: linear-gradient(90deg, #5b2a86 50%, #455a64 50%); }
+        .raid-layer-badge.layer-cursedbody { background: linear-gradient(90deg, #5b2a86 50%, #1565c0 50%); }
+        .raid-layer-badge.layer-all { background: linear-gradient(90deg, #5b2a86 33.3%, #455a64 33.3% 66.6%, #1565c0 66.6%); }
         /* 四個功能（攻擊紀錄／牌組參考／使用／漏打名單）改用按鈕上方的共用場次選單，各自的選單藏起來 */
         #raid-session-menu, #raid-session-active-bar, #top-decks-session-menu, #card-usage-session-menu, #missed-session-menu { display: none !important; }
         .raid-recent-cards { flex-shrink: 0; display: inline-flex; gap: 3px; width: 99px; justify-content: flex-start; }
@@ -3619,7 +3622,7 @@
                 raidPartArmR: '右肩', raidPartArmL: '左肩',
                 raidPartLegR: '右腳', raidPartLegL: '左腳',
                 raidPartHandR: '右手', raidPartHandL: '左手',
-                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerMixed: '甲肉', raidLayerCursedShort: '詛咒甲', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
+                raidLayerArmor: '盔甲', raidLayerBody: '肉體', raidLayerMixed: '甲肉', raidLayerCursedArmor: '詛甲', raidLayerCursedBody: '詛肉', raidLayerAll: '詛甲肉', raidLayerCursedShort: '詛咒甲', raidLayerCursed: '詛咒盔甲', raidLayerSkeleton: '骨架', raidLayerDestroyed: '已摧毀',
                 raidPartCannotAttack: '無法攻擊', raidPartBannedLabel: '禁打',
                 raidTargetSkeletonLabel: '🦴 全身只剩骨架，即將擊殺',
                 raidUpdatedAt: '最後更新',
@@ -3791,7 +3794,7 @@
                 raidPartArmR: 'R.Arm', raidPartArmL: 'L.Arm',
                 raidPartLegR: 'R.Foot', raidPartLegL: 'L.Foot',
                 raidPartHandR: 'R.Hand', raidPartHandL: 'L.Hand',
-                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerMixed: 'Armor+Body', raidLayerCursedShort: 'Cursed', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
+                raidLayerArmor: 'Armor', raidLayerBody: 'Body', raidLayerMixed: 'Armor+Body', raidLayerCursedArmor: 'Cursed+Armor', raidLayerCursedBody: 'Cursed+Body', raidLayerAll: 'All', raidLayerCursedShort: 'Cursed', raidLayerCursed: 'Cursed Armor', raidLayerSkeleton: 'Skeleton', raidLayerDestroyed: 'Destroyed',
                 raidPartCannotAttack: 'cannot be attacked', raidPartBannedLabel: 'Banned',
                 raidTargetSkeletonLabel: '🦴 Skeleton only — boss about to die',
                 raidUpdatedAt: 'Last updated',
@@ -10318,9 +10321,10 @@
         // 跟「最近攻擊」同樣的標籤方式：部位簡稱＋層別色塊（盔甲／肉體／甲肉／詛咒甲）
         function byPartRecoTagHtml(r) {
             if (!r.targets || r.targets.length === 0) return '';
-            const layers = new Set(r.targets.map(x => x.layer));
-            const kind = layers.size > 1 ? 'mixed' : (layers.has('armor') ? (r.targets.every(x => x.cursed) ? 'cursed' : 'armor') : 'body');
-            const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort') }[kind];
+            // 層別：詛咒甲／盔甲／肉體各算一種，混在一起時用雙色（三色）標籤：詛甲、詛肉、甲肉、詛甲肉
+            const kinds = new Set(r.targets.map(x => x.layer === 'armor' ? (x.cursed ? 'cursed' : 'armor') : 'body'));
+            const kind = kinds.size === 1 ? [...kinds][0] : kinds.size === 3 ? 'all' : kinds.has('cursed') ? (kinds.has('armor') ? 'cursedarmor' : 'cursedbody') : 'mixed';
+            const label = { armor: t('raidLayerArmor'), body: t('raidLayerBody'), mixed: t('raidLayerMixed'), cursed: t('raidLayerCursedShort'), cursedarmor: t('raidLayerCursedArmor'), cursedbody: t('raidLayerCursedBody'), all: t('raidLayerAll') }[kind];
             // 原本算法的牌組也一樣：每個能打的部位都打＝「全部位」（allParts）；集中打 3 個以上、但不是全部的部位，只標部位數量不列名稱
             const focusN = r.focus || ((!r.game && !r.allParts && r.targets.length >= 3) ? r.targets.length : 0);
             // 「N部位」也是範圍資訊，跟部位名稱一樣放在層別標籤的左邊：Focus 3 以上沒有部位名稱，直接寫「3部位」；

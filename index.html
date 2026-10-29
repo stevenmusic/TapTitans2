@@ -9987,6 +9987,11 @@
             });
             picked.forEach(r => {
                 if (!r.rawCards || !keys.length) return;
+                // 一般算法的多部位牌組（肆虐瘟疫、核融炸彈、炎燒地獄）：卡片沒有部位／盔甲肉體限制、也沒有單部位卡時，標「全部位」
+                if (!r.game && r.rawCards.some(n => n === 'PlagueAttack' || n === 'Fuse' || n === 'BurningAttack')
+                    && !r.rawCards.some(n => CARD_LIMITS[n] || n === 'TotemFairySkill' || n === 'BurstBoost')) {
+                    r.targets = keys.map(asTarget); r.allParts = true; r.focus = 0; return;
+                }
                 const base = r.allParts || !(r.targets || []).length ? keys.map(asTarget) : r.targets;
                 let tg = base.filter(t => fitsCards(r, t.part));
                 const single = r.rawCards.some(n => n === 'TotemFairySkill' || n === 'BurstBoost');
@@ -10000,7 +10005,7 @@
                 // 補位的組合（targets 是空的）：整組都能打的部位就是全部能打的部位時標「全部」，否則標那些部位
                 if (r.synthetic && !(r.targets || []).length) {
                     if (tg.length === keys.length && !single) { r.targets = tg; r.allParts = true; return; }
-                } else if (!r.allParts && tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) tg = null;
+                } else if (tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) tg = null;   // 沒有被過濾掉任何部位：維持原本的標示（全部位維持全部位）
                 // 一般算法的牌組集中打 1～2 個部位、卡片也沒指定部位時：有詛咒甲先拆詛咒甲（血量最多的），沒有詛咒甲就打血量最多的部位
                 // （有自己規則的牌組不套用：毀了雨、圖騰之力、防空高砲、淨化爆裂＋輻射萬花筒、電擊＋時間之沙＋戰鼓）
                 const ownRule = r.rawCards.some(n => n === 'RuinousRust' || n === 'TotemFairySkill' || n === 'FlakShot')

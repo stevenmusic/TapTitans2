@@ -9988,9 +9988,13 @@
                     if (r.rawCards.includes('RuinousRust') && pool.some(k => info[k].cursed)) pool = pool.filter(k => info[k].cursed);
                     tg = [asTarget(hpMost(pool))];
                 }
-                if (!r.allParts && tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) return;
-                r.targets = tg; r.allParts = false;
-                if (r.focus && tg.length <= r.focus) r.focus = 0;
+                // 補位的組合（targets 是空的）：整組都能打的部位就是全部能打的部位時標「全部」，否則標那些部位
+                if (r.synthetic && !(r.targets || []).length) {
+                    if (tg.length === keys.length && !single) { r.targets = tg; r.allParts = true; return; }
+                } else if (!r.allParts && tg.length === base.length && tg.every((t, i) => t.part === base[i].part)) tg = null;
+                if (tg) { r.targets = tg; r.allParts = false; }
+                // 「N部位」但能打的部位只有 N 個以下：直接標那幾個部位，不顯示 N部位
+                if (r.focus && !r.allParts && (r.targets || []).length && r.targets.length <= r.focus) { r.focus = 0; r.hideParts = false; }
             });
             picked.stateTotal = gameRows.length ? 0 : (ctxRows.length ? ctxRows.total : (t3Used ? rows3.reduce((x, r) => x + r.overall, 0) : stateTotal));   // 遊戲模擬器的 6 組不顯示總次數與各組次數
             return picked;

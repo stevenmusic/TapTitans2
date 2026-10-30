@@ -12424,6 +12424,7 @@
             raidConnectedAt = Date.now();
             setRaidConnectStatus('✓ 已連線', 'ok');
             ensureServerRaidDataFresh().catch(() => {});   // 斷線重連很頻繁時，90 秒內不會一直重抓整場紀錄
+            fetchRaidLiveEssentials(relayUrl).then(() => renderRaidStatus()).catch(() => {});   // 目前王狀態很小，連上就抓，「尚未收到真實攻擊資料」才會馬上消失
             startRaidLogAutoSync(relayUrl);
         }
 

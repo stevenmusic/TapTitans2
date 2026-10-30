@@ -6198,11 +6198,17 @@
         // 斷線後能盡快恢復即時追蹤
         const RAID_AUTO_RECONNECT_DELAY = 6000;
 
+        // 一直斷線就越等越久（6 秒、12 秒、24 秒…最多 5 分鐘），不要每 6 秒就重連一次一直跟伺服器要資料
+        let raidAutoReconnectDelay = RAID_AUTO_RECONNECT_DELAY, raidConnectedAt = 0;
         function scheduleRaidAutoReconnect() {
             clearTimeout(raidAutoReconnectTimer);
+            if (raidConnectedAt && Date.now() - raidConnectedAt > 60 * 1000) raidAutoReconnectDelay = RAID_AUTO_RECONNECT_DELAY;   // 上次穩定連線超過 1 分鐘：從 6 秒重新開始
+            raidConnectedAt = 0;
+            const wait = raidAutoReconnectDelay;
+            raidAutoReconnectDelay = Math.min(raidAutoReconnectDelay * 2, 5 * 60 * 1000);
             raidAutoReconnectTimer = setTimeout(() => {
                 if (raidConnState === 'disconnected') connectRaidAPI(true);
-            }, RAID_AUTO_RECONNECT_DELAY);
+            }, wait);
         }
 
         function apiSplitPartId(partId) {
@@ -6885,11 +6891,22 @@
         // 面板要顯示資料前，先確保資料是最新的（示範模式除外）：
         // 優先跟伺服器要最新資料；連不到伺服器就退回這台瀏覽器上次備份到的資料，
         // 至少不會整個顯示空白。silent 原樣往下傳給 fetchServerRaidData。
-        async function ensureServerRaidDataFresh(silent) {
-            if (raidLogDemoActive) return;
+        // 整場攻擊紀錄很大，90 秒內抓過就不重抓、同時間只抓一次（切面板、打開網頁時好幾個地方會同時要）；
+        // 按「重新載入」、匯入時傳 force 才一定重抓
+        const SERVER_RAID_DATA_FRESH_MS = 90 * 1000;
+        let serverRaidDataFetchedAt = 0, serverRaidDataInflight = null;
+        function ensureServerRaidDataFresh(silent, force) {
+            if (raidLogDemoActive) return Promise.resolve();
+            if (serverRaidDataInflight) return serverRaidDataInflight;
+            if (!force && Date.now() - serverRaidDataFetchedAt < SERVER_RAID_DATA_FRESH_MS) return Promise.resolve();
+            serverRaidDataInflight = ensureServerRaidDataFetch(silent).finally(() => { serverRaidDataInflight = null; });
+            return serverRaidDataInflight;
+        }
+        async function ensureServerRaidDataFetch(silent) {
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 await fetchServerRaidData(relayUrl, silent);
+                serverRaidDataFetchedAt = Date.now();
             } catch (e) {
                 // 離線/伺服器連不上時，退回本機備份——備份裡有所有場次，只取最新那一場（不然輪次、已用卡、排行會把舊場次混進來）
                 const backup = loadRaidFullLogBackup() || [];
@@ -10794,7 +10811,7 @@
             const icon = document.getElementById('attacklog-reload-icon');
             if (icon) icon.classList.add('is-spinning');
             try {
-                await ensureServerRaidDataFresh();
+                await ensureServerRaidDataFresh(false, true);
                 // ensureServerRaidDataFresh 抓回來的新資料會更新 sessionAttacksCache，
                 // 但如果目前有選場次（raidSessionFilter），它手上拿著的還是舊的場次物件、
                 // 裡面的 attacks 陣列是抓新資料「之前」那份參照，不會自動變新——
@@ -11804,7 +11821,7 @@
                 ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
                     <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
                 <tr style="font-weight:800; background:#f0e6d2;"><td colspan="4" style="${td} text-align:left;">加總</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(sumLeft)}</td></tr>
-            </table>${rows.some(r => !r.hasParts && !r.done) ? '<div style="font-size:11px; color:#a0522d; margin-top:6px;">盔甲「—」：這隻王還沒打到，盔甲先不算進合計，打到後會自動補上。</div>' : ''}`;
+            </table>${rows.some(r => !r.hasParts) ? '<div style="font-size:11px; color:#a0522d; margin-top:6px;">盔甲「—」：還沒拿到這隻王的盔甲，先不算進合計（目標會偏低），打到同名的王後會自動補上。</div>' : ''}`;
         }
 
         async function renderRaidToolPanelForSharedSession(id) {
@@ -11823,11 +11840,6 @@
                 raidLogExpandedPlayers.clear();
                 renderRaidSessionMenu();
                 renderRaidLogQueryResult();
-            }
-            if (id === 'topdecks') {
-                topDecksSessionFilter = x;
-                if (deckSubtab === 'bypart') renderByPart(); // 依部位是統計全部場次，不受場次選單影響
-                else await renderTopDecks();
             }
             if (id === 'cardusage') { cardUsageSessionFilter = x; await renderCardUsageCheck(); }
             if (id === 'missed') { missedSessionFilter = x; await renderMissedAttackList(); }
@@ -12262,7 +12274,7 @@
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
-            await Promise.all([ensureServerRaidDataFresh(), ensureAllPlayersLoaded(true)]); // 匯入可能帶進新玩家，全部成員名單要強制重抓
+            await Promise.all([ensureServerRaidDataFresh(false, true), ensureAllPlayersLoaded(true)]); // 匯入可能帶進新玩家，全部成員名單要強制重抓
             renderRaidSessionMenu();
             renderRaidLogQueryResult();
             showPlayerCopyToastLike(`已匯入 ${data.imported} 筆新紀錄（${sourceLabel}共 ${attacks.length} 筆，其餘是已經有的重複紀錄）`);
@@ -12409,8 +12421,9 @@
             }
 
             raidConnState = 'connected';
+            raidConnectedAt = Date.now();
             setRaidConnectStatus('✓ 已連線', 'ok');
-            fetchServerRaidData(relayUrl);
+            ensureServerRaidDataFresh().catch(() => {});   // 斷線重連很頻繁時，90 秒內不會一直重抓整場紀錄
             startRaidLogAutoSync(relayUrl);
         }
 
@@ -12435,6 +12448,7 @@
                     stopRaidLogAutoSync();
                     return;
                 }
+                if (document.hidden) return;   // 網頁在背景（切到別的 App、別的分頁）就先不抓
                 fetchRaidLiveEssentials(relayUrl); // 輕量版，只更新王血量＋最近攻擊
             }, RAID_LOG_SYNC_INTERVAL_MS);
         }

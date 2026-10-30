@@ -9600,6 +9600,7 @@
             const dupInfo = simImportDupInfo();
             if (dupInfo.length && !confirm('有重複的卡：' + dupInfo.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。\n如果截圖上真的是同一張卡出現在不同組，按「確定」照樣儲存；不是的話按「取消」回去修改。')) return;
             const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
+            if (torsoBanned.includes('Head')) decks.forEach(d => { if (d.role === 'head') d.role = 'torso'; });   // 頭禁打：Focus Head 就是打肚子
             // 不能打的部位（禁打或骨架）合在一起記：骨架數量併進禁打（比對只看能打的部位）
             const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts: { armor: counts.armor, body: counts.body, skeleton: 0, banned: counts.banned + counts.skeleton }, banned, bannedParts: torsoBanned,
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };

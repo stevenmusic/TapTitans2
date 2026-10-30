@@ -11717,6 +11717,9 @@
             } catch (e) {}
             refreshBossHpIfOpen();
         }
+        let bossHpRounds = 3;
+        try { bossHpRounds = Number(localStorage.getItem('tt2_bosshp_rounds')) || 3; } catch (e) {}
+        function setBossHpRounds(k) { bossHpRounds = k; try { localStorage.setItem('tt2_bosshp_rounds', k); } catch (e) {} renderBossHpPanel(); }
         function openBossHp() { bossHpSnapshotTried = false; document.getElementById('panel-bosshp').style.display = 'block'; renderBossHpPanel(); }
         function closeBossHp() { document.getElementById('panel-bosshp').style.display = 'none'; }
         function refreshBossHpIfOpen() {
@@ -11769,15 +11772,33 @@
             });
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
-            const dealtHtml = cycles.length ? `<div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一輪已造成的傷害（共 ${formatNum(cycles.reduce((x, c) => x + byCycle.get(c), 0))}）</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${cycles.map(c => `<div style="background:${c === lastCycle ? '#f3ebfa' : '#fbf2e2'}; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:${c === lastCycle ? '#6a3d9a' : '#8a7a6a'}; font-weight:700;">第 ${c} 輪</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(byCycle.get(c))}</div>${c === lastCycle ? '<div style="font-size:10px; color:#6a3d9a; font-weight:700;">進行中</div>' : ''}</div>`).join('')}</div>` : '';
+            // 選幾輪打完：每一輪的目標跟實際傷害並排，下面一列是總目標跟總傷害，直接看有沒有達標
+            const n = bossHpRounds;
+            const dealtTotal = cycles.reduce((x, c) => x + byCycle.get(c), 0);
+            const per = sumFull / n;
+            const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
+            const verdict = (got, want, live) => {
+                if (got >= want) return '<span style="color:#2e7d32; font-weight:800;">✓ 達標</span>';
+                return `<span style="color:${live ? '#6a3d9a' : '#c0392b'}; font-weight:800;">${live ? '還差' : '差'} ${formatNum(want - got)}</span>`;
+            };
+            const roundRows = Array.from({ length: roundCount }, (_, i) => {
+                const c = i + 1, got = byCycle.get(c), live = c === lastCycle, want = c <= n ? per : 0;
+                return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a;">進行中</small>' : ''}</td>
+                    <td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>
+                    <td style="${td}">${got != null && c <= n ? verdict(got, per, live) : ''}</td></tr>`;
+            }).join('');
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場應打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumFull)}</div></div>
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">剩餘要打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumLeft)}</div></div>
                 </div>
-                ${dealtHtml}
-                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">整場打幾輪結束，每一輪要打多少</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${[2, 3, 4, 5, 6].map(n => `<div style="background:#fbf2e2; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">${n} 輪</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(sumFull / n)}</div></div>`).join('')}</div>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">預計幾輪打完</div>
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">結果</td></tr>
+                    ${roundRows}
+                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">總計</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(dealtTotal)}</td><td style="${td}">${verdict(dealtTotal, sumFull, true)}</td></tr>
+                </table>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">
                 <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲(85%)</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
                 ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>

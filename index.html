@@ -433,6 +433,8 @@
         #tab-burst   { background-color: #8b263e; color: rgba(255,255,255,0.7); }
         #tab-torment { background-color: #4a148c; color: rgba(255,255,255,0.7); }
         #tab-support { background-color: #2e7d32; color: rgba(255,255,255,0.7); }
+        #tab-deckref { background-color: #5a4a42; color: rgba(255,255,255,0.7); }
+        #deck-ref-wrap #panel-topdecks > .backup-title { display: none; }
 
         .tab-btn.active { color: #ffffff; }
         .tab-btn.active::after {
@@ -2079,7 +2081,7 @@
         .nav-gear-btn svg { width: 17px; height: 17px; }
         .nav-gear-btn.active { background: rgba(255,255,255,0.35); }
         /* 紀錄分頁：四個功能改成一列分頁 */
-        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }   /* 6 個按鈕，每排 3 個 */
+        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }   /* 4 個按鈕一排 */
         @media (max-width: 359px) { #raid-tab-records .raid-tool-btn { font-size: 11px !important; } }
         /* 場次統計 → 戰報 */
         .raid-report-export { width: 100%; background: #fdf9f3; border-radius: 12px; padding: 10px; box-sizing: border-box; }
@@ -2112,7 +2114,7 @@
         #raid-tab-records .backup-section { margin-top: 8px; }
         #raid-tab-records .raid-records-head { margin-top: 0; }
         /* 分頁上已經有名稱，面板內重複的標題拿掉（攻擊紀錄的標題列有重新載入按鈕，保留） */
-        #panel-topdecks > .backup-title, #panel-cardusage > .backup-title, #panel-missed > .backup-title { display: none; }
+        #panel-cardusage > .backup-title, #panel-missed > .backup-title { display: none; }
         /* 牌組參考卡片很小時（小手機），總傷與均傷排成一行 */
         .top-decks-compact .top-deck-nums { display: flex; align-items: baseline; gap: 6px; }
         .top-decks-compact .top-deck-total { font-size: 14px !important; }
@@ -2405,7 +2407,11 @@
             box-sizing: border-box; /* 沒有這行的話 width:100% + padding 會撐出橫向捲動 */
         }
 
+        .bosshp-open-btn { position: absolute; top: 8px; right: 8px; font-size: 12px; font-weight: 700; color: #8e3a3a; background: #fff; border: 1px solid #f0c9c5; border-radius: 8px; padding: 3px 8px; z-index: 1; }
+        .bosshp-modal { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.45); overflow-y: auto; padding: 16px; box-sizing: border-box; }
+        .bosshp-modal-box { max-width: 500px; margin: 20px auto; background: #fdf9f3; border-radius: 14px; padding: 12px; box-sizing: border-box; }
         .raid-boss-card {
+            position: relative;
             width: 100%;
             max-width: 500px;
             margin: 0 auto 8px auto;
@@ -2951,10 +2957,36 @@
                 <button class="tab-btn active" id="tab-burst"   onclick="switchPage(0)" data-i18n="tabBurst">爆裂</button>
                 <button class="tab-btn"        id="tab-torment" onclick="switchPage(1)" data-i18n="tabTorment">苦痛</button>
                 <button class="tab-btn"        id="tab-support" onclick="switchPage(2)" data-i18n="tabSupport">支援</button>
+                <button class="tab-btn"        id="tab-deckref" onclick="openDeckRef()">牌組參考</button>
             </div>
         </div>
 
         <div class="save-indicator" id="save-indicator" data-i18n="savedIndicator">✓ 已儲存</div>
+
+        <!-- 牌組參考（從突襲狀態的按鈕列搬過來）：點「牌組參考」分頁才顯示，同時藏起爆裂／苦痛／支援 -->
+        <div id="deck-ref-wrap" style="padding:10px 12px; margin-top:var(--header-h, 100px);">
+                <div class="backup-section" id="panel-topdecks" style="display:none;">
+                    <div class="backup-title"><svg class="panel-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</div>
+                    <div class="deck-subtab-row">
+                        <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">總傷前十</button>
+                        <button id="deck-subtab-btn-bypart" class="deck-subtab-btn" onclick="switchDeckSubtab('bypart')">依部位</button>
+                        <button id="deck-subtab-btn-quiz" class="deck-subtab-btn" onclick="switchDeckSubtab('quiz')">題庫</button>
+                        <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">這樣配最簡單！</button>
+                    </div>
+                    <div id="top-decks-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
+                    <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
+                    <div id="by-part-result" style="display:none; width:100%; margin-top:6px;"></div>
+                    <div id="quiz-result" style="display:none; width:100%; margin-top:6px;"></div>
+                    <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
+                        <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
+                            <span id="best-six-dropdown-label">這樣配最簡單！（支援傷15%）</span>
+                            <span class="best-six-dropdown-caret">▾</span>
+                        </button>
+                        <div id="best-six-dropdown-menu" class="best-six-dropdown-menu" style="display:none;"></div>
+                    </div>
+                    <div id="suggested-deck-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
+                </div>
+        </div>
 
         <div class="swiper-wrapper">
             <div class="swiper-container" id="main-swiper">
@@ -3389,7 +3421,19 @@
 
                 <div id="raid-live-wrap" style="display:none; width:100%;">
 
+                    <!-- 王血量：王卡片右上角的按鈕打開，浮在畫面上 -->
+                    <div id="panel-bosshp" class="bosshp-modal" style="display:none;" onclick="if (event.target === this) closeBossHp()">
+                        <div class="bosshp-modal-box">
+                            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                                <div style="font-size:14px; font-weight:800; color:#5a3a2a;">王血量（每一隻要打的盔甲＋斬殺線）</div>
+                                <button onclick="closeBossHp()" style="font-size:18px; color:#8e6a3a; background:none; border:none; padding:2px 6px;">✕</button>
+                            </div>
+                            <div id="bosshp-body" style="width:100%;"></div>
+                        </div>
+                    </div>
+
                     <div class="raid-boss-card">
+                        <button class="bosshp-open-btn" onclick="openBossHp()">王血量</button>
                         <div class="raid-boss-icon" id="raid-boss-icon">
                             <img id="raid-boss-icon-img" src="" alt="">
                         </div>
@@ -3445,17 +3489,10 @@
                     <div id="shared-session-menu" style="display:none; width:100%; margin-bottom:8px;"></div>
                     <div class="raid-tool-menu">
                         <button id="raid-tool-btn-attacklog" class="raid-tool-btn" onclick="toggleRaidToolPanel('attacklog')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 21V4.5A1.5 1.5 0 0 1 6.5 3z"/><path d="M15 3v4h4"/><line x1="9" y1="11" x2="15.5" y2="11"/><line x1="9" y1="15" x2="15.5" y2="15"/><line x1="9" y1="19" x2="13" y2="19"/></svg> 攻擊紀錄</button>
-                        <button id="raid-tool-btn-topdecks" class="raid-tool-btn" onclick="toggleRaidToolPanel('topdecks')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</button>
                         <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">紫球&amp;鏡子</button>
                         <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="1.8"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.4" fill="currentColor"/></svg> 剩餘次數</button>
                         <button id="raid-tool-btn-report" class="raid-tool-btn" onclick="toggleRaidToolPanel('report')">戰報</button>
-                        <button id="raid-tool-btn-bosshp" class="raid-tool-btn" onclick="toggleRaidToolPanel('bosshp')">王血量</button>
                     </div>
-                </div>
-
-                <div class="backup-section" id="panel-bosshp" style="display:none;">
-                    <div style="width:100%; margin-bottom:8px; font-size:14px; font-weight:800; color:#5a3a2a;">王血量（每一隻要打的盔甲＋斬殺線）</div>
-                    <div id="bosshp-body" style="width:100%;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-attacklog" style="display:none;">
@@ -3486,28 +3523,6 @@
                     <button class="btn-backup" style="margin-top:8px; width:100%; background:#eef6ee; color:#2E7D32;" onclick="copyRaidReport()">📋 查看／複製本場戰報（含士氣%）</button>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
                     <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
-                </div>
-
-                <div class="backup-section" id="panel-topdecks" style="display:none;">
-                    <div class="backup-title"><svg class="panel-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</div>
-                    <div class="deck-subtab-row">
-                        <button id="deck-subtab-btn-topdecks" class="deck-subtab-btn active" onclick="switchDeckSubtab('topdecks')">總傷前十</button>
-                        <button id="deck-subtab-btn-bypart" class="deck-subtab-btn" onclick="switchDeckSubtab('bypart')">依部位</button>
-                        <button id="deck-subtab-btn-quiz" class="deck-subtab-btn" onclick="switchDeckSubtab('quiz')">題庫</button>
-                        <button id="deck-subtab-btn-suggested" class="deck-subtab-btn" onclick="switchDeckSubtab('suggested')">這樣配最簡單！</button>
-                    </div>
-                    <div id="top-decks-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
-                    <div id="top-decks-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
-                    <div id="by-part-result" style="display:none; width:100%; margin-top:6px;"></div>
-                    <div id="quiz-result" style="display:none; width:100%; margin-top:6px;"></div>
-                    <div id="best-six-dropdown-wrap" style="position:relative; width:100%; display:none; margin-top:14px; margin-bottom:10px;">
-                        <button id="best-six-dropdown-btn" class="best-six-dropdown-btn" onclick="toggleBestSixDropdown()">
-                            <span id="best-six-dropdown-label">這樣配最簡單！（支援傷15%）</span>
-                            <span class="best-six-dropdown-caret">▾</span>
-                        </button>
-                        <div id="best-six-dropdown-menu" class="best-six-dropdown-menu" style="display:none;"></div>
-                    </div>
-                    <div id="suggested-deck-result" style="display:none; width:100%; flex-direction:column; gap:8px;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-cardusage" style="display:none;">
@@ -4754,11 +4769,33 @@
         swiperContainer.addEventListener('touchcancel', () => { if (!isSwiping) return; isSwiping = false; switchPage(currentPage); });
 
         function switchPage(pageIndex) {
+            closeDeckRef();
             currentPage = pageIndex;
             [tabBurst, tabTorment, tabSupport].forEach(tabEl => tabEl.classList.remove('active'));
             [tabBurst, tabTorment, tabSupport][pageIndex].classList.add('active');
             updateSwiperPosition(true);
             syncBodyBackground();
+        }
+
+        // 「牌組參考」分頁：藏起爆裂／苦痛／支援的牌組跟卡片池，改顯示牌組參考（總傷前十／依部位／題庫／這樣配最簡單）
+        async function openDeckRef() {
+            [tabBurst, tabTorment, tabSupport].forEach(tabEl => tabEl.classList.remove('active'));
+            document.getElementById('tab-deckref').classList.add('active');
+            document.querySelector('#view-deck .swiper-wrapper').style.display = 'none';
+            document.getElementById('card-pool-drawer').style.display = 'none';
+            document.getElementById('panel-topdecks').style.display = 'block';
+            document.body.style.backgroundColor = '#e0d5c1';
+            if (sharedSessionStart) await ensureSessionAttacksLoaded(sharedSessionStart);
+            topDecksSessionFilter = getSharedSession();
+            switchDeckSubtab(deckSubtab);
+        }
+        function closeDeckRef() {
+            const panel = document.getElementById('panel-topdecks');
+            if (panel.style.display !== 'block') return;
+            panel.style.display = 'none';
+            document.getElementById('tab-deckref').classList.remove('active');
+            document.querySelector('#view-deck .swiper-wrapper').style.display = '';
+            document.getElementById('card-pool-drawer').style.display = '';
         }
 
         window.addEventListener('resize', () => { swiperWidth = getDeckSwiperWidth(); if (currentView === 'deck') updateSwiperPosition(false); });
@@ -10697,7 +10734,7 @@
         }
 
         // 四個面板預設都收合，點按鈕才顯示內容（同時間只顯示一個，點別的按鈕會自動關掉前一個）
-        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report', 'bosshp'];
+        const RAID_TOOL_PANELS = ['attacklog', 'cardusage', 'missed', 'report'];
         function toggleRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
             const wasOpen = panel.style.display === 'block';
@@ -11644,6 +11681,8 @@
         // 王血量（工具列的「王血量」按鈕）：這場每一隻王應該要打的量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量），
         // 另外列剩餘要打的量，最上面是整場應打、剩餘要打的加總。資料來自即時連線的開場／每輪快照（每隻王的部位血量、禁打）
         // 王血量面板開著時，資料一更新（王的血量、即時快照、攻擊紀錄）就重畫，不用切場次
+        function openBossHp() { document.getElementById('panel-bosshp').style.display = 'block'; renderBossHpPanel(); }
+        function closeBossHp() { document.getElementById('panel-bosshp').style.display = 'none'; }
         function refreshBossHpIfOpen() {
             const pn = document.getElementById('panel-bosshp');
             if (pn && pn.style.display === 'block') { try { renderBossHpPanel(); } catch (e) {} }
@@ -11706,7 +11745,6 @@
         }
 
         async function renderRaidToolPanelForSharedSession(id) {
-            if (id === 'bosshp') { renderBossHpPanel(); return; }
             if (id === 'report') {
                 // 戰報只需要場次清單（伺服器端算好戰報），不用先抓整場攻擊紀錄；
                 // 剛打開網頁時場次清單可能還沒載入，先載入再畫，避免顯示「目前還沒有場次」

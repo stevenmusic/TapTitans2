@@ -11689,9 +11689,19 @@
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
             if (!rsa || raidPreview || !raidState || !raidState.parts || !raidState.bossName || raidState.bossName === '—') return;
             if (bossArmorMemory.raid !== rsa) bossArmorMemory = { raid: rsa, byName: {} };
-            const old = bossArmorMemory.byName[raidState.bossName] || {};
+            // 遊戲的「盔甲上限」（total_hp，也就是王資訊文字列的數字）比王實際出場時的盔甲高，
+            // 實際出場盔甲＝現在剩下的盔甲＋攻擊紀錄裡這隻王每個部位已經打掉的盔甲（兩隻 Klonk 右手都是剛好打 4.886B 破甲，上限卻寫 5.138B）
+            if (!Array.isArray(serverAttackLogCache) || !serverAttackLogCache.some(a => a.raidStartedAt === rsa)) return;   // 這場的攻擊紀錄還沒載入，算不出來，先不記
+            const hit = {};
+            serverAttackLogCache.forEach(a => {
+                if (a.raidStartedAt !== rsa || a.bossOrdinal !== raidState.bossOrdinal || a.boss !== raidState.bossName) return;
+                (a.parts || []).forEach(pp => { if (pp.layer === 'armor') hit[pp.part] = (hit[pp.part] || 0) + (Number(pp.damage) || 0); });
+            });
             const parts = {};
-            Object.keys(raidState.parts).forEach(k => { parts[k] = Math.max(Number(raidState.parts[k].armorMax) || 0, old[k] || 0); });
+            Object.keys(raidState.parts).forEach(k => {
+                const p = raidState.parts[k], max = Number(p.armorMax) || 0;
+                parts[k] = max > 0 ? Math.min(max, (Number(p.armor) || 0) + (hit[k] || 0)) : 0;
+            });
             if (!Object.values(parts).some(v => v > 0)) return;
             bossArmorMemory.byName[raidState.bossName] = parts;
             try { localStorage.setItem(BOSS_ARMOR_KEY, JSON.stringify(bossArmorMemory)); } catch (e) {}
@@ -11730,9 +11740,10 @@
             // 每隻王「應該要打」的量：能打部位（扣掉禁打）的滿血盔甲＋斬殺線（肉體總血量）；「剩餘」：已擊殺 0、目前這隻用現在剩下的、還沒輪到的＝應打
             const fullOf = (t, banned) => {
                 let armor = 0;
-                (t && t.parts || []).forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc && !banned.includes(loc)) armor += Number(pp.total_hp) || 0; });
-                let hasParts = !!(t && (t.parts || []).length);
-                const mem = !hasParts && t && bossArmorMemory.byName[t.enemy_name];   // 快照沒有部位資料：用打到這隻王時記下來的各部位盔甲上限
+                const mem0 = t && bossArmorMemory.byName[t.enemy_name];
+                if (!mem0) (t && t.parts || []).forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc && !banned.includes(loc)) armor += Number(pp.current_hp) || 0; });
+                let hasParts = !mem0 && !!(t && (t.parts || []).length);
+                const mem = mem0;   // 快照沒有部位資料：用打到這隻王時記下來的各部位盔甲上限
                 if (mem) { hasParts = true; Object.keys(mem).forEach(loc => { if (!banned.includes(loc)) armor += mem[loc]; }); }
                 return { armor, kill: t ? Number(t.total_hp) || 0 : 0, hasParts };
             };

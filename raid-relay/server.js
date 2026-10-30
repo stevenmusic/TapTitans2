@@ -1796,14 +1796,23 @@ app.get('/full-attack-log', async (req, res) => {
 const DECK_SCENARIOS_FILE = path.join(__dirname, 'deck-scenarios.json');
 let deckScenarios = [];
 // 同一組條件（加成、詛咒、各狀態部位數量、禁打的頭／肚子、詛咒甲位置、只剩單一部位）只會有一筆
+// 不能打的部位（禁打或骨架）合在一起算：骨架＋禁打的數量
 function deckScenarioKey(s) {
   const c = s.counts || {};
-  return [s.buff, s.curse || '', s.cursed ?? '', c.armor, c.body, c.skeleton, c.banned,
+  return [s.buff, s.curse || '', s.cursed ?? '', c.armor, c.body, 0, (c.skeleton || 0) + (c.banned || 0),
     (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|');
 }
 async function loadDeckScenariosFromDb() {
   const result = await db.execute('SELECT data FROM deck_scenarios ORDER BY sort, updated_at');
   deckScenarios = result.rows.map(r => JSON.parse(r.data));
+}
+// 備份：每次修改情境之前，先把當時全部的情境存一份（保留最近 30 份），出錯時可以還原
+const DECK_BACKUP_KEEP = 30;
+async function backupDeckScenarios(reason) {
+  if (!deckScenarios.length) return;
+  await db.execute(`CREATE TABLE IF NOT EXISTS deck_scenarios_backup (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, reason TEXT, count INTEGER, data TEXT NOT NULL)`);
+  await db.execute({ sql: 'INSERT INTO deck_scenarios_backup (created_at, reason, count, data) VALUES (?, ?, ?, ?)', args: [Date.now(), reason, deckScenarios.length, JSON.stringify(deckScenarios)] });
+  await db.execute({ sql: 'DELETE FROM deck_scenarios_backup WHERE id NOT IN (SELECT id FROM deck_scenarios_backup ORDER BY id DESC LIMIT ?)', args: [DECK_BACKUP_KEEP] });
 }
 // 整份取代：先刪光再依序寫入（同一個 batch，全部成功或全部不變）
 async function replaceDeckScenarios(list) {
@@ -1831,6 +1840,9 @@ const deckScenariosReady = (async () => {
       if (Array.isArray(seed) && seed.length) await replaceDeckScenarios(seed);
       console.log(`[scenarios] Turso 裡還沒有情境，已用 deck-scenarios.json 寫入 ${deckScenarios.length} 個`);
     } else console.log(`[scenarios] 已從 Turso 載入 ${deckScenarios.length} 個推薦牌組情境`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS deck_scenarios_backup (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, reason TEXT, count INTEGER, data TEXT NOT NULL)`);
+    const nb = await db.execute('SELECT COUNT(*) AS n FROM deck_scenarios_backup');
+    if (!Number(nb.rows[0].n)) await backupDeckScenarios('第一次備份');
   } catch (e) {
     console.error('[turso] 讀取推薦牌組情境失敗:', e && e.message ? e.message : e);
   }
@@ -1855,7 +1867,7 @@ function cleanDeckScenario(s) {
   return {
     ...(typeof s.note === 'string' && s.note ? { note: s.note.slice(0, 300) } : {}), buff: s.buff,
     ...(s.cursed !== undefined ? { cursed: s.cursed } : {}), ...(s.curse ? { curse: String(s.curse) } : {}),
-    counts: { armor: c.armor, body: c.body, skeleton: c.skeleton, banned: c.banned },
+    counts: { armor: c.armor, body: c.body, skeleton: 0, banned: c.skeleton + c.banned },   // 骨架併進不能打（禁打）
     ...(Array.isArray(s.bannedParts) ? { bannedParts: s.bannedParts.filter(x => x === 'Head' || x === 'ChestUpper') } : {}),
     ...(s.needTorso ? { needTorso: true } : {}),
     ...(Array.isArray(s.cursedAt) && s.cursedAt.length ? { cursedAt: s.cursedAt.filter(x => parts.includes(x)) } : {}),
@@ -1871,6 +1883,7 @@ app.post('/deck-scenarios', async (req, res) => {
   const body = req.body || {};
   try {
     await deckScenariosReady;
+    if (Array.isArray(body.scenarios) || body.scenario) await backupDeckScenarios(Array.isArray(body.scenarios) ? '整份取代前' : '單筆上傳前');
     if (Array.isArray(body.scenarios)) {   // 整份情境檔取代
       const list = body.scenarios.map(cleanDeckScenario);
       const bad = list.findIndex(x => !x);
@@ -1890,6 +1903,44 @@ app.post('/deck-scenarios', async (req, res) => {
   } catch (e) {
     console.error('[turso] 更新推薦牌組情境失敗:', e && e.message ? e.message : e);
     res.status(500).json({ error: '寫入資料庫失敗' });
+  }
+});
+
+function deckAdminOk(req) {
+  if (!SCENARIO_ADMIN_KEY) return false;
+  const a = Buffer.from(String(req.get('x-admin-key') || '')), b = Buffer.from(SCENARIO_ADMIN_KEY);
+  return a.length === b.length && require('crypto').timingSafeEqual(a, b);
+}
+// 備份清單（不含內容）、下載某一份、還原某一份（還原要管理密碼，還原前也會先備份當時的情境）
+app.get('/deck-scenarios/backups', async (req, res) => {
+  try {
+    await deckScenariosReady;
+    const r = await db.execute('SELECT id, created_at, reason, count FROM deck_scenarios_backup ORDER BY id DESC');
+    res.json({ backups: r.rows.map(x => ({ id: Number(x.id), createdAt: Number(x.created_at), reason: x.reason, count: Number(x.count) })) });
+  } catch (e) { res.json({ backups: [] }); }
+});
+app.get('/deck-scenarios/backups/:id', async (req, res) => {
+  try {
+    const r = await db.execute({ sql: 'SELECT data FROM deck_scenarios_backup WHERE id = ?', args: [Number(req.params.id) || 0] });
+    if (!r.rows.length) return res.status(404).json({ error: '找不到這份備份' });
+    res.json({ scenarios: JSON.parse(r.rows[0].data) });
+  } catch (e) { res.status(500).json({ error: '讀取備份失敗' }); }
+});
+app.post('/deck-scenarios/restore', async (req, res) => {
+  if (!SCENARIO_ADMIN_KEY) return res.status(503).json({ error: '伺服器還沒設定 SCENARIO_ADMIN_KEY' });
+  if (!deckAdminOk(req)) return res.status(401).json({ error: '管理密碼不對' });
+  try {
+    await deckScenariosReady;
+    const id = Number(req.body && req.body.id) || 0;
+    const r = await db.execute({ sql: 'SELECT data FROM deck_scenarios_backup WHERE id = ?', args: [id] });
+    if (!r.rows.length) return res.status(404).json({ error: '找不到這份備份' });
+    const list = JSON.parse(r.rows[0].data);
+    await backupDeckScenarios(`還原第 ${id} 份之前`);
+    await replaceDeckScenarios(list);
+    res.json({ ok: true, count: deckScenarios.length });
+  } catch (e) {
+    console.error('[turso] 還原推薦牌組情境失敗:', e && e.message ? e.message : e);
+    res.status(500).json({ error: '還原失敗' });
   }
 });
 

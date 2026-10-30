@@ -9358,7 +9358,7 @@
             const torso = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
             const has = (c, a, b, sk) => byPartAllScenarios().some(x => x.buff === buff && !x.only && !x.cursedAt
                 && (x.cursed === undefined || (x.cursed === c && (c === 0 || curseT.startsWith(x.curse))))
-                && x.counts.armor === c + a && x.counts.body === b && x.counts.skeleton === sk && x.counts.banned === banned.length
+                && x.counts.armor === c + a && x.counts.body === b && (x.counts.skeleton || 0) + (x.counts.banned || 0) === sk + banned.length
                 && torso(x.bannedParts || []) === torso(banned));
             const now = { c: cursedNow, a: attack.filter(k => P(k).armor > 0 && !P(k).cursed).length, b: attack.filter(k => !(P(k).armor > 0) && P(k).body > 0).length,
                 s: attack.filter(k => !(P(k).armor > 0) && !(P(k).body > 0)).length };
@@ -9485,7 +9485,7 @@
                             ${num('sim-imp-cursed', '詛咒甲數量')}${num('sim-imp-armor', '盔甲數量（含詛咒甲）')}
                             ${num('sim-imp-body', '肉體數量')}${num('sim-imp-skel', '骨架數量')}
                         </div>
-                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點部位切換，紅框＝禁打）</div>
+                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點部位切換，紅框＝禁打）。頭或肚子已經是骨架時，也點成禁打</div>
                         ${partChips}
                         <div id="sim-imp-sum" class="si-tip" style="margin-top:10px; font-weight:700;"></div>
                     </div>` : ''}
@@ -9500,6 +9500,11 @@
                         <button class="si-btn ghost" onclick="simScenarioFileDownload()">⬇️ 下載目前的情境檔</button>
                         <label class="si-btn ghost" style="margin-top:6px; display:block; text-align:center; box-sizing:border-box; width:100%;" for="sim-scen-file">⬆️ 上傳情境檔（整份取代）</label>
                         <input type="file" id="sim-scen-file" accept=".json,application/json" style="display:none;" onchange="simScenarioFileUpload(this.files[0]); this.value='';">
+                        <details style="margin-top:8px;" ${simImp.backupsOpen ? 'open' : ''} ontoggle="simImp.backupsOpen = this.open; if (this.open && !simImp.backups) simBackupsLoad();"><summary class="si-field" style="cursor:pointer; font-weight:800;">備份紀錄（每次修改前自動備份，保留最近 30 份）</summary>
+                            ${!simImp.backups ? '<div class="si-tip">讀取中…</div>' : !simImp.backups.length ? '<div class="si-tip">還沒有備份。</div>' : simImp.backups.map(b => { const d = new Date(b.createdAt);
+                                return `<div class="si-row"><span style="flex:1; line-height:1.4;">${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}｜${b.count} 個<br><small style="color:#8a7a6a;">${escapeHtml(b.reason || '')}</small></span>
+                                    <button class="si-del" style="background:#fff; color:#6a3d9a; border-color:#d9c8ea;" onclick="simBackupDownload(${b.id})">下載</button><button class="si-del" onclick="simBackupRestore(${b.id})">還原</button></div>`; }).join('')}
+                        </details>
                     </div>
                 </div>
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
@@ -9587,7 +9592,8 @@
             const dupInfo = simImportDupInfo();
             if (dupInfo.length && !confirm('有重複的卡：' + dupInfo.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。\n如果截圖上真的是同一張卡出現在不同組，按「確定」照樣儲存；不是的話按「取消」回去修改。')) return;
             const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
-            const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts, banned, bannedParts: torsoBanned,
+            // 不能打的部位（禁打或骨架）合在一起記：骨架數量併進禁打（比對只看能打的部位）
+            const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts: { armor: counts.armor, body: counts.body, skeleton: 0, banned: counts.banned + counts.skeleton }, banned, bannedParts: torsoBanned,
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };
             // 上傳到伺服器（存進 Turso，所有人開網頁都會拿到）：要管理密碼，第一次輸入後記在這支手機
             if (toServer) {
@@ -9615,21 +9621,54 @@
             if (m2) { m2.textContent = '✔ 已儲存，推薦牌組已更新。'; m2.style.color = '#2e7d32'; m2.style.fontWeight = '700'; }
         }
         // 帶管理密碼 POST 情境到伺服器（寫進 Turso），成功後重新拿最新的情境。密碼第一次輸入後記在這支手機，密碼錯就清掉
-        async function simAdminPost(body) {
+        async function simAdminPost(body, path) {
             let adminKey = '';
             try { adminKey = localStorage.getItem(SIM_ADMIN_KEY_STORE) || ''; } catch (e) {}
             if (!adminKey) adminKey = (prompt('請輸入管理密碼（第一次輸入後會記在這支手機）') || '').trim();
             if (!adminKey) return false;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const res = await fetch(`${relayUrl}/deck-scenarios`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify(body) });
+                const res = await fetch(`${relayUrl}${path || '/deck-scenarios'}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey }, body: JSON.stringify(body) });
                 const j = await res.json().catch(() => ({}));
                 if (res.status === 401) { try { localStorage.removeItem(SIM_ADMIN_KEY_STORE); } catch (e) {} alert('管理密碼不對，請再按一次重新輸入。'); return false; }
                 if (!res.ok) { alert('上傳失敗：' + (j.error || res.status)); return false; }
                 try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
             } catch (e) { alert('上傳失敗：連不到伺服器，請稍後再試。'); return false; }
             await byPartScenariosFetch();
+            simImp.backups = null; simBackupsLoad();
             return true;
+        }
+        // 情境備份：伺服器每次修改情境前會自動備份（保留最近 30 份），這裡列出來，可以下載或還原
+        async function simBackupsLoad() {
+            if (simImp.backupsLoading) return;
+            simImp.backupsLoading = true;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                simImp.backups = (await (await fetch(`${relayUrl}/deck-scenarios/backups`)).json()).backups || [];
+            } catch (e) { simImp.backups = []; }
+            simImp.backupsLoading = false;
+            if (document.getElementById('sim-import-modal')) renderSimImport();
+        }
+        async function simBackupDownload(id) {
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const list = (await (await fetch(`${relayUrl}/deck-scenarios/backups/${id}`)).json()).scenarios || [];
+                const txt = '[\n' + list.map(x => '  ' + JSON.stringify(x)).join(',\n') + '\n]\n';
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' }));
+                a.download = `deck-scenarios-backup-${id}.json`;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            } catch (e) { alert('下載失敗，請稍後再試。'); }
+        }
+        async function simBackupRestore(id) {
+            const b = (simImp.backups || []).find(x => x.id === id);
+            if (!b || !confirm(`要把伺服器上的情境還原成這份備份（${b.count} 個情境）嗎？\n還原前會先自動備份現在的情境。`)) return;
+            if (!(await simAdminPost({ id }, '/deck-scenarios/restore'))) return;
+            byPartRecoSig = ''; byPartRecoRefresh();
+            renderSimImport();
+            const m = document.getElementById('sim-imp-msg');
+            if (m) { m.textContent = `✔ 已還原（${BY_PART_GAME_SCENARIOS.length} 個情境）。`; m.style.color = '#2e7d32'; m.style.fontWeight = '700'; }
         }
         // 下載目前伺服器上的情境檔（JSON），可以在電腦或手機上改好再上傳
         async function simScenarioFileDownload() {
@@ -9679,10 +9718,12 @@
             const cursedKeys = RAID_PARTS.map(p => p.key).filter(k => scene[k] === 'cursed');
             const cursedN = cursedKeys.length;
             const attackableNow = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
-            // 禁打的部位：只有「頭、肚子有沒有禁打」會讓模擬器配卡不同；四肢（肩、手、腳）哪幾個禁打不影響，只看數量。
-            // 所以情境的禁打頭肚組合（沒禁打頭肚／只禁肚子／只禁頭／頭肚都禁）要跟現在一樣才套用
+            // 只看能打的部位：詛咒甲、盔甲、肉體各幾個要一樣；不能打的（禁打或骨架）合在一起算，不管是禁打還是骨架。
+            // 頭、肚子能不能打會讓模擬器配卡不同（四肢哪幾個不能打不影響），所以「頭／肚子哪個不能打」（禁打或骨架都算）要跟情境一樣
             const torsoBanKey = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
-            const matches = byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && ['armor', 'body', 'skeleton', 'banned'].every(k => cnt[k] === x.counts[k]) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && torsoBanKey(x.bannedParts || []) === torsoBanKey(banned || []));
+            const torsoOff = ['Head', 'ChestUpper'].filter(k => !['armor', 'body', 'cursed'].includes(scene[k]));
+            const offN = cnt.skeleton + cnt.banned;
+            const matches = byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && cnt.armor === x.counts.armor && cnt.body === x.counts.body && offN === (x.counts.skeleton || 0) + (x.counts.banned || 0) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && torsoBanKey(x.bannedParts || []) === torsoBanKey(torsoOff));
             const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed !== undefined) || matches[0];   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

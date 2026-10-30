@@ -11667,10 +11667,23 @@
             });
             const td = 'padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; white-space:nowrap;';
             const th = 'padding:4px 3px; text-align:right;';
+            // 每一輪已造成的傷害：這場的攻擊紀錄依輪次（cycle）加總每一刀的總傷害；最新一輪是進行中
+            const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
+            const byCycle = new Map();
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
+                if (rsa && a.raidStartedAt && a.raidStartedAt !== rsa) return;
+                if (typeof a.cycle !== 'number') return;
+                byCycle.set(a.cycle, (byCycle.get(a.cycle) || 0) + (Number(a.totalDamage) || 0));
+            });
+            const cycles = [...byCycle.keys()].sort((x, y) => x - y);
+            const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
+            const dealtHtml = cycles.length ? `<div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一輪已造成的傷害（共 ${formatNum(cycles.reduce((x, c) => x + byCycle.get(c), 0))}）</div>
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${cycles.map(c => `<div style="background:${c === lastCycle ? '#f3ebfa' : '#fbf2e2'}; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:${c === lastCycle ? '#6a3d9a' : '#8a7a6a'}; font-weight:700;">第 ${c} 輪${c === lastCycle ? '・進行中' : ''}</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(byCycle.get(c))}</div></div>`).join('')}</div>` : '';
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場應打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumFull)}</div></div>
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">剩餘要打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumLeft)}</div></div>
                 </div>
+                ${dealtHtml}
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">整場打幾輪結束，每一輪要打多少</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${[2, 3, 4, 5, 6].map(n => `<div style="background:#fbf2e2; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">${n} 輪</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(sumFull / n)}</div></div>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">

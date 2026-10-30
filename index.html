@@ -10002,12 +10002,12 @@
             const multiPart = r.rawCards.some(n => n === 'PlagueAttack' || n === 'Fuse' || n === 'BurningAttack');
             const bodyCard = r.rawCards.some(n => CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'body');
             const countOnly = (r.focus || 0) >= 3 || r.hideParts;
-            // 模擬器寫了 Focus 幾個（Focus Two、Focus Two Limbs…）：不限四肢，直接看當下還有盔甲的部位——詛咒甲優先，不夠再用血量最多的盔甲補，
+            // 模擬器寫了 Focus 幾個（Focus Two、Focus Two Limbs…）：不限四肢，直接看當下還有盔甲的部位——詛咒甲優先，不夠再用血量最多的盔甲補、再不夠用血量最多的肉體補，
             // 還不夠才用原本標的部位補，標滿 Focus 的數量
             if (r.game && r.focus && !r.allParts && !multiPart && !bodyCard) {
                 const byHp = (list) => list.slice().sort((x, y) => info[y].hp - info[x].hp);
                 const fit = keys.filter(k => fitsCards(r, k));
-                const order = [...byHp(fit.filter(k => info[k].cursed)), ...byHp(fit.filter(k => info[k].layer === 'armor' && !info[k].cursed))];
+                const order = [...byHp(fit.filter(k => info[k].cursed)), ...byHp(fit.filter(k => info[k].layer === 'armor' && !info[k].cursed)), ...byHp(fit.filter(k => info[k].layer !== 'armor'))];   // 詛咒甲 → 盔甲 → 肉體
                 now.forEach(t => { if (!order.includes(t.part)) order.push(t.part); });
                 if (order.length) r.targets = order.slice(0, r.focus).map(asTarget);
                 if (r.targets.length >= keys.length) { r.allParts = true; r.focus = 0; r.hideParts = false; }   // Focus N 已經涵蓋所有能打的部位＝全部位

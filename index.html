@@ -6352,6 +6352,7 @@
             if (payload && Array.isArray(payload.titan_target)) apiTitanTarget = payload.titan_target;
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
+            setTimeout(refreshBossHpIfOpen, 0);
             updateCurseInfo();
 
             // sub_cycle 會定期重複發送同一份「輪次開始時」的靜態快照，不是即時資料。
@@ -6750,6 +6751,7 @@
                 const data = await logResp.json();
                 if (Array.isArray(data.attacks)) {
                     serverAttackLogCache = data.attacks;
+                    setTimeout(refreshBossHpIfOpen, 0);
                     mergeIntoRaidFullLogBackup(data.attacks); // 雙重保險：合併備份到本機，絕對不主動清空
                     // 這批資料就是最新一場的內容，順便存進場次快取，選到最新這場就不用再抓一次
                     if (serverSessionsSummary[0]) sessionAttacksCache.set(serverSessionsSummary[0].startedAt, data.attacks);
@@ -11641,6 +11643,11 @@
         // 依共用場次畫出指定的功能面板
         // 王血量（工具列的「王血量」按鈕）：這場每一隻王應該要打的量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量），
         // 另外列剩餘要打的量，最上面是整場應打、剩餘要打的加總。資料來自即時連線的開場／每輪快照（每隻王的部位血量、禁打）
+        // 王血量面板開著時，資料一更新（王的血量、即時快照、攻擊紀錄）就重畫，不用切場次
+        function refreshBossHpIfOpen() {
+            const pn = document.getElementById('panel-bosshp');
+            if (pn && pn.style.display === 'block') { try { renderBossHpPanel(); } catch (e) {} }
+        }
         function renderBossHpPanel() {
             const box = document.getElementById('bosshp-body');
             if (!box) return;
@@ -11695,8 +11702,7 @@
                 ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
                     <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
                 <tr style="font-weight:800; background:#f0e6d2;"><td colspan="4" style="${td} text-align:left;">加總</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(sumLeft)}</td></tr>
-            </table>
-            <div style="font-size:11px; color:#8a7a6a; margin-top:6px; line-height:1.5;">盔甲＝扣掉公會標的禁打部位後的滿血盔甲（含詛咒甲）；斬殺線＝肉體總血量；合計＝這隻應該要打的量。剩餘：已擊殺是 0，目前這隻用現在剩下的血量，還沒輪到的就是合計。</div>`;
+            </table>`;
         }
 
         async function renderRaidToolPanelForSharedSession(id) {
@@ -13020,6 +13026,7 @@
         }
 
         function renderRaidStatus() {
+            setTimeout(refreshBossHpIfOpen, 0);   // 王血量面板開著就跟著更新
             if (!raidState) return;
             renderRaidCurseTag();
 

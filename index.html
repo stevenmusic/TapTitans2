@@ -11685,6 +11685,7 @@
         const BOSS_ARMOR_KEY = 'tt2_boss_armor_memory';
         let bossArmorMemory = { raid: null, byName: {} };
         try { bossArmorMemory = JSON.parse(localStorage.getItem(BOSS_ARMOR_KEY)) || bossArmorMemory; } catch (e) {}
+        if (Object.values(bossArmorMemory.byName || {}).some(v => !v || !v.parts)) bossArmorMemory = { raid: null, byName: {} };   // 舊格式，重新記
         function rememberBossArmor() {
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
             if (!rsa || raidPreview || !raidState || !raidState.parts || !raidState.bossName || raidState.bossName === '—') return;
@@ -11697,13 +11698,24 @@
                 if (a.raidStartedAt !== rsa || a.bossOrdinal !== raidState.bossOrdinal || a.boss !== raidState.bossName) return;
                 (a.parts || []).forEach(pp => { if (pp.layer === 'armor') hit[pp.part] = (hit[pp.part] || 0) + (Number(pp.damage) || 0); });
             });
+            // 禁打部位：即時資料還沒到就用整場快照的
+            let banned = raidBannedParts && raidBannedParts.length ? raidBannedParts : null;
+            if (!banned) {
+                const tg = (apiTitanTarget && apiTitanTarget.length ? apiTitanTarget : (bossHpSnapshot && bossHpSnapshot.titan_target) || []).find(x => x.enemy_id === apiCurrentEnemyId);
+                banned = tg && Array.isArray(tg.state) ? tg.state.filter(x => String(x.state) === '1').map(x => x.id) : [];
+            }
+            // 能打的部位盔甲全部拆光：直接用攻擊紀錄打掉的盔甲當這隻王的盔甲（定案，同名的王之後都用這個）
+            const keys = Object.keys(raidState.parts).filter(k => (Number(raidState.parts[k].armorMax) || 0) > 0);
+            const allBroken = keys.filter(k => !banned.includes(k)).every(k => (Number(raidState.parts[k].armor) || 0) <= 0);
+            const prev = bossArmorMemory.byName[raidState.bossName];
+            if (!allBroken && prev && prev.final) return;   // 同名的王之前已經拆光算過了，還沒拆光的這隻不要蓋掉
             const parts = {};
-            Object.keys(raidState.parts).forEach(k => {
-                const p = raidState.parts[k], max = Number(p.armorMax) || 0;
-                parts[k] = max > 0 ? Math.min(max, (Number(p.armor) || 0) + (hit[k] || 0)) : 0;
+            keys.forEach(k => {
+                const p = raidState.parts[k];
+                parts[k] = allBroken && !banned.includes(k) ? (hit[k] || 0) : Math.min(Number(p.armorMax) || 0, (Number(p.armor) || 0) + (hit[k] || 0));
             });
             if (!Object.values(parts).some(v => v > 0)) return;
-            bossArmorMemory.byName[raidState.bossName] = parts;
+            bossArmorMemory.byName[raidState.bossName] = { parts, final: allBroken };
             try { localStorage.setItem(BOSS_ARMOR_KEY, JSON.stringify(bossArmorMemory)); } catch (e) {}
         }
         let bossHpSnapshot = null, bossHpSnapshotTried = false;
@@ -11740,7 +11752,7 @@
             // 每隻王「應該要打」的量：能打部位（扣掉禁打）的滿血盔甲＋斬殺線（肉體總血量）；「剩餘」：已擊殺 0、目前這隻用現在剩下的、還沒輪到的＝應打
             const fullOf = (t, banned) => {
                 let armor = 0;
-                const mem0 = t && bossArmorMemory.byName[t.enemy_name];
+                const mem0 = t && bossArmorMemory.byName[t.enemy_name] && bossArmorMemory.byName[t.enemy_name].parts;
                 if (!mem0) (t && t.parts || []).forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc && !banned.includes(loc)) armor += Number(pp.current_hp) || 0; });
                 let hasParts = !mem0 && !!(t && (t.parts || []).length);
                 const mem = mem0;   // 快照沒有部位資料：用打到這隻王時記下來的各部位盔甲上限

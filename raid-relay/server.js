@@ -1355,7 +1355,13 @@ const RAID_BUFF_PATTERNS = [
 const RAID_BUFF_SKIP_KEYS = new Set(['titans', 'parts', 'attack_log', 'player', 'raid_state', 'spawn_sequence']);
 const RAID_BUFF_IGNORE = /curse|debuff|penalt|mutat|詛咒|诅咒|變異|变异/;
 
+// 官方加成代號 → 網頁用的加成類型
+const PREVIEW_BUFF_FROM_API = { AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportEffect: 'support', RaidAttackDuration: 'timeBoost' };
 function detectRaidBuffType(payload) {
+  // 官方的加成代號（raid.area_buffs[].bonus_type）認得出來就直接用：時間增益叫 RaidAttackDuration，關鍵字比對認不出來
+  const areaBuffs = payload && payload.raid && Array.isArray(payload.raid.area_buffs) ? payload.raid.area_buffs : [];
+  const direct = areaBuffs.map(b => PREVIEW_BUFF_FROM_API[b && b.bonus_type]).find(Boolean);
+  if (direct) return direct;
   const leaves = [];
   (function walk(node, path) {
     if (Array.isArray(node)) { node.forEach((v, i) => walk(v, `${path}[${i}]`)); return; }
@@ -1473,7 +1479,6 @@ function watcherSubscribe() {
 // 這段時間畫面顯示下一場的第 1 隻王（部位血量、詛咒甲、詛咒類型、公會標的禁打、加成），不動目前這場的王狀態；
 // 下一場開打（收到 raid_started_at 或攻擊事件）就清掉
 let watcherPreview = null;
-const PREVIEW_BUFF_FROM_API = { AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportEffect: 'support', RaidAttackDuration: 'timeBoost' };
 function buildRaidPreview(payload) {
   const raid = payload.raid || {};
   const seq = Array.isArray(raid.spawn_sequence) ? raid.spawn_sequence : [];

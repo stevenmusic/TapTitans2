@@ -11681,66 +11681,27 @@
         // 王血量（工具列的「王血量」按鈕）：這場每一隻王應該要打的量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量），
         // 另外列剩餘要打的量，最上面是整場應打、剩餘要打的加總。資料來自即時連線的開場／每輪快照（每隻王的部位血量、禁打）
         // 王血量面板開著時，資料一更新（王的血量、即時快照、攻擊紀錄）就重畫，不用切場次
-        // 每隻王各部位的盔甲（換場次就清掉）。遊戲文字列的「盔甲上限」（total_hp）比王實際出場的盔甲高 10～20%，各王、各部位比例都不同，
-        // 所以依序用：① 遊戲快照的實際盔甲（泰坦圖上的數字，王還沒被打過時記下來）② 攻擊紀錄算出來的（扣掉破甲後溢出的）③ 上限 × 85% 估計
-        const BOSS_ARMOR_KEY = 'tt2_boss_armor_v2';
+        // 每隻王各部位的盔甲上限（換場次就清掉）。遊戲的「盔甲上限」（王資訊文字列的數字）比實際出場的盔甲高，一律用上限 × 85% 估計
+        const BOSS_ARMOR_KEY = 'tt2_boss_armor_max';
         const BOSS_ARMOR_EST_RATIO = 0.85;
-        const bossArmorTag = (txt, bg) => `<span style="display:inline-block; margin-left:2px; padding:0 3px; border-radius:4px; font-size:9.5px; font-weight:800; color:#fff; background:${bg}; vertical-align:1px;">${txt}</span>`;
-        const BOSS_ARMOR_TAG = { snap: bossArmorTag('實', '#2e7d32'), log: bossArmorTag('紀', '#1565c0'), est: bossArmorTag('估', '#c77700') };
         let bossArmorMemory = { raid: null, byName: {} };
         try { bossArmorMemory = JSON.parse(localStorage.getItem(BOSS_ARMOR_KEY)) || bossArmorMemory; } catch (e) {}
-        const armorLayerOf = (parts, field) => { const o = {}; (parts || []).forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc) o[loc] = Number(pp[field]) || 0; }); return o; };
-        function currentBossBanned() {
-            if (raidBannedParts && raidBannedParts.length) return raidBannedParts;
-            const tg = (apiTitanTarget && apiTitanTarget.length ? apiTitanTarget : (bossHpSnapshot && bossHpSnapshot.titan_target) || []).find(x => x.enemy_id === apiCurrentEnemyId);
-            return tg && Array.isArray(tg.state) ? tg.state.filter(x => String(x.state) === '1').map(x => x.id) : [];
-        }
         function rememberBossArmor() {
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
             if (!rsa || raidPreview) return;
             if (bossArmorMemory.raid !== rsa) bossArmorMemory = { raid: rsa, byName: {} };
             const M = bossArmorMemory.byName;
-            const cur = raidState && raidState.bossOrdinal ? raidState.bossOrdinal : 0;
-            const fought = new Set((apiSpawnSequence || []).slice(0, cur));   // 已經出場過的王（含目前這隻），快照裡的數字可能已經被打掉一部分
-            // ① 即時連線的快照：上限都記；還沒出場過的王，現在的盔甲就是出場盔甲
+            // 即時連線的快照有每隻王的上限；沒有的話，打到哪隻王就從目前王的狀態記下來（同名的王一樣）
             (apiRaidTitans || []).forEach(t => {
                 if (!t || !t.enemy_name || !(t.parts || []).length) return;
-                const e = M[t.enemy_name] || (M[t.enemy_name] = {});
-                e.max = armorLayerOf(t.parts, 'total_hp');
-                if (!fought.has(t.enemy_name) && e.src !== 'snap') { e.spawn = armorLayerOf(t.parts, 'current_hp'); e.src = 'snap'; }
+                const o = {};
+                t.parts.forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc) o[loc] = Number(pp.total_hp) || 0; });
+                M[t.enemy_name] = o;
             });
-            // ② 目前這隻王：用攻擊紀錄算（快照已經記到的就不用）
-            if (raidState && raidState.parts && raidState.bossName && raidState.bossName !== '—') {
-                const e = M[raidState.bossName] || (M[raidState.bossName] = {});
-                if (!e.max) { e.max = {}; Object.keys(raidState.parts).forEach(k => { e.max[k] = Number(raidState.parts[k].armorMax) || 0; }); }
-                if (e.src !== 'snap' && Array.isArray(serverAttackLogCache) && serverAttackLogCache.some(a => a.raidStartedAt === rsa)) {
-                    // 每個部位只算到破甲那一刀為止（同一刀打到肉體＝破甲），之後別人同時送出、溢出記到的盔甲傷害不算
-                    const hit = {}, broke = {};
-                    serverAttackLogCache.filter(a => a.raidStartedAt === rsa && a.bossOrdinal === raidState.bossOrdinal && a.boss === raidState.bossName)
-                        .sort((x, y) => (x.ts || 0) - (y.ts || 0))
-                        .forEach(a => {
-                            const per = {};
-                            (a.parts || []).forEach(pp => { (per[pp.part] = per[pp.part] || {})[pp.layer] = (per[pp.part][pp.layer] || 0) + (Number(pp.damage) || 0); });
-                            Object.keys(per).forEach(k => {
-                                // 破甲後 90 秒內還記到的盔甲＝同時攻擊溢出，不算；超過 90 秒還在打盔甲，代表前面那刀不是真的破甲，照常累計
-                                if (broke[k] && (a.ts || 0) - broke[k] <= 90000) return;
-                                if (broke[k] && per[k].armor > 0) delete broke[k];
-                                hit[k] = (hit[k] || 0) + (per[k].armor || 0);
-                                if (per[k].body > 0 && !broke[k]) broke[k] = a.ts || 1;
-                            });
-                        });
-                    const banned = currentBossBanned();
-                    const keys = Object.keys(raidState.parts).filter(k => (Number(raidState.parts[k].armorMax) || 0) > 0);
-                    const allBroken = keys.filter(k => !banned.includes(k)).every(k => (Number(raidState.parts[k].armor) || 0) <= 0);
-                    if (allBroken || !e.final) {   // 同名的王之前已經拆光算過，還沒拆光的這隻不要蓋掉
-                        const spawn = {};
-                        keys.forEach(k => {
-                            const pt = raidState.parts[k];
-                            spawn[k] = allBroken && !banned.includes(k) ? (hit[k] || 0) : Math.min(Number(pt.armorMax) || 0, (Number(pt.armor) || 0) + (hit[k] || 0));
-                        });
-                        if (Object.values(spawn).some(v => v > 0)) { e.spawn = spawn; e.src = 'log'; e.final = allBroken; }
-                    }
-                }
+            if (raidState && raidState.parts && raidState.bossName && raidState.bossName !== '—' && !M[raidState.bossName]) {
+                const o = {};
+                Object.keys(raidState.parts).forEach(k => { o[k] = Number(raidState.parts[k].armorMax) || 0; });
+                if (Object.values(o).some(v => v > 0)) M[raidState.bossName] = o;
             }
             try { localStorage.setItem(BOSS_ARMOR_KEY, JSON.stringify(bossArmorMemory)); } catch (e) {}
         }
@@ -11777,12 +11738,10 @@
             const bannedOf = (t) => { const e = (targets || []).find(x => x.enemy_id === t.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : []; };
             // 每隻王「應該要打」的量：能打部位（扣掉禁打）的滿血盔甲＋斬殺線（肉體總血量）；「剩餘」：已擊殺 0、目前這隻用現在剩下的、還沒輪到的＝應打
             const fullOf = (t, banned) => {
-                const e = t && bossArmorMemory.byName[t.enemy_name] || {};
-                const sum = (o) => Object.keys(o).reduce((x, loc) => x + (banned.includes(loc) ? 0 : o[loc]), 0);
+                const max = t && bossArmorMemory.byName[t.enemy_name];
                 const kill = t ? Number(t.total_hp) || 0 : 0;
-                if (e.spawn) return { armor: sum(e.spawn), kill, hasParts: true, est: false, src: e.src };
-                if (e.max) return { armor: sum(e.max) * BOSS_ARMOR_EST_RATIO, kill, hasParts: true, est: true, src: 'est' };   // 拿不到實際盔甲：上限 × 85% 估計
-                return { armor: 0, kill, hasParts: false, est: false };
+                if (!max) return { armor: 0, kill, hasParts: false };
+                return { armor: Object.keys(max).reduce((x, loc) => x + (banned.includes(loc) ? 0 : max[loc]), 0) * BOSS_ARMOR_EST_RATIO, kill, hasParts: true };
             };
             let sumFull = 0, sumLeft = 0;
             const rows = seq.map((name, i) => {
@@ -11820,11 +11779,11 @@
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">整場打幾輪結束，每一輪要打多少</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${[2, 3, 4, 5, 6].map(n => `<div style="background:#fbf2e2; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">${n} 輪</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(sumFull / n)}</div></div>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">
-                <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
+                <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲(85%)</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
                 ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
-                    <td style="${td}">${r.hasParts ? formatNum(r.armor) + (BOSS_ARMOR_TAG[r.src] || '') : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
+                    <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
                 <tr style="font-weight:800; background:#f0e6d2;"><td colspan="4" style="${td} text-align:left;">加總</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(sumLeft)}</td></tr>
-            </table><div style="font-size:11px; color:#8a7a6a; margin-top:6px;">盔甲標記：${BOSS_ARMOR_TAG.snap}遊戲實際　${BOSS_ARMOR_TAG.log}攻擊紀錄算的　${BOSS_ARMOR_TAG.est}上限×85% 估計</div>${rows.some(r => !r.hasParts && !r.done) ? '<div style="font-size:11px; color:#a0522d; margin-top:6px;">盔甲「—」：這隻王還沒打到，盔甲先不算進合計，打到後會自動補上。</div>' : ''}`;
+            </table>${rows.some(r => !r.hasParts && !r.done) ? '<div style="font-size:11px; color:#a0522d; margin-top:6px;">盔甲「—」：這隻王還沒打到，盔甲先不算進合計，打到後會自動補上。</div>' : ''}`;
         }
 
         async function renderRaidToolPanelForSharedSession(id) {

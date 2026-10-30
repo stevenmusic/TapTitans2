@@ -9396,7 +9396,15 @@
                     const com = t.rows.filter(r => r.common);
                     rows.push({ curse, banned, text: `${curse === 'Burst' ? '爆裂' : '苦痛'}｜${banText(banned)}`, have: com.filter(r => r.ok).length, total: com.length });
                 }));
-                return { buff, rows, miss: rows.reduce((x, r) => x + r.total - r.have, 0) };
+                // 標題的「常見缺幾個」要去掉重複：禁打和骨架視為一樣，「2禁打＋2骨架」跟「4禁打」是同一個情境；
+                // 沒有詛咒甲的情境不分詛咒類型。同一個情境在好幾個條件的清單裡都會出現，只算一次
+                const miss = new Set();
+                rows.forEach(r => {
+                    const torso = ['Head', 'ChestUpper'].filter(k => r.banned.includes(k)).join('+');
+                    simTodoList({ buff, curse: r.curse, banned: r.banned }).rows.filter(x => x.common && !x.ok)
+                        .forEach(x => miss.add([x.c ? r.curse : '', x.c, x.a, x.b, x.s + r.banned.length, torso].join('|')));
+                });
+                return { buff, rows, miss: miss.size };
             });
         }
         function simTodoPick(c, a, b, sk) {

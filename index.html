@@ -9338,7 +9338,66 @@
                 }
                 decks.push(row);
             }
-            return { decks, aspect: img.naturalHeight / img.naturalWidth, offset: { dx: best.dx, dy: best.dy } };
+            const types = await simReadDeckTitles(img, sc, best.dx, best.dy);
+            return { decks, types, aspect: img.naturalHeight / img.naturalWidth, offset: { dx: best.dx, dy: best.dy } };
+        }
+
+        // 讀每組牌上面的標題（Focus Torso、Cycle…）：用遊戲同款字型（Open Sans 粗體）把每種標題畫出來，跟截圖上的標題比對形狀，
+        // 最像的那個就是。字型載不到（離線）或比不出來就回傳 null，改用舊的「依卡片猜」
+        let simTitleFontPromise = null;
+        function simTitleFont() {
+            if (simTitleFontPromise) return simTitleFontPromise;
+            simTitleFontPromise = new Promise(resolve => {
+                const l = document.createElement('link');
+                l.rel = 'stylesheet';
+                l.href = 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@700&text=' + encodeURIComponent('FocusTorHeadArmBdyLimbsOneTwThrFuCycleBait ');
+                l.onload = () => document.fonts.load('bold 50px "Open Sans"').then(() => resolve(document.fonts.check('bold 50px "Open Sans"'))).catch(() => resolve(false));
+                l.onerror = () => resolve(false);
+                document.head.appendChild(l);
+                setTimeout(() => resolve(false), 6000);
+            });
+            return simTitleFontPromise;
+        }
+        async function simReadDeckTitles(img, sc, dx, dy) {
+            if (!(await simTitleFont().catch(() => false))) return null;
+            const H = 20;
+            // 亮的像素當文字，切掉空白邊，縮放成高 H
+            const norm = (cv) => {
+                const { width: w, height: h } = cv, d = cv.getContext('2d').getImageData(0, 0, w, h).data;
+                let x0 = w, x1 = -1, y0 = h, y1 = -1;
+                for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (d[i] + d[i + 1] + d[i + 2] > 450) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+                if (x1 < 0) return null;
+                const bw = x1 - x0 + 1, bh = y1 - y0 + 1, W = Math.max(1, Math.round(bw * H / bh));
+                const c2 = document.createElement('canvas'); c2.width = W; c2.height = H;
+                const g = c2.getContext('2d'); g.drawImage(cv, x0, y0, bw, bh, 0, 0, W, H);
+                const e = g.getImageData(0, 0, W, H).data, bits = new Float32Array(W * H);
+                for (let i = 0; i < W * H; i++) bits[i] = (e[i * 4] + e[i * 4 + 1] + e[i * 4 + 2]) / 765;
+                return { w: W, bits };
+            };
+            const names = [...SIM_DECK_TYPES.filter(t => t[0] !== 'cycle').map(t => [t[0], t[1]]), ['cycle', 'Cycle'], ['cycle', 'Fuse'], ['cycle', 'Bait']];
+            const refs = names.map(([key, text]) => {
+                const cv = document.createElement('canvas'); cv.width = 900; cv.height = 80;
+                const g = cv.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 900, 80);
+                g.fillStyle = '#fff'; g.font = 'bold 50px "Open Sans"'; g.textBaseline = 'middle'; g.fillText(text, 10, 40);
+                return { key, ...norm(cv) };
+            });
+            // 參考圖縮成跟截圖一樣寬再算相關係數；寬度差越多扣越多
+            const score = (a, r) => {
+                const W = a.w, n = W * H; let sa = 0, sr = 0, saa = 0, srr = 0, sar = 0;
+                for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                    const va = a.bits[y * W + x], vr = r.bits[y * r.w + Math.min(r.w - 1, Math.floor(x * r.w / W))];
+                    sa += va; sr += vr; saa += va * va; srr += vr * vr; sar += va * vr;
+                }
+                return (sar - sa * sr / n) / (Math.sqrt((saa - sa * sa / n) * (srr - sr * sr / n)) || 1) - Math.abs(Math.log(a.w / r.w)) * 1.5;
+            };
+            return SIM_ICON_Y.map(y => {
+                const cv = document.createElement('canvas'); cv.width = Math.round(410 * sc); cv.height = Math.round(56 * sc);
+                cv.getContext('2d').drawImage(img, (425 + dx) * sc, (y - 75 - 28 + dy) * sc, 410 * sc, 56 * sc, 0, 0, cv.width, cv.height);
+                const a = norm(cv);
+                if (!a) return null;
+                const ranked = refs.map(r => [r.key, score(a, r)]).sort((p, q) => q[1] - p[1]);
+                return ranked[0][1] > 0.75 && ranked[0][1] - ranked[1][1] > 0.1 ? ranked[0][0] : null;   // 不夠像就不猜
+            });
         }
 
         const simImp = { analysis: null, imgUrl: null };
@@ -9492,7 +9551,7 @@
             const buffOpts = Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label]);
             const num = (id, label) => `<label class="si-field">${label}<input id="${id}" type="number" inputmode="numeric" min="0" max="8" value="0" oninput="simImportCheckSum()"></label>`;
             const deckHtml = a ? a.decks.map((row, di) => {
-                const guess = simGuessDeckType(row.map(c => c.id));
+                const guess = (a.types && a.types[di]) || simGuessDeckType(row.map(c => c.id));
                 return `<div class="si-deck">
                     <div class="si-deck-top"><span class="si-no">${di + 1}</span>
                         <select id="sim-imp-type-${di}">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select></div>

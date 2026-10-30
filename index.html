@@ -2079,7 +2079,7 @@
         .nav-gear-btn svg { width: 17px; height: 17px; }
         .nav-gear-btn.active { background: rgba(255,255,255,0.35); }
         /* 紀錄分頁：四個功能改成一列分頁 */
-        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+        #raid-tab-records .raid-tool-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }   /* 6 個按鈕，每排 3 個 */
         @media (max-width: 359px) { #raid-tab-records .raid-tool-btn { font-size: 11px !important; } }
         /* 場次統計 → 戰報 */
         .raid-report-export { width: 100%; background: #fdf9f3; border-radius: 12px; padding: 10px; box-sizing: border-box; }
@@ -3449,7 +3449,13 @@
                         <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">紫球&amp;鏡子</button>
                         <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="1.8"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.4" fill="currentColor"/></svg> 剩餘次數</button>
                         <button id="raid-tool-btn-report" class="raid-tool-btn" onclick="toggleRaidToolPanel('report')">戰報</button>
+                        <button id="raid-tool-btn-bosshp" class="raid-tool-btn" onclick="toggleRaidToolPanel('bosshp')">王血量</button>
                     </div>
+                </div>
+
+                <div class="backup-section" id="panel-bosshp" style="display:none;">
+                    <div style="width:100%; margin-bottom:8px; font-size:14px; font-weight:800; color:#5a3a2a;">王血量（每一隻要打的盔甲＋斬殺線）</div>
+                    <div id="bosshp-body" style="width:100%;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-attacklog" style="display:none;">
@@ -3508,8 +3514,6 @@
                     <div class="backup-title" id="card-usage-panel-title">紫球&amp;鏡子力使用</div>
                     <div id="card-usage-session-menu" style="display:none; width:100%; margin-top:6px; margin-bottom:10px;"></div>
                     <div id="card-usage-result" style="display:none; width:100%; margin-top:12px; flex-direction:column; gap:10px;"></div>
-                    <div style="width:100%; margin-top:18px; margin-bottom:8px; font-size:14px; font-weight:800; color:#5a3a2a;">王血量（每一隻要打的盔甲＋斬殺線）</div>
-                    <div id="bosshp-body" style="width:100%;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-missed" style="display:none;">
@@ -10691,7 +10695,7 @@
         }
 
         // 四個面板預設都收合，點按鈕才顯示內容（同時間只顯示一個，點別的按鈕會自動關掉前一個）
-        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report'];
+        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report', 'bosshp'];
         function toggleRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
             const wasOpen = panel.style.display === 'block';
@@ -11635,7 +11639,7 @@
         }
 
         // 依共用場次畫出指定的功能面板
-        // 王血量（放在紫球＆鏡子頁面）：這場每一隻王應該要打的量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量），
+        // 王血量（工具列的「王血量」按鈕）：這場每一隻王應該要打的量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量），
         // 另外列剩餘要打的量，最上面是整場應打、剩餘要打的加總。資料來自即時連線的開場／每輪快照（每隻王的部位血量、禁打）
         function renderBossHpPanel() {
             const box = document.getElementById('bosshp-body');
@@ -11678,7 +11682,7 @@
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
             const dealtHtml = cycles.length ? `<div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一輪已造成的傷害（共 ${formatNum(cycles.reduce((x, c) => x + byCycle.get(c), 0))}）</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${cycles.map(c => `<div style="background:${c === lastCycle ? '#f3ebfa' : '#fbf2e2'}; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:${c === lastCycle ? '#6a3d9a' : '#8a7a6a'}; font-weight:700;">第 ${c} 輪${c === lastCycle ? '・進行中' : ''}</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(byCycle.get(c))}</div></div>`).join('')}</div>` : '';
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:10px;">${cycles.map(c => `<div style="background:${c === lastCycle ? '#f3ebfa' : '#fbf2e2'}; border:1px solid #eadfcb; border-radius:8px; padding:6px 2px; text-align:center;"><div style="font-size:11px; color:${c === lastCycle ? '#6a3d9a' : '#8a7a6a'}; font-weight:700;">第 ${c} 輪</div><div style="font-size:12.5px; font-weight:800; color:#4a3728;">${formatNum(byCycle.get(c))}</div>${c === lastCycle ? '<div style="font-size:10px; color:#6a3d9a; font-weight:700;">進行中</div>' : ''}</div>`).join('')}</div>` : '';
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場應打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumFull)}</div></div>
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">剩餘要打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumLeft)}</div></div>
@@ -11696,6 +11700,7 @@
         }
 
         async function renderRaidToolPanelForSharedSession(id) {
+            if (id === 'bosshp') { renderBossHpPanel(); return; }
             if (id === 'report') {
                 // 戰報只需要場次清單（伺服器端算好戰報），不用先抓整場攻擊紀錄；
                 // 剛打開網頁時場次清單可能還沒載入，先載入再畫，避免顯示「目前還沒有場次」
@@ -11717,7 +11722,7 @@
                 if (deckSubtab === 'bypart') renderByPart(); // 依部位是統計全部場次，不受場次選單影響
                 else await renderTopDecks();
             }
-            if (id === 'cardusage') { cardUsageSessionFilter = x; renderBossHpPanel(); await renderCardUsageCheck(); }
+            if (id === 'cardusage') { cardUsageSessionFilter = x; await renderCardUsageCheck(); }
             if (id === 'missed') { missedSessionFilter = x; await renderMissedAttackList(); }
             if (id === 'report') await renderRaidReportPanel(x);
             renderSharedSessionMenu();

@@ -9405,7 +9405,7 @@
             simImp.target = { buff: t.buff, curse: c > 0 ? t.curse : '', cursed: c, armor: c + a, body: b, skeleton: sk, banned: t.banned };
             renderSimImport();
             const m = document.getElementById('sim-imp-msg');
-            if (m) { m.textContent = `已選：詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${b}${sk ? `｜骨架 ${sk}` : ''}。請選這個狀態的模擬器截圖，條件會自動帶入。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
+            if (m) { m.textContent = `已選：詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${b}${sk ? `（能打 ${c + a + b} 個）` : ''}。請選這個狀態的模擬器截圖，條件會自動帶入。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
             const bd = document.querySelector('#sim-import-modal .si-body'); if (bd) bd.scrollTop = 0;
         }
         function renderSimImport() {
@@ -9452,12 +9452,12 @@
                         <div class="raid-parts-grid" style="margin:2px 0 8px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<div class="raid-part-cell si-part${todo.banned.includes(k) ? ' is-banned' : ''}" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;" onclick="simTodoSet('ban', '${k}')">
                             <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp" style="color:#8a7a6a;">${todo.banned.includes(k) ? '禁打' : '可打'}</div></div>`).join('')}</div>`).join('')}</div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
-                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
+                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。禁打和骨架視為一樣（都是不能打），只看能打的部位。</div>
                         ${[true, false].map(common => { const list = todo.rows.filter(r => r.common === common); if (!list.length) return '';
                             const open = common || (simImp.target && list.some(r => simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s));
                             return `<details ${open ? 'open' : ''}><summary class="si-title" style="margin:10px 0 2px; cursor:pointer;">${common ? '常見' : '少見'}（${list.length} 個，缺 ${list.filter(x => !x.ok).length} 個）</summary>${list.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
                             <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
-                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.s ? `｜骨架 ${r.s}` : ''}</span>
+                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.s ? `<small style="font-weight:600; color:#8a7a6a;">（能打 ${r.c + r.a + r.b} 個）</small>` : ''}</span>
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
                             ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
                         </div>`).join('')}</details>`; }).join('')}

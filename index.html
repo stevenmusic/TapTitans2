@@ -3449,7 +3449,13 @@
                         <button id="raid-tool-btn-cardusage" class="raid-tool-btn" onclick="toggleRaidToolPanel('cardusage')">紫球&amp;鏡子</button>
                         <button id="raid-tool-btn-missed" class="raid-tool-btn" onclick="toggleRaidToolPanel('missed')"><svg class="raid-tool-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="1.8"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.4" fill="currentColor"/></svg> 剩餘次數</button>
                         <button id="raid-tool-btn-report" class="raid-tool-btn" onclick="toggleRaidToolPanel('report')">戰報</button>
+                        <button id="raid-tool-btn-bosshp" class="raid-tool-btn" onclick="toggleRaidToolPanel('bosshp')">王血量</button>
                     </div>
+                </div>
+
+                <div class="backup-section" id="panel-bosshp" style="display:none;">
+                    <div class="backup-title">王血量（每一隻要打的總量）</div>
+                    <div id="bosshp-body" style="width:100%;"></div>
                 </div>
 
                 <div class="backup-section" id="panel-attacklog" style="display:none;">
@@ -6142,6 +6148,7 @@
         const RAID_API_BASE = 'https://tt2-public.gamehivegames.com/api';
         let raidSocket = null;
         let apiRaidTitans = [];
+        let apiTitanTarget = [];   // 官方 titan_target：每隻王各自的禁打（公會標的），王血量面板用
         let apiSpawnSequence = []; // spawn_sequence[ordinal-1] 給出王的名字，比對 titans 陣列更可靠、更即時
         let raidBannedParts = []; // 公會幹部在遊戲裡標記「打叉／禁打」的部位（來自官方 titan_target 資料，跟遊戲畫面完全一致）
         let apiBossTotal = 6; // 這場突襲總共有幾隻王，預設 6（示範模式用），連線後會依 spawn_sequence 的實際長度更新
@@ -6256,6 +6263,7 @@
         }
 
         function updateBannedPartsFromPayload(payload) {
+            if (payload && Array.isArray(payload.titan_target)) apiTitanTarget = payload.titan_target;
             if (!payload || !Array.isArray(payload.titan_target) || !apiCurrentEnemyId) return;
             const entry = payload.titan_target.find(tt => tt.enemy_id === apiCurrentEnemyId);
             if (entry && Array.isArray(entry.state)) {
@@ -6341,6 +6349,7 @@
                 apiSpawnSequence = spawnSeq;
                 apiBossTotal = spawnSeq.length; // 王的總數不一定是 6，用真實的 spawn_sequence 長度才準
             }
+            if (payload && Array.isArray(payload.titan_target)) apiTitanTarget = payload.titan_target;
             if (!titans || titans.length === 0) return;
             apiRaidTitans = titans;
             updateCurseInfo();
@@ -10686,7 +10695,7 @@
         }
 
         // 四個面板預設都收合，點按鈕才顯示內容（同時間只顯示一個，點別的按鈕會自動關掉前一個）
-        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report'];
+        const RAID_TOOL_PANELS = ['attacklog', 'topdecks', 'cardusage', 'missed', 'report', 'bosshp'];
         function toggleRaidToolPanel(id) {
             const panel = document.getElementById('panel-' + id);
             const wasOpen = panel.style.display === 'block';
@@ -11630,7 +11639,47 @@
         }
 
         // 依共用場次畫出指定的功能面板
+        // 王血量面板：這場每一隻王要打的總量＝能打部位（扣掉公會標的禁打）的盔甲＋斬殺線（肉體總血量）；已經打死的是 0，
+        // 目前這隻用現在剩下的血量，還沒輪到的用滿血。資料來自即時連線的開場／每輪快照（每隻王的部位血量、禁打）
+        function renderBossHpPanel() {
+            const box = document.getElementById('bosshp-body');
+            if (!box) return;
+            if (raidPreview) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">下一場還沒開打，開打後就會列出每一隻王。</div>'; return; }
+            const seq = apiSpawnSequence || [];
+            if (!seq.length || !apiRaidTitans.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">還沒收到這場王的資料（連上即時資料、收到開場或每輪的快照後才會有）。</div>'; return; }
+            const cur = raidState && raidState.bossOrdinal ? raidState.bossOrdinal : 0;
+            const bannedOf = (t) => { const e = (apiTitanTarget || []).find(x => x.enemy_id === t.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : []; };
+            let sumArmor = 0, sumKill = 0;
+            const rows = seq.map((name, i) => {
+                const no = i + 1;
+                const t = apiRaidTitans.find(x => x.enemy_name === name);
+                if (no < cur) return { no, name, done: true };
+                let armor = 0, kill = 0, banned = [];
+                if (no === cur && raidState && raidState.parts) {
+                    banned = raidBannedParts || [];
+                    armor = Object.keys(raidState.parts).filter(k => !banned.includes(k)).reduce((x, k) => x + Math.max(0, Number(raidState.parts[k].armor) || 0), 0);
+                    kill = Math.max(0, typeof raidState.currentHp === 'number' ? raidState.currentHp : 0);
+                } else if (t) {
+                    banned = bannedOf(t);
+                    (t.parts || []).forEach(pp => { const { layer, loc } = apiSplitPartId(pp.part_id || ''); if (layer === 'armor' && loc && !banned.includes(loc)) armor += Number(pp.total_hp) || 0; });
+                    kill = Number(t.total_hp) || 0;
+                }
+                sumArmor += armor; sumKill += kill;
+                return { no, name, armor, kill, banned, now: no === cur, noParts: !!t && !(t.parts || []).length && no !== cur };
+            });
+            const td = 'padding:6px 4px; border-top:1px solid #eadfcb; text-align:right; white-space:nowrap;';
+            box.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728;">
+                <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px;">#</td><td style="padding:4px;">王</td><td style="padding:4px; text-align:right;">可打盔甲</td><td style="padding:4px; text-align:right;">斬殺線</td><td style="padding:4px; text-align:right;">合計</td></tr>
+                ${rows.map(r => r.done
+                    ? `<tr style="color:#b0a090;"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}</td><td colspan="3" style="${td}">已擊殺</td></tr>`
+                    : `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:#c0392b; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
+                        <td style="${td}">${r.noParts ? '—' : formatNum(r.armor)}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td></tr>`).join('')}
+                <tr style="font-weight:800; background:#f0e6d2;"><td colspan="2" style="${td} text-align:left;">整場加總</td><td style="${td}">${formatNum(sumArmor)}</td><td style="${td}">${formatNum(sumKill)}</td><td style="${td}">${formatNum(sumArmor + sumKill)}</td></tr>
+            </table>
+            <div style="font-size:11px; color:#8a7a6a; margin-top:6px; line-height:1.5;">可打盔甲＝扣掉公會標的禁打部位後的盔甲（含詛咒甲）；斬殺線＝肉體總血量。目前這隻用現在剩下的血量，還沒輪到的用滿血；整場加總是還要打的總量。</div>`;
+        }
         async function renderRaidToolPanelForSharedSession(id) {
+            if (id === 'bosshp') { renderBossHpPanel(); return; }
             if (id === 'report') {
                 // 戰報只需要場次清單（伺服器端算好戰報），不用先抓整場攻擊紀錄；
                 // 剛打開網頁時場次清單可能還沒載入，先載入再畫，避免顯示「目前還沒有場次」

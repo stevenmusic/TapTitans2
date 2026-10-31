@@ -10052,9 +10052,15 @@
             }
             // 模擬器的 Focus Head／Focus Torso 牌組打肉體時：不照模擬器的部位，改打「這組牌都打得到的部位」裡肉體剩餘血量最多的
             // （例如碎顱打擊能打頭跟腳，頭快打完了就改打腳）
-            else if (r.game && (r.role === 'head' || r.role === 'torso') && (r.targets || []).length && r.targets.every(x => x.layer === 'body')) {
-                const cand = keys.filter(k => info[k].layer !== 'armor' && r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
-                if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; byPartUnCount(r); }
+            // 有詛咒甲時：這組牌打得到的詛咒甲優先，只打那 1 個（最薄的）
+            else if (r.game && (r.role === 'head' || r.role === 'torso') && (r.targets || []).length) {
+                const fit = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
+                const cursedFit = fit.filter(k => info[k].cursed);
+                if (cursedFit.length) { r.targets = [asTarget(hpLeast(cursedFit))]; r.allParts = false; byPartUnCount(r); }
+                else if (r.targets.every(x => x.layer === 'body')) {
+                    const cand = fit.filter(k => info[k].layer !== 'armor');
+                    if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; byPartUnCount(r); }
+                }
             }
         });
         // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）

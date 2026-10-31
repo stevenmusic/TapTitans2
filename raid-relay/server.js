@@ -1452,6 +1452,8 @@ async function backfillClanMemberEvents() {
     for (const row of r.rows) {
       try { await saveClanMemberEvent(row.event, JSON.parse(row.data || 'null'), Number(row.captured_at)); } catch (e) {}
     }
+    // 這個功能上線前就被踢、事件沒存到的人，直接補一筆
+    await saveClanMemberEvent('kick', { player: { player_code: 'm6xbddy', name: 'Import' } }, Date.parse('2026-10-31T03:30:00Z'));
   } catch (e) {
     console.error('補成員異動失敗:', e && e.message ? e.message : e);
   }

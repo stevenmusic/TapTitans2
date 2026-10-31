@@ -286,6 +286,17 @@ const dbReady = (async () => {
       PRIMARY KEY (started_at, event)
     )
   `);
+  // 公會成員異動：每一筆加入（join）／離開（leave）／被踢（kick）都記下來，網頁用來排除已經離開的人
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clan_member_events (
+      ts INTEGER NOT NULL,
+      event TEXT NOT NULL,
+      player_code TEXT NOT NULL,
+      name TEXT,
+      executor TEXT,
+      PRIMARY KEY (player_code, event, ts)
+    )
+  `);
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -586,7 +597,12 @@ async function getDistinctPlayers() {
       latestByIdentity.set(identity, { ts: a.ts, name: a.player, playerCode: a.playerCode || null });
     }
   });
-  return [...latestByIdentity.values()].map(v => ({ playerCode: v.playerCode, name: v.name }));
+  return [...latestByIdentity.values()]
+    .filter(v => {   // 已經離開公會的人不列：最後一筆異動是離開／被踢，而且那之後沒有再出刀
+      const m = v.playerCode && clanMemberLatest.get(v.playerCode);
+      return !(m && (m.event === 'leave' || m.event === 'kick') && v.ts <= m.ts);
+    })
+    .map(v => ({ playerCode: v.playerCode, name: v.name }));
 }
 
 // 輕量版「最近攻擊」：只挑最後 N 筆、只回傳畫面用得到的欄位（不含卡片明細），
@@ -1406,6 +1422,42 @@ async function backfillRaidBuffTypes() {
 }
 loadRaidBuffCache().then(backfillRaidBuffTypes);
 
+// 每個玩家最後一筆成員異動（記憶體）：最後一筆是離開／被踢、之後也沒再出刀 → 已經不在公會，成員名單排除
+const clanMemberLatest = new Map();   // player_code -> { ts, event }
+function noteClanMemberEvent(code, event, ts) {
+  const cur = clanMemberLatest.get(code);
+  if (!cur || ts >= cur.ts) clanMemberLatest.set(code, { ts, event });
+}
+async function saveClanMemberEvent(event, payload, ts) {
+  try {
+    const pl = payload && payload.player;
+    if (!pl || !pl.player_code) return;
+    noteClanMemberEvent(String(pl.player_code), event, ts);
+    await dbReady;
+    await db.execute({
+      sql: 'INSERT OR IGNORE INTO clan_member_events (ts, event, player_code, name, executor) VALUES (?, ?, ?, ?, ?)',
+      args: [ts, event, String(pl.player_code), String(pl.name || ''), payload.executor && payload.executor.name ? String(payload.executor.name) : null]
+    });
+  } catch (e) {
+    console.error('儲存成員異動失敗:', e && e.message ? e.message : e);
+  }
+}
+// 這個功能上線前，診斷用的事件樣本裡也存過一些加入／離開／被踢（每場每種一筆），開機時補進來
+async function backfillClanMemberEvents() {
+  try {
+    await dbReady;
+    const all = await db.execute('SELECT ts, event, player_code FROM clan_member_events');
+    all.rows.forEach(x => noteClanMemberEvent(String(x.player_code), x.event, Number(x.ts)));
+    const r = await db.execute("SELECT event, captured_at, data FROM raid_event_samples WHERE event IN ('join', 'leave', 'kick')");
+    for (const row of r.rows) {
+      try { await saveClanMemberEvent(row.event, JSON.parse(row.data || 'null'), Number(row.captured_at)); } catch (e) {}
+    }
+  } catch (e) {
+    console.error('補成員異動失敗:', e && e.message ? e.message : e);
+  }
+}
+backfillClanMemberEvents();
+
 async function saveRawEventSample(event, startedAt, payload) {
   try {
     // 事件本身沒帶場次時間（例如部分 sub_start）就歸到目前追蹤中的場次，不要整筆丟掉
@@ -1733,6 +1785,7 @@ function startWatcher() {
     watcherDebug.lastEvents.length = Math.min(watcherDebug.lastEvents.length, 30);
     if (!knownEvents.has(eventName)) saveRawEventSample(eventName, payload && payload.raid_started_at, payload);
   });
+  ['join', 'leave', 'kick'].forEach((evt) => watcherSocket.on(evt, (payload) => saveClanMemberEvent(evt, payload, Date.now())));
   watcherSocket.on('end', handleWatcherRaidEnd('end'));
   watcherSocket.on('retire', handleWatcherRaidEnd('retire'));
 }
@@ -2114,6 +2167,18 @@ app.get('/deck-part-stats', async (req, res) => {
   } catch (e) {
     console.error('deck-part-stats failed', e);
     res.status(500).json({ error: 'deck-part-stats failed' });
+  }
+});
+
+// 公會成員異動紀錄（加入／離開／被踢），資料很小，全部回傳
+app.get('/clan-member-events', async (req, res) => {
+  try {
+    await dbReady;
+    const r = await db.execute('SELECT ts, event, player_code, name, executor FROM clan_member_events ORDER BY ts');
+    res.json({ events: r.rows.map(x => ({ ts: Number(x.ts), event: x.event, playerCode: x.player_code, name: x.name, executor: x.executor || null })) });
+  } catch (e) {
+    console.error('[turso] 讀取成員異動失敗:', e && e.message ? e.message : e);
+    res.status(500).json({ error: '讀取失敗' });
   }
 });
 

@@ -6731,6 +6731,7 @@
         let serverAttackLogCache = []; // 目前「預設場次」（通常是最新一場）的攻擊紀錄
         let serverSessionsSummary = []; // 伺服器算好的場次清單（含每場筆數、時間範圍），新到舊排序，不含逐筆攻擊內容
         let serverAllPlayersCache = []; // 所有場次出現過的玩家名字（給漏打名單的「全部成員名單」用，需要時才抓）
+        let serverAllPlayersAt = 0;
         let sessionAttacksCache = new Map(); // startedAt -> 那一場的完整攻擊紀錄，選到才會去抓、抓過就存起來不用重抓
 
         function loadRaidFullLogBackup() {
@@ -6920,13 +6921,13 @@
         // 之後只有明確要求刷新（forceRefresh）才會再跟伺服器要一次
         async function ensureAllPlayersLoaded(forceRefresh) {
             if (raidLogDemoActive) return;
-            if (!forceRefresh && serverAllPlayersCache.length > 0) return;
+            if (!forceRefresh && serverAllPlayersCache.length > 0 && Date.now() - serverAllPlayersAt < 5 * 60 * 1000) return;   // 5 分鐘內抓過就不重抓（有人離開公會時，名單才會更新）
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 const resp = await fetch(`${relayUrl}/raid-players`);
                 if (!resp.ok) return;
                 const data = await resp.json();
-                if (Array.isArray(data.players)) serverAllPlayersCache = data.players;
+                if (Array.isArray(data.players)) { serverAllPlayersCache = data.players; serverAllPlayersAt = Date.now(); }
             } catch (e) {
                 // 抓不到就沿用舊的快取（可能是上一輪抓到的，或本機備份回推出來的名單）
             }

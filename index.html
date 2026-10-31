@@ -10035,14 +10035,14 @@
                 r.targets = [asTarget(hpMost(cursedNow.length ? cursedNow : keys))]; r.allParts = false; byPartUnCount(r);
             }
             // 淨化爆裂＋輻射萬花筒（第三張放大、暴食蜂擁…都一樣）→ 有詛咒甲先拆詛咒甲；沒有就打盔甲血量最多的部位；沒有盔甲就打肉體血量最多的部位
-            else if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && keys.length) {
+            // 第三張是暴食蜂擁：照模擬器寫的部位數量（N部位／全部位），不套用這條
+            else if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && !r.rawCards.includes('Swarm') && keys.length) {
                 const arm = keys.filter(k => info[k].layer === 'armor');
                 // 有詛咒甲先拆詛咒甲
                 const cursedNow = keys.filter(k => info[k].cursed);
                 const pool2 = (cursedNow.length ? cursedNow : (arm.length ? arm : keys)).slice().sort((x, y) => info[y].hp - info[x].hp);
-                // 血量最多的 1～2 個部位：第一名血量特別多（≥ 第二名 1.5 倍）就只寫它，否則寫前兩名
-                const pick = pool2.length > 1 && info[pool2[0]].hp < info[pool2[1]].hp * BY_PART_TOP_HP_RATIO ? pool2.slice(0, 2) : pool2.slice(0, 1);
-                r.targets = pick.map(asTarget); r.allParts = false; byPartUnCount(r);
+                // 一律只打 1 個部位（血量最多的），就算模擬器寫 Focus Three 也一樣
+                r.targets = pool2.slice(0, 1).map(asTarget); r.allParts = false; r.focus = 0; r.hideParts = false;
             }
             else if (sameDeck(r, ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'])) {
                 const ht = keys.filter(k => k === 'Head' || k === 'ChestUpper');
@@ -10125,7 +10125,7 @@
             // 一般算法的牌組集中打 1～2 個部位、卡片也沒指定部位時：有詛咒甲先拆詛咒甲（血量最多的），沒有詛咒甲就打血量最多的部位
             // （有自己規則的牌組不套用：毀了雨、圖騰之力、防空高砲、淨化爆裂＋輻射萬花筒、電擊＋時間之沙＋戰鼓）
             const ownRule = r.rawCards.some(n => n === 'RuinousRust' || n === 'TotemFairySkill' || n === 'FlakShot')
-                || (r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport')) || sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']);
+                || (r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && !r.rawCards.includes('Swarm')) || sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']);
             const cur = tg || r.targets || [];
             if (!r.game && !r.allParts && !ownRule && cur.length >= 1 && cur.length <= 2 && !r.rawCards.some(n => CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part')) {
                 const cand = keys.filter(k => fitsCards(r, k));

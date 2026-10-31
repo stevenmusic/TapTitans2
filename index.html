@@ -10146,6 +10146,10 @@
             const countOnly = (r.focus || 0) >= 3 || r.hideParts;
             // 模擬器寫了 Focus 幾個（Focus Two、Focus Two Limbs…）：不限四肢，直接看當下還有盔甲的部位——詛咒甲優先，不夠再用血量最多的盔甲補、再不夠用血量最多的肉體補，
             // 還不夠才用原本標的部位補，標滿 Focus 的數量
+            // 模擬器寫的部位數量（Focus Three／Four…）不少於現在能打的部位數、而且這組牌每個部位都打得到＝全部位（不管牌組裡有什麼卡）
+            if (r.game && r.focus && !r.allParts && keys.length > 1 && r.focus >= keys.length && keys.every(k => fitsCards(r, k))) {
+                r.targets = keys.map(asTarget); r.allParts = true; r.focus = 0; r.hideParts = false;
+            }
             if (r.game && r.focus && !r.allParts && !multiPart && !bodyCard) {
                 const byHp = (list) => list.slice().sort((x, y) => info[y].hp - info[x].hp);
                 const fit = keys.filter(k => fitsCards(r, k));

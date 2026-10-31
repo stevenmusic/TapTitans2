@@ -9884,7 +9884,7 @@
                 let tg;
                 if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
                 else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');
-                else if (g.role === 'torso') tg = attackable.filter(k => k === 'Head' || k === 'ChestUpper');
+                else if (g.role === 'torso') { tg = attackable.filter(k => k === 'ChestUpper'); if (!tg.length) tg = attackable.filter(k => k === 'Head'); }   // Torso＝肚子；肚子不能打才打頭
                 else if (g.role === 'head') tg = attackable.filter(k => k === 'Head');
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));
                 else if (g.role === 'cursed1') {
@@ -10050,10 +10050,15 @@
                 const ht = keys.filter(k => k === 'Head' || k === 'ChestUpper');
                 if (ht.length) { r.targets = [asTarget(hpMost(ht))]; r.allParts = false; byPartUnCount(r); }
             }
-            // 模擬器的 Focus Head／Focus Torso 牌組打肉體時：不照模擬器的部位，改打「這組牌都打得到的部位」裡肉體剩餘血量最多的
+            // 模擬器的 Focus Head 牌組打肉體時：不照模擬器的部位，改打「這組牌都打得到的部位」裡肉體剩餘血量最多的
             // （例如碎顱打擊能打頭跟腳，頭快打完了就改打腳）
             // 有詛咒甲時：這組牌打得到的詛咒甲優先，只打那 1 個（最薄的）
-            else if (r.game && (r.role === 'head' || r.role === 'torso') && (r.targets || []).length) {
+            // Focus Torso＝肚子：一律只打肚子（肚子不能打才打頭）
+            else if (r.game && r.role === 'torso' && keys.length) {
+                const t = keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null);
+                if (t) { r.targets = [asTarget(t)]; r.allParts = false; byPartUnCount(r); }
+            }
+            else if (r.game && r.role === 'head' && (r.targets || []).length) {
                 const fit = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
                 const cursedFit = fit.filter(k => info[k].cursed);
                 if (cursedFit.length) { r.targets = [asTarget(hpLeast(cursedFit))]; r.allParts = false; byPartUnCount(r); }
@@ -10173,6 +10178,12 @@
                     if (!(pick.length === now.length && pick.every(k => now.some(t => t.part === k)))) r.targets = pick.map(asTarget);
                 }
             }
+        });
+        // Focus Torso＝肚子：最後一律只標肚子（蓋過詛咒甲優先、防空高砲、毀了雨、圖騰之力、鏡子力組這些規則）；肚子不能打才標頭
+        picked.forEach(r => {
+            if (!r.game || r.role !== 'torso') return;
+            const t = keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null);
+            if (t) { r.targets = [asTarget(t)]; r.allParts = false; r.focus = 0; r.hideParts = false; }
         });
         // 淨化爆裂＋暴食蜂擁（＋輻射萬花筒）：不寫「全部位」，改寫實際能打的部位數（例如只剩 3 個能打＝3部位）；只剩 1 個就寫部位名稱
         picked.forEach(r => {

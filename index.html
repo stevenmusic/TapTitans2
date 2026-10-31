@@ -11335,7 +11335,11 @@
             const head = `<div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:4px;">推薦牌組</div>`;
             const deckGrid = (rows) => { byPartBadgeBanned = raidBannedParts || []; try { return deckGridInner(rows); } finally { byPartBadgeBanned = null; } };
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
-                ${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 組</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div></div>`).join('')}
+                ${rows.map((x, i) => {
+                    // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
+                    const later = i >= RAID_ATTACKS_PER_CYCLE;
+                    return `<div style="padding:2px; border-radius:7px; background:${later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 組${later ? '・之後' : ''}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}</div>`;
+                }).join('')}
             </div>`;
             let html;
             if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">攻擊次數已經用完。</div>';

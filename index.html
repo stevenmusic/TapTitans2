@@ -9896,7 +9896,7 @@
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));   // Focus One Limb：單一四肢部位
                 else tg = attackable;
                 if (!tg.length) tg = attackable;
-                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || 0, partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
+                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || (g.role === 'any' ? 3 : 0), partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
             });
             return rows;
         }
@@ -10005,6 +10005,8 @@
 
         // 推薦牌組每一組要標的部位（首頁、依部位、玩家推薦共用同一套規則）
         // rows：牌組（rawCards、targets、allParts、focus、game、role…）；info：能打的部位 → { layer, hp, cursed }；keys：能打的部位；sceneNow：部位狀態
+        // 專屬規則選好部位後，改成顯示部位名稱；但模擬器寫 Focus Three／Four（任意 N 個部位）的牌組照樣只寫「N部位」
+        function byPartUnCount(r) { if (r.game && r.role === 'any') return; r.focus = 0; r.hideParts = false; }
         function byPartLabelTargets(picked, info, keys, sceneNow) {
         // 指定牌組的部位標記：電擊＋時間之沙＋戰鼓 → 剩餘血量最多的 1 個部位；鏡子力＋先祖加護＋破碎本能 → 頭或肚子裡剩餘血量較多的那個
         const sameDeck = (r, cards) => r.rawCards && r.rawCards.length === cards.length && cards.every(n => r.rawCards.includes(n));
@@ -10018,19 +10020,19 @@
             const okParts = keys.filter(k => info[k].cursed && r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
             let cc = r.limbOnly ? okParts.filter(k => /Arm|Hand|Leg/.test(k)) : okParts;
             if (!cc.length) cc = okParts;
-            if (cc.length) { r.targets = [asTarget(hpMost(cc))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
+            if (cc.length) { r.targets = [asTarget(hpMost(cc))]; r.allParts = false; byPartUnCount(r); }
         });
         picked.forEach(r => {
             if (!(r.rawCards && r.rawCards.includes('TotemFairySkill'))) return;
             let cand = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok) && (!r.limbOnly || /Arm|Hand|Leg/.test(k)));
             { const cc = cand.filter(k => info[k].cursed); if (cc.length) cand = cc; }   // 有詛咒甲先拆詛咒甲
-            if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
+            if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; byPartUnCount(r); }
         });
         picked.forEach(r => {
             // 電擊＋時間之沙＋戰鼓：有詛咒甲先拆詛咒甲（血量最多的那個），沒有詛咒甲再打血量最多的部位
             if (sameDeck(r, ['CosmicBarb', 'SandsOfTime', 'BattleDrums']) && keys.length) {
                 const cursedNow = keys.filter(k => info[k].cursed);
-                r.targets = [asTarget(hpMost(cursedNow.length ? cursedNow : keys))]; r.allParts = false; r.focus = 0; r.hideParts = false;
+                r.targets = [asTarget(hpMost(cursedNow.length ? cursedNow : keys))]; r.allParts = false; byPartUnCount(r);
             }
             // 淨化爆裂＋輻射萬花筒（第三張放大、暴食蜂擁…都一樣）→ 有詛咒甲先拆詛咒甲；沒有就打盔甲血量最多的部位；沒有盔甲就打肉體血量最多的部位
             else if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('TriangleSupport') && keys.length) {
@@ -10040,17 +10042,17 @@
                 const pool2 = (cursedNow.length ? cursedNow : (arm.length ? arm : keys)).slice().sort((x, y) => info[y].hp - info[x].hp);
                 // 血量最多的 1～2 個部位：第一名血量特別多（≥ 第二名 1.5 倍）就只寫它，否則寫前兩名
                 const pick = pool2.length > 1 && info[pool2[0]].hp < info[pool2[1]].hp * BY_PART_TOP_HP_RATIO ? pool2.slice(0, 2) : pool2.slice(0, 1);
-                r.targets = pick.map(asTarget); r.allParts = false; r.focus = 0; r.hideParts = false;
+                r.targets = pick.map(asTarget); r.allParts = false; byPartUnCount(r);
             }
             else if (sameDeck(r, ['MirrorForce', 'BurstBoost', 'ExecutionersAxe'])) {
                 const ht = keys.filter(k => k === 'Head' || k === 'ChestUpper');
-                if (ht.length) { r.targets = [asTarget(hpMost(ht))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
+                if (ht.length) { r.targets = [asTarget(hpMost(ht))]; r.allParts = false; byPartUnCount(r); }
             }
             // 模擬器的 Focus Head／Focus Torso 牌組打肉體時：不照模擬器的部位，改打「這組牌都打得到的部位」裡肉體剩餘血量最多的
             // （例如碎顱打擊能打頭跟腳，頭快打完了就改打腳）
             else if (r.game && (r.role === 'head' || r.role === 'torso') && (r.targets || []).length && r.targets.every(x => x.layer === 'body')) {
                 const cand = keys.filter(k => info[k].layer !== 'armor' && r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
-                if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
+                if (cand.length) { r.targets = [asTarget(hpMost(cand))]; r.allParts = false; byPartUnCount(r); }
             }
         });
         // 帶防空高砲的牌組（只能打盔甲）：部位名稱依「現在還有盔甲的部位」顯示（沒有盔甲的部位不列）

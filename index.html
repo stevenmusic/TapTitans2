@@ -9181,7 +9181,7 @@
         async function byPartScenariosFetch() {
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const r = await fetch(`${relayUrl}/deck-scenarios`);
+                const r = await fetch(`${relayUrl}/deck-scenarios`, { cache: 'no-store' });
                 if (!r.ok) return;
                 const list = (await r.json()).scenarios;
                 if (!Array.isArray(list) || !list.length) return;
@@ -9191,6 +9191,7 @@
                 try { localStorage.setItem(BY_PART_SCEN_CACHE_KEY, txt); } catch (e) {}
                 byPartRecoSig = ''; byPartRecoRefresh();
                 if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+                if (document.getElementById('sim-import-modal')) renderSimImport();   // 匯入視窗開著：清單的打勾也跟著更新
             } catch (e) {}
         }
         byPartScenariosFetch();
@@ -9767,7 +9768,13 @@
                 if (!res.ok) { alert('上傳失敗：' + (j.error || res.status)); return false; }
                 try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
             } catch (e) { alert('上傳失敗：連不到伺服器，請稍後再試。'); return false; }
-            await byPartScenariosFetch();
+            if (body && body.scenario) {   // 單筆上傳：先在本機放進情境清單（同一組條件就取代），下面的清單馬上打勾，不用等重新下載
+                const sk = (x) => { const c = x.counts || {}; return [x.buff, x.curse || '', x.cursed ?? '', c.armor, c.body, (c.skeleton || 0) + (c.banned || 0), (x.bannedParts || []).slice().sort().join('+'), (x.cursedAt || []).slice().sort().join('+'), x.only || ''].join('|'); };
+                const list = BY_PART_GAME_SCENARIOS.slice(), i = list.findIndex(x => sk(x) === sk(body.scenario));
+                if (i >= 0) list[i] = body.scenario; else list.push(body.scenario);
+                BY_PART_GAME_SCENARIOS = list;
+                byPartScenariosFetch();   // 背景跟伺服器同步
+            } else await byPartScenariosFetch();
             simImp.backups = null; simBackupsLoad();
             return true;
         }

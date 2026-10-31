@@ -12871,7 +12871,8 @@
                 const hitSet = new Set(parts.map(p => p.part));
                 const attackableNow = raidState && raidState.parts ? Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k)
                     && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)) : [];
-                const partLabel = attackableNow.length > 1 && attackableNow.every(k => hitSet.has(k)) ? (currentLang === 'en' ? 'All' : '全部位') : raidPartShortCombined(parts);
+                const hitAll8 = new Set(allParts.map(p => p.part)).size >= RAID_PARTS.length;   // 8 個部位都打到（不管傷害多少）
+                const partLabel = hitAll8 || (attackableNow.length > 1 && attackableNow.every(k => hitSet.has(k))) ? (currentLang === 'en' ? 'All' : '全部位') : raidPartShortCombined(parts);
                 const d = new Date(a.ts);
                 const pad = n => String(n).padStart(2, '0');
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;

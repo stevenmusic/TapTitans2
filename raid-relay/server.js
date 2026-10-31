@@ -1857,9 +1857,11 @@ const DECK_SCENARIOS_FILE = path.join(__dirname, 'deck-scenarios.json');
 let deckScenarios = [];
 // 同一組條件（加成、詛咒、各狀態部位數量、禁打的頭／肚子、詛咒甲位置、只剩單一部位）只會有一筆
 // 不能打的部位（禁打或骨架）合在一起算：骨架＋禁打的數量
+// 沒有詛咒甲（0 或沒指定）是同一種狀態，只看場次加成：不分詛咒類型，上傳會取代同狀態的舊情境
 function deckScenarioKey(s) {
   const c = s.counts || {};
-  return [s.buff, s.curse || '', s.cursed ?? '', c.armor, c.body, 0, (c.skeleton || 0) + (c.banned || 0),
+  const cu = Number(s.cursed) > 0 ? s.cursed : '';
+  return [s.buff, cu ? (s.curse || '') : '', cu, c.armor, c.body, 0, (c.skeleton || 0) + (c.banned || 0),
     (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|');
 }
 async function loadDeckScenariosFromDb() {

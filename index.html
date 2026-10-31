@@ -9743,7 +9743,7 @@
                 return;
             }
             // 同樣條件（加成、詛咒、數量、禁打）已經有自訂情境就取代
-            const key = (x) => [x.buff, x.curse || '', x.cursed, x.counts.armor, x.counts.body, x.counts.skeleton, x.counts.banned, (x.bannedParts || []).slice().sort().join('+')].join('|');
+            const key = (x) => [x.buff, x.cursed > 0 ? (x.curse || '') : '', x.cursed > 0 ? x.cursed : '', x.counts.armor, x.counts.body, x.counts.skeleton, x.counts.banned, (x.bannedParts || []).slice().sort().join('+')].join('|');
             const list = byPartUserScenarios().filter(x => key(x) !== key(sc));
             list.unshift(sc);
             if (!byPartUserScenSave(list)) return fail('儲存失敗（瀏覽器儲存空間不夠或被封鎖）。');
@@ -9770,7 +9770,7 @@
                 try { localStorage.setItem(SIM_ADMIN_KEY_STORE, adminKey); } catch (e) {}
             } catch (e) { alert('上傳失敗：連不到伺服器，請稍後再試。'); return false; }
             if (body && body.scenario) {   // 單筆上傳：先在本機放進情境清單（同一組條件就取代），下面的清單馬上打勾，不用等重新下載
-                const sk = (x) => { const c = x.counts || {}; return [x.buff, x.curse || '', x.cursed ?? '', c.armor, c.body, (c.skeleton || 0) + (c.banned || 0), (x.bannedParts || []).slice().sort().join('+'), (x.cursedAt || []).slice().sort().join('+'), x.only || ''].join('|'); };
+                const sk = (x) => { const c = x.counts || {}, cu = Number(x.cursed) > 0 ? x.cursed : ''; return [x.buff, cu ? (x.curse || '') : '', cu, c.armor, c.body, (c.skeleton || 0) + (c.banned || 0), (x.bannedParts || []).slice().sort().join('+'), (x.cursedAt || []).slice().sort().join('+'), x.only || ''].join('|'); };
                 const list = BY_PART_GAME_SCENARIOS.slice(), i = list.findIndex(x => sk(x) === sk(body.scenario));
                 if (i >= 0) list[i] = body.scenario; else list.push(body.scenario);
                 BY_PART_GAME_SCENARIOS = list;
@@ -9865,7 +9865,7 @@
             const torsoOff = ['Head', 'ChestUpper'].filter(k => !['armor', 'body', 'cursed'].includes(scene[k]));
             const offN = cnt.skeleton + cnt.banned;
             const matches = byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && cnt.armor === x.counts.armor && cnt.body === x.counts.body && offN === (x.counts.skeleton || 0) + (x.counts.banned || 0) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (x.only || torsoBanKey(x.bannedParts || []) === torsoBanKey(torsoOff)));   // 指定「只剩哪個部位」的情境（only）已經指定位置，不再比對頭／肚
-            const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed !== undefined) || matches[0];   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
+            const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed > 0) || matches[0];   // 沒有詛咒甲（0 或沒指定）是同一種狀態，不分先後   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
             const target = (k) => ({ part: k, layer: scene[k] === 'body' ? 'body' : 'armor', cursed: scene[k] === 'cursed' });

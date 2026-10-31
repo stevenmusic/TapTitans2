@@ -10168,6 +10168,12 @@
                 }
             }
         });
+        // 淨化爆裂＋暴食蜂擁（＋輻射萬花筒）：不寫「全部位」，改寫實際能打的部位數（例如只剩 3 個能打＝3部位）；只剩 1 個就寫部位名稱
+        picked.forEach(r => {
+            if (!(r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('Swarm') && r.rawCards.includes('TriangleSupport'))) return;
+            if (!r.allParts || keys.length < 2) return;
+            r.allParts = false; r.focus = keys.length; r.hideParts = true; r.targets = keys.map(asTarget);
+        });
         // 模擬器寫數量的牌組（Focus Three／Four…）：標的部位數＝寫的數量（比這組牌打得到的部位多，就用打得到的部位數），
         // 層別標籤（盔甲／肉體）才會照這幾個部位算
         picked.forEach(r => {

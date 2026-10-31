@@ -11895,25 +11895,20 @@
             const n = bossHpRounds;
             const per = sumFull / n;
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
-            // 結果看「累計」：打完的輪次＝到這一輪為止總共打的 vs 目標×輪數，領先或落後多少；
-            // 進行中的這一輪用「王實際少掉的血量」（整場應打－剩餘），還沒到目標線就寫還差多少
-            const lead = (d) => `<span style="color:#2e7d32; font-weight:800;">+${formatNum(d)}</span>`;   // 領先＝＋（綠）、落後＝－（紅）、進行中還差＝－（紫）
-            let cum = 0;
+            // 結果：每一輪只看「這一輪自己」比目標多或少多少（綠＋、紅－；進行中還沒到目標用紫－）；
+            // 最後一行合計＝全部目標、目前總傷、進度（各輪加減的總和）
+            const diffHtml = (d, live) => d >= 0 ? `<span style="color:#2e7d32; font-weight:800;">+${formatNum(d)}</span>`
+                : `<span style="color:${live ? '#6a3d9a' : '#c0392b'}; font-weight:800;">−${formatNum(-d)}</span>`;
+            let dealtSum = 0, progress = 0;
             const roundRows = Array.from({ length: roundCount }, (_, i) => {
                 const c = i + 1, got = byCycle.get(c), live = c === lastCycle;
-                if (got != null) cum += got;
+                if (got != null) dealtSum += got;
                 let res = '';
-                if (got != null && c <= n) {
-                    const done = live ? sumFull - sumLeft : cum, want = per * c;
-                    res = done >= want ? lead(done - want)
-                        : `<span style="color:${live ? '#6a3d9a' : '#c0392b'}; font-weight:800;">−${formatNum(want - done)}</span>`;
-                }
+                if (got != null && c <= n) { progress += got - per; res = diffHtml(got - per, live); }
                 return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a;">進行中</small>' : ''}</td>
                     <td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>
                     <td style="${td}">${res}</td></tr>`;
             }).join('');
-            // 剩下幾輪（含進行中這輪），每輪要打多少才能在選的輪數內打完
-            const roundsLeft = n - (lastCycle ? lastCycle - 1 : 0);
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場應打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumFull)}</div></div>
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">剩餘要打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumLeft)}</div></div>
@@ -11923,7 +11918,7 @@
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">結果</td></tr>
                     ${roundRows}
-                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">${roundsLeft > 0 ? `剩 ${roundsLeft} 輪` : '超過輪數'}</td><td colspan="3" style="${td}">${roundsLeft > 0 ? `每輪要打 ${formatNum(sumLeft / roundsLeft)}` : `還剩 ${formatNum(sumLeft)}`}</td></tr>
+                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(dealtSum)}</td><td style="${td}">${cycles.length ? diffHtml(progress, false) : ''}</td></tr>
                 </table>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">

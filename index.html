@@ -11872,7 +11872,7 @@
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
             // 結果看「累計」：打完的輪次＝到這一輪為止總共打的 vs 目標×輪數，領先或落後多少；
             // 進行中的這一輪用「王實際少掉的血量」（整場應打－剩餘），還沒到目標線就寫還差多少
-            const lead = (d) => `<span style="color:#2e7d32; font-weight:800;">領先 ${formatNum(d)}</span>`;
+            const lead = (d) => `<span style="color:#2e7d32; font-weight:800;">+${formatNum(d)}</span>`;   // 領先＝＋（綠）、落後＝－（紅）、進行中還差＝－（紫）
             let cum = 0;
             const roundRows = Array.from({ length: roundCount }, (_, i) => {
                 const c = i + 1, got = byCycle.get(c), live = c === lastCycle;
@@ -11881,7 +11881,7 @@
                 if (got != null && c <= n) {
                     const done = live ? sumFull - sumLeft : cum, want = per * c;
                     res = done >= want ? lead(done - want)
-                        : `<span style="color:${live ? '#6a3d9a' : '#c0392b'}; font-weight:800;">${live ? '還差' : '落後'} ${formatNum(want - done)}</span>`;
+                        : `<span style="color:${live ? '#6a3d9a' : '#c0392b'}; font-weight:800;">−${formatNum(want - done)}</span>`;
                 }
                 return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a;">進行中</small>' : ''}</td>
                     <td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>

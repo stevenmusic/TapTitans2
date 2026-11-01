@@ -12048,14 +12048,26 @@
                     perAtk = per30.reduce((x, y) => x + y.v, 0) / per30.length / (1 + TICKET_BASE_BONUS);
                     src = `最近 ${per30.length} 場換算成 30% 增傷的平均（${per30.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M`).join('、')}）`;
                 }
-                // 每輪刀數：最新一場打完的輪次平均（最後一輪可能還沒打完，不算）
-                await ensureServerRaidDataFresh();
-                const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
-                const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(x => !rsa || x.raidStartedAt === rsa);
-                const byC = {}; log.forEach(x => { if (typeof x.cycle === 'number') byC[x.cycle] = (byC[x.cycle] || 0) + 1; });
-                const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
-                const full = cs.length > 1 ? cs.slice(0, -1) : [];
-                if (full.length) perRound = Math.round(full.reduce((x, c) => x + byC[c], 0) / full.length);
+                // 每輪刀數：同樣這幾場，每場「打完的輪次」平均（最後一輪通常沒打完，不算），再取平均。
+                // 打完的場次數字不會變，算一次就存在手機上，之後不用再下載整場紀錄
+                let roundCache = {};
+                try { roundCache = JSON.parse(localStorage.getItem('tt2_round_attacks')) || {}; } catch (e) {}
+                const latest = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
+                const rounds = [];
+                for (const se of ss) {
+                    let v = se.startedAt !== latest ? roundCache[se.startedAt] : null;
+                    if (!v) {
+                        const log = se.startedAt === latest ? (await ensureServerRaidDataFresh(), serverAttackLogCache || []) : (await ensureSessionAttacksLoaded(se.startedAt)) || [];
+                        const byC = {}; log.forEach(x => { if (x.raidStartedAt === se.startedAt && typeof x.cycle === 'number') byC[x.cycle] = (byC[x.cycle] || 0) + 1; });
+                        const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
+                        const full = cs.length > 1 ? cs.slice(0, -1) : [];
+                        v = full.length ? full.reduce((x, c) => x + byC[c], 0) / full.length : null;
+                        if (v && se.startedAt !== latest) roundCache[se.startedAt] = v;
+                    }
+                    if (v) rounds.push(v);
+                }
+                try { localStorage.setItem('tt2_round_attacks', JSON.stringify(roundCache)); } catch (e) {}
+                if (rounds.length) { perRound = Math.round(rounds.reduce((x, y) => x + y, 0) / rounds.length); src += `；每輪刀數是這 ${rounds.length} 場的平均（${rounds.map(x => Math.round(x)).join('、')}）`; }
             } catch (e) {}
             ticketCalc.cap = { perAtk, perRound, src };
             renderTicketCalc();

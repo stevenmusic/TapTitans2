@@ -12105,6 +12105,11 @@
                     perRound = Math.round(srt[lo] + (srt[Math.min(lo + 1, srt.length - 1)] - srt[lo]) * (pos - lo));
                     src += `；每輪刀數取這幾場 ${srt.length} 個打完輪次的 PR30（最少 ${srt[0]}、最多 ${srt[srt.length - 1]}）`;
                 }
+                // 人數參考：最新一場有出刀的人數 × 6 刀＝一輪理論最多刀數（扣掉已經離開公會的人）
+                const lastLog = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(x => x.raidStartedAt === latest);
+                const gone = new Set();
+                try { const ev = await (await fetch(`${(localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '')}/raid-players`)).json(); const keep = new Set((ev.players || []).map(x => x.playerCode).filter(Boolean)); lastLog.forEach(x => { if (x.playerCode && !keep.has(x.playerCode)) gone.add(x.playerCode); }); } catch (e) {}
+                ticketCalc.members = new Set(lastLog.map(x => x.playerCode || x.player).filter(c => !gone.has(c))).size;
             } catch (e) {}
             ticketCalc.cap = { perAtk, perRound, src };
             renderTicketCalc();
@@ -12243,7 +12248,7 @@
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
                         </div>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取 PR30` : '計算中…'}</div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取 PR30${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
                         ${names.some(n => { const best = ticketBestBans(T[n]).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}

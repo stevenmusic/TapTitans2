@@ -11449,12 +11449,12 @@
                         </span>
                     </div>
                     <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
-                    <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+                    <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
-                        <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:5px;">
+                        <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
                     </div>
@@ -11771,7 +11771,7 @@
 
             const cardRows = `
                 <div style="display:grid; grid-template-columns: 56px repeat(${(a.cards || []).length}, 26px 58px); column-gap:5px; row-gap:2px; align-items:center;">
-                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.3; font-size:11.5px; color:#5a4a3a;">
+                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
                         <span>${t('raidLogTapDamage')}</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
@@ -11786,7 +11786,7 @@
                         return `
                             <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 26px 58px; column-gap:5px; align-items:center;">
                                 ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.3; font-size:11.5px; color:#5a4a3a;">
+                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
                                     <span style="font-weight:600;">${dmgLabel}</span>
                                 </div>
@@ -11797,7 +11797,7 @@
             `;
 
             const partsGrid = RAID_LOG_PART_LAYOUT.map(row => `
-                <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;">
+                <div style="display:flex; gap:4px; justify-content:center; margin-top:3px;">
                     ${row.map(partKey => {
                         const cellRows = RAID_LOG_LAYERS.map(layer => {
                             const p = (a.parts || []).find(pp => pp.part === partKey && pp.layer === layer);
@@ -11807,8 +11807,8 @@
                             return `<div style="font-size:11px; color:${val > 0 ? activeColor : '#c2b8a8'}; font-weight:${val > 0 ? '700' : '400'};">${val > 0 ? escapeHtml(formatNumAlwaysM(val)) : '0'}</div>`;
                         }).join('');
                         return `
-                            <div style="flex:1; max-width:90px; border:1px solid #e5dcd2; border-radius:8px; padding:4px 2px; text-align:center; background:#fdfaf5;">
-                                <div style="font-size:10.5px; color:#a89a88; margin-bottom:2px;">${escapeHtml(raidPartLabel(partKey))}</div>
+                            <div style="flex:1; max-width:90px; border:1px solid #e5dcd2; border-radius:6px; padding:1px 2px; line-height:1.25; text-align:center; background:#fdfaf5;">
+                                <div style="font-size:10.5px; color:#a89a88; margin-bottom:0;">${escapeHtml(raidPartLabel(partKey))}</div>
                                 ${cellRows}
                             </div>
                         `;
@@ -11823,7 +11823,7 @@
 
             return `
                 <div style="border:1px solid #e5dcd2; border-radius:8px; word-break:break-word; overflow:hidden;">
-                    <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; background:#faf6f0;">
+                    <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:2px 8px; line-height:1.3; cursor:pointer; background:#faf6f0;">
                         <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}${attacksLeftInline}</span>
                         <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
                             <span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
@@ -11831,12 +11831,12 @@
                         </span>
                     </div>
                     <!-- 這一段不管收合與否都會顯示：玩家資訊、點擊傷害、卡片傷害 -->
-                    <div style="padding:5px 10px; border-top:1px solid #e5dcd2;">
+                    <div style="padding:2px 8px; border-top:1px solid #e5dcd2;">
                         ${cardRows}
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->
-                    <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:0 10px 10px;">
-                        <div style="border-top:1px dashed #e5dcd2; margin:0 0 4px; padding-top:6px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
+                    <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:0 8px 6px;">
+                        <div style="border-top:1px dashed #e5dcd2; margin:0 0 2px; padding-top:3px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
                             ${bossStr}
                         </div>
                         ${partsGrid}

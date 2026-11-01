@@ -9606,18 +9606,18 @@
                         </div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
                         <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => r.common && !r.ok).length} 個常見的。禁打和骨架都算「不能打」，只看能打幾個部位。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
-                        ${SIM_TODO_SECS.map(([sec, secName]) => { const secRows = todo.rows.filter(r => r.sec === sec); if (!secRows.length) return '';
-                            const isTg = (r) => simImp.target && simImp.target.sec === sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
-                            const ns = [...new Set(secRows.map(r => r.n))];
-                            return `<div class="si-title" style="margin:12px 0 0; padding-top:8px; border-top:2px solid #eadfcc; color:#5a3a2a;">【${secName}】<small style="font-weight:600; color:#8a7a6a;">常見缺 ${secRows.filter(r => r.common && !r.ok).length} 個</small></div>` + ns.map(n => { const list = secRows.filter(r => r.n === n);
+                        ${[8, 7, 6, 5, 4, 3, 2, 1].map(n => { const list = todo.rows.filter(r => r.n === n); if (!list.length) return '';
+                            // 先照能打幾個部位分組，組裡再分頭肚三種情況
+                            const isTg = (r) => simImp.target && simImp.target.sec === r.sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
                             const com = list.filter(r => r.common), miss = com.filter(r => !r.ok).length;
                             const open = list.some(r => r.now) || list.some(isTg);
-                            return `<details ${open ? 'open' : ''}><summary class="si-field" style="margin:4px 0 2px; cursor:pointer; font-weight:800;">${miss ? '❌' : '✅'} 能打 ${n} 個（常見 ${com.length} 個，缺 ${miss} 個）${list.some(r => r.now) ? ' <span style="font-size:11px; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}</summary>${list.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick('${sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
+                            return `<details ${open ? 'open' : ''}><summary class="si-field" style="margin:6px 0 2px; cursor:pointer; font-weight:800;">${miss ? '❌' : '✅'} 能打 ${n} 個（常見 ${com.length} 個，缺 ${miss} 個）${list.some(r => r.now) ? ' <span style="font-size:11px; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}</summary>` + SIM_TODO_SECS.map(([sec, secName]) => { const sl = list.filter(r => r.sec === sec); if (!sl.length) return '';
+                            return `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin:6px 0 2px 4px;">${secName}<small style="font-weight:600; color:#8a7a6a;">（缺 ${sl.filter(r => r.common && !r.ok).length} 個常見）</small></div>` + sl.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick('${sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
                             <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
                             <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : r.common ? 'font-weight:700;' : 'color:#8a7a6a;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.common ? '' : ' <small>（少見）</small>'}</span>
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
                             ${isTg(r) ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
-                        </div>`).join('')}</details>`; }).join(''); }).join('')}
+                        </div>`).join(''); }).join('') + '</details>'; }).join('')}
                     </div>` : ''}
                     ${!a ? `<div class="si-card">
                         <details ${simImp.sumOpen ? 'open' : ''} ontoggle="simImp.sumOpen = this.open"><summary class="si-title" style="cursor:pointer;">所有條件總覽（點開）</summary>

@@ -9438,6 +9438,19 @@
                     #sim-import-modal .si-pick { position:relative; }
                     #sim-import-modal .si-pick select { position:absolute; inset:0; width:100%; height:100%; opacity:0; padding:0; cursor:pointer; }
                     #sim-import-modal .si-cell img.dup { outline:3px solid #d32f2f; outline-offset:1px; }
+                    /* 精簡排版：少滑動 */
+                    #sim-import-modal .si-deck { padding:6px 8px; margin-bottom:6px; }
+                    #sim-import-modal .si-deck-top { margin-bottom:6px; }
+                    #sim-import-modal .si-deck-top select { font-size:14px; padding:3px 6px; }
+                    #sim-import-modal .si-deck-top .si-no { width:22px; height:22px; font-size:12px; }
+                    #sim-import-modal .si-pair { margin-bottom:0; }
+                    #sim-import-modal .si-cell img { width:36px; height:36px; }
+                    #sim-import-modal .si-grid4 { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+                    #sim-import-modal .si-grid4 input { width:100%; box-sizing:border-box; padding:5px 4px; text-align:center; }
+                    #sim-import-modal .si-part { padding:5px 2px !important; }
+                    #sim-import-modal .si-part .raid-part-name { font-size:12px; }
+                    #sim-import-modal .si-part .raid-part-hp { font-size:12px; }
+                    #sim-import-modal details.si-more > summary { cursor:pointer; font-weight:800; font-size:13px; color:#5a3a2a; padding:2px 0; }
                     #sim-import-modal .si-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
                     #sim-import-modal .si-field { display:flex; flex-direction:column; gap:4px; font-size:12.5px; font-weight:700; color:#6b5a48; min-width:0; }
                     #sim-import-modal .si-field input, #sim-import-modal .si-field select { width:100%; }
@@ -9563,7 +9576,7 @@
                     <div class="si-deck-top"><span class="si-no">${di + 1}</span>
                         <select id="sim-imp-type-${di}">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select></div>
                     <div class="si-cards">${row.map((c, ci) => `<div class="si-cell">
-                        <div class="si-pair"><div><img src="${c.crop}" class="${c.uncertain ? 'unsure' : ''}"><small>截圖</small></div><div><div class="si-pick"><img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}"><select id="sim-imp-card-${di}-${ci}" data-d="${di}" data-c="${ci}" aria-label="選卡" onchange="const im = document.getElementById('sim-imp-img-${di}-${ci}'); im.src = RAID_CARD_IMAGE[this.value] || ''; im.classList.remove('unsure'); simImportMarkDup();">${simOptionsHtml(cardOpts, c.id)}</select></div><small>選的卡</small></div></div>
+                        <div class="si-pair"><div><img src="${c.crop}" class="${c.uncertain ? 'unsure' : ''}"></div><div><div class="si-pick"><img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}"><select id="sim-imp-card-${di}-${ci}" data-d="${di}" data-c="${ci}" aria-label="選卡" onchange="const im = document.getElementById('sim-imp-img-${di}-${ci}'); im.src = RAID_CARD_IMAGE[this.value] || ''; im.classList.remove('unsure'); simImportMarkDup();">${simOptionsHtml(cardOpts, c.id)}</select></div></div></div>
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
@@ -9574,11 +9587,11 @@
             m.innerHTML = `<div class="si-panel">
                 <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="si-x" onclick="closeSimImport()" aria-label="關閉">✕</button></div>
                 <div class="si-body">
-                    <div class="si-card">
-                        <div class="si-title">① 選截圖</div>
-                        <label class="si-file" for="sim-imp-file">📷 選擇模擬器「Sim Results」截圖</label>
+                    <div class="si-card"${a ? ' style="padding:8px 12px;"' : ''}>
+                        ${a ? '' : '<div class="si-title">① 選截圖</div>'}
+                        <label class="si-file" for="sim-imp-file"${a ? ' style="padding:8px; font-size:14px;"' : ''}>📷 ${a ? '換一張截圖' : '選擇模擬器「Sim Results」截圖'}</label>
                         <input type="file" id="sim-imp-file" accept="image/*" style="display:none;" onchange="simImportPick(this.files[0]); this.value='';">
-                        <div id="sim-imp-msg" class="si-tip" style="margin-top:8px;">選好之後我會辨識 6 組牌的 18 張卡，你核對、填狀態，存起來，推薦牌組就會照這張排。</div>
+                        <div id="sim-imp-msg" class="si-tip" style="margin-top:${a ? 4 : 8}px;">${a ? '' : '選好之後我會辨識 6 組牌的 18 張卡，你核對、填狀態，存起來，推薦牌組就會照這張排。'}</div>
                     </div>
                     ${!a && todo ? `<div class="si-card">
                         <div class="si-title">${simImp.todoCond ? '情境清單（自選條件）' : '這一場會用到的情境'}</div>
@@ -9611,22 +9624,25 @@
                     </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>
-                        <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定、紅框＝重複，<b>點「選的卡」可以換卡</b>。牌組類型是讀截圖標題的，請確認跟截圖一樣。</div>
+                        <div class="si-tip" style="margin-bottom:10px;">每張卡左邊是截圖、右邊是選的卡。橘框＝不太確定、紅框＝重複，<b>點右邊的卡可以換</b>。類型是讀截圖標題的，請確認。</div>
                         <div id="sim-imp-dupmsg" class="si-dupmsg"></div>
                         ${deckHtml}
                     </div>
                     <div class="si-card">
                         <div class="si-title">③ 這張圖的狀態</div>
-                        <div class="si-grid2" style="margin-bottom:12px;">
+                        <div class="si-grid2" style="margin-bottom:8px;">
                             <label class="si-field">加成類型<select id="sim-imp-buff">${simOptionsHtml(buffOpts, simImpNow.buff)}</select></label>
                             <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], simImpNow.curse)}</select></label>
-                            ${num('sim-imp-cursed', '詛咒甲數量')}${num('sim-imp-armor', '盔甲數量（含詛咒甲）')}
-                            ${num('sim-imp-body', '肉體數量')}${num('sim-imp-skel', '骨架數量')}
                         </div>
-                        <div class="si-field" style="margin-bottom:6px;">禁打／骨架部位（點一下切換：可打 → 禁打 → 骨架）。骨架數量會自動跟著選的骨架部位更新</div>
+                        <div class="si-grid4" style="margin-bottom:8px;">
+                            ${num('sim-imp-cursed', '詛咒甲')}${num('sim-imp-armor', '盔甲')}
+                            ${num('sim-imp-body', '肉體')}${num('sim-imp-skel', '骨架')}
+                        </div>
+                        <div class="si-field" style="margin-bottom:4px;">部位（點一下切換：可打 → 禁打 → 骨架）</div>
                         ${partChips}
-                        <div id="sim-imp-sum" class="si-tip" style="margin-top:10px; font-weight:700;"></div>
+                        <div id="sim-imp-sum" class="si-tip" style="margin-top:6px; font-weight:700;"></div>
                     </div>` : ''}
+                    ${a ? '<details class="si-card si-more"><summary>其他：已儲存的情境、伺服器情境檔</summary>' : ''}
                     <div class="si-card">
                         <div class="si-title">已儲存的自訂情境（${saved.length}）</div>
                         ${saved.length ? saved.map((sc, i) => `<div class="si-row"><span style="flex:1; min-width:0; line-height:1.5;">${escapeHtml(simScenarioTitle(sc))}</span><button class="si-del" onclick="simImportDelete(${i})">刪除</button></div>`).join('') : '<div class="si-tip">還沒有。</div>'}
@@ -9644,6 +9660,7 @@
                                     <button class="si-del" style="background:#fff; color:#6a3d9a; border-color:#d9c8ea;" onclick="simBackupDownload(${b.id})">下載</button><button class="si-del" onclick="simBackupRestore(${b.id})">還原</button></div>`; }).join('')}
                         </details>
                     </div>
+                    ${a ? '</details>' : ''}
                 </div>
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
             </div>`;
@@ -9702,7 +9719,7 @@
             const v = (id) => Number(document.getElementById(id).value) || 0;
             const ban = document.querySelectorAll('.sim-imp-ban:checked').length;
             const total = v('sim-imp-armor') + v('sim-imp-body') + v('sim-imp-skel') + ban;
-            el.textContent = `盔甲 ${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋骨架 ${v('sim-imp-skel')}＋禁打 ${ban}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
+            el.textContent = `盔甲（含詛咒甲）${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋骨架 ${v('sim-imp-skel')}＋禁打 ${ban}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
             el.style.color = total === 8 ? '#2e7d32' : '#c0392b';
         }
         async function simImportPick(file) {

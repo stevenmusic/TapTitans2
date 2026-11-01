@@ -2632,7 +2632,7 @@
             margin: 0 auto;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             max-height: 320px;
             overflow-y: auto;
         }
@@ -2643,9 +2643,10 @@
             background: #ffffff;
             border: 1px solid #f0dcd8;
             border-radius: 8px;
-            padding: 5px 8px;
+            padding: 2px 8px;
             font-size: 10.5px;
-            min-height: 40px;
+            min-height: 0;
+            flex-shrink: 0;
             box-sizing: border-box;
             animation: raidRecentFadeIn 0.3s ease;
         }
@@ -2657,7 +2658,7 @@
         .is-spinning { animation: spin360 0.7s linear infinite; }
         .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
         .raid-recent-time { font-size: 9.5px; font-weight: 600; color: #9a7f78; line-height: 1.1; }
-        .raid-recent-name { line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .raid-recent-name { line-height: 1.15; overflow-wrap: anywhere; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
         .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
@@ -2805,7 +2806,7 @@
             .raid-settings-card, .btn-raid-pip-float, .raid-boss-card, .raid-target-banner, .raid-parts-grid, .raid-updated-at, .raid-recent-title, .raid-recent-list {
                 max-width: 620px;
             }
-            .raid-recent-item { font-size: 13px; padding: 7px 10px; }
+            .raid-recent-item { font-size: 13px; padding: 3px 10px; }
             .raid-boss-icon { width: 76px; height: 76px; font-size: 42px; }
             .raid-boss-name { font-size: 16px; }
             .raid-part-name { font-size: 11px; }
@@ -2871,7 +2872,7 @@
             .raid-settings-card, .btn-raid-pip-float, .raid-boss-card, .raid-target-banner, .raid-parts-grid, .raid-updated-at, .raid-recent-title, .raid-recent-list {
                 max-width: 560px;
             }
-            .raid-recent-item { font-size: 11.5px; padding: 6px 9px; }
+            .raid-recent-item { font-size: 11.5px; padding: 2px 9px; }
             .raid-log-part-cell { font-size: 10.5px; }
             .btn-raid-connect, .btn-raid-demo, .btn-raid-tool { font-size: 12.5px; padding: 11px 4px; }
         }
@@ -2911,7 +2912,7 @@
             .raid-part-skeleton-note { font-size: 10.5px; }
             .raid-updated-at { font-size: 11px; }
             .raid-recent-title { font-size: 13px; }
-            .raid-recent-item { font-size: 12px; padding: 6px 8px; }
+            .raid-recent-item { font-size: 12px; padding: 2px 8px; }
             .raid-recent-part { min-width: 56px; }
             .raid-recent-dmg { width: 58px; }
             .raid-recent-cards { width: 87px; gap: 2px; }
@@ -3541,7 +3542,7 @@
                     </div>
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
-                        <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+                        <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:4px;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
                         <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
@@ -11439,7 +11440,7 @@
                 const isExpanded = raidLogExpandedPlayers.has(r.player);
                 return `
                 <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
-                    <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:10px 8px 10px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
+                    <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:5px 8px 5px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}

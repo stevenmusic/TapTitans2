@@ -9508,13 +9508,20 @@
                 const att = RAID_PARTS.map(p => p.key).filter(k => !off.includes(k));
                 now = { sec: tOff === 2 ? 'both' : tOff ? 'one' : '', n: att.length, c: att.filter(k => P(k).cursed && P(k).armor > 0).length, a: att.filter(k => P(k).armor > 0 && !P(k).cursed).length };
             }
+            // 只列這一場打得到的狀態：禁打的部位一定不能打，之後只會有更多部位變骨架
+            const B = (cond.banned || []).slice();
+            const bT = ['Head', 'ChestUpper'].filter(k => B.includes(k));
+            const bLimb = B.filter(k => !bT.includes(k));
             const rows = [];
-            SIM_TODO_SECS.forEach(([sec, , tParts]) => {
+            SIM_TODO_SECS.forEach(([sec, , secT]) => {
+                if (secT.length < bT.length) return;   // 頭或肚已經禁打，就不會是「頭肚都能打」
+                const tParts = sec === 'one' && bT.length === 1 ? bT : secT;   // 只有頭或只有肚禁打：照禁打的那個
                 const tks = sec === 'one' ? ['Head', 'ChestUpper'] : [torso(tParts)];
-                for (let n = 8 - tParts.length; n >= 1; n--) {
+                const limbOrder = [...bLimb, ...SIM_TODO_LIMB_ORDER.filter(k => !bLimb.includes(k))];   // 不能打的四肢：先放禁打的
+                for (let n = 8 - tParts.length - bLimb.length; n >= 1; n--) {
                     const C0 = curse ? Math.min(n, 3) : 0;   // 詛咒甲一開始最多 3 個
                     for (let c = C0; c >= 0; c--) for (let a = n - c; a >= 0; a--) {
-                        const r = { sec, n, c, a, b: n - c - a, off: [...tParts, ...SIM_TODO_LIMB_ORDER.slice(0, 8 - tParts.length - n)] };
+                        const r = { sec, n, c, a, b: n - c - a, off: [...tParts, ...limbOrder.slice(0, 8 - tParts.length - n)] };
                         r.ok = has(r.c, r.a, r.b, 8 - n, tks);
                         r.now = !!now && now.sec === sec && now.n === n && now.c === c && now.a === a;
                         r.common = c === 0 || a + c === n;   // 詛咒甲通常最先拆：還有詛咒甲時，普通盔甲都還在

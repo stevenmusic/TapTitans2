@@ -71,8 +71,26 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TT2 Toolkit">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        // 截圖套件（html2canvas）用到才載入：第一次按「存成圖片」時才下載，打開網頁不用等它。
+        // 先放一個同名的替身函式，呼叫時載入真正的套件（載入後 window.html2canvas 會被換成真的），再把參數轉交過去
+        (function () {
+            let loading = null;
+            window.html2canvas = function () {
+                const args = arguments;
+                if (!loading) loading = new Promise((resolve, reject) => {
+                    const sc = document.createElement('script');
+                    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                    sc.crossOrigin = 'anonymous';
+                    sc.onload = resolve;
+                    sc.onerror = () => { loading = null; reject(new Error('截圖套件載入失敗')); };
+                    document.head.appendChild(sc);
+                });
+                return loading.then(() => window.html2canvas.apply(window, args));
+            };
+        })();
+    </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" defer></script>
     <script src="cards.js"></script>
     <script src="bossPreset.js"></script>
 
@@ -13703,6 +13721,8 @@
             return shorts.join(isEn ? '/' : '');
         }
 
+        // 清掉舊版留下、已經沒在用的手機存檔（王血量舊格式、刀數舊快取）
+        try { ['tt2_boss_armor_memory', 'tt2_boss_armor_v2', 'tt2_round_attacks'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
         // 打開網頁就啟動背景程式（sw.js）：圖片存在手機上，第二次打開不用再下載（只快取圖片，不快取網頁本身）
         if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 

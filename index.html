@@ -13342,6 +13342,9 @@
             return shorts.join(isEn ? '/' : '');
         }
 
+        // 打開網頁就啟動背景程式（sw.js）：圖片存在手機上，第二次打開不用再下載（只快取圖片，不快取網頁本身）
+        if ('serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+
         /* Boss 圖示：圖片放在 images/raid-bosses/{王名}.png（例如 Lojak.png），
            圖片還沒放上去之前，或載入失敗時，會自動顯示 👹 表情符號代替 */
         function updateRaidBossIcon(bossName) {

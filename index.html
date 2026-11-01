@@ -11714,14 +11714,15 @@
                     const r = raidLogLastRanked[+st.head.dataset.ridx];
                     const sel = r && raidLogCompareSet.has(r.player);
                     st.lab = document.createElement('div');
-                    st.lab.textContent = sel ? '-' : '+';
-                    st.lab.style.cssText = `position:absolute; left:0; top:0; height:${st.head.offsetHeight}px; width:80px; display:flex; align-items:center; padding-left:22px; box-sizing:border-box; font-size:24px; font-weight:800; color:#fff; background:${sel ? '#9e9e9e' : '#2e9d5b'};`;
+                    st.lab.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" style="display:block; flex-shrink:0;"><path d="${sel ? 'M3 9h12' : 'M9 3v12M3 9h12'}" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`;
+                    st.lab.style.cssText = `position:absolute; left:0; top:0; height:${st.head.offsetHeight}px; width:0; overflow:hidden; display:flex; align-items:center; justify-content:center; box-sizing:border-box; line-height:1; font-size:24px; font-weight:800; color:#fff; background:${sel ? '#9e9e9e' : '#2e9d5b'};`;
                     st.head.parentElement.insertBefore(st.lab, st.head);
                     st.head.style.transition = 'none';
                 }
                 e.preventDefault();
                 st.dx = Math.max(0, Math.min(dx, 80));
                 st.head.style.transform = `translateX(${st.dx}px)`;
+                st.lab.style.width = st.dx + 'px';   // 露出多少就多寬，+／- 永遠在露出的格子正中間
             }, { passive: false });
             const end = () => {
                 if (!st) return;

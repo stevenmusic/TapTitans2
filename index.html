@@ -12066,6 +12066,26 @@
             }
             if (!ticketCalc.cap) ticketCalcCapacity();
         }
+        function ticketBestBans(t) {
+            const locs = Object.keys(t.p);
+            const bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0);
+            let best = { v: -1, list: [] };
+            for (let m = 0; m < (1 << locs.length); m++) {
+                const list = locs.filter((l, i) => m >> i & 1);
+                if (list.some(l => t.p[l][3])) continue;   // 詛咒甲不禁（禁掉就拆不掉，傷害會一直被扣）
+                if (bodyAll - list.reduce((x, l) => x + t.p[l][2], 0) < t.k) continue;   // 剩下的肉體要打得到斬殺線
+                const v = list.reduce((x, l) => x + t.p[l][1], 0);
+                if (v > best.v + 1 || (Math.abs(v - best.v) <= 1 && list.length < best.list.length)) best = { v, list };
+            }
+            return best.list;
+        }
+        function ticketCalcAutoBan() {
+            const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
+            if (!raid) return;
+            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) ticketCalc.bans[t.n] = ticketBestBans(t); });
+            ticketCalcSave();
+            renderTicketCalc();
+        }
         function ticketCalcSet(field, v) {
             if (field === 'ban') { const [name, loc] = v; const l = new Set(ticketCalc.bans[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); ticketCalc.bans[name] = [...l]; }
             else ticketCalc[field] = v;
@@ -12102,8 +12122,11 @@
                         const t = T[n];
                         const cells = RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(loc => { const e = t.p[loc] || [0, 0, 0, 0]; const ban = banOf(n).includes(loc);
                             return `<div class="raid-part-cell${ban ? ' is-banned' : ''}" onclick="ticketCalcSet('ban', ['${n}', '${loc}'])" style="cursor:pointer; padding:4px 2px; ${e[3] && !ban ? 'border-color:#8e5cc0; background:#f3ebfa;' : ''}"><div class="raid-part-name" style="font-size:11.5px;">${escapeHtml(raidPartLabel(loc))}${e[3] ? '<small style="color:#8e5cc0;">詛</small>' : ''}</div><div class="raid-part-hp" style="font-size:11.5px;">${ban ? '禁打' : fmt(e[1])}</div></div>`; }).join('')}</div>`).join('');
-                        return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:8px; margin-bottom:8px; background:#fffdf8;">
-                            <div style="display:flex; justify-content:space-between; font-weight:800; color:#4a3728; font-size:13px; margin-bottom:4px;"><span>${escapeHtml(n)} ×${cnt(n)}</span><span style="font-size:12px;">斬殺線 ${fmt(t.k)}｜盔甲 ${fmt(armorOf(n))}</span></div>
+                        const bodyLeft = Object.entries(t.p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[2]), 0);
+                        const dead = bodyLeft < t.k;
+                        return `<div style="border:1px solid ${dead ? '#e57373' : '#eadfcc'}; border-radius:10px; padding:8px; margin-bottom:8px; background:${dead ? '#fff5f5' : '#fffdf8'};">
+                            <div style="display:flex; justify-content:space-between; font-weight:800; color:#4a3728; font-size:13px; margin-bottom:2px;"><span>${escapeHtml(n)} ×${cnt(n)}</span><span style="font-size:12px;">斬殺線 ${fmt(t.k)}｜盔甲 ${fmt(armorOf(n))}</span></div>
+                            <div style="font-size:11.5px; font-weight:700; margin-bottom:4px; color:${dead ? '#c0392b' : '#8a7a6a'};">能打部位的肉體 ${fmt(bodyLeft)}${dead ? `，比斬殺線少 ${fmt(t.k - bodyLeft)}：<b>這樣打不死</b>，請少禁一點` : `（比斬殺線多 ${fmt(bodyLeft - t.k)}）`}</div>
                             <div class="raid-parts-grid">${cells}</div></div>`;
                     }).join('');
                     // 門票
@@ -12132,6 +12155,8 @@
                         <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">出刀能力：${cap ? cap.src : '計算中…'}。增傷＝30%＋每 1,000 張門票 0.665%。</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
+                        <button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:4px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">⚡ 自動選最佳禁打</button>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:8px;">在「能打部位的肉體 ≥ 斬殺線」（打得死）的前提下，禁掉最多盔甲；詛咒甲不禁。</div>
                         ${titanCards}`;
                 } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';
             }

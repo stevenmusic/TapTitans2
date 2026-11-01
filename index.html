@@ -2441,7 +2441,11 @@
             box-sizing: border-box; /* 沒有這行的話 width:100% + padding 會撐出橫向捲動 */
         }
 
-        .bosshp-open-btn { margin-left: auto; flex-shrink: 0; align-self: center; font-size: 13px; font-weight: 800; color: #fff; background: #8b263e; border: none; border-radius: 999px; padding: 5px 12px; box-shadow: 0 2px 6px rgba(139,38,62,0.35); z-index: 1; }
+        /* 王血量按鈕：iPhone 原生「淺色底＋主色字」的膠囊按鈕；落後時整顆變紅色系 */
+        .bosshp-open-btn { position: relative; margin-left: auto; flex-shrink: 0; align-self: center; font-size: 13px; font-weight: 700; color: #8b263e; background: rgba(139,38,62,0.12); border: none; border-radius: 999px; padding: 5px 12px; z-index: 1; font-family: inherit; cursor: pointer; }
+        .bosshp-open-btn::after { content: ''; position: absolute; inset: -8px -4px; }
+        .bosshp-open-btn:active { background: rgba(139,38,62,0.22); }
+        .bosshp-open-btn.behind { color: #c62828; background: rgba(198,40,40,0.13); }
         .bosshp-modal { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.45); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 60px) 12px calc(env(safe-area-inset-bottom, 0px) + 24px); box-sizing: border-box; }
         .bosshp-modal-box { max-width: 500px; margin: 0 auto; background: #fdf9f3; border-radius: 14px; padding: 12px; box-sizing: border-box; }
         .raid-boss-card {
@@ -12529,7 +12533,7 @@
                     const got = byCycle.get(lastCycle) || 0;
                     if (f > 0.25 && got < per * f - per * 0.1) behind = per * f - got;
                 }
-                if (btn) { btn.textContent = behind ? `王血量 ⚠落後 ${formatNum(behind)}` : '王血量'; btn.style.background = behind ? '#c0392b' : ''; }
+                if (btn) { btn.textContent = behind ? `王血量 ⚠落後 ${formatNum(behind)}` : '王血量'; btn.classList.toggle('behind', !!behind); }
             } catch (e) {}
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
             // 結果：每一輪只看「這一輪自己」比目標多或少多少（綠＋、紅－；進行中還沒到目標用紫－）；

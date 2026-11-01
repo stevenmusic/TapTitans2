@@ -9435,6 +9435,9 @@
                     #sim-import-modal .si-cell img.unsure { outline:3px solid #e67e22; outline-offset:1px; }
                     #sim-import-modal .si-cell select { width:100%; padding:5px 2px; font-size:14px; text-align:center; text-align-last:center; }
                     #sim-import-modal .si-cell select.unsure { border-color:#e67e22; }
+                    #sim-import-modal .si-pick { position:relative; }
+                    #sim-import-modal .si-pick select { position:absolute; inset:0; width:100%; height:100%; opacity:0; padding:0; cursor:pointer; }
+                    #sim-import-modal .si-cell img.dup { outline:3px solid #d32f2f; outline-offset:1px; }
                     #sim-import-modal .si-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
                     #sim-import-modal .si-field { display:flex; flex-direction:column; gap:4px; font-size:12.5px; font-weight:700; color:#6b5a48; min-width:0; }
                     #sim-import-modal .si-field input, #sim-import-modal .si-field select { width:100%; }
@@ -9560,8 +9563,7 @@
                     <div class="si-deck-top"><span class="si-no">${di + 1}</span>
                         <select id="sim-imp-type-${di}">${simOptionsHtml(SIM_DECK_TYPES.map(t2 => [t2[0], t2[1]]), guess)}</select></div>
                     <div class="si-cards">${row.map((c, ci) => `<div class="si-cell">
-                        <div class="si-pair"><div><img src="${c.crop}" class="${c.uncertain ? 'unsure' : ''}"><small>截圖</small></div><div><img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}"><small>選的卡</small></div></div>
-                        <select id="sim-imp-card-${di}-${ci}" data-d="${di}" data-c="${ci}" class="${c.uncertain ? 'unsure' : ''}" onchange="document.getElementById('sim-imp-img-${di}-${ci}').src = RAID_CARD_IMAGE[this.value] || ''; simImportMarkDup();">${simOptionsHtml(cardOpts, c.id)}</select>
+                        <div class="si-pair"><div><img src="${c.crop}" class="${c.uncertain ? 'unsure' : ''}"><small>截圖</small></div><div><div class="si-pick"><img src="${escapeHtml(RAID_CARD_IMAGE[c.id] || '')}" id="sim-imp-img-${di}-${ci}" class="${c.uncertain ? 'unsure' : ''}"><select id="sim-imp-card-${di}-${ci}" data-d="${di}" data-c="${ci}" aria-label="選卡" onchange="const im = document.getElementById('sim-imp-img-${di}-${ci}'); im.src = RAID_CARD_IMAGE[this.value] || ''; im.classList.remove('unsure'); simImportMarkDup();">${simOptionsHtml(cardOpts, c.id)}</select></div><small>選的卡</small></div></div>
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
@@ -9609,7 +9611,7 @@
                     </div>` : ''}
                     ${a ? `<div class="si-card">
                         <div class="si-title">② 核對卡片與牌組類型</div>
-                        <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定，請看圖示跟卡名是否一致。「牌組類型」是我猜的，請照截圖每組<b>右邊的標題</b>（Cycle、Focus Head、Focus Three…）確認。</div>
+                        <div class="si-tip" style="margin-bottom:10px;">橘框＝不太確定、紅框＝重複，<b>點「選的卡」可以換卡</b>。牌組類型是讀截圖標題的，請確認跟截圖一樣。</div>
                         <div id="sim-imp-dupmsg" class="si-dupmsg"></div>
                         ${deckHtml}
                     </div>
@@ -9662,7 +9664,7 @@
             const skel = (sc.skelParts || []).length ? sc.skelParts.map(k => raidPartLabel(k)).join('、') : c.skeleton;
             return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${skel}｜禁打 ${ban}`;
         }
-        // 重複的卡：下拉選單標紅、上面列出哪張卡在第幾組
+        // 重複的卡：選的卡標紅框、上面列出哪張卡在第幾組
         function simImportDupInfo() {
             const pos = {};
             document.querySelectorAll('#sim-import-modal select[id^="sim-imp-card-"]').forEach(sel => {
@@ -9672,7 +9674,7 @@
         }
         function simImportMarkDup() {
             const dups = new Set(simImportDupInfo().map(x => x[0]));
-            document.querySelectorAll('#sim-import-modal select[id^="sim-imp-card-"]').forEach(sel => sel.classList.toggle('dup', dups.has(sel.value)));
+            document.querySelectorAll('#sim-import-modal select[id^="sim-imp-card-"]').forEach(sel => { sel.classList.toggle('dup', dups.has(sel.value)); const im = document.getElementById(sel.id.replace('card', 'img')); if (im) im.classList.toggle('dup', dups.has(sel.value)); });
             const box = document.getElementById('sim-imp-dupmsg');
             if (box) {
                 const info = simImportDupInfo();

@@ -12091,6 +12091,20 @@
             }
             return best.list;
         }
+        // 所有 Master 關卡、每隻王的最佳禁打（點開才算，算過記住）
+        let ticketAllBansCache = null;
+        function ticketAllBansHtml(master) {
+            const zh = (loc) => ({ Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' })[loc] || loc;
+            let rows = '';
+            if (ticketCalc.allBansOpen) {
+                const key = ticketCalc.seed.valid_from;
+                if (!ticketAllBansCache || ticketAllBansCache.key !== key) ticketAllBansCache = { key, list: master.map(r => ({ l: r.l, t: [...new Set(r.seq)].map(n => { const t = r.titans.find(x => x.n === n); return { n, cnt: r.seq.filter(x => x === n).length, bans: t ? ticketBestBans(t) : [] }; }) })) };
+                rows = ticketAllBansCache.list.map(x => `<div onclick="ticketCalcSet('level', ${x.l}); document.getElementById('ticket-calc-modal').scrollTop = 0;" style="cursor:pointer; padding:5px 2px; border-top:1px solid #eadfcb; font-size:12px; color:#4a3728; ${x.l === ticketCalc.level ? 'background:#f3ebfa; font-weight:800;' : ''}">
+                    <b>M-${x.l}</b>　${x.t.map(t => `${escapeHtml(t.n)}${t.cnt > 1 ? `×${t.cnt}` : ''}：${t.bans.length ? t.bans.map(zh).join('、') : '不禁'}`).join('｜')}</div>`).join('');
+            }
+            return `<details ${ticketCalc.allBansOpen ? 'open' : ''} ontoggle="if (ticketCalc.allBansOpen !== this.open) { ticketCalc.allBansOpen = this.open; renderTicketCalc(); }" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; font-weight:800; color:#5a3a2a;">所有關卡的最佳禁打（點某一關切換過去）</summary>
+                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">規則一樣：剩下的肉體 ≥ 斬殺線（打得死）、不禁詛咒甲、禁掉最多盔甲。</div>${rows}</details>`;
+        }
         function ticketCalcAutoBan() {
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
             if (!raid) return;
@@ -12174,7 +12188,8 @@
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
                         <button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:4px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">⚡ 自動選最佳禁打</button>
                         <div style="font-size:11px; color:#8a7a6a; margin-bottom:8px;">在「能打部位的肉體 ≥ 斬殺線」（打得死）的前提下，禁掉最多盔甲；詛咒甲不禁。</div>
-                        ${titanCards}`;
+                        ${titanCards}
+                        ${ticketAllBansHtml(master)}`;
                 } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';
             }
             m.innerHTML = `<div class="bosshp-modal-box">${head}${upload}${body}</div>`;

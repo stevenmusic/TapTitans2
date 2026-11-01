@@ -2425,7 +2425,7 @@
             box-sizing: border-box; /* 沒有這行的話 width:100% + padding 會撐出橫向捲動 */
         }
 
-        .bosshp-open-btn { position: absolute; top: 10px; right: 10px; font-size: 13px; font-weight: 800; color: #fff; background: #8b263e; border: none; border-radius: 999px; padding: 5px 12px; box-shadow: 0 2px 6px rgba(139,38,62,0.35); z-index: 1; }
+        .bosshp-open-btn { margin-left: auto; flex-shrink: 0; align-self: center; font-size: 13px; font-weight: 800; color: #fff; background: #8b263e; border: none; border-radius: 999px; padding: 5px 12px; box-shadow: 0 2px 6px rgba(139,38,62,0.35); z-index: 1; }
         .bosshp-modal { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.45); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 60px) 12px calc(env(safe-area-inset-bottom, 0px) + 24px); box-sizing: border-box; }
         .bosshp-modal-box { max-width: 500px; margin: 0 auto; background: #fdf9f3; border-radius: 14px; padding: 12px; box-sizing: border-box; }
         .raid-boss-card {
@@ -2455,6 +2455,7 @@
         .raid-boss-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .raid-boss-info { flex: 1; min-width: 0; }
         .raid-boss-name-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+        .raid-boss-name-row .raid-boss-ordinal { min-width: 0; }
         .raid-boss-name { font-size: 14px; font-weight: 800; color: #4a2020; }
         .raid-boss-ordinal { font-size: 11px; font-weight: 700; color: #a37a7a; }
         .raid-boss-ordinal.is-last { color: #c62828; }
@@ -3451,7 +3452,6 @@
                     </div>
 
                     <div class="raid-boss-card">
-                        <button class="bosshp-open-btn" onclick="openBossHp()">王血量</button>
                         <div class="raid-boss-icon" id="raid-boss-icon">
                             <img id="raid-boss-icon-img" src="" alt="">
                         </div>
@@ -3459,6 +3459,7 @@
                             <div class="raid-boss-name-row">
                                 <span class="raid-boss-name" id="raid-boss-name">—</span>
                                 <span class="raid-boss-ordinal" id="raid-boss-ordinal"></span>
+                                <button class="bosshp-open-btn" onclick="openBossHp()">王血量</button>
                             </div>
                             <div id="raid-unconfirmed-hint" style="display:none; font-size:11px; color:#a37a7a; margin-bottom:4px;">
                                 ⏳ 尚未收到真實攻擊資料，以下可能不是目前正在打的王
@@ -3477,7 +3478,7 @@
                                 </div>
                                 <span class="raid-boss-hp-text" id="raid-boss-body-hp-text">—</span>
                             </div>
-                            <div id="raid-next-boss" style="display:none; font-size:11px; color:#6b4a2a; margin-top:4px; line-height:1.4;"></div>
+                            <div id="raid-next-boss" style="display:none; font-size:11px; color:#6b4a2a; margin-top:4px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
                         </div>
                     </div>
 
@@ -12319,9 +12320,19 @@
             const nextName = sr && cur ? sr.seq[cur] : null;
             const t = nextName && sr.titans.find(x => x.n === nextName);
             if (!t) { el.style.display = 'none'; return; }
-            const cursed = Object.entries(t.p).filter(([, e]) => e[3]).map(([k]) => raidPartLabel(k));
-            const best = ticketBestBans(t).map(k => raidPartLabel(k));
-            el.innerHTML = `下一隻：<b>${escapeHtml(nextName)}</b>｜詛咒甲 <b style="color:#6a3d9a;">${cursed.join('、') || '無'}</b>｜建議禁打 <b>${best.join('、') || '不禁'}</b>`;
+            // 部位用短名稱，左右都有就寫「雙」：頭、肚、雙肩、左手…
+            const short = (list) => {
+                const out = [];
+                if (list.includes('Head')) out.push('頭');
+                if (list.includes('ChestUpper')) out.push('肚');
+                [['ArmUpper', '肩'], ['Hand', '手'], ['LegUpper', '腳']].forEach(([k, z]) => {
+                    const l = list.includes(k + 'Left'), r = list.includes(k + 'Right');
+                    if (l && r) out.push('雙' + z); else if (l) out.push('左' + z); else if (r) out.push('右' + z);
+                });
+                return out.join('、');
+            };
+            const cursed = Object.entries(t.p).filter(([, e]) => e[3]).map(([k]) => k);
+            el.innerHTML = `下一隻 <b>${escapeHtml(nextName)}</b>｜詛 <b style="color:#6a3d9a;">${short(cursed) || '無'}</b>｜禁 <b>${short(ticketBestBans(t)) || '不禁'}</b>`;
             el.style.display = 'block';
         }
         function refreshBossHpIfOpen() {
@@ -13790,7 +13801,7 @@
             if (ordinalEl && raidState.bossOrdinal) {
                 const bossTotal = raidDemoTimer ? 6 : apiBossTotal; // 示範模式固定用 6，真實連線用偵測到的實際總數
                 const pvAt = raidPreview && raidPreview.startAt ? new Date(raidPreview.startAt) : null;
-                ordinalEl.textContent = `${raidState.bossOrdinal} / ${bossTotal}` + (raidPreview ? `（下一場預告${pvAt ? `・${pvAt.getMonth() + 1}/${pvAt.getDate()} ${String(pvAt.getHours()).padStart(2, '0')}:${String(pvAt.getMinutes()).padStart(2, '0')} 開打` : ''}）` : '');
+                ordinalEl.textContent = `${raidState.bossOrdinal}/${bossTotal}` + (raidPreview ? `・預告${pvAt ? ` ${pvAt.getMonth() + 1}/${pvAt.getDate()} ${String(pvAt.getHours()).padStart(2, '0')}:${String(pvAt.getMinutes()).padStart(2, '0')}` : ''}` : '');   // 簡短：1/6・預告 11/2 10:32
                 ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === bossTotal ? ' is-last' : '');
             }
             updateRaidBossIcon(raidState.bossName);
@@ -13813,9 +13824,10 @@
             const target = computeRaidTarget();
             const bannerEl = document.getElementById('raid-target-banner');
             // 禁打部位不用再另外顯示一行提示了——8個部位圖示本身已經會直接標紅「禁打」
+            bannerEl.style.display = '';
             if (target.armoredParts.length > 0) {
-                bannerEl.className = 'raid-target-banner armor';
-                bannerEl.innerHTML = `${t('raidTargetArmorLabel')}<b class="raid-target-parts">${target.armoredParts.length >= RAID_PARTS.length ? t('raidAllParts') : target.armoredParts.map(raidPartLabel).join('、')}</b>`;
+                bannerEl.style.display = 'none';   // 「先拆盔甲（肉體先別打）」這一排不顯示
+                bannerEl.innerHTML = '';
             } else if (!target.allBodyDepleted) {
                 bannerEl.className = 'raid-target-banner focus';
                 bannerEl.innerHTML = `${t('raidTargetFocusLabel')}<b class="raid-target-parts">${raidPartLabel(target.maxBodyPart)}</b>`;

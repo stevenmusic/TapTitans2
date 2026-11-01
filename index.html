@@ -9486,34 +9486,43 @@
             const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
             return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
         }
+        // 情境清單：禁打和骨架都是「不能打」，只看能打幾個部位。分三區——頭肚都能打／頭或肚其中一個不能打（頭、肚差別不大，有一個就算有）／
+        // 頭＋肚都不能打；每一區照「能打幾個部位」分組，列出各種詛咒甲／盔甲／肉體的組合
+        const SIM_TODO_SECS = [['', '頭肚都能打', []], ['one', '頭或肚其中一個不能打', ['Head']], ['both', '頭＋肚都不能打', ['Head', 'ChestUpper']]];
+        const SIM_TODO_LIMB_ORDER = ['LegUpperLeft', 'LegUpperRight', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight'];   // 帶入條件時，不能打的四肢先用這個順序
         function simTodoList(condArg) {
             const cond = condArg || simImp.todoCond || simTodoCondNow();
             const { buff, curse } = cond;
-            const banned = cond.banned.slice();
-            const attack = RAID_PARTS.map(p => p.key).filter(k => !banned.includes(k));
-            const N = attack.length;
-            if (!N) return null;
-            const curseT = curse;
             const live = !condArg && !simImp.todoCond && raidState && raidState.parts;   // 用這一場的條件時，才標「現在」
             const P = (k) => (live ? raidState.parts[k] : null) || {};
-            const cursedNow = attack.filter(k => P(k).cursed && P(k).armor > 0).length;
-            const C0 = curse ? Math.min(N, Math.max(cursedNow, 3)) : 0;   // 詛咒甲一開始有幾個（現在看得到的跟 3 取大的）
             const torso = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
-            const has = (c, a, b, sk) => byPartAllScenarios().some(x => x.buff === buff && !x.only && !x.cursedAt
-                && (x.cursed === undefined || (x.cursed === c && (c === 0 || curseT.startsWith(x.curse))))
-                && x.counts.armor === c + a && x.counts.body === b && (x.counts.skeleton || 0) + (x.counts.banned || 0) === sk + banned.length
-                && torso(x.bannedParts || []) === torso(banned));
-            const now = { c: cursedNow, a: attack.filter(k => P(k).armor > 0 && !P(k).cursed).length, b: attack.filter(k => !(P(k).armor > 0) && P(k).body > 0).length,
-                s: attack.filter(k => !(P(k).armor > 0) && !(P(k).body > 0)).length };
+            const has = (c, a, b, offN, tks) => byPartAllScenarios().some(x => x.buff === buff && !x.only && !x.cursedAt
+                && (x.cursed === undefined || (x.cursed === c && (c === 0 || curse.startsWith(x.curse))))
+                && x.counts.armor === c + a && x.counts.body === b && (x.counts.skeleton || 0) + (x.counts.banned || 0) === offN
+                && tks.includes(torso(x.bannedParts || [])));
+            // 現在這隻王在哪一區、能打幾個、各狀態幾個
+            let now = null;
+            if (live) {
+                const off = RAID_PARTS.map(p => p.key).filter(k => (raidBannedParts || []).includes(k) || !(P(k).armor > 0 || P(k).body > 0));
+                const tOff = ['Head', 'ChestUpper'].filter(k => off.includes(k)).length;
+                const att = RAID_PARTS.map(p => p.key).filter(k => !off.includes(k));
+                now = { sec: tOff === 2 ? 'both' : tOff ? 'one' : '', n: att.length, c: att.filter(k => P(k).cursed && P(k).armor > 0).length, a: att.filter(k => P(k).armor > 0 && !P(k).cursed).length };
+            }
             const rows = [];
-            // 打掉的部位（N − 詛咒甲 − 盔甲）再分成肉體和骨架（只有肉體打穿才會變骨架）；全部都是骨架就沒得打，不列
-            for (let c = C0; c >= 0; c--) for (let a = N - C0; a >= 0; a--) for (let sk = 0; sk <= N - c - a; sk++) if (sk < N) rows.push({ c, a, b: N - c - a - sk, s: sk });
-            // 沒有骨架的排前面，骨架越多越後面；再來打掉越少部位的排前面；同樣打掉幾個時，詛咒甲先被打掉的排前面（詛咒甲通常最先拆）
-            rows.sort((x, y) => (x.s - y.s) || (x.b - y.b) || (x.c - y.c));
-            // 常見：詛咒甲通常最先拆——沒有骨架時，打掉的盔甲都是詛咒甲（詛咒甲沒拆完前普通盔甲都還在）；有骨架時，詛咒甲已經拆完
-            rows.forEach(r => { r.ok = has(r.c, r.a, r.b, r.s); r.now = live && r.c === now.c && r.a === now.a && r.b === now.b && r.s === now.s;
-                r.common = r.s > 0 ? r.c === 0 : (r.c === 0 || r.a === N - C0); });
-            return { buff, curse, banned, rows };
+            SIM_TODO_SECS.forEach(([sec, , tParts]) => {
+                const tks = sec === 'one' ? ['Head', 'ChestUpper'] : [torso(tParts)];
+                for (let n = 8 - tParts.length; n >= 1; n--) {
+                    const C0 = curse ? Math.min(n, 3) : 0;   // 詛咒甲一開始最多 3 個
+                    for (let c = C0; c >= 0; c--) for (let a = n - c; a >= 0; a--) {
+                        const r = { sec, n, c, a, b: n - c - a, off: [...tParts, ...SIM_TODO_LIMB_ORDER.slice(0, 8 - tParts.length - n)] };
+                        r.ok = has(r.c, r.a, r.b, 8 - n, tks);
+                        r.now = !!now && now.sec === sec && now.n === n && now.c === c && now.a === a;
+                        r.common = c === 0 || a + c === n;   // 詛咒甲通常最先拆：還有詛咒甲時，普通盔甲都還在
+                        rows.push(r);
+                    }
+                }
+            });
+            return { buff, curse, rows };
         }
         function simTodoSet(field, v) {
             const cond = simImp.todoCond ? { ...simImp.todoCond, banned: simImp.todoCond.banned.slice() } : simTodoCondNow();
@@ -9528,35 +9537,31 @@
         // 禁打的四肢用代表部位（先雙腿，再左肩、左手）：配對只看四肢禁打的數量
         const SIM_SUM_LIMBS = ['LegUpperLeft', 'LegUpperRight', 'ArmUpperLeft', 'HandLeft'];
         function simTodoSummary() {
-            const pats = [];
-            for (let n = 0; n <= 4; n++) for (const t of [[], ['Head'], ['ChestUpper'], ['Head', 'ChestUpper']]) if (t.length <= n && (n > 0 || !t.length)) pats.push([...t, ...SIM_SUM_LIMBS.slice(0, n - t.length)]);
-            const banText = (b) => { const h = b.includes('Head'), c = b.includes('ChestUpper'), l = b.filter(k => k !== 'Head' && k !== 'ChestUpper').length;
-                return b.length ? [h ? '頭' : '', c ? '肚' : '', l ? `${l}個四肢` : ''].filter(Boolean).join('＋') : '無禁打'; };
+            // 每種加成 × 詛咒（爆裂／苦痛）× 頭肚三區，常見的情境補了幾個（沒有詛咒甲的情境不分詛咒類型，標題的缺幾個只算一次）
+            const secName = (sec) => (SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1];
             return Object.keys(SESSION_BUFFS).map(buff => {
-                const rows = [];
-                ['Burst', 'Afflicted'].forEach(curse => pats.forEach(banned => {
-                    const t = simTodoList({ buff, curse, banned });
-                    const com = t.rows.filter(r => r.common);
-                    rows.push({ curse, banned, text: `${curse === 'Burst' ? '爆裂' : '苦痛'}｜${banText(banned)}`, have: com.filter(r => r.ok).length, total: com.length });
-                }));
-                // 標題的「常見缺幾個」要去掉重複：禁打和骨架視為一樣，「2禁打＋2骨架」跟「4禁打」是同一個情境；
-                // 沒有詛咒甲的情境不分詛咒類型。同一個情境在好幾個條件的清單裡都會出現，只算一次
-                const miss = new Set();
-                rows.forEach(r => {
-                    const torso = ['Head', 'ChestUpper'].filter(k => r.banned.includes(k)).join('+');
-                    simTodoList({ buff, curse: r.curse, banned: r.banned }).rows.filter(x => x.common && !x.ok)
-                        .forEach(x => miss.add([x.c ? r.curse : '', x.c, x.a, x.b, x.s + r.banned.length, torso].join('|')));
+                const rows = [], miss = new Set();
+                ['Burst', 'Afflicted'].forEach(curse => {
+                    const t = simTodoList({ buff, curse, banned: [] });
+                    SIM_TODO_SECS.forEach(([sec]) => {
+                        const com = t.rows.filter(r => r.sec === sec && r.common);
+                        rows.push({ curse, sec, text: `${curse === 'Burst' ? '爆裂' : '苦痛'}｜${secName(sec)}`, have: com.filter(r => r.ok).length, total: com.length });
+                        com.filter(x => !x.ok).forEach(x => miss.add([x.c ? curse : '', x.c, x.a, x.b, x.n, sec].join('|')));
+                    });
                 });
                 return { buff, rows, miss: miss.size };
             });
         }
-        function simTodoPick(c, a, b, sk) {
+        function simTodoPick(sec, n, c, a) {
             const t = simTodoList();
             if (!t) return;
-            simImp.target = { buff: t.buff, curse: c > 0 ? t.curse : '', cursed: c, armor: c + a, body: b, skeleton: sk, banned: t.banned };
+            const r = t.rows.find(x => x.sec === sec && x.n === n && x.c === c && x.a === a);
+            if (!r) return;
+            // 不能打的部位先帶預設（頭肚照分區、四肢先雙腳再肩再手），跟截圖不一樣再點格子改；禁打或骨架都一樣
+            simImp.target = { sec, n, buff: t.buff, curse: c > 0 ? t.curse : '', cursed: c, armor: c + a, body: r.b, skeleton: 0, banned: r.off };
             renderSimImport();
             const m = document.getElementById('sim-imp-msg');
-            if (m) { m.textContent = `已選：詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${b}${sk ? `（能打 ${c + a + b} 個）` : ''}。請選這個狀態的模擬器截圖，條件會自動帶入。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
+            if (m) { m.textContent = `已選：${(SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1]}｜能打 ${n} 個｜詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${r.b}。請選這個狀態的模擬器截圖，條件會自動帶入（不能打的部位跟截圖不一樣再點格子改）。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
             const bd = document.querySelector('#sim-import-modal .si-body'); if (bd) bd.scrollTop = 0;
         }
         function renderSimImport() {
@@ -9599,25 +9604,26 @@
                             <label class="si-field">加成類型<select onchange="simTodoSet('buff', this.value)">${simOptionsHtml(buffOpts, todo.buff)}</select></label>
                             <label class="si-field">詛咒類型<select onchange="simTodoSet('curse', this.value)">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], todo.curse)}</select></label>
                         </div>
-                        <div class="si-field" style="margin-bottom:4px;">禁打部位（點一下切換）</div>
-                        <div class="raid-parts-grid" style="margin:2px 0 8px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<div class="raid-part-cell si-part${todo.banned.includes(k) ? ' is-banned' : ''}" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;" onclick="simTodoSet('ban', '${k}')">
-                            <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp" style="color:#8a7a6a;">${todo.banned.includes(k) ? '禁打' : '可打'}</div></div>`).join('')}</div>`).join('')}</div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
-                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => !r.ok).length} 個。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。禁打和骨架視為一樣（都是不能打），只看能打的部位。</div>
-                        ${[true, false].map(common => { const list = todo.rows.filter(r => r.common === common); if (!list.length) return '';
-                            const open = common || (simImp.target && list.some(r => simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s));
-                            return `<details ${open ? 'open' : ''}><summary class="si-title" style="margin:10px 0 2px; cursor:pointer;">${common ? '常見' : '少見'}（${list.length} 個，缺 ${list.filter(x => !x.ok).length} 個）</summary>${list.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick(${r.c}, ${r.a}, ${r.b}, ${r.s})" style="cursor:pointer;"`}>
+                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => r.common && !r.ok).length} 個常見的。禁打和骨架都算「不能打」，只看能打幾個部位。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
+                        ${SIM_TODO_SECS.map(([sec, secName]) => { const secRows = todo.rows.filter(r => r.sec === sec); if (!secRows.length) return '';
+                            const isTg = (r) => simImp.target && simImp.target.sec === sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
+                            const ns = [...new Set(secRows.map(r => r.n))];
+                            return `<div class="si-title" style="margin:12px 0 0; padding-top:8px; border-top:2px solid #eadfcc; color:#5a3a2a;">【${secName}】<small style="font-weight:600; color:#8a7a6a;">常見缺 ${secRows.filter(r => r.common && !r.ok).length} 個</small></div>` + ns.map(n => { const list = secRows.filter(r => r.n === n);
+                            const com = list.filter(r => r.common), miss = com.filter(r => !r.ok).length;
+                            const open = list.some(r => r.now) || list.some(isTg);
+                            return `<details ${open ? 'open' : ''}><summary class="si-field" style="margin:4px 0 2px; cursor:pointer; font-weight:800;">${miss ? '❌' : '✅'} 能打 ${n} 個（常見 ${com.length} 個，缺 ${miss} 個）${list.some(r => r.now) ? ' <span style="font-size:11px; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}</summary>${list.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick('${sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
                             <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
-                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.s ? `<small style="font-weight:600; color:#8a7a6a;">（能打 ${r.c + r.a + r.b} 個）</small>` : ''}</span>
+                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : r.common ? 'font-weight:700;' : 'color:#8a7a6a;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.common ? '' : ' <small>（少見）</small>'}</span>
                             ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
-                            ${simImp.target && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a && simImp.target.body === r.b && simImp.target.skeleton === r.s ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
-                        </div>`).join('')}</details>`; }).join('')}
+                            ${isTg(r) ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
+                        </div>`).join('')}</details>`; }).join(''); }).join('')}
                     </div>` : ''}
                     ${!a ? `<div class="si-card">
                         <details ${simImp.sumOpen ? 'open' : ''} ontoggle="simImp.sumOpen = this.open"><summary class="si-title" style="cursor:pointer;">所有條件總覽（點開）</summary>
                         <div class="si-tip" style="margin:4px 0 6px;">每種加成、詛咒、禁打組合的「常見」情境補了幾個。禁打只分有沒有頭、肚子，其他四肢禁哪幾個都一樣。點一列，上面的清單就換成那個條件。</div>
                         ${simImp.sumOpen ? simTodoSummary().map(g => `<details><summary class="si-field" style="cursor:pointer; padding:6px 0; font-weight:800;">${escapeHtml(SESSION_BUFFS[g.buff].label)}｜常見缺 ${g.miss} 個</summary>
-                            ${g.rows.map(r => `<div class="si-row" style="cursor:pointer;" onclick="simTodoSet('all', { buff: '${g.buff}', curse: '${r.curse}', banned: ${escapeHtml(JSON.stringify(r.banned))} }); document.querySelector('#sim-import-modal .si-body').scrollTop = 0;">
+                            ${g.rows.map(r => `<div class="si-row" style="cursor:pointer;" onclick="simTodoSet('all', { buff: '${g.buff}', curse: '${r.curse}', banned: [] }); document.querySelector('#sim-import-modal .si-body').scrollTop = 0;">
                                 <span style="width:22px;">${r.have === r.total ? '✅' : r.have ? '🟡' : '⬜'}</span><span style="flex:1;">${r.text}</span><span style="font-weight:700; ${r.have === r.total ? 'color:#2e7d32;' : ''}">${r.have}／${r.total}</span></div>`).join('')}
                         </details>`).join('') : ''}
                         </details>
@@ -9636,9 +9642,9 @@
                         </div>
                         <div class="si-grid4" style="margin-bottom:8px;">
                             ${num('sim-imp-cursed', '詛咒甲')}${num('sim-imp-armor', '盔甲')}
-                            ${num('sim-imp-body', '肉體')}${num('sim-imp-skel', '骨架')}
+                            ${num('sim-imp-body', '肉體')}<label class="si-field">不能打<input id="sim-imp-off" type="number" value="0" readonly style="background:#f1ece3; color:#8a7a6a;"></label><input id="sim-imp-skel" type="hidden" value="0">
                         </div>
-                        <div class="si-field" style="margin-bottom:4px;">部位（點一下切換：可打 → 禁打 → 骨架）</div>
+                        <div class="si-field" style="margin-bottom:4px;">不能打的部位（禁打或骨架，點一下切換）</div>
                         ${partChips}
                         <div id="sim-imp-sum" class="si-tip" style="margin-top:6px; font-weight:700;"></div>
                     </div>` : ''}
@@ -9669,7 +9675,7 @@
             if (a && tg) {   // 從「這一場會用到的情境」選的狀態：自動帶入
                 const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
                 setv('sim-imp-buff', tg.buff); setv('sim-imp-curse', tg.curse); setv('sim-imp-cursed', tg.cursed);
-                setv('sim-imp-armor', tg.armor); setv('sim-imp-body', tg.body); setv('sim-imp-skel', tg.skeleton || 0);
+                setv('sim-imp-armor', tg.armor); setv('sim-imp-body', tg.body);
                 m.querySelectorAll('.si-part').forEach(el => simImpPartSet(el, tg.banned.includes(el.querySelector('.sim-imp-ban').value) ? 'banned' : 'ok', true));
             }
             if (a) { simImportCheckSum(); simImportMarkDup(); }
@@ -9678,8 +9684,7 @@
             const c = sc.counts;
             const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
             const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
-            const skel = (sc.skelParts || []).length ? sc.skelParts.map(k => raidPartLabel(k)).join('、') : c.skeleton;
-            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${skel}｜禁打 ${ban}`;
+            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}｜不能打 ${ban}`;
         }
         // 重複的卡：選的卡標紅框、上面列出哪張卡在第幾組
         function simImportDupInfo() {
@@ -9705,21 +9710,23 @@
             el.querySelector('.sim-imp-skelpart').checked = st === 'skeleton';
             el.classList.toggle('is-banned', st === 'banned');
             el.classList.toggle('is-destroyed', st === 'skeleton');
-            el.querySelector('.si-part-st').textContent = st === 'banned' ? '禁打' : st === 'skeleton' ? '骨架' : '可打';
-            if (!keepSkelCount) { const sk = document.getElementById('sim-imp-skel'); if (sk) sk.value = document.querySelectorAll('.sim-imp-skelpart:checked').length; }
+            el.querySelector('.si-part-st').textContent = st === 'ok' ? '可打' : '不能打';
             simImportCheckSum();
         }
+        // 點一下切換 可打 ↔ 不能打（禁打和骨架都算不能打；凱旋行軍要的骨架數量看當下王的狀態，不用在這裡分）
         function simImpPartCycle(el) {
-            const st = el.querySelector('.sim-imp-ban').checked ? 'banned' : el.querySelector('.sim-imp-skelpart').checked ? 'skeleton' : 'ok';
-            simImpPartSet(el, st === 'ok' ? 'banned' : st === 'banned' ? 'skeleton' : 'ok');
+            simImpPartSet(el, el.querySelector('.sim-imp-ban').checked ? 'ok' : 'banned');
         }
         function simImportCheckSum() {
             const el = document.getElementById('sim-imp-sum');
             if (!el) return;
             const v = (id) => Number(document.getElementById(id).value) || 0;
-            const ban = document.querySelectorAll('.sim-imp-ban:checked').length;
-            const total = v('sim-imp-armor') + v('sim-imp-body') + v('sim-imp-skel') + ban;
-            el.textContent = `盔甲（含詛咒甲）${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋骨架 ${v('sim-imp-skel')}＋禁打 ${ban}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
+            // 不能打＝點成禁打或骨架的部位（骨架數量跟著骨架部位）
+            const off = document.querySelectorAll('.sim-imp-ban:checked').length + document.querySelectorAll('.sim-imp-skelpart:checked').length;
+            const sk = document.getElementById('sim-imp-skel'); if (sk) sk.value = document.querySelectorAll('.sim-imp-skelpart:checked').length;
+            const offEl = document.getElementById('sim-imp-off'); if (offEl) offEl.value = off;
+            const total = v('sim-imp-armor') + v('sim-imp-body') + off;
+            el.textContent = `盔甲（含詛咒甲）${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋不能打 ${off}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
             el.style.color = total === 8 ? '#2e7d32' : '#c0392b';
         }
         async function simImportPick(file) {
@@ -9751,7 +9758,7 @@
             const msg = document.getElementById('sim-imp-msg');
             const fail = (t) => { alert(t); };
             if (!document.getElementById('sim-imp-buff').value) return fail('請選加成類型。');
-            if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋骨架＋禁打 要等於 8。');
+            if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋不能打 要等於 8（不能打的部位要在格子上點成禁打或骨架）。');
             if (cursed > counts.armor) return fail('詛咒甲不能比盔甲多（盔甲數要含詛咒甲）。');
             if (cursed > 0 && !curse) return fail('有詛咒甲的話，請選詛咒類型。');
             const decks = a.decks.map((row, di) => {
@@ -9902,7 +9909,10 @@
             const torsoBanKey = (list) => ['Head', 'ChestUpper'].filter(k => list.includes(k)).join('+');
             const torsoOff = ['Head', 'ChestUpper'].filter(k => !['armor', 'body', 'cursed'].includes(scene[k]));
             const offN = cnt.skeleton + cnt.banned;
-            const matches = byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && cnt.armor === x.counts.armor && cnt.body === x.counts.body && offN === (x.counts.skeleton || 0) + (x.counts.banned || 0) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (x.only || torsoBanKey(x.bannedParts || []) === torsoBanKey(torsoOff)));   // 指定「只剩哪個部位」的情境（only）已經指定位置，不再比對頭／肚
+            const matchWith = (tk) => byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && attackableNow[0] === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && cnt.armor === x.counts.armor && cnt.body === x.counts.body && offN === (x.counts.skeleton || 0) + (x.counts.banned || 0) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (x.only || torsoBanKey(x.bannedParts || []) === tk));   // 指定「只剩哪個部位」的情境（only）已經指定位置，不再比對頭／肚
+            // 只有頭或只有肚不能打：差別不大，找不到完全一樣的情境時，用另一個（只有肚／只有頭不能打）的情境
+            let matches = matchWith(torsoBanKey(torsoOff));
+            if (!matches.length && torsoOff.length === 1) matches = matchWith(torsoOff[0] === 'Head' ? 'ChestUpper' : 'Head');
             const sc = matches.find(x => x.cursedAt) || matches.find(x => x.cursed > 0) || matches[0];   // 沒有詛咒甲（0 或沒指定）是同一種狀態，不分先後   // 指定詛咒甲位置的最優先   // 有指定詛咒甲數量與詛咒類型的情境優先（比沒指定的更具體）
             if (!sc) return [];
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));

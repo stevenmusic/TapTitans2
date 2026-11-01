@@ -11974,9 +11974,10 @@
            ══════════════════════════════════════════════════════════ */
         const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665;
         const TC_KEY = 'tt2_ticket_calc';
-        const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 5, cap: null };
+        const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 0, cap: null };
         try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
-        if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};
+        if (ticketCalc.v !== 2) { ticketCalc.margin = 0; ticketCalc.v = 2; }   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
         delete ticketCalc.bans;
         function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
         // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
@@ -12097,6 +12098,15 @@
             }
             if (!ticketCalc.cap) ticketCalcCapacity();
         }
+        // 王的加成（area_debuffs）、詛咒（cursed_debuffs）翻成中文，例如「+40% 手臂盔甲」「每個詛咒甲 爆裂傷害 -6%（詛咒甲 4 個）」
+        function ticketTitanMods(t) {
+            const part = { Head: '頭部', Torso: '軀幹', Arms: '手臂', Legs: '腿部', Limbs: '四肢' };
+            const pct = (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
+            const area = (t.d || []).map(([type, v]) => { const m = /^(Armor|Body|All)(Head|Torso|Arms|Legs|Limbs)HPMult$/.exec(type); return m ? `${pct(v)} ${part[m[2]]}${m[1] === 'Armor' ? '盔甲' : m[1] === 'Body' ? '肉體' : '血量'}` : `${type} ${pct(v)}`; });
+            const cursedN = Object.values(t.p || {}).filter(e => e[3]).length;
+            const curse = (t.c || []).map(([type, v]) => { const k = { BurstDamagePerCurse: '爆裂傷害', AfflictedDamagePerCurse: '苦痛傷害', BodyDamagePerCurse: '肉體傷害' }[type] || type; return `每個詛咒甲 ${k} ${pct(v)}（詛咒甲 ${cursedN} 個）`; });
+            return { area, curse };
+        }
         function ticketBestBans(t) {
             const locs = Object.keys(t.p);
             const bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0);
@@ -12175,6 +12185,7 @@
                         const dead = bodyLeft < t.k;
                         return `<div style="border:1px solid ${dead ? '#e57373' : '#eadfcc'}; border-radius:10px; padding:8px; margin-bottom:8px; background:${dead ? '#fff5f5' : '#fffdf8'};">
                             <div style="display:flex; justify-content:space-between; font-weight:800; color:#4a3728; font-size:13px; margin-bottom:2px;"><span>${escapeHtml(n)} ×${cnt(n)}</span><span style="font-size:12px;">斬殺線 ${fmt(t.k)}｜盔甲 ${fmt(armorOf(n))}</span></div>
+                            ${(() => { const md = ticketTitanMods(t); return md.area.length || md.curse.length ? `<div style="font-size:11.5px; margin-bottom:2px;">${md.area.map(x => `<span style="color:#a0522d; font-weight:800;">${x}</span>`).join('　')}${md.area.length && md.curse.length ? '　' : ''}${md.curse.map(x => `<span style="color:#6a3d9a; font-weight:800;">${x}</span>`).join('　')}</div>` : ''; })()}
                             <div style="font-size:11.5px; font-weight:700; margin-bottom:4px; color:${dead ? '#c0392b' : '#8a7a6a'};">能打部位的肉體 ${fmt(bodyLeft)}${dead ? `，比斬殺線少 ${fmt(t.k - bodyLeft)}：<b>這樣打不死</b>，請少禁一點` : `（比斬殺線多 ${fmt(bodyLeft - t.k)}）`}</div>
                             <div class="raid-parts-grid">${cells}</div></div>`;
                     }).join('');

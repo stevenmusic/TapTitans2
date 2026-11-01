@@ -12048,10 +12048,10 @@
                     perAtk = per30.reduce((x, y) => x + y.v, 0) / per30.length / (1 + TICKET_BASE_BONUS);
                     src = `最近 ${per30.length} 場換算成 30% 增傷的平均（${per30.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M`).join('、')}）`;
                 }
-                // 每輪刀數：同樣這幾場，每場「打完的輪次」平均（最後一輪通常沒打完，不算），再取平均。
+                // 每輪刀數：同樣這幾場「打完的輪次」（最後一輪通常沒打完，不算）全部放在一起，取 PR30（7 成的輪次刀數比它多，比平均保守）。
                 // 打完的場次數字不會變，算一次就存在手機上，之後不用再下載整場紀錄
                 let roundCache = {};
-                try { roundCache = JSON.parse(localStorage.getItem('tt2_round_attacks')) || {}; } catch (e) {}
+                try { roundCache = JSON.parse(localStorage.getItem('tt2_round_attacks_v2')) || {}; } catch (e) {}   // 每場存各輪刀數
                 const latest = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
                 const rounds = [];
                 for (const se of ss) {
@@ -12061,13 +12061,17 @@
                         const byC = {}; log.forEach(x => { if (x.raidStartedAt === se.startedAt && typeof x.cycle === 'number') byC[x.cycle] = (byC[x.cycle] || 0) + 1; });
                         const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
                         const full = cs.length > 1 ? cs.slice(0, -1) : [];
-                        v = full.length ? full.reduce((x, c) => x + byC[c], 0) / full.length : null;
+                        v = full.length ? full.map(c => byC[c]) : null;
                         if (v && se.startedAt !== latest) roundCache[se.startedAt] = v;
                     }
-                    if (v) rounds.push(v);
+                    if (v) rounds.push(...v);
                 }
-                try { localStorage.setItem('tt2_round_attacks', JSON.stringify(roundCache)); } catch (e) {}
-                if (rounds.length) { perRound = Math.round(rounds.reduce((x, y) => x + y, 0) / rounds.length); src += `；每輪刀數是這 ${rounds.length} 場的平均（${rounds.map(x => Math.round(x)).join('、')}）`; }
+                try { localStorage.setItem('tt2_round_attacks_v2', JSON.stringify(roundCache)); localStorage.removeItem('tt2_round_attacks'); } catch (e) {}
+                if (rounds.length) {
+                    const srt = rounds.slice().sort((x, y) => x - y), pos = (srt.length - 1) * 0.3, lo = Math.floor(pos);
+                    perRound = Math.round(srt[lo] + (srt[Math.min(lo + 1, srt.length - 1)] - srt[lo]) * (pos - lo));
+                    src += `；每輪刀數取這幾場 ${srt.length} 個打完輪次的 PR30（最少 ${srt[0]}、最多 ${srt[srt.length - 1]}）`;
+                }
             } catch (e) {}
             ticketCalc.cap = { perAtk, perRound, src };
             renderTicketCalc();

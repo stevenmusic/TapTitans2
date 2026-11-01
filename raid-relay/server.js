@@ -308,6 +308,16 @@ const dbReady = (async () => {
       PRIMARY KEY (started_at, enemy_name)
     )
   `);
+  // GameHive 每週公布的 raid seed（網頁整理成精簡版再上傳）：每一關的王、斬殺線、各部位盔甲上限／出場值、詛咒甲
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS raid_seed (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      valid_from TEXT,
+      expire_at TEXT,
+      uploaded_at INTEGER NOT NULL,
+      data TEXT NOT NULL
+    )
+  `);
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -2008,6 +2018,42 @@ function deckAdminOk(req) {
   const a = Buffer.from(String(req.get('x-admin-key') || '')), b = Buffer.from(SCENARIO_ADMIN_KEY);
   return a.length === b.length && require('crypto').timingSafeEqual(a, b);
 }
+// raid seed：上傳（要管理密碼，同一週重複上傳就取代）、讀最新一份
+app.post('/raid-seed', async (req, res) => {
+  if (!SCENARIO_ADMIN_KEY) return res.status(503).json({ error: '伺服器還沒設定 SCENARIO_ADMIN_KEY' });
+  if (!deckAdminOk(req)) return res.status(401).json({ error: '管理密碼不對' });
+  try {
+    const b = req.body || {};
+    if (!Array.isArray(b.raids) || !b.raids.length || typeof b.valid_from !== 'string') return res.status(400).json({ error: '格式不對' });
+    const json = JSON.stringify(b);
+    if (json.length > 3000000) return res.status(400).json({ error: '檔案太大' });
+    await dbReady;
+    await db.execute({ sql: 'DELETE FROM raid_seed WHERE valid_from = ?', args: [b.valid_from] });
+    await db.execute({ sql: 'INSERT INTO raid_seed (valid_from, expire_at, uploaded_at, data) VALUES (?, ?, ?, ?)', args: [b.valid_from, b.expire_at || null, Date.now(), json] });
+    await db.execute('DELETE FROM raid_seed WHERE id NOT IN (SELECT id FROM raid_seed ORDER BY id DESC LIMIT 6)');   // 留最近 6 週
+    res.json({ ok: true, raids: b.raids.length });
+  } catch (e) {
+    console.error('[turso] 儲存 raid seed 失敗:', e && e.message ? e.message : e);
+    res.status(500).json({ error: '儲存失敗' });
+  }
+});
+app.get('/raid-seed', async (req, res) => {
+  try {
+    await dbReady;
+    // 有給 at（某個時間，例如場次開始時間）就找那時候有效的那一週；沒給就回最新一份
+    const at = typeof req.query.at === 'string' ? req.query.at.replace('Z', '').slice(0, 19) : null;
+    const r = at
+      ? await db.execute({ sql: 'SELECT data FROM raid_seed WHERE valid_from <= ? AND (expire_at IS NULL OR expire_at >= ?) ORDER BY id DESC LIMIT 1', args: [at, at] })
+      : await db.execute('SELECT data FROM raid_seed ORDER BY valid_from DESC, id DESC LIMIT 1');
+    if (!r.rows.length) return res.json({ seed: null });
+    res.set('Content-Type', 'application/json');
+    res.send(`{"seed":${r.rows[0].data}}`);
+  } catch (e) {
+    console.error('[turso] 讀取 raid seed 失敗:', e && e.message ? e.message : e);
+    res.status(500).json({ error: '讀取失敗' });
+  }
+});
+
 // 備份清單（不含內容）、下載某一份、還原某一份（還原要管理密碼，還原前也會先備份當時的情境）
 app.get('/deck-scenarios/backups', async (req, res) => {
   try {

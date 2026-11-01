@@ -3556,6 +3556,7 @@
         <button onclick="closeAppNavMenu(); showView('players');">👥 <span data-nav-label="players"></span></button>
         <button onclick="closeAppNavMenu(); showView('raidStatus'); toggleRaidSettingsSheet(true);">⚙️ <span data-nav-label="settings"></span></button>
         <button onclick="closeAppNavMenu(); openSimImport();">🖼 匯入模擬器圖片</button>
+        <button onclick="closeAppNavMenu(); openTicketCalc();">🎟 門票試算</button>
         <button onclick="closeAppNavMenu(); toggleLanguage();">🌐 中文／English</button>
     </div>
 
@@ -11966,6 +11967,190 @@
         try { bossHpRounds = Number(localStorage.getItem('tt2_bosshp_rounds')) || 3; } catch (e) {}
         function setBossHpRounds(k) { bossHpRounds = k; try { localStorage.setItem('tt2_bosshp_rounds', k); } catch (e) {} renderBossHpPanel(); }
         function openBossHp() { bossHpSnapshotTried = false; document.getElementById('panel-bosshp').style.display = 'block'; renderBossHpPanel(); }
+        /* ══════════════════════════════════════════════════════════
+           門票試算：用 GameHive 每週公布的 raid seed（每一關的王、斬殺線、各部位盔甲上限／出場值），
+           選關卡、點禁打部位，算整場要打多少血，再用公會最近的出刀能力算 4～7 輪各要多少門票。
+           門票 → 增傷：增傷 ≈ 30% ＋ 每 1,000 張 0.665%（之前幾場的士氣資料算出來的）
+           ══════════════════════════════════════════════════════════ */
+        const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665;
+        const TC_KEY = 'tt2_ticket_calc';
+        const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 5, cap: null };
+        try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
+        function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
+        // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
+        function seedSummarize(raw) {
+            return {
+                valid_from: raw.valid_from, expire_at: raw.expire_at,
+                raids: (raw.raids || []).map(r => ({
+                    t: r.tier, l: r.level, seq: r.spawn_sequence,
+                    buffs: (r.area_buffs || []).map(b => [b.bonus_type, b.bonus_amount]),
+                    titans: (r.titans || []).map(t => {
+                        const p = {};
+                        (t.parts || []).forEach(pp => {
+                            const { layer, loc } = apiSplitPartId(pp.part_id || '');
+                            if (!loc) return;
+                            const e = p[loc] || (p[loc] = [0, 0, 0, 0]);
+                            if (layer === 'armor') { e[0] = Math.round(pp.total_hp); e[1] = Math.round(pp.current_hp); if (pp.cursed) e[3] = 1; }
+                            else if (layer === 'body') e[2] = Math.round(pp.total_hp);
+                        });
+                        return { n: t.enemy_name, k: Math.round(t.total_hp), d: (t.area_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), c: (t.cursed_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), p };
+                    })
+                }))
+            };
+        }
+        const TC_SEED_KEY = 'tt2_raid_seed_cache';
+        async function ticketSeedFetch(at) {
+            if (!at) {   // 最新一份：手機上有、而且 6 小時內抓過就直接用
+                try { const c = JSON.parse(localStorage.getItem(TC_SEED_KEY)); if (c && c.seed && Date.now() - c.at < 6 * 3600 * 1000) return c.seed; } catch (e) {}
+            }
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            const r = await fetch(`${relayUrl}/raid-seed${at ? `?at=${encodeURIComponent(at)}` : ''}`);
+            const seed = r.ok ? (await r.json()).seed : null;
+            if (!at && seed) { try { localStorage.setItem(TC_SEED_KEY, JSON.stringify({ at: Date.now(), seed })); } catch (e) {} }
+            return seed;
+        }
+        async function ticketSeedUpload(file) {
+            const msg = (t, c) => { const m = document.getElementById('tc-msg'); if (m) { m.textContent = t; m.style.color = c || '#8a7a6a'; } };
+            if (!file) return;
+            try {
+                msg('讀取中…');
+                const raw = JSON.parse(await file.text());
+                if (!Array.isArray(raw.raids) || !raw.valid_from) { msg('這不是 raid seed 檔案。', '#c0392b'); return; }
+                const sum = seedSummarize(raw);
+                msg('上傳中…');
+                if (!(await simAdminPost(sum, '/raid-seed'))) { msg('沒有上傳。', '#c0392b'); return; }
+                ticketCalc.seed = sum;
+                try { localStorage.setItem(TC_SEED_KEY, JSON.stringify({ at: Date.now(), seed: sum })); } catch (e) {}
+                bossHpSeed = undefined;   // 王血量重新找這一場的 seed
+                renderTicketCalc();
+                msg(`✔ 已上傳 ${sum.valid_from.slice(0, 10)}～${(sum.expire_at || '').slice(0, 10)} 的 seed（${sum.raids.length} 關），所有人都看得到。`, '#2e7d32');
+            } catch (e) { msg('讀取失敗：檔案格式不對。', '#c0392b'); }
+        }
+        // 公會出刀能力：最新一場（打超過 500 刀才算）的總傷害÷刀數÷(1＋增傷)、打完的輪次平均刀數；沒有就用之前幾場的平均
+        async function ticketCalcCapacity() {
+            let perAtk = 0.265e9, perRound = 270, src = '之前幾場的平均';
+            try {
+                await ensureServerRaidDataFresh();
+                const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
+                const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !rsa || a.raidStartedAt === rsa);
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const snap = ((await (await fetch(`${relayUrl}/raid-raw-snapshots?limit=1`)).json()).snapshots || [])[0];
+                const bonus = snap && snap.data && snap.data.morale ? Number(snap.data.morale.bonus_amount) : null;
+                if (log.length >= 500 && bonus) {
+                    perAtk = log.reduce((x, a) => x + (Number(a.totalDamage) || 0), 0) / log.length / (1 + bonus);
+                    const byC = {}; log.forEach(a => { if (typeof a.cycle === 'number') byC[a.cycle] = (byC[a.cycle] || 0) + 1; });
+                    const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
+                    const full = cs.length > 1 ? cs.slice(0, -1) : cs;   // 最後一輪可能還沒打完，不算
+                    perRound = Math.round(full.reduce((x, c) => x + byC[c], 0) / full.length);
+                    src = `最新一場（${log.length} 刀、增傷 ${(bonus * 100).toFixed(1)}%）`;
+                }
+            } catch (e) {}
+            ticketCalc.cap = { perAtk, perRound, src };
+            renderTicketCalc();
+        }
+        async function openTicketCalc() {
+            let m = document.getElementById('ticket-calc-modal');
+            if (!m) {
+                m = document.createElement('div');
+                m.id = 'ticket-calc-modal'; m.className = 'bosshp-modal';
+                m.onclick = (e) => { if (e.target === m) m.remove(); };
+                document.body.appendChild(m);
+            }
+            m.style.display = 'block';
+            renderTicketCalc();
+            if (!ticketCalc.seed && !ticketCalc.loading) {
+                ticketCalc.loading = true;
+                try { ticketCalc.seed = await ticketSeedFetch(); } catch (e) {}
+                ticketCalc.loading = false;
+                renderTicketCalc();
+            }
+            if (!ticketCalc.cap) ticketCalcCapacity();
+        }
+        function ticketCalcSet(field, v) {
+            if (field === 'ban') { const [name, loc] = v; const l = new Set(ticketCalc.bans[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); ticketCalc.bans[name] = [...l]; }
+            else ticketCalc[field] = v;
+            ticketCalcSave();
+            renderTicketCalc();
+        }
+        function renderTicketCalc() {
+            const m = document.getElementById('ticket-calc-modal');
+            if (!m) return;
+            const keep = m.querySelector('.bosshp-modal-box') ? m.scrollTop : 0;
+            const seed = ticketCalc.seed;
+            const head = `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">🎟 門票試算</div><button onclick="document.getElementById('ticket-calc-modal').remove()" style="font-size:18px; color:#8e6a3a; background:none; border:none; padding:2px 6px;">✕</button></div>`;
+            const upload = `<label style="display:block; text-align:center; padding:7px; border:1.5px dashed #c9b8e0; border-radius:10px; color:#6a3d9a; font-weight:800; font-size:13px; cursor:pointer;" for="tc-file">⬆️ 上傳本週 seed（GameHive Discord 的 raid_seed JSON）</label>
+                <input type="file" id="tc-file" accept=".json,application/json" style="display:none;" onchange="ticketSeedUpload(this.files[0]); this.value='';">
+                <div id="tc-msg" style="font-size:11.5px; color:#8a7a6a; margin:4px 0 8px;">${seed ? `目前的 seed：${seed.valid_from.slice(0, 10)}～${(seed.expire_at || '').slice(0, 10)}（${seed.raids.length} 關）` : ticketCalc.loading ? '讀取中…' : '伺服器上還沒有 seed，請先上傳。'}</div>`;
+            let body = '';
+            if (seed) {
+                const master = seed.raids.filter(r => r.t === 9999).sort((x, y) => x.l - y.l);
+                const curLv = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier;
+                if (!ticketCalc.level || !master.some(r => r.l === ticketCalc.level)) ticketCalc.level = (curLv && master.some(r => r.l === curLv + 1)) ? curLv + 1 : (master[0] && master[0].l);
+                const raid = master.find(r => r.l === ticketCalc.level);
+                const fmt = formatNum;
+                if (raid) {
+                    const T = Object.fromEntries(raid.titans.map(t => [t.n, t]));
+                    const names = [...new Set(raid.seq)];
+                    const cnt = (n) => raid.seq.filter(x => x === n).length;
+                    const banOf = (n) => (ticketCalc.bans[n] || []);
+                    const armorOf = (n) => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[1]), 0);
+                    const killSum = raid.seq.reduce((x, n) => x + T[n].k, 0);
+                    const armorSum = raid.seq.reduce((x, n) => x + armorOf(n), 0);
+                    const total = killSum + armorSum;
+                    const buffLabel = { BurstChance: '爆裂機率', BurstDamage: '爆裂傷害', AfflictedChance: '苦痛機率', AfflictedDamage: '苦痛傷害', SupportDamage: '支援傷害', RaidAttackDuration: '時間增益' };
+                    const titanCards = names.map(n => {
+                        const t = T[n];
+                        const cells = RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(loc => { const e = t.p[loc] || [0, 0, 0, 0]; const ban = banOf(n).includes(loc);
+                            return `<div class="raid-part-cell${ban ? ' is-banned' : ''}" onclick="ticketCalcSet('ban', ['${n}', '${loc}'])" style="cursor:pointer; padding:4px 2px; ${e[3] && !ban ? 'border-color:#8e5cc0; background:#f3ebfa;' : ''}"><div class="raid-part-name" style="font-size:11.5px;">${escapeHtml(raidPartLabel(loc))}${e[3] ? '<small style="color:#8e5cc0;">詛</small>' : ''}</div><div class="raid-part-hp" style="font-size:11.5px;">${ban ? '禁打' : fmt(e[1])}</div></div>`; }).join('')}</div>`).join('');
+                        return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:8px; margin-bottom:8px; background:#fffdf8;">
+                            <div style="display:flex; justify-content:space-between; font-weight:800; color:#4a3728; font-size:13px; margin-bottom:4px;"><span>${escapeHtml(n)} ×${cnt(n)}</span><span style="font-size:12px;">斬殺線 ${fmt(t.k)}｜盔甲 ${fmt(armorOf(n))}</span></div>
+                            <div class="raid-parts-grid">${cells}</div></div>`;
+                    }).join('');
+                    // 門票
+                    const cap = ticketCalc.cap;
+                    const perAtk = ticketCalc.perAtk || (cap ? cap.perAtk : 0.265e9), perRound = ticketCalc.rounds || (cap ? cap.perRound : 270), margin = Number(ticketCalc.margin) || 0;
+                    const base = perAtk * perRound;   // 沒有增傷時每輪打多少
+                    const need = total * (1 + margin / 100);
+                    const rows = [4, 5, 6, 7].map(n => {
+                        const perR = need / n, bonus = perR / base - 1;
+                        const tickets = bonus <= TICKET_BASE_BONUS ? 0 : Math.ceil((bonus - TICKET_BASE_BONUS) / TICKET_PER / 100) * 100;
+                        return `<tr><td style="padding:6px 3px; border-top:1px solid #eadfcb;">${n} 輪</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${fmt(perR)}</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${(Math.max(bonus, TICKET_BASE_BONUS) * 100).toFixed(1)}%</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; font-weight:800; color:${tickets ? '#8b263e' : '#2e7d32'};">${tickets ? tickets.toLocaleString() + ' 張' : '不用'}</td></tr>`;
+                    }).join('');
+                    const inp = (field, val, step) => `<input type="number" inputmode="decimal" step="${step}" value="${val}" onchange="ticketCalcSet('${field}', Number(this.value) || null)" style="width:100%; box-sizing:border-box; font:inherit; font-size:15px; padding:5px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee; text-align:center;">`;
+                    body = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;"><span style="font-size:13px; font-weight:800; color:#5a3a2a;">關卡</span>
+                            <select onchange="ticketCalcSet('level', Number(this.value))" style="flex:1; font:inherit; font-size:15px; padding:5px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee;">${master.map(r => `<option value="${r.l}" ${r.l === ticketCalc.level ? 'selected' : ''}>M-${r.l}${r.l === curLv ? '（這一場）' : ''}</option>`).join('')}</select></div>
+                        <div style="font-size:12px; color:#6b4a2a; margin-bottom:6px;">加成：${raid.buffs.map(b => buffLabel[b[0]] || b[0]).join('、') || '—'}｜出場順序：${raid.seq.map(escapeHtml).join(' → ')}</div>
+                        <div style="display:flex; gap:6px; margin-bottom:8px;">
+                            <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">斬殺線</div><div style="font-size:14px; font-weight:800;">${fmt(killSum)}</div></div>
+                            <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">盔甲（扣禁打）</div><div style="font-size:14px; font-weight:800;">${fmt(armorSum)}</div></div>
+                            <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">整場合計</div><div style="font-size:14px; font-weight:800;">${fmt(total)}</div></div>
+                        </div>
+                        <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">需要多少門票</div>
+                        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
+                            <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>每刀（無增傷，B）${inp('perAtk', +(perAtk / 1e9).toFixed(3), 0.005).replace("Number(this.value) || null", "Number(this.value) * 1e9 || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
+                        </div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">出刀能力：${cap ? cap.src : '計算中…'}。增傷＝30%＋每 1,000 張門票 0.665%。</div>
+                        <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
+                        <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
+                        ${titanCards}`;
+                } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';
+            }
+            m.innerHTML = `<div class="bosshp-modal-box">${head}${upload}${body}</div>`;
+            m.scrollTop = keep;
+        }
+        // 這一場對應的 seed（場次開始時間在 seed 的有效期間內）：抓一次，記在 bossHpSeed（null＝沒有）
+        let bossHpSeed;
+        function bossHpSeedRaid() {
+            const s0 = serverSessionsSummary && serverSessionsSummary[0];
+            if (!s0 || !s0.levelTier) return null;
+            if (bossHpSeed === undefined) {
+                bossHpSeed = null;
+                ticketSeedFetch(s0.startedAt).then(sd => { bossHpSeed = sd ? { start: s0.startedAt, seed: sd } : null; refreshBossHpIfOpen(); }).catch(() => {});
+                return null;
+            }
+            if (!bossHpSeed || bossHpSeed.start !== s0.startedAt) { if (bossHpSeed && bossHpSeed.start !== s0.startedAt) bossHpSeed = undefined; return null; }
+            return bossHpSeed.seed.raids.find(r => r.t === 9999 && r.l === s0.levelTier) || null;
+        }
         function closeBossHp() { document.getElementById('panel-bosshp').style.display = 'none'; }
         function refreshBossHpIfOpen() {
             rememberBossArmor();
@@ -11985,7 +12170,10 @@
             const cur = raidState && raidState.bossOrdinal ? raidState.bossOrdinal : 0;
             const bannedOf = (t) => { const e = (targets || []).find(x => x.enemy_id === t.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : []; };
             // 每隻王「應該要打」的量：能打部位（扣掉禁打）的滿血盔甲＋斬殺線（肉體總血量）；「剩餘」：已擊殺 0、目前這隻用現在剩下的、還沒輪到的＝應打
+            const seedRaid = bossHpSeedRaid();
             const fullOf = (t, banned) => {
+                const st = t && seedRaid && seedRaid.titans.find(x => x.n === t.enemy_name);
+                if (st) return { armor: Object.entries(st.p).reduce((x, [loc, e]) => x + (banned.includes(loc) ? 0 : e[1]), 0), kill: t ? Number(t.total_hp) || 0 : 0, hasParts: true, seed: true };   // seed 的實際出場盔甲
                 const max = t && bossArmorMemory.byName[t.enemy_name];
                 const kill = t ? Number(t.total_hp) || 0 : 0;
                 if (!max) return { armor: 0, kill, hasParts: false };
@@ -12048,7 +12236,7 @@
                 </table>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">
-                <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲(85%)</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
+                <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲${seedRaid ? '' : '(85%)'}</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
                 ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
                     <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
                 <tr style="font-weight:800; background:#f0e6d2;"><td colspan="4" style="${td} text-align:left;">加總</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(sumLeft)}</td></tr>

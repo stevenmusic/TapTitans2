@@ -3493,7 +3493,7 @@
                     <div id="raid-sim-panel" style="display:none;"></div>
 
                     <div id="my-reco-wrap" style="margin:6px 0 4px;">
-                        <input id="my-reco-player" list="my-reco-names" placeholder="👤 輸入自己的玩家名稱，看我現在該用哪一組" autocomplete="off" onchange="myRecoSetPlayer(this.value)" onkeydown="if(event.key==='Enter')this.blur()" style="width:100%; box-sizing:border-box; font:inherit; font-size:14px; padding:6px 8px; border:1px solid #ddd0bb; border-radius:10px; background:#fbf6ee; color:#4a3728;"><datalist id="my-reco-names"></datalist><div id="my-reco-msg" style="display:none; font-size:12px; color:#c0392b; margin-top:3px;"></div>
+                        <input id="my-reco-player" placeholder="👤 打自己名字的任一個字，看我現在該用哪一組" autocomplete="off" onfocus="this.select()" oninput="myRecoSuggest(this.value)" onkeydown="if(event.key==='Enter'){myRecoSetPlayer(this.value);this.blur();}" style="width:100%; box-sizing:border-box; font:inherit; font-size:14px; padding:6px 8px; border:1px solid #ddd0bb; border-radius:10px; background:#fbf6ee; color:#4a3728;"><div id="my-reco-sug" style="display:none; flex-wrap:wrap; gap:5px; margin-top:5px;"></div><div id="my-reco-msg" style="display:none; font-size:12px; color:#c0392b; margin-top:3px;"></div>
                         <div id="my-reco-box" style="display:none; margin-top:6px; padding:8px; border-radius:12px; background:#fffdf8; border:1.5px solid #c9b8e0;"></div>
                     </div>
                     <div id="by-part-reco" style="display:none;"></div>
@@ -12344,13 +12344,28 @@
                 if (!name) { const hit = myRecoNames.filter(n => n.toLowerCase().includes(lq)); if (hit.length === 1) name = hit[0]; else if (msg) { msg.textContent = hit.length ? `有 ${hit.length} 個名字符合，請打完整一點或從清單選` : '找不到這個名字（這一場還沒出刀的人可能還沒在名單）'; msg.style.display = 'block'; return; } }
             }
             if (msg) msg.style.display = 'none';
-            if (inp) inp.value = name;
+            const sug = document.getElementById('my-reco-sug'); if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
+            if (inp) { inp.value = name; inp.blur(); }
             try { localStorage.setItem(MY_RECO_KEY, name); } catch (e) {}
             myRecoSig = ''; myRecoRefresh(true);
         }
+        // 打字時在下方列出包含這些字的名字（最多 12 個），點一下就選
+        function myRecoSuggest(raw) {
+            const box = document.getElementById('my-reco-sug'), msg = document.getElementById('my-reco-msg');
+            if (!box) return;
+            if (msg) msg.style.display = 'none';
+            const lq = String(raw || '').trim().toLowerCase();
+            if (!lq) { box.style.display = 'none'; box.innerHTML = ''; return; }
+            const hit = myRecoNames.filter(n => n.toLowerCase().includes(lq));
+            hit.sort((a, b) => (b.toLowerCase().startsWith(lq) - a.toLowerCase().startsWith(lq)) || a.length - b.length);
+            box.innerHTML = hit.length
+                ? hit.slice(0, 12).map(n => `<button type="button" onclick="myRecoSetPlayer(this.dataset.n)" data-n="${escapeHtml(n)}" style="font:inherit; font-size:13px; padding:4px 10px; border:1px solid #c9b8e0; border-radius:14px; background:#f6f0fc; color:#4a3728;">${escapeHtml(n)}</button>`).join('') + (hit.length > 12 ? `<span style="font-size:12px; color:#8a7a6a; align-self:center;">還有 ${hit.length - 12} 個，多打一個字</span>` : '')
+                : '<span style="font-size:12px; color:#c0392b;">找不到這個名字（這一場還沒出刀的人可能還沒在名單）</span>';
+            box.style.display = 'flex';
+        }
         function myRecoFillNames() {
-            const inp = document.getElementById('my-reco-player'), dl = document.getElementById('my-reco-names');
-            if (!inp || !dl) return;
+            const inp = document.getElementById('my-reco-player');
+            if (!inp) return;
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
             const names = new Set((Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !rsa || a.raidStartedAt === rsa).map(a => a.player));
             (serverAllPlayersCache || []).forEach(p => p.name && names.add(p.name));
@@ -12358,10 +12373,6 @@
             const list = [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
             myRecoNames = list;
             if (me && !inp.value && document.activeElement !== inp) inp.value = me;
-            const key = list.join('|');
-            if (dl.dataset.key === key) return;
-            dl.dataset.key = key;
-            dl.innerHTML = list.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
         }
         // 有人出刀、王的狀態變了才重算，最多 5 秒一次
         function myRecoRefresh(now) {

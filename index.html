@@ -9228,6 +9228,7 @@
             ['cursed1', 'Focus One Cursed Armor', { role: 'cursed1' }],
             ['limbs', 'Focus Limbs', { role: 'limbs' }],
             ['limb1', 'Focus One Limb', { role: 'limb1' }],
+            ['arm', 'Focus Arm', { role: 'limb1' }],   // 打單一四肢（有圖騰之力時打最厚的四肢）
             ['any2', 'Focus Two', { role: 'any', focus: 2 }],
             ['any3', 'Focus Three', { role: 'any', focus: 3 }],
             ['any4', 'Focus Four', { role: 'any', focus: 4 }],
@@ -10025,10 +10026,15 @@
         });
         picked.forEach(r => {
             if (!(r.rawCards && r.rawCards.includes('TotemFairySkill'))) return;
-            let cand = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok) && (!r.limbOnly || /Arm|Hand|Leg/.test(k)));
+            // 只要有圖騰之力，一律只打 1 個部位（就算模擬器寫 Focus Three 也一樣）；範圍照牌組類型：
+            // Focus Head＝頭、Focus Limbs／One Limb／Arm＝四肢、其他＝這組牌打得到的所有部位（Focus Torso 最後會固定成肚子）
+            const fitK = keys.filter(k => r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
+            const limbRole = r.limbOnly || r.role === 'limbs' || r.role === 'limb1';
+            let cand = fitK.filter(k => (!limbRole || /Arm|Hand|Leg/.test(k)) && (r.role !== 'head' || k === 'Head'));
+            if (!cand.length) cand = fitK;
             let curOnly = false;
             { const cc = cand.filter(k => info[k].cursed); if (cc.length) { cand = cc; curOnly = true; } }   // 有詛咒甲先拆詛咒甲（最薄的）
-            if (cand.length) { r.targets = [asTarget(curOnly ? hpLeast(cand) : hpMost(cand))]; r.allParts = false; byPartUnCount(r); }
+            if (cand.length) { r.targets = [asTarget(curOnly ? hpLeast(cand) : hpMost(cand))]; r.allParts = false; r.focus = 0; r.hideParts = false; r.partLabel = ''; }
         });
         picked.forEach(r => {
             // 電擊＋時間之沙＋戰鼓：有詛咒甲先拆詛咒甲（血量最多的那個），沒有詛咒甲再打血量最多的部位

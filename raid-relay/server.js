@@ -297,6 +297,17 @@ const dbReady = (async () => {
       PRIMARY KEY (player_code, event, ts)
     )
   `);
+  // 每場每種王「出場時」各部位的盔甲／肉體（上限 total_hp、出場值 current_hp）：王還沒被打過時記下來，
+  // 出場值就是扣掉開場已扣（Battle Scars）後真正要打的量。每場每種王只記一次
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS raid_titan_parts (
+      started_at TEXT NOT NULL,
+      enemy_name TEXT NOT NULL,
+      captured_at INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY (started_at, enemy_name)
+    )
+  `);
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks (ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_attacks_raid_started_at ON attacks (raid_started_at)');
   await db.execute(`
@@ -1428,6 +1439,25 @@ function noteClanMemberEvent(code, event, ts) {
   const cur = clanMemberLatest.get(code);
   if (!cur || ts >= cur.ts) clanMemberLatest.set(code, { ts, event });
 }
+// 王還沒被打過（這一場還沒輪到、或是目前這隻但還沒有任何攻擊）才記，記到的就是出場時的值
+async function saveTitanSpawnParts(titans, key) {
+  try {
+    const rsa = key || watcherCurrentRaidStartedAt;
+    if (!rsa) return;
+    const seq = watcherSpawnSequence || [];
+    const fought = key ? new Set() : new Set(seq.slice(0, Math.max(0, (watcherBossOrdinal || 0) - (watcherHasReceivedAttack ? 0 : 1))));
+    await dbReady;
+    for (const t of titans) {
+      if (!t || !t.enemy_name || !Array.isArray(t.parts) || !t.parts.length || fought.has(t.enemy_name)) continue;
+      const data = { enemy_id: t.enemy_id, total_hp: t.total_hp, parts: t.parts.map(p => ({ part_id: p.part_id, total_hp: p.total_hp, current_hp: p.current_hp, cursed: !!p.cursed })),
+        area_debuffs: t.area_debuffs || [], cursed_debuffs: t.cursed_debuffs || [] };
+      await db.execute({ sql: 'INSERT OR IGNORE INTO raid_titan_parts (started_at, enemy_name, captured_at, data) VALUES (?, ?, ?, ?)', args: [rsa, t.enemy_name, Date.now(), JSON.stringify(data)] });
+    }
+  } catch (e) {
+    console.error('儲存王出場部位失敗:', e && e.message ? e.message : e);
+  }
+}
+
 async function saveClanMemberEvent(event, payload, ts) {
   try {
     const pl = payload && payload.player;
@@ -1566,6 +1596,8 @@ function watcherHandleRaidSnapshot(payload, event) {
   if (payload && payload.raid && !payload.raid_started_at && typeof payload.start_at === 'string' && Date.parse(payload.start_at) > Date.now()) {
     const pv = buildRaidPreview(payload);
     if (pv) watcherPreview = pv;
+    // 下一場預告也帶了每隻王的部位（都還沒被打過）：存下來，開打前就能算整場血量
+    if (payload.raid && Array.isArray(payload.raid.titans)) saveTitanSpawnParts(payload.raid.titans, 'preview:' + payload.start_at);
     return;
   }
   if (payload && typeof payload.raid_started_at === 'string') watcherPreview = null;
@@ -1577,6 +1609,8 @@ function watcherHandleRaidSnapshot(payload, event) {
     if (watcherCurrentRaidStartedAt && watcherCurrentRaidStartedAt !== payload.raid_started_at) {
       watcherCurrentEnemyId = null;
       watcherPartStatus = {};
+      watcherBossOrdinal = 0;            // 新場次還沒打到任何一隻王
+      watcherHasReceivedAttack = false;
     }
     watcherCurrentRaidStartedAt = payload.raid_started_at;
   }
@@ -1593,6 +1627,7 @@ function watcherHandleRaidSnapshot(payload, event) {
   }
   if (Array.isArray(titans) && titans.length > 0) {
     watcherRaidTitans = titans;
+    saveTitanSpawnParts(titans);
     // 詛咒甲位置每場隨機，快照裡的才是官方這一場的實際資料，有目前這隻王的話直接以它覆蓋詛咒狀態
     const curTitan = watcherCurrentEnemyId && titans.find(t => t.enemy_id === watcherCurrentEnemyId);
     if (curTitan) {
@@ -2171,6 +2206,22 @@ app.get('/deck-part-stats', async (req, res) => {
   } catch (e) {
     console.error('deck-part-stats failed', e);
     res.status(500).json({ error: 'deck-part-stats failed' });
+  }
+});
+
+// 每場每種王出場時的部位資料（不給 session 就回最近一場；session=preview 回下一場預告）
+app.get('/raid-titans', async (req, res) => {
+  try {
+    await dbReady;
+    let session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (session === 'preview') { const rp = await db.execute("SELECT started_at FROM raid_titan_parts WHERE started_at LIKE 'preview:%' ORDER BY captured_at DESC LIMIT 1"); session = rp.rows[0] ? rp.rows[0].started_at : null; if (!session) return res.json({ session: null, titans: [] }); }
+    if (!session) { const r0 = await db.execute("SELECT started_at FROM raid_titan_parts WHERE started_at NOT LIKE 'preview:%' ORDER BY captured_at DESC LIMIT 1"); session = r0.rows[0] ? r0.rows[0].started_at : null; }
+    if (!session) return res.json({ session: null, titans: [] });
+    const r = await db.execute({ sql: 'SELECT enemy_name, captured_at, data FROM raid_titan_parts WHERE started_at = ?', args: [session] });
+    res.json({ session, titans: r.rows.map(x => ({ name: x.enemy_name, capturedAt: Number(x.captured_at), ...JSON.parse(x.data) })) });
+  } catch (e) {
+    console.error('[turso] 讀取王出場部位失敗:', e && e.message ? e.message : e);
+    res.status(500).json({ error: '讀取失敗' });
   }
 });
 

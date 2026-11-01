@@ -9766,7 +9766,7 @@
             if (a && tg) {   // 從「這一場會用到的情境」選的狀態：自動帶入
                 const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
                 setv('sim-imp-buff', tg.buff); setv('sim-imp-curse', tg.curse); setv('sim-imp-cursed', tg.cursed);
-                setv('sim-imp-armor', tg.armor); setv('sim-imp-body', tg.body);
+                setv('sim-imp-armor', tg.armor - (tg.cursed || 0)); setv('sim-imp-body', tg.body);
                 m.querySelectorAll('.si-part').forEach(el => simImpPartSet(el, tg.banned.includes(el.querySelector('.sim-imp-ban').value) ? 'banned' : 'ok', true));
             }
             if (a) { simImportCheckSum(); simImportMarkDup(); }
@@ -9775,7 +9775,7 @@
             const c = sc.counts;
             const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
             const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
-            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}｜不能打 ${ban}`;
+            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor - (sc.cursed || 0)}、肉體 ${c.body}｜不能打 ${ban}`;   // 盔甲不含詛咒甲
         }
         // 重複的卡：選的卡標紅框、上面列出哪張卡在第幾組
         function simImportDupInfo() {
@@ -9816,8 +9816,8 @@
             const off = document.querySelectorAll('.sim-imp-ban:checked').length + document.querySelectorAll('.sim-imp-skelpart:checked').length;
             const sk = document.getElementById('sim-imp-skel'); if (sk) sk.value = document.querySelectorAll('.sim-imp-skelpart:checked').length;
             const offEl = document.getElementById('sim-imp-off'); if (offEl) offEl.value = off;
-            const total = v('sim-imp-armor') + v('sim-imp-body') + off;
-            el.textContent = `盔甲（含詛咒甲）${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋不能打 ${off}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
+            const total = v('sim-imp-cursed') + v('sim-imp-armor') + v('sim-imp-body') + off;   // 盔甲欄不含詛咒甲
+            el.textContent = `詛咒甲 ${v('sim-imp-cursed')}＋盔甲 ${v('sim-imp-armor')}＋肉體 ${v('sim-imp-body')}＋不能打 ${off}＝${total}（要等於 8）` + (total === 8 ? '　✔' : '　✘');
             el.style.color = total === 8 ? '#2e7d32' : '#c0392b';
         }
         async function simImportPick(file) {
@@ -9844,13 +9844,12 @@
             if (!a) return;
             const v = (id) => Number(document.getElementById(id).value) || 0;
             const banned = [...document.querySelectorAll('.sim-imp-ban:checked')].map(e => e.value);
-            const counts = { armor: v('sim-imp-armor'), body: v('sim-imp-body'), skeleton: v('sim-imp-skel'), banned: banned.length };
             const cursed = v('sim-imp-cursed'), curse = document.getElementById('sim-imp-curse').value;
+            const counts = { armor: cursed + v('sim-imp-armor'), body: v('sim-imp-body'), skeleton: v('sim-imp-skel'), banned: banned.length };   // 存的盔甲數含詛咒甲（盔甲欄只填一般盔甲）
             const msg = document.getElementById('sim-imp-msg');
             const fail = (t) => { alert(t); };
             if (!document.getElementById('sim-imp-buff').value) return fail('請選加成類型。');
-            if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋不能打 要等於 8（不能打的部位要在格子上點成禁打或骨架）。');
-            if (cursed > counts.armor) return fail('詛咒甲不能比盔甲多（盔甲數要含詛咒甲）。');
+            if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('詛咒甲＋盔甲＋肉體＋不能打 要等於 8（不能打的部位要在格子上點成禁打或骨架）。');
             if (cursed > 0 && !curse) return fail('有詛咒甲的話，請選詛咒類型。');
             const decks = a.decks.map((row, di) => {
                 const cards = row.map((c, ci) => document.getElementById(`sim-imp-card-${di}-${ci}`).value);

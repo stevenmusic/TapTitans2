@@ -9570,7 +9570,7 @@
             const tg = simImp.target && simImp.target.sec === r.sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
             return `<div class="si-row" ${r.ok ? '' : `onclick="${r.pre || ''}simTodoPick('${r.sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
                 <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
-                <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">${r.label ? `<small style="color:#6a3d9a; font-weight:800;">${r.label}</small><br>` : ''}能打 ${r.n}${r.n === 1 ? (r.sec === 'both' ? '（只剩一個四肢）' : '（只剩頭或肚）') : ''}｜詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}</span>
+                <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">${r.label ? `<small style="color:#6a3d9a; font-weight:800;">${r.label}</small><br>` : ''}能打 ${r.n}${r.n === 1 ? (r.sec === 'both' ? '（只剩一個四肢）' : '（只剩頭或肚）') : r.n === 2 && r.c === 0 && r.a === 0 ? ({ '': '（頭＋肚）', one: '（頭或肚＋一個四肢）', both: '（兩個四肢）' })[r.sec] : ''}｜詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}</span>
                 ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px; white-space:nowrap;">現在</span>' : ''}
                 ${tg ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a; white-space:nowrap;">已選</span>' : ''}
             </div>`;
@@ -9593,9 +9593,13 @@
                 else if (cur.n > 1) nx = find(cur.sec, cur.n - 1, 0, 0) || find('one', cur.n - 1, 0, 0) || find('both', cur.n - 1, 0, 0);   // 同一區沒有了（例如頭肚都能打最少 2 個），接到頭／肚不能打的區
                 cur = nx;
             }
-            // 只剩 1 個部位時，可能是頭或肚，也可能是一個四肢：兩種都列
-            const last = path[path.length - 1];
-            if (last && last.n === 1) todo.rows.filter(r => r.n === 1 && r.c === 0 && r.a === 0 && !path.includes(r) && (r.sec === 'one' || r.sec === 'both')).forEach(r => path.push(r));
+            // 只剩 2 個、1 個部位（都是肉體）時，剩下哪幾個部位都有可能：頭肚／頭或肚＋四肢／四肢，各種都列
+            const cut = path.findIndex(r => r.n <= 2 && r.c === 0 && r.a === 0);
+            if (cut >= 0) {
+                const tail = [];
+                [2, 1].forEach(n => ['', 'one', 'both'].forEach(sec => { const r = find(sec, n, 0, 0); if (r) tail.push(r); }));
+                path.splice(cut, path.length - cut, ...tail);
+            }
             return path;
         }
         // 下一場（seed）：門票試算選的那一關，每種王照 seed 的加成、詛咒類型、詛咒甲數量，加上那一關的禁打（沒設就用最佳禁打）

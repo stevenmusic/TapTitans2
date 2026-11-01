@@ -60,6 +60,7 @@ app.post('/subscribe', async (req, res) => {
   }
 });
 
+process.on('unhandledRejection', (err) => { console.error('[unhandledRejection]', err && err.stack ? err.stack : err); });
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -860,7 +861,11 @@ async function restoreOneGithubBackupFile(fileUrl, headers, label) {
     const parsed = JSON.parse(content);
     const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
     if (attacks.length === 0) return 0;
-    const imported = await insertAttacksBatch(attacks);
+    attacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
+    // 開機時已經把 Turso 的資料全部讀進記憶體：已經有的就不再送一次（以前每次重開都把 3 萬多筆全部重送，很吃流量）
+    const missing = attacks.filter(a => !attacksByDedupKey.has(attackDedupKey(a)));
+    if (!missing.length) return 0;
+    const imported = await insertAttacksBatch(missing);
     attacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
     return imported;
   } catch (e) {
@@ -879,7 +884,7 @@ async function restoreAttackLogFromGitHubBackup() {
     Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
     Accept: 'application/vnd.github+json'
   };
-  let totalImported = 0;
+  let totalImported = 0, filesSeen = 0;
   try {
     const dirUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_DIR}?ref=${GITHUB_BACKUP_BRANCH}`;
     const dirResp = await fetch(dirUrl, { headers });
@@ -897,6 +902,7 @@ async function restoreAttackLogFromGitHubBackup() {
               if (!Array.isArray(subEntries)) continue;
               for (const fileEntry of subEntries) {
                 if (!fileEntry.name || !fileEntry.name.endsWith('.json') || !fileEntry.url) continue;
+                filesSeen++;
                 totalImported += await restoreOneGithubBackupFile(fileEntry.url, headers, `${entry.name}/${fileEntry.name}`);
               }
             } catch (e) {
@@ -904,6 +910,7 @@ async function restoreAttackLogFromGitHubBackup() {
             }
           } else if (entry.name.endsWith('.json')) {
             // 相容中間版本：日期.json 單一檔案直接放在這個資料夾底下
+            filesSeen++;
             totalImported += await restoreOneGithubBackupFile(entry.url, headers, entry.name);
           }
         }
@@ -916,8 +923,8 @@ async function restoreAttackLogFromGitHubBackup() {
     console.error('[github-backup] 開機還原（按日分檔）失敗:', e && e.message ? e.message : e);
   }
 
-  // 相容最早的版本：只有在按日分檔完全沒補到資料時才嘗試（避免每次開機都白跑一次舊檔案）
-  if (totalImported === 0) {
+  // 相容最早的版本：只有在完全沒有按日分檔的檔案時才嘗試（避免每次開機都白跑一次舊檔案）
+  if (filesSeen === 0) {
     try {
       const legacyUrl = `https://api.github.com/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_LEGACY_PATH}?ref=${GITHUB_BACKUP_BRANCH}`;
       const legacyResp = await fetch(legacyUrl, { headers });
@@ -931,8 +938,9 @@ async function restoreAttackLogFromGitHubBackup() {
         const parsed = JSON.parse(content);
         const attacks = Array.isArray(parsed.attacks) ? parsed.attacks : [];
         if (attacks.length > 0) {
-          const imported = await insertAttacksBatch(attacks);
           attacks.forEach(a => backedUpDedupKeys.add(attackDedupKey(a)));
+          const missing = attacks.filter(a => !attacksByDedupKey.has(attackDedupKey(a)));   // 已經有的不再送一次
+          const imported = missing.length ? await insertAttacksBatch(missing) : 0;
           console.log(`[github-backup] 開機還原（相容舊版單一檔案）：補回了 ${imported} 筆資料庫裡缺少的紀錄`);
         }
       }
@@ -2124,12 +2132,14 @@ app.get('/raid-sessions-summary', async (req, res) => {
 });
 
 // 診斷用：列出各場次第一次收到的官方快照原始內容（最新的在前）
-app.get('/raid-raw-snapshots', async (req, res) => {
+// async 網址出錯（例如 Turso 一時連不上）時交給最後的錯誤處理回 500，不要變成沒人接的錯誤讓整台伺服器當掉
+function safeRoute(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
+app.get('/raid-raw-snapshots', safeRoute(async (req, res) => {
   await dbReady;
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 3, 1), 20);
   const result = await db.execute({ sql: 'SELECT started_at, captured_at, event, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT ?', args: [limit] });
   res.json({ snapshots: result.rows.map(r => ({ startedAt: r.started_at, capturedAt: r.captured_at, event: r.event, data: JSON.parse(r.data || 'null') })) });
-});
+}));
 
 // 依部位查牌組用的統計：每一場突襲只看「總傷前 N 名」玩家的攻擊，記錄「這三張卡一組」
 // 每一刀「卡片」打到了哪些部位+層別（盔甲/肉體），前端選好要打的部位就能比對哪些牌組符合。
@@ -2551,11 +2561,11 @@ app.get('/raid-report/view', async (req, res) => {
 
 // 診斷用：列出各場第一份快照裡所有「名稱含 morale／士氣」的數字欄位，
 // 用來確認士氣加成到底藏在哪個欄位
-app.get('/raid-morale-debug', async (req, res) => {
+app.get('/raid-morale-debug', safeRoute(async (req, res) => {
   await dbReady;
   const result = await db.execute('SELECT started_at, data FROM raid_snapshots ORDER BY captured_at DESC LIMIT 20');
   res.json({ sessions: result.rows.map(r => ({ startedAt: r.started_at, fields: findMoraleFields(JSON.parse(r.data || 'null')) })) });
-});
+}));
 
 app.get('/watcher-debug', (req, res) => {
   res.json({
@@ -2569,7 +2579,7 @@ app.get('/watcher-debug', (req, res) => {
 });
 
 // 診斷用：各場每種事件（sub_start／start／sub_cycle／cycle_reset／attack）第一次收到的原始內容
-app.get('/raid-event-samples', async (req, res) => {
+app.get('/raid-event-samples', safeRoute(async (req, res) => {
   await dbReady;
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
   const result = await db.execute({ sql: 'SELECT started_at, event, captured_at, data FROM raid_event_samples ORDER BY captured_at DESC LIMIT ?', args: [limit] });
@@ -2577,7 +2587,7 @@ app.get('/raid-event-samples', async (req, res) => {
     serverCommit: (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7), // Render 部署的版本，確認是不是最新版
     samples: result.rows.map(r => ({ startedAt: r.started_at, event: r.event, capturedAt: r.captured_at, data: JSON.parse(r.data || 'null') }))
   });
-});
+}));
 
 // 保底錯誤處理：不管 Render 有沒有設定 NODE_ENV=production，都不要把完整的
 // stack trace（含檔案路徑、套件版本）直接回給客戶端。一定要放在所有路由最後面，

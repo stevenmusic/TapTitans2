@@ -12194,7 +12194,7 @@
                             <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">盔甲（扣禁打）</div><div style="font-size:14px; font-weight:800;">${fmt(armorSum)}</div></div>
                             <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">整場合計</div><div style="font-size:14px; font-weight:800;">${fmt(total)}</div></div>
                         </div>
-                        ${unkillable.length ? `<div style="font-size:12px; font-weight:800; color:#c0392b; background:#fdecea; border-radius:8px; padding:6px 8px; margin-bottom:6px;">⚠ ${unkillable.map(escapeHtml).join('、')} 禁太多部位，剩下的肉體不夠斬殺線，打不死。下面的門票不準，請少禁一點或按「自動選最佳禁打」。</div>` : ''}
+                        ${unkillable.length ? `<div style="font-size:12px; font-weight:800; color:#c0392b; background:#fdecea; border-radius:8px; padding:6px 8px; margin-bottom:6px;">⚠ ${unkillable.map(escapeHtml).join('、')} 禁太多部位，剩下的肉體不夠斬殺線，打不死。下面的門票不準，請少禁一點或按「改回最佳禁打」。</div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">需要多少門票</div>
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
@@ -12202,8 +12202,8 @@
                         <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? '最近 5 場：均傷取平均、刀數取 PR30' : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
-                        <button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:4px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">⚡ 自動選最佳禁打</button>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:8px;">在「能打部位的肉體 ≥ 斬殺線」（打得死）的前提下，禁掉最多盔甲；詛咒甲不禁。</div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:6px;">預設是最佳禁打：打得死（能打部位的肉體 ≥ 斬殺線）、不禁詛咒甲、禁掉最多盔甲。</div>
+                        ${names.some(n => { const best = ticketBestBans(T[n]).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
                         ${titanCards}
                         ${ticketAllBansHtml(master)}`;
                 } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';

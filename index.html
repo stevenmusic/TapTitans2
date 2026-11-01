@@ -10302,6 +10302,15 @@
             r.targets = t;
             r.focus = want;
         });
+        // 最後統一檢查：列出的部位已經涵蓋所有能打的部位（扣掉禁打、骨架，2 個以上）＝全部位，不一個一個列名稱；
+        // 寫數量的牌組（Focus Three／Four、淨化爆裂＋暴食蜂擁…）照舊寫「N部位」
+        picked.forEach(r => {
+            if (r.allParts || r.focus || r.hideParts || keys.length < 2) return;
+            const tg = new Set((r.targets || []).map(t => t.part));
+            if (!keys.every(k => tg.has(k))) return;
+            if (r.rawCards && r.rawCards.includes('Purify') && r.rawCards.includes('Swarm') && r.rawCards.includes('TriangleSupport')) { r.focus = keys.length; r.hideParts = true; r.partLabel = ''; }   // 淨化爆裂＋暴食蜂擁寫 N部位
+            else { r.allParts = true; r.partLabel = ''; }
+        });
         }
 
         function byPartRecoCompute(data, partsArg, bannedArg, allRows, curseArg, buffArg) {

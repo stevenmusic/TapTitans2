@@ -3542,7 +3542,6 @@
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
-                        <div id="raid-log-compare-bar" style="display:none; position:sticky; bottom:10px; z-index:5; margin-top:10px; gap:8px; justify-content:center;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
                         <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
@@ -7339,9 +7338,8 @@
         // 背景自動更新重畫排行榜時名次可能會變動，用名字才能正確對回同一個人，
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
-        // 右滑選人比較：選中的玩家、是否正在比較（只列出選中的人）
+        // 右滑選中的玩家：點卡片時這些人一起比較
         let raidLogCompareSet = new Set();
-        let raidLogCompareMode = false;
 
         // 場次選單只預設顯示最近 14 天，超過的收合起來，避免累積久了場次一多
         // 選單要一直往下滑才滑得到最新那幾場。點「顯示更早的場次」才會全部展開
@@ -11420,14 +11418,8 @@
             const listEl = document.getElementById('raid-log-query-list');
             const summaryEl = document.getElementById('raid-log-query-summary');
 
-            let ranked = buildRaidLogRanking(keyword);
-            ranked.forEach((r, i) => { r._rank = i + 1; });
-            if (raidLogCompareMode) {
-                ranked = ranked.filter(r => raidLogCompareSet.has(r.player));
-                ranked.forEach(r => raidLogExpandedPlayers.add(r.player));   // 比較時全部展開，點卡片就能一起比
-            }
+            const ranked = buildRaidLogRanking(keyword);
             raidLogLastRanked = ranked;
-            raidLogCompareBarUpdate();
             raidLogSwipeInit();
             resultWrap.style.display = 'block';
 
@@ -11439,7 +11431,7 @@
                 return;
             }
 
-            summaryEl.textContent = raidLogCompareMode ? `比較中：${ranked.length} 位（點卡片一起比）` : keyword
+            summaryEl.textContent = keyword
                 ? `符合「${keyword}」的玩家有 ${ranked.length} 位（依總傷害排序）`
                 : `共 ${ranked.length} 位玩家（依總傷害排序）`;
 
@@ -11448,7 +11440,7 @@
                 return `
                 <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
                     <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:10px 8px 10px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
-                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${r._rank || rIdx + 1}. ${escapeHtml(r.player)}</span>
+                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <span style="font-size:12.5px; font-weight:700; white-space:nowrap; min-width:6.8em; text-align:right; font-variant-numeric:tabular-nums; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
@@ -11719,35 +11711,9 @@
                 if (!r) return;
                 if (raidLogCompareSet.has(r.player)) raidLogCompareSet.delete(r.player); else raidLogCompareSet.add(r.player);
                 s0.head.style.boxShadow = raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none';
-                if (raidLogCompareMode && !raidLogCompareSet.size) raidLogCompareMode = false;
-                if (raidLogCompareMode) renderRaidLogQueryResult(); else raidLogCompareBarUpdate();
             };
             list.addEventListener('touchend', end);
             list.addEventListener('touchcancel', end);
-        }
-        // 底部的比較列：選了人才出現
-        function raidLogCompareBarUpdate() {
-            const bar = document.getElementById('raid-log-compare-bar');
-            if (!bar) return;
-            const n = raidLogCompareSet.size;
-            if (!n && !raidLogCompareMode) { bar.style.display = 'none'; return; }
-            const b = 'font:inherit; font-size:13px; font-weight:700; border-radius:18px; padding:7px 16px; box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;';
-            bar.innerHTML = raidLogCompareMode
-                ? `<button onclick="raidLogCompareSetMode(false)" style="${b} background:#4a3728; color:#fff; border:none;">結束比較</button>`
-                : `<button onclick="raidLogCompareSetMode(true)" ${n < 2 ? 'disabled' : ''} style="${b} background:${n < 2 ? '#a5c9b2' : '#2e9d5b'}; color:#fff; border:none;">比較（${n}）</button><button onclick="raidLogCompareClear()" style="${b} background:#fff; color:#4a3728; border:1px solid #d8c8a8;">清除</button>`;
-            bar.style.display = 'flex';
-        }
-        function raidLogCompareSetMode(on) {
-            raidLogCompareMode = !!on;
-            if (!on) raidLogCompareSet.forEach(n => raidLogExpandedPlayers.delete(n));
-            renderRaidLogQueryResult();
-            const wrap = document.getElementById('raid-log-query-result');
-            if (wrap) wrap.scrollIntoView({ block: 'start', behavior: 'smooth' });
-        }
-        function raidLogCompareClear() {
-            raidLogCompareSet.clear();
-            raidLogCompareMode = false;
-            renderRaidLogQueryResult();
         }
         function toggleRaidLogPlayerGroup(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);
@@ -11885,7 +11851,8 @@
         function openCardUsageDetail(cardName) {
             // 目前展開中的每一位玩家都會被合併進來一起查詢這張卡的紀錄，不是只看
             // 點擊當下這一位——想比對多位玩家，同時展開他們的攻擊紀錄再點卡片就行
-            const players = raidLogLastRanked.filter(r => raidLogExpandedPlayers.has(r.player));
+            // 再加上右滑選中的人（不用展開也算），選好多人後展開其中一位點卡片就直接比較
+            const players = raidLogLastRanked.filter(r => raidLogExpandedPlayers.has(r.player) || raidLogCompareSet.has(r.player));
             if (players.length === 0) return;
 
             // 列出每一次用到這張卡的紀錄（不是合併同組牌組只顯示一次），因為每一次

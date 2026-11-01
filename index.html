@@ -12028,13 +12028,13 @@
                 msg(`✔ 已上傳 ${sum.valid_from.slice(0, 10)}～${(sum.expire_at || '').slice(0, 10)} 的 seed（${sum.raids.length} 關），所有人都看得到。`, '#2e7d32');
             } catch (e) { msg('讀取失敗：檔案格式不對。', '#c0392b'); }
         }
-        // 公會出刀能力：最近 5 場（900 刀以上才算）每場「總傷害÷刀數÷(1＋當場增傷)×1.3」＝換算成 30% 增傷時的均傷，取平均；
+        // 公會出刀能力：最近 7 場（900 刀以上才算）每場「總傷害÷刀數÷(1＋當場增傷)×1.3」＝換算成 30% 增傷時的均傷，去掉最高、最低取平均；
         // 每輪刀數用最新一場打完的輪次平均。資料來自戰報（每場約 50KB，不用下載整場攻擊紀錄）
         async function ticketCalcCapacity() {
             let perAtk = 0.265e9, perRound = 270, src = '預設值';
             try {
                 if (!serverSessionsSummary || !serverSessionsSummary.length) await loadSharedSessionMenu();
-                const ss = (serverSessionsSummary || []).filter(x => (x.attackCount || 0) >= 900).slice(0, 5);
+                const ss = (serverSessionsSummary || []).filter(x => (x.attackCount || 0) >= 900).slice(0, 7);   // 最近 7 場（900 刀以上）
                 const per30 = [];
                 for (const se of ss) {
                     try {
@@ -12045,7 +12045,10 @@
                     } catch (e) {}
                 }
                 if (per30.length) {
-                    perAtk = per30.reduce((x, y) => x + y.v, 0) / per30.length / (1 + TICKET_BASE_BONUS);
+                    // 去頭尾：最高、最低各拿掉一場（3 場以上才去），剩下的取平均。場次一更新就跟著換
+                    const used = per30.length >= 3 ? per30.slice().sort((x, y) => x.v - y.v).slice(1, -1) : per30;
+                    perAtk = used.reduce((x, y) => x + y.v, 0) / used.length / (1 + TICKET_BASE_BONUS);
+                    ticketCalc.capN = { all: per30.length, used: used.length };
                     src = `最近 ${per30.length} 場換算成 30% 增傷的平均（${per30.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M`).join('、')}）`;
                 }
                 // 每輪刀數：同樣這幾場「打完的輪次」（最後一輪通常沒打完，不算）全部放在一起，取 PR30（7 成的輪次刀數比它多，比平均保守）。
@@ -12199,7 +12202,7 @@
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
                         </div>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? '最近 5 場：均傷取平均、刀數取 PR30' : '計算中…'}</div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取 PR30` : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
                         ${names.some(n => { const best = ticketBestBans(T[n]).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}

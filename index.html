@@ -9543,6 +9543,45 @@
         // 所有條件總覽：每種加成 × 詛咒（爆裂／苦痛）× 禁打（0～4 個；禁打的有沒有頭、肚子），常見的情境補了幾個
         // 禁打的四肢用代表部位（先雙腿，再左肩、左手）：配對只看四肢禁打的數量
         const SIM_SUM_LIMBS = ['LegUpperLeft', 'LegUpperRight', 'ArmUpperLeft', 'HandLeft'];
+        // 清單的一列
+        function simTodoRowHtml(r) {
+            const tg = simImp.target && simImp.target.sec === r.sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
+            return `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick('${r.sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
+                <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
+                <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : 'font-weight:700;'}">${r.label ? `<small style="color:#6a3d9a; font-weight:800;">${r.label}</small><br>` : ''}能打 ${r.n}｜詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}</span>
+                ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px; white-space:nowrap;">現在</span>' : ''}
+                ${tg ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a; white-space:nowrap;">已選</span>' : ''}
+            </div>`;
+        }
+        // 最容易發生的順序：從現在（沒有現在就從一開始）往下，詛咒甲先拆 → 再拆一般盔甲 → 肉體打光變骨架（能打少一個）
+        function simTodoPath(todo) {
+            const find = (sec, n, c, a) => todo.rows.find(r => r.sec === sec && r.n === n && r.c === c && r.a === a);
+            let cur = todo.rows.find(r => r.now);
+            if (!cur) {   // 沒有現在的狀態：從能打最多、詛咒甲最多的開始
+                const sec = SIM_TODO_SECS.map(x => x[0]).find(sc => todo.rows.some(r => r.sec === sc));
+                const top = todo.rows.filter(r => r.sec === sec).sort((x, y) => (y.n - x.n) || (y.c - x.c) || (y.a - x.a))[0];
+                cur = top;
+            }
+            const path = [];
+            while (cur && path.length < 30) {
+                path.push(cur);
+                let nx = null;
+                if (cur.c > 0) nx = find(cur.sec, cur.n, cur.c - 1, cur.a);
+                else if (cur.a > 0) nx = find(cur.sec, cur.n, cur.c, cur.a - 1);
+                else if (cur.n > 1) nx = find(cur.sec, cur.n - 1, 0, 0);
+                cur = nx;
+            }
+            return path;
+        }
+        function simTodoTopHtml(todo) {
+            const path = simTodoPath(todo);
+            if (!path.length) return '';
+            const secName = (sec) => (SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1];
+            const miss = path.filter(r => !r.ok).length;
+            return `<div class="si-title" style="margin:8px 0 2px;">打法順序 <small style="font-weight:600; color:#8a7a6a;">${secName(path[0].sec)}｜缺 ${miss}／${path.length}</small></div>
+                <div class="si-tip" style="margin-bottom:4px;">照最容易發生的順序：詛咒甲先拆 → 再拆盔甲 → 肉體打光變骨架。點 ❌ 帶入條件，再選那個狀態的截圖。</div>
+                ${path.map(simTodoRowHtml).join('')}`;
+        }
         function simTodoSummary() {
             // 每種加成 × 詛咒（爆裂／苦痛）× 頭肚三區，常見的情境補了幾個（沒有詛咒甲的情境不分詛咒類型，標題的缺幾個只算一次）
             const secName = (sec) => (SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1];
@@ -9612,21 +9651,18 @@
                             <label class="si-field">詛咒類型<select onchange="simTodoSet('curse', this.value)">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], todo.curse)}</select></label>
                         </div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
-                        <div class="si-tip" style="margin-bottom:4px;">缺 ${todo.rows.filter(r => r.common && !r.ok).length} 個常見的。禁打和骨架都算「不能打」，只看能打幾個部位。點 ❌ 那一列，再選那個狀態的模擬器截圖，條件會自動帶入。</div>
-                        ${[8, 7, 6, 5, 4, 3, 2, 1].map(n => { const list = todo.rows.filter(r => r.n === n); if (!list.length) return '';
-                            // 先照能打幾個部位分組，組裡再分頭肚三種情況
-                            const isTg = (r) => simImp.target && simImp.target.sec === r.sec && simImp.target.n === r.n && simImp.target.cursed === r.c && simImp.target.armor === r.c + r.a;
+                        ${simTodoTopHtml(todo)}
+                        <details ${simImp.allOpen ? 'open' : ''} ontoggle="simImp.allOpen = this.open" style="margin-top:10px;"><summary class="si-title" style="cursor:pointer;">其他狀態（常見的缺 ${todo.rows.filter(r => r.common && !r.ok && !simTodoPath(todo).includes(r)).length} 個）</summary>
+                        <div class="si-tip" style="margin:2px 0 4px;">不在上面順序裡的狀態。禁打和骨架都算不能打。</div>
+                        ${[8, 7, 6, 5, 4, 3, 2, 1].map(n => { const pathSet = new Set(simTodoPath(todo)); const list = todo.rows.filter(r => r.n === n && !pathSet.has(r)); if (!list.length) return '';
                             const com = list.filter(r => r.common), miss = com.filter(r => !r.ok).length;
-                            const open = list.some(r => r.now) || list.some(isTg);
-                            return `<details ${open ? 'open' : ''}><summary class="si-field" style="margin:6px 0 2px; cursor:pointer; font-weight:800;">${miss ? '❌' : '✅'} 能打 ${n} 個（常見 ${com.length} 個，缺 ${miss} 個）${list.some(r => r.now) ? ' <span style="font-size:11px; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}</summary>` + SIM_TODO_SECS.map(([sec, secName]) => { const sl = list.filter(r => r.sec === sec); if (!sl.length) return '';
-                            return `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin:6px 0 2px 4px;">${secName}<small style="font-weight:600; color:#8a7a6a;">（缺 ${sl.filter(r => r.common && !r.ok).length} 個常見）</small></div>` + sl.map(r => `<div class="si-row" ${r.ok ? '' : `onclick="simTodoPick('${sec}', ${r.n}, ${r.c}, ${r.a})" style="cursor:pointer;"`}>
-                            <span style="width:22px;">${r.ok ? '✅' : '❌'}</span>
-                            <span style="flex:1; ${r.ok ? 'color:#8a7a6a;' : r.common ? 'font-weight:700;' : 'color:#8a7a6a;'}">詛咒甲 ${r.c}｜盔甲 ${r.a}｜肉體 ${r.b}${r.common ? '' : ' <small>（少見）</small>'}</span>
-                            ${r.now ? '<span style="font-size:11px; font-weight:800; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}
-                            ${isTg(r) ? '<span style="font-size:11px; font-weight:800; color:#6a3d9a;">已選</span>' : ''}
-                        </div>`).join(''); }).join('') + '</details>'; }).join('')}
+                            return `<details ${list.some(r => r.now) ? 'open' : ''}><summary style="cursor:pointer; display:block; font-weight:800; font-size:13px; color:#4a3728; margin:6px 0 2px;">${miss ? '❌' : '✅'} 能打 ${n} 個 <small style="font-weight:600; color:#8a7a6a;">缺 ${miss}／${com.length}</small>${list.some(r => r.now) ? ' <span style="font-size:11px; color:#fff; background:#6a3d9a; border-radius:8px; padding:1px 7px;">現在</span>' : ''}</summary>` + SIM_TODO_SECS.map(([sec, secName]) => { const sl = list.filter(r => r.sec === sec); if (!sl.length) return '';
+                            const slc = sl.filter(r => r.common), slr = sl.filter(r => !r.common);
+                            return `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin:6px 0 2px 4px;">${secName}</div>` + slc.map(simTodoRowHtml).join('')
+                                + (slr.length ? `<details><summary style="cursor:pointer; display:block; font-size:11.5px; color:#8a7a6a; margin:2px 0 2px 26px;">少見 ${slr.length} 個</summary>${slr.map(simTodoRowHtml).join('')}</details>` : ''); }).join('') + '</details>'; }).join('')}
+                        </details>
                     </div>` : ''}
-                    ${!a ? `<div class="si-card">
+                    ${!a ? `<details class="si-card si-more" ${simImp.moreOpen ? 'open' : ''} ontoggle="simImp.moreOpen = this.open"><summary>其他：所有條件總覽、已儲存的情境、伺服器情境檔</summary><div class="si-card">
                         <details ${simImp.sumOpen ? 'open' : ''} ontoggle="simImp.sumOpen = this.open"><summary class="si-title" style="cursor:pointer;">所有條件總覽（點開）</summary>
                         <div class="si-tip" style="margin:4px 0 6px;">每種加成、詛咒、禁打組合的「常見」情境補了幾個。禁打只分有沒有頭、肚子，其他四肢禁哪幾個都一樣。點一列，上面的清單就換成那個條件。</div>
                         ${simImp.sumOpen ? simTodoSummary().map(g => `<details><summary class="si-field" style="cursor:pointer; padding:6px 0; font-weight:800;">${escapeHtml(SESSION_BUFFS[g.buff].label)}｜常見缺 ${g.miss} 個</summary>
@@ -9673,7 +9709,7 @@
                                     <button class="si-del" style="background:#fff; color:#6a3d9a; border-color:#d9c8ea;" onclick="simBackupDownload(${b.id})">下載</button><button class="si-del" onclick="simBackupRestore(${b.id})">還原</button></div>`; }).join('')}
                         </details>
                     </div>
-                    ${a ? '</details>' : ''}
+                    </details>
                 </div>
                 ${a ? '<div class="si-foot"><button class="si-btn" onclick="simImportSave(true)">上傳到伺服器（所有人都看得到）</button><button class="si-btn ghost" style="margin-top:6px;" onclick="simImportSave()">只存在這支手機</button></div>' : ''}
             </div>`;

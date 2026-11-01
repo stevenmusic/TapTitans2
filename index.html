@@ -12026,24 +12026,34 @@
                 msg(`✔ 已上傳 ${sum.valid_from.slice(0, 10)}～${(sum.expire_at || '').slice(0, 10)} 的 seed（${sum.raids.length} 關），所有人都看得到。`, '#2e7d32');
             } catch (e) { msg('讀取失敗：檔案格式不對。', '#c0392b'); }
         }
-        // 公會出刀能力：最新一場（打超過 500 刀才算）的總傷害÷刀數÷(1＋增傷)、打完的輪次平均刀數；沒有就用之前幾場的平均
+        // 公會出刀能力：最近 5 場（900 刀以上才算）每場「總傷害÷刀數÷(1＋當場增傷)×1.3」＝換算成 30% 增傷時的均傷，取平均；
+        // 每輪刀數用最新一場打完的輪次平均。資料來自戰報（每場約 50KB，不用下載整場攻擊紀錄）
         async function ticketCalcCapacity() {
-            let perAtk = 0.265e9, perRound = 270, src = '之前幾場的平均';
+            let perAtk = 0.265e9, perRound = 270, src = '預設值';
             try {
+                if (!serverSessionsSummary || !serverSessionsSummary.length) await loadSharedSessionMenu();
+                const ss = (serverSessionsSummary || []).filter(x => (x.attackCount || 0) >= 900).slice(0, 5);
+                const per30 = [];
+                for (const se of ss) {
+                    try {
+                        const rep = await loadSessionReport(se);
+                        const bonus = rep.morale && Number(rep.morale.value);
+                        const total = (rep.rows || []).reduce((x, r) => x + (Number(r[2]) || 0), 0);
+                        if (bonus && total && rep.attackCount) per30.push({ lv: rep.levelTier, v: total / rep.attackCount / (1 + bonus) * (1 + TICKET_BASE_BONUS) });
+                    } catch (e) {}
+                }
+                if (per30.length) {
+                    perAtk = per30.reduce((x, y) => x + y.v, 0) / per30.length / (1 + TICKET_BASE_BONUS);
+                    src = `最近 ${per30.length} 場換算成 30% 增傷的平均（${per30.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M`).join('、')}）`;
+                }
+                // 每輪刀數：最新一場打完的輪次平均（最後一輪可能還沒打完，不算）
                 await ensureServerRaidDataFresh();
                 const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
-                const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !rsa || a.raidStartedAt === rsa);
-                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const snap = ((await (await fetch(`${relayUrl}/raid-raw-snapshots?limit=1`)).json()).snapshots || [])[0];
-                const bonus = snap && snap.data && snap.data.morale ? Number(snap.data.morale.bonus_amount) : null;
-                if (log.length >= 500 && bonus) {
-                    perAtk = log.reduce((x, a) => x + (Number(a.totalDamage) || 0), 0) / log.length / (1 + bonus);
-                    const byC = {}; log.forEach(a => { if (typeof a.cycle === 'number') byC[a.cycle] = (byC[a.cycle] || 0) + 1; });
-                    const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
-                    const full = cs.length > 1 ? cs.slice(0, -1) : cs;   // 最後一輪可能還沒打完，不算
-                    perRound = Math.round(full.reduce((x, c) => x + byC[c], 0) / full.length);
-                    src = `最新一場（${log.length} 刀、增傷 ${(bonus * 100).toFixed(1)}%）`;
-                }
+                const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(x => !rsa || x.raidStartedAt === rsa);
+                const byC = {}; log.forEach(x => { if (typeof x.cycle === 'number') byC[x.cycle] = (byC[x.cycle] || 0) + 1; });
+                const cs = Object.keys(byC).map(Number).sort((x, y) => x - y);
+                const full = cs.length > 1 ? cs.slice(0, -1) : [];
+                if (full.length) perRound = Math.round(full.reduce((x, c) => x + byC[c], 0) / full.length);
             } catch (e) {}
             ticketCalc.cap = { perAtk, perRound, src };
             renderTicketCalc();

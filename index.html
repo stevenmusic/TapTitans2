@@ -3493,7 +3493,7 @@
                     <div id="raid-sim-panel" style="display:none;"></div>
 
                     <div id="my-reco-wrap" style="margin:6px 0 4px;">
-                        <select id="my-reco-player" onchange="myRecoSetPlayer(this.value)" style="width:100%; font:inherit; font-size:14px; padding:6px 8px; border:1px solid #ddd0bb; border-radius:10px; background:#fbf6ee; color:#4a3728;"><option value="">👤 選自己的名字，看我現在該用哪一組</option></select>
+                        <input id="my-reco-player" list="my-reco-names" placeholder="👤 輸入自己的玩家名稱，看我現在該用哪一組" autocomplete="off" onchange="myRecoSetPlayer(this.value)" onkeydown="if(event.key==='Enter')this.blur()" style="width:100%; box-sizing:border-box; font:inherit; font-size:14px; padding:6px 8px; border:1px solid #ddd0bb; border-radius:10px; background:#fbf6ee; color:#4a3728;"><datalist id="my-reco-names"></datalist><div id="my-reco-msg" style="display:none; font-size:12px; color:#c0392b; margin-top:3px;"></div>
                         <div id="my-reco-box" style="display:none; margin-top:6px; padding:8px; border-radius:12px; background:#fffdf8; border:1.5px solid #c9b8e0;"></div>
                     </div>
                     <div id="by-part-reco" style="display:none;"></div>
@@ -12333,19 +12333,35 @@
         const MY_RECO_KEY = 'tt2_my_reco_player';
         let myRecoSig = '', myRecoTimer = null, myRecoBusy = false;
         function myRecoPlayer() { try { return localStorage.getItem(MY_RECO_KEY) || ''; } catch (e) { return ''; } }
-        function myRecoSetPlayer(name) { try { localStorage.setItem(MY_RECO_KEY, name); } catch (e) {} myRecoSig = ''; myRecoRefresh(true); }
+        let myRecoNames = [];
+        // 輸入名字：完全相同 > 不分大小寫相同 > 只有一個名字包含輸入的字
+        function myRecoSetPlayer(raw) {
+            const q = String(raw || '').trim(), msg = document.getElementById('my-reco-msg'), inp = document.getElementById('my-reco-player');
+            let name = '';
+            if (q) {
+                const lq = q.toLowerCase();
+                name = myRecoNames.find(n => n === q) || myRecoNames.find(n => n.toLowerCase() === lq) || '';
+                if (!name) { const hit = myRecoNames.filter(n => n.toLowerCase().includes(lq)); if (hit.length === 1) name = hit[0]; else if (msg) { msg.textContent = hit.length ? `有 ${hit.length} 個名字符合，請打完整一點或從清單選` : '找不到這個名字（這一場還沒出刀的人可能還沒在名單）'; msg.style.display = 'block'; return; } }
+            }
+            if (msg) msg.style.display = 'none';
+            if (inp) inp.value = name;
+            try { localStorage.setItem(MY_RECO_KEY, name); } catch (e) {}
+            myRecoSig = ''; myRecoRefresh(true);
+        }
         function myRecoFillNames() {
-            const sel = document.getElementById('my-reco-player');
-            if (!sel) return;
+            const inp = document.getElementById('my-reco-player'), dl = document.getElementById('my-reco-names');
+            if (!inp || !dl) return;
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
             const names = new Set((Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !rsa || a.raidStartedAt === rsa).map(a => a.player));
             (serverAllPlayersCache || []).forEach(p => p.name && names.add(p.name));
             const me = myRecoPlayer(); if (me) names.add(me);
             const list = [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+            myRecoNames = list;
+            if (me && !inp.value && document.activeElement !== inp) inp.value = me;
             const key = list.join('|');
-            if (sel.dataset.key === key) { if (sel.value !== me) sel.value = me; return; }
-            sel.dataset.key = key;
-            sel.innerHTML = '<option value="">👤 選自己的名字，看我現在該用哪一組</option>' + list.map(n => `<option value="${escapeHtml(n)}" ${n === me ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('');
+            if (dl.dataset.key === key) return;
+            dl.dataset.key = key;
+            dl.innerHTML = list.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
         }
         // 有人出刀、王的狀態變了才重算，最多 5 秒一次
         function myRecoRefresh(now) {

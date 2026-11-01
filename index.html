@@ -3542,6 +3542,7 @@
                     <div id="raid-log-query-result" style="display:block; width:100%; margin-top:12px;">
                         <div id="raid-log-query-summary" style="font-size:12px; color:#8a7a6a; margin-bottom:8px;"></div>
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+                        <div id="raid-log-compare-bar" style="display:none; position:sticky; bottom:10px; z-index:5; margin-top:10px; gap:8px; justify-content:center;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
                         <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
@@ -7338,6 +7339,9 @@
         // 背景自動更新重畫排行榜時名次可能會變動，用名字才能正確對回同一個人，
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
+        // 右滑選人比較：選中的玩家、是否正在比較（只列出選中的人）
+        let raidLogCompareSet = new Set();
+        let raidLogCompareMode = false;
 
         // 場次選單只預設顯示最近 14 天，超過的收合起來，避免累積久了場次一多
         // 選單要一直往下滑才滑得到最新那幾場。點「顯示更早的場次」才會全部展開
@@ -11416,8 +11420,15 @@
             const listEl = document.getElementById('raid-log-query-list');
             const summaryEl = document.getElementById('raid-log-query-summary');
 
-            const ranked = buildRaidLogRanking(keyword);
+            let ranked = buildRaidLogRanking(keyword);
+            ranked.forEach((r, i) => { r._rank = i + 1; });
+            if (raidLogCompareMode) {
+                ranked = ranked.filter(r => raidLogCompareSet.has(r.player));
+                ranked.forEach(r => raidLogExpandedPlayers.add(r.player));   // 比較時全部展開，點卡片就能一起比
+            }
             raidLogLastRanked = ranked;
+            raidLogCompareBarUpdate();
+            raidLogSwipeInit();
             resultWrap.style.display = 'block';
 
             if (ranked.length === 0) {
@@ -11428,28 +11439,28 @@
                 return;
             }
 
-            summaryEl.textContent = keyword
+            summaryEl.textContent = raidLogCompareMode ? `比較中：${ranked.length} 位（點卡片一起比）` : keyword
                 ? `符合「${keyword}」的玩家有 ${ranked.length} 位（依總傷害排序）`
                 : `共 ${ranked.length} 位玩家（依總傷害排序）`;
 
             listEl.innerHTML = ranked.map((r, rIdx) => {
                 const isExpanded = raidLogExpandedPlayers.has(r.player);
                 return `
-                <div style="border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
-                    <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:10px 8px 10px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
-                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
+                <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
+                    <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:10px 8px 10px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
+                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${r._rank || rIdx + 1}. ${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <span style="font-size:12.5px; font-weight:700; white-space:nowrap; min-width:6.8em; text-align:right; font-variant-numeric:tabular-nums; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
+                    <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
-                        <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; margin-bottom:8px;"></div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:5px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
@@ -11500,16 +11511,10 @@
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
-        // 標題列的「推薦牌組」按鈕：收合中就先展開再顯示推薦；已展開就照原本開／關推薦
+        // 標題列的「推薦牌組」按鈕：只開／關推薦牌組，攻擊紀錄收起來（兩個一次只開一個）
         function raidLogRecoHeaderBtn(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);
-            const r = raidLogLastRanked[rIdx];
-            if (!group || !r) return;
-            if (group.style.display === 'none') {
-                toggleRaidLogPlayerGroup(rIdx);
-                raidLogRecoOpen.add(r.player);
-                return raidLogRenderPlayerReco(r);
-            }
+            if (group && group.style.display !== 'none') toggleRaidLogPlayerGroup(rIdx);
             return showRaidLogPlayerReco(rIdx);
         }
         function showRaidLogPlayerReco(rIdx) {
@@ -11667,12 +11672,94 @@
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄
         // （每一筆配卡紀錄自己的八部位圖表預設是收合的，要再點一次才會展開）
+        // ── 右滑選人比較 ──
+        // 名字那列往右滑：露出 +（加入）或 -（取消），放手超過 60px 就切換
+        let raidLogSwipeJust = false;
+        function raidLogSwipeInit() {
+            const list = document.getElementById('raid-log-query-list');
+            if (!list || list.dataset.swipe) return;
+            list.dataset.swipe = '1';
+            let st = null;
+            list.addEventListener('touchstart', e => {
+                const head = e.target.closest('.rl-head');
+                if (!head || e.touches.length !== 1) { st = null; return; }
+                const t0 = e.touches[0];
+                if (t0.clientX < 24) { st = null; return; }   // 螢幕最左邊留給瀏覽器的「上一頁」
+                st = { head, x: t0.clientX, y: t0.clientY, dx: 0, on: false, lab: null };
+            }, { passive: true });
+            list.addEventListener('touchmove', e => {
+                if (!st) return;
+                const t0 = e.touches[0], dx = t0.clientX - st.x, dy = t0.clientY - st.y;
+                if (!st.on) {
+                    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { st = null; return; }   // 上下捲動
+                    if (dx < 12 || dx < Math.abs(dy) * 1.5) return;
+                    st.on = true;
+                    const r = raidLogLastRanked[+st.head.dataset.ridx];
+                    const sel = r && raidLogCompareSet.has(r.player);
+                    st.lab = document.createElement('div');
+                    st.lab.textContent = sel ? '-' : '+';
+                    st.lab.style.cssText = `position:absolute; left:0; top:0; height:${st.head.offsetHeight}px; width:80px; display:flex; align-items:center; padding-left:22px; box-sizing:border-box; font-size:24px; font-weight:800; color:#fff; background:${sel ? '#9e9e9e' : '#2e9d5b'};`;
+                    st.head.parentElement.insertBefore(st.lab, st.head);
+                    st.head.style.transition = 'none';
+                }
+                e.preventDefault();
+                st.dx = Math.max(0, Math.min(dx, 80));
+                st.head.style.transform = `translateX(${st.dx}px)`;
+            }, { passive: false });
+            const end = () => {
+                if (!st) return;
+                const s0 = st; st = null;
+                if (!s0.on) return;
+                s0.head.style.transition = 'transform .18s';
+                s0.head.style.transform = '';
+                setTimeout(() => s0.lab && s0.lab.remove(), 200);
+                raidLogSwipeJust = true; setTimeout(() => { raidLogSwipeJust = false; }, 350);
+                if (s0.dx < 60) return;
+                const r = raidLogLastRanked[+s0.head.dataset.ridx];
+                if (!r) return;
+                if (raidLogCompareSet.has(r.player)) raidLogCompareSet.delete(r.player); else raidLogCompareSet.add(r.player);
+                s0.head.style.boxShadow = raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none';
+                if (raidLogCompareMode && !raidLogCompareSet.size) raidLogCompareMode = false;
+                if (raidLogCompareMode) renderRaidLogQueryResult(); else raidLogCompareBarUpdate();
+            };
+            list.addEventListener('touchend', end);
+            list.addEventListener('touchcancel', end);
+        }
+        // 底部的比較列：選了人才出現
+        function raidLogCompareBarUpdate() {
+            const bar = document.getElementById('raid-log-compare-bar');
+            if (!bar) return;
+            const n = raidLogCompareSet.size;
+            if (!n && !raidLogCompareMode) { bar.style.display = 'none'; return; }
+            const b = 'font:inherit; font-size:13px; font-weight:700; border-radius:18px; padding:7px 16px; box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;';
+            bar.innerHTML = raidLogCompareMode
+                ? `<button onclick="raidLogCompareSetMode(false)" style="${b} background:#4a3728; color:#fff; border:none;">結束比較</button>`
+                : `<button onclick="raidLogCompareSetMode(true)" ${n < 2 ? 'disabled' : ''} style="${b} background:${n < 2 ? '#a5c9b2' : '#2e9d5b'}; color:#fff; border:none;">比較（${n}）</button><button onclick="raidLogCompareClear()" style="${b} background:#fff; color:#4a3728; border:1px solid #d8c8a8;">清除</button>`;
+            bar.style.display = 'flex';
+        }
+        function raidLogCompareSetMode(on) {
+            raidLogCompareMode = !!on;
+            if (!on) raidLogCompareSet.forEach(n => raidLogExpandedPlayers.delete(n));
+            renderRaidLogQueryResult();
+            const wrap = document.getElementById('raid-log-query-result');
+            if (wrap) wrap.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+        function raidLogCompareClear() {
+            raidLogCompareSet.clear();
+            raidLogCompareMode = false;
+            renderRaidLogQueryResult();
+        }
         function toggleRaidLogPlayerGroup(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);
             const chevron = document.getElementById(`raidlog-player-chevron-${rIdx}`);
             if (!group) return;
             const isHidden = group.style.display === 'none';
             group.style.display = isHidden ? 'block' : 'none';
+            if (isHidden) {   // 打開攻擊紀錄時，推薦牌組收起來
+                const rr = raidLogLastRanked[rIdx], rb = rr && raidLogRecoBox(rr.player);
+                if (rr) raidLogRecoOpen.delete(rr.player);
+                if (rb) rb.style.display = 'none';
+            }
             if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
             const r = raidLogLastRanked[rIdx];
             if (r) {

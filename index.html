@@ -9192,7 +9192,7 @@
                 try { localStorage.setItem(BY_PART_SCEN_CACHE_KEY, txt); } catch (e) {}
                 byPartRecoSig = ''; byPartRecoRefresh();
                 if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
-                if (document.getElementById('sim-import-modal')) renderSimImport();   // 匯入視窗開著：清單的打勾也跟著更新
+                if (document.getElementById('sim-import-modal') && !simImp.analysis) renderSimImport();   // 匯入視窗開著、沒有正在填的截圖：清單的打勾也跟著更新（正在填就不重畫，不然選好的狀態會被清掉）
             } catch (e) {}
         }
         byPartScenariosFetch();
@@ -9468,7 +9468,7 @@
         // 條件預設是這一場的（加成、詛咒類型、禁打部位），也可以在清單上方自己改（simImp.todoCond）
         function simTodoCondNow() {
             const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
-            return { buff: currentSessionBuff() || 'afflictionChance', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
+            return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
         }
         function simTodoList(condArg) {
             const cond = condArg || simImp.todoCond || simTodoCondNow();
@@ -9551,7 +9551,8 @@
             const a = simImp.analysis;
             const saved = byPartUserScenarios();
             const todo = simTodoList();
-            const buffOpts = Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label]);
+            const simImpNow = simTodoCondNow();   // 加成、詛咒預設成當下場次的（模擬狀態時用模擬的）
+            const buffOpts = [['', '請選加成'], ...Object.keys(SESSION_BUFFS).map(k => [k, SESSION_BUFFS[k].label])];
             const num = (id, label) => `<label class="si-field">${label}<input id="${id}" type="number" inputmode="numeric" min="0" max="8" value="0" oninput="simImportCheckSum()"></label>`;
             const deckHtml = a ? a.decks.map((row, di) => {
                 const guess = (a.types && a.types[di]) || simGuessDeckType(row.map(c => c.id));
@@ -9565,9 +9566,9 @@
                 </div>`;
             }).join('') : '';
             // 禁打部位：跟首頁一樣的部位格子（右肩 頭 左肩／右手 肚 左手／右腳 左腳），點一下切換禁打（紅框＋✗）
-            const partChips = `<div class="raid-parts-grid" style="margin-top:2px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<label class="raid-part-cell si-part" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;">
-                <input type="checkbox" class="sim-imp-ban" value="${k}" onchange="this.parentElement.classList.toggle('is-banned', this.checked); this.parentElement.querySelector('.si-part-st').textContent = this.checked ? '禁打' : '可打'; simImportCheckSum();" style="position:absolute; opacity:0; inset:0; width:100%; height:100%; margin:0;">
-                <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp si-part-st" style="color:#8a7a6a;">可打</div></label>`).join('')}</div>`).join('')}</div>`;
+            const partChips = `<div class="raid-parts-grid" style="margin-top:2px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<div class="raid-part-cell si-part" onclick="simImpPartCycle(this)" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;">
+                <input type="checkbox" class="sim-imp-ban" value="${k}" style="display:none;"><input type="checkbox" class="sim-imp-skelpart" value="${k}" style="display:none;">
+                <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp si-part-st" style="color:#8a7a6a;">可打</div></div>`).join('')}</div>`).join('')}</div>`;
             m.innerHTML = `<div class="si-panel">
                 <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="si-x" onclick="closeSimImport()" aria-label="關閉">✕</button></div>
                 <div class="si-body">
@@ -9615,12 +9616,12 @@
                     <div class="si-card">
                         <div class="si-title">③ 這張圖的狀態</div>
                         <div class="si-grid2" style="margin-bottom:12px;">
-                            <label class="si-field">加成類型<select id="sim-imp-buff">${simOptionsHtml(buffOpts, 'afflictionChance')}</select></label>
-                            <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], '')}</select></label>
+                            <label class="si-field">加成類型<select id="sim-imp-buff">${simOptionsHtml(buffOpts, simImpNow.buff)}</select></label>
+                            <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], simImpNow.curse)}</select></label>
                             ${num('sim-imp-cursed', '詛咒甲數量')}${num('sim-imp-armor', '盔甲數量（含詛咒甲）')}
                             ${num('sim-imp-body', '肉體數量')}${num('sim-imp-skel', '骨架數量')}
                         </div>
-                        <div class="si-field" style="margin-bottom:6px;">禁打部位（點部位切換，紅框＝禁打）。頭或肚子已經是骨架時，也點成禁打</div>
+                        <div class="si-field" style="margin-bottom:6px;">禁打／骨架部位（點一下切換：可打 → 禁打 → 骨架）。骨架數量會自動跟著選的骨架部位更新</div>
                         ${partChips}
                         <div id="sim-imp-sum" class="si-tip" style="margin-top:10px; font-weight:700;"></div>
                     </div>` : ''}
@@ -9650,7 +9651,7 @@
                 const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
                 setv('sim-imp-buff', tg.buff); setv('sim-imp-curse', tg.curse); setv('sim-imp-cursed', tg.cursed);
                 setv('sim-imp-armor', tg.armor); setv('sim-imp-body', tg.body); setv('sim-imp-skel', tg.skeleton || 0);
-                m.querySelectorAll('.sim-imp-ban').forEach(e => { if (tg.banned.includes(e.value) !== e.checked) e.click(); });
+                m.querySelectorAll('.si-part').forEach(el => simImpPartSet(el, tg.banned.includes(el.querySelector('.sim-imp-ban').value) ? 'banned' : 'ok', true));
             }
             if (a) { simImportCheckSum(); simImportMarkDup(); }
         }
@@ -9658,7 +9659,8 @@
             const c = sc.counts;
             const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
             const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
-            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${c.skeleton}｜禁打 ${ban}`;
+            const skel = (sc.skelParts || []).length ? sc.skelParts.map(k => raidPartLabel(k)).join('、') : c.skeleton;
+            return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor}、肉體 ${c.body}、骨架 ${skel}｜禁打 ${ban}`;
         }
         // 重複的卡：下拉選單標紅、上面列出哪張卡在第幾組
         function simImportDupInfo() {
@@ -9677,6 +9679,20 @@
                 box.style.display = info.length ? 'block' : 'none';
                 box.textContent = info.length ? '重複的卡：' + info.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。請對照「截圖」那張小圖，確認是不是選錯了。' : '';
             }
+        }
+        // 匯入頁的部位格子：點一下依序切換 可打 → 禁打 → 骨架；骨架數量跟著選的骨架部位自動更新
+        function simImpPartSet(el, st, keepSkelCount) {
+            el.querySelector('.sim-imp-ban').checked = st === 'banned';
+            el.querySelector('.sim-imp-skelpart').checked = st === 'skeleton';
+            el.classList.toggle('is-banned', st === 'banned');
+            el.classList.toggle('is-destroyed', st === 'skeleton');
+            el.querySelector('.si-part-st').textContent = st === 'banned' ? '禁打' : st === 'skeleton' ? '骨架' : '可打';
+            if (!keepSkelCount) { const sk = document.getElementById('sim-imp-skel'); if (sk) sk.value = document.querySelectorAll('.sim-imp-skelpart:checked').length; }
+            simImportCheckSum();
+        }
+        function simImpPartCycle(el) {
+            const st = el.querySelector('.sim-imp-ban').checked ? 'banned' : el.querySelector('.sim-imp-skelpart').checked ? 'skeleton' : 'ok';
+            simImpPartSet(el, st === 'ok' ? 'banned' : st === 'banned' ? 'skeleton' : 'ok');
         }
         function simImportCheckSum() {
             const el = document.getElementById('sim-imp-sum');
@@ -9715,6 +9731,7 @@
             const cursed = v('sim-imp-cursed'), curse = document.getElementById('sim-imp-curse').value;
             const msg = document.getElementById('sim-imp-msg');
             const fail = (t) => { alert(t); };
+            if (!document.getElementById('sim-imp-buff').value) return fail('請選加成類型。');
             if (counts.armor + counts.body + counts.skeleton + counts.banned !== 8) return fail('盔甲＋肉體＋骨架＋禁打 要等於 8。');
             if (cursed > counts.armor) return fail('詛咒甲不能比盔甲多（盔甲數要含詛咒甲）。');
             if (cursed > 0 && !curse) return fail('有詛咒甲的話，請選詛咒類型。');
@@ -9726,14 +9743,15 @@
             const all = decks.flatMap(d => d.cards);
             const dupInfo = simImportDupInfo();
             if (dupInfo.length && !confirm('有重複的卡：' + dupInfo.map(([id, l]) => `${raidCardLabel(id)}（第 ${[...new Set(l)].join('、')} 組）`).join('；') + '。\n如果截圖上真的是同一張卡出現在不同組，按「確定」照樣儲存；不是的話按「取消」回去修改。')) return;
-            const torsoBanned = banned.filter(k => k === 'Head' || k === 'ChestUpper');
+            const skelParts = [...document.querySelectorAll('.sim-imp-skelpart:checked')].map(e => e.value);
+            const torsoBanned = [...banned, ...skelParts].filter(k => k === 'Head' || k === 'ChestUpper');   // 頭／肚子禁打或骨架都算不能打
             if (torsoBanned.includes('Head')) decks.forEach(d => { if (d.role === 'head') d.role = 'torso'; });   // 頭禁打：Focus Head 就是打肚子
             // 不能打的部位（禁打或骨架）合在一起記：骨架數量併進禁打（比對只看能打的部位）
-            const sc = { user: true, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts: { armor: counts.armor, body: counts.body, skeleton: 0, banned: counts.banned + counts.skeleton }, banned, bannedParts: torsoBanned,
+            const sc = { user: true, skelParts, buff: document.getElementById('sim-imp-buff').value, cursed, ...(cursed > 0 ? { curse } : {}), counts: { armor: counts.armor, body: counts.body, skeleton: 0, banned: counts.banned + counts.skeleton }, banned, bannedParts: torsoBanned,
                 needTorso: torsoBanned.length < 2, decks, savedAt: Date.now() };
             // 上傳到伺服器（存進 Turso，所有人開網頁都會拿到）：要管理密碼，第一次輸入後記在這支手機
             if (toServer) {
-                const { user, banned: _b, savedAt, ...up } = sc;
+                const { user, banned: _b, savedAt, skelParts: _s, ...up } = sc;
                 up.note = simScenarioTitle(sc) + '（手機上傳）';
                 if (!(await simAdminPost({ scenario: up }))) return;
                 simImp.analysis = null; simImp.target = null;

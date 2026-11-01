@@ -11976,6 +11976,8 @@
         const TC_KEY = 'tt2_ticket_calc';
         const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 5, cap: null };
         try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
+        if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        delete ticketCalc.bans;
         function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
         // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
         function seedSummarize(raw) {
@@ -12092,12 +12094,14 @@
         function ticketCalcAutoBan() {
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
             if (!raid) return;
-            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) ticketCalc.bans[t.n] = ticketBestBans(t); });
+            const b = {};
+            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); });
+            ticketCalc.bansByLv[ticketCalc.level] = b;
             ticketCalcSave();
             renderTicketCalc();
         }
         function ticketCalcSet(field, v) {
-            if (field === 'ban') { const [name, loc] = v; const l = new Set(ticketCalc.bans[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); ticketCalc.bans[name] = [...l]; }
+            if (field === 'ban') { const [name, loc] = v; const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {}); const l = new Set(lb[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); lb[name] = [...l]; }
             else ticketCalc[field] = v;
             ticketCalcSave();
             renderTicketCalc();
@@ -12122,7 +12126,9 @@
                     const T = Object.fromEntries(raid.titans.map(t => [t.n, t]));
                     const names = [...new Set(raid.seq)];
                     const cnt = (n) => raid.seq.filter(x => x === n).length;
-                    const banOf = (n) => (ticketCalc.bans[n] || []);
+                    if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
+                    const banOf = (n) => (ticketCalc.bansByLv[ticketCalc.level][n] || []);
+                    const unkillable = names.filter(n => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[2]), 0) < T[n].k);
                     const armorOf = (n) => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[1]), 0);
                     const killSum = raid.seq.reduce((x, n) => x + T[n].k, 0);
                     const armorSum = raid.seq.reduce((x, n) => x + armorOf(n), 0);
@@ -12158,6 +12164,7 @@
                             <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">盔甲（扣禁打）</div><div style="font-size:14px; font-weight:800;">${fmt(armorSum)}</div></div>
                             <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">整場合計</div><div style="font-size:14px; font-weight:800;">${fmt(total)}</div></div>
                         </div>
+                        ${unkillable.length ? `<div style="font-size:12px; font-weight:800; color:#c0392b; background:#fdecea; border-radius:8px; padding:6px 8px; margin-bottom:6px;">⚠ ${unkillable.map(escapeHtml).join('、')} 禁太多部位，剩下的肉體不夠斬殺線，打不死。下面的門票不準，請少禁一點或按「自動選最佳禁打」。</div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">需要多少門票</div>
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>

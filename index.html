@@ -12291,7 +12291,7 @@
             try { updateNextBossHint(); } catch (e) {}
             rememberBossArmor();
             const pn = document.getElementById('panel-bosshp');
-            if (pn && pn.style.display === 'block') { try { renderBossHpPanel(); } catch (e) {} }
+            try { renderBossHpPanel(); } catch (e) {}   // 視窗沒開也算一次：王血量按鈕要顯示有沒有落後
         }
         function renderBossHpPanel() {
             const box = document.getElementById('bosshp-body');
@@ -12354,6 +12354,19 @@
             // 選幾輪打完：每一輪的目標跟實際傷害並排，下面一列是總目標跟總傷害，直接看有沒有達標
             const n = bossHpRounds;
             const per = sumFull / n;
+            // 進度落後提醒：每輪 12 小時，照這一輪過了多少時間，算「現在應該打到多少」；落後超過一輪目標的 10% 就把王血量按鈕標紅
+            try {
+                const s0 = serverSessionsSummary && serverSessionsSummary[0];
+                const btn = document.querySelector('.bosshp-open-btn');
+                let behind = 0;
+                if (s0 && lastCycle && lastCycle <= n && !raidPreview) {
+                    const start = Date.parse(s0.startedAt) + (lastCycle - 1) * 12 * 3600 * 1000;
+                    const f = Math.min(1, Math.max(0, (Date.now() - start) / (12 * 3600 * 1000)));
+                    const got = byCycle.get(lastCycle) || 0;
+                    if (f > 0.25 && got < per * f - per * 0.1) behind = per * f - got;
+                }
+                if (btn) { btn.textContent = behind ? `王血量 ⚠落後 ${formatNum(behind)}` : '王血量'; btn.style.background = behind ? '#c0392b' : ''; }
+            } catch (e) {}
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
             // 結果：每一輪只看「這一輪自己」比目標多或少多少（綠＋、紅－；進行中還沒到目標用紫－）；
             // 最後一行合計＝全部目標、目前總傷、進度（各輪加減的總和）

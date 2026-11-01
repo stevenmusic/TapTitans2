@@ -3492,10 +3492,6 @@
 
                     <div id="raid-sim-panel" style="display:none;"></div>
 
-                    <div id="my-reco-wrap" style="margin:6px 0 4px;">
-                        <input id="my-reco-player" placeholder="👤 打自己名字的任一個字，看我現在該用哪一組" autocomplete="off" onfocus="this.select()" oninput="myRecoSuggest(this.value)" onkeydown="if(event.key==='Enter'){myRecoSetPlayer(this.value);this.blur();}" style="width:100%; box-sizing:border-box; font:inherit; font-size:14px; padding:6px 8px; border:1px solid #ddd0bb; border-radius:10px; background:#fbf6ee; color:#4a3728;"><div id="my-reco-sug" style="display:none; flex-wrap:wrap; gap:5px; margin-top:5px;"></div><div id="my-reco-msg" style="display:none; font-size:12px; color:#c0392b; margin-top:3px;"></div>
-                        <div id="my-reco-box" style="display:none; margin-top:6px; padding:8px; border-radius:12px; background:#fffdf8; border:1.5px solid #c9b8e0;"></div>
-                    </div>
                     <div id="by-part-reco" style="display:none;"></div>
 
                     <div class="raid-recent-title" data-i18n="raidRecentAttacksTitle">⚔️ 最近攻擊</div>
@@ -11435,15 +11431,15 @@
                 <div style="border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
                     <div onclick="toggleRaidLogPlayerGroup(${rIdx})" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}${(r.raidLevel != null && raidLevelSquaresSvg(r.raidLevel)) ? ` 丨${raidLevelSquaresSvg(r.raidLevel)}` : ''}</span>
-                        <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                            <span style="font-size:12.5px; font-weight:700; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
+                        <span style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
+                            ${raidLogIsLatestSession(r) ? `<button onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
+                            <span style="font-size:12.5px; font-weight:700; white-space:nowrap; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:10px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
-                            ${raidLogIsLatestSession(r) ? `<button onclick="showRaidLogPlayerReco(${rIdx})" style="font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; margin-bottom:8px;"></div>
@@ -11497,6 +11493,18 @@
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
+        // 標題列的「推薦牌組」按鈕：收合中就先展開再顯示推薦；已展開就照原本開／關推薦
+        function raidLogRecoHeaderBtn(rIdx) {
+            const group = document.getElementById(`raidlog-player-group-${rIdx}`);
+            const r = raidLogLastRanked[rIdx];
+            if (!group || !r) return;
+            if (group.style.display === 'none') {
+                toggleRaidLogPlayerGroup(rIdx);
+                raidLogRecoOpen.add(r.player);
+                return raidLogRenderPlayerReco(r);
+            }
+            return showRaidLogPlayerReco(rIdx);
+        }
         function showRaidLogPlayerReco(rIdx) {
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
@@ -11517,8 +11525,8 @@
                 raidLogRenderPlayerReco(r);
             });
         }
-        async function raidLogRenderPlayerReco(r, boxOverride) {
-            let box = boxOverride || raidLogRecoBox(r.player);
+        async function raidLogRenderPlayerReco(r) {
+            let box = raidLogRecoBox(r.player);
             if (!box) return;
             box.style.display = 'block';
             box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
@@ -11644,7 +11652,6 @@
                 }
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
-            if (boxOverride) { boxOverride.innerHTML = html.replace('>推薦牌組</div>', '>我的推薦（第 1 組＝現在該用；已扣掉這一輪用過的卡）</div>'); return; }
             if (!raidLogRecoOpen.has(r.player)) return;
             raidLogRecoHtml.set(r.player, html);
             box = raidLogRecoBox(r.player);
@@ -12329,72 +12336,6 @@
             if (!bossHpSeed || bossHpSeed.start !== s0.startedAt) { if (bossHpSeed && bossHpSeed.start !== s0.startedAt) bossHpSeed = undefined; return null; }
             return bossHpSeed.seed.raids.find(r => r.t === 9999 && r.l === s0.levelTier) || null;
         }
-        // 突襲頁「我的推薦」：選自己的名字，直接顯示我現在該用哪一組（跟排行榜的玩家推薦同一套算法，扣掉這一輪用過的卡）
-        const MY_RECO_KEY = 'tt2_my_reco_player';
-        let myRecoSig = '', myRecoTimer = null, myRecoBusy = false;
-        function myRecoPlayer() { try { return localStorage.getItem(MY_RECO_KEY) || ''; } catch (e) { return ''; } }
-        let myRecoNames = [];
-        // 輸入名字：完全相同 > 不分大小寫相同 > 只有一個名字包含輸入的字
-        function myRecoSetPlayer(raw) {
-            const q = String(raw || '').trim(), msg = document.getElementById('my-reco-msg'), inp = document.getElementById('my-reco-player');
-            let name = '';
-            if (q) {
-                const lq = q.toLowerCase();
-                name = myRecoNames.find(n => n === q) || myRecoNames.find(n => n.toLowerCase() === lq) || '';
-                if (!name) { const hit = myRecoNames.filter(n => n.toLowerCase().includes(lq)); if (hit.length === 1) name = hit[0]; else if (msg) { msg.textContent = hit.length ? `有 ${hit.length} 個名字符合，請打完整一點或從清單選` : '找不到這個名字（這一場還沒出刀的人可能還沒在名單）'; msg.style.display = 'block'; return; } }
-            }
-            if (msg) msg.style.display = 'none';
-            const sug = document.getElementById('my-reco-sug'); if (sug) { sug.style.display = 'none'; sug.innerHTML = ''; }
-            if (inp) { inp.value = name; inp.blur(); }
-            try { localStorage.setItem(MY_RECO_KEY, name); } catch (e) {}
-            myRecoSig = ''; myRecoRefresh(true);
-        }
-        // 打字時在下方列出包含這些字的名字（最多 12 個），點一下就選
-        function myRecoSuggest(raw) {
-            const box = document.getElementById('my-reco-sug'), msg = document.getElementById('my-reco-msg');
-            if (!box) return;
-            if (msg) msg.style.display = 'none';
-            const lq = String(raw || '').trim().toLowerCase();
-            if (!lq) { box.style.display = 'none'; box.innerHTML = ''; return; }
-            const hit = myRecoNames.filter(n => n.toLowerCase().includes(lq));
-            hit.sort((a, b) => (b.toLowerCase().startsWith(lq) - a.toLowerCase().startsWith(lq)) || a.length - b.length);
-            box.innerHTML = hit.length
-                ? hit.slice(0, 12).map(n => `<button type="button" onclick="myRecoSetPlayer(this.dataset.n)" data-n="${escapeHtml(n)}" style="font:inherit; font-size:13px; padding:4px 10px; border:1px solid #c9b8e0; border-radius:14px; background:#f6f0fc; color:#4a3728;">${escapeHtml(n)}</button>`).join('') + (hit.length > 12 ? `<span style="font-size:12px; color:#8a7a6a; align-self:center;">還有 ${hit.length - 12} 個，多打一個字</span>` : '')
-                : '<span style="font-size:12px; color:#c0392b;">找不到這個名字（這一場還沒出刀的人可能還沒在名單）</span>';
-            box.style.display = 'flex';
-        }
-        function myRecoFillNames() {
-            const inp = document.getElementById('my-reco-player');
-            if (!inp) return;
-            const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
-            const names = new Set((Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !rsa || a.raidStartedAt === rsa).map(a => a.player));
-            (serverAllPlayersCache || []).forEach(p => p.name && names.add(p.name));
-            const me = myRecoPlayer(); if (me) names.add(me);
-            const list = [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-            myRecoNames = list;
-            if (me && !inp.value && document.activeElement !== inp) inp.value = me;
-        }
-        // 有人出刀、王的狀態變了才重算，最多 5 秒一次
-        function myRecoRefresh(now) {
-            clearTimeout(myRecoTimer);
-            myRecoTimer = setTimeout(myRecoRefreshNow, now ? 0 : 5000);
-        }
-        async function myRecoRefreshNow() {
-            const box = document.getElementById('my-reco-box');
-            if (!box) return;
-            myRecoFillNames();
-            const me = myRecoPlayer();
-            if (!me || raidPreview || !raidState || !raidState.parts) { box.style.display = 'none'; return; }
-            const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
-            const mine = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a.player === me && (!rsa || a.raidStartedAt === rsa));
-            const sig = me + '|' + mine.length + '|' + JSON.stringify(Object.values(raidState.parts).map(p => [p.armor > 0, p.body > 0, !!p.cursed])) + '|' + (raidBannedParts || []).join();
-            if (sig === myRecoSig || myRecoBusy) return;
-            myRecoSig = sig; myRecoBusy = true;
-            box.style.display = 'block';
-            if (!box.innerHTML) box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
-            try { await raidLogRenderPlayerReco({ player: me, attacks: mine }, box); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">算不出來，請稍後再試。</div>'; }
-            myRecoBusy = false;
-        }
         function closeBossHp() { document.getElementById('panel-bosshp').style.display = 'none'; }
         // 突襲頁王卡片下面：下一隻王（照 seed）的名字、詛咒甲位置、建議禁打
         function updateNextBossHint() {
@@ -12427,7 +12368,6 @@
         }
         function refreshBossHpIfOpen() {
             try { updateNextBossHint(); } catch (e) {}
-            try { myRecoRefresh(); } catch (e) {}
             rememberBossArmor();
             const pn = document.getElementById('panel-bosshp');
             try { renderBossHpPanel(); } catch (e) {}   // 視窗沒開也算一次：王血量按鈕要顯示有沒有落後

@@ -1117,6 +1117,13 @@
         .btn-share:active { filter: brightness(0.92); }
         .btn-close { background: #fff; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; font-family: inherit; transition: filter 0.15s ease, transform 0.15s ease; }
         .btn-close:active { filter: brightness(0.9); transform: translateY(1px); }
+        /* 所有彈出視窗統一用 iPhone 原生樣式的關閉鈕：右上角灰色圓形 ✕（可點範圍 44px） */
+        .ios-x { position: relative; width: 30px; height: 30px; border-radius: 50%; border: none; padding: 0; flex-shrink: 0; cursor: pointer;
+                 background: rgba(118,118,128,0.16); color: #6e6e73; display: inline-flex; align-items: center; justify-content: center; }
+        .ios-x::after { content: ''; position: absolute; inset: -7px; }
+        .ios-x svg { width: 11px; height: 11px; display: block; }
+        .ios-x:active { background: rgba(118,118,128,0.28); }
+        .ios-x.on-dark { background: rgba(255,255,255,0.22); color: #fff; }
 
         body.drag-active {
             overflow: hidden !important;
@@ -1954,7 +1961,13 @@
             width: 100%; height: 100%;
             background: rgba(0,0,0,0.55); z-index: 10001;
             justify-content: center; align-items: center;
-            padding: calc(env(safe-area-inset-top, 0px) + 10px) 20px calc(env(safe-area-inset-bottom, 0px) + 10px); box-sizing: border-box;
+            padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 10px); box-sizing: border-box;
+        }
+        /* 比較視窗：窄螢幕放不下中間的王名稱，改放到右邊總傷害上面 */
+        @media (max-width: 374px) {
+            #card-usage-detail-modal { padding-left: 6px !important; padding-right: 6px !important; }
+            #card-usage-detail-modal .cu-boss { display: none; }
+            #card-usage-detail-modal .cu-boss2 { display: block !important; }
         }
         #card-usage-detail-modal .card-usage-detail-box {
             background: #fffaf3; border-radius: 14px; max-width: 420px; width: 100%;
@@ -3458,7 +3471,7 @@
                         <div class="bosshp-modal-box">
                             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                                 <div style="font-size:14px; font-weight:800; color:#5a3a2a;">王血量（每一隻要打的盔甲＋斬殺線）</div>
-                                <button onclick="closeBossHp()" style="font-size:18px; color:#8e6a3a; background:none; border:none; padding:2px 6px;">✕</button>
+                                <button class="ios-x" onclick="closeBossHp()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                             </div>
                             <div id="bosshp-body" style="width:100%;"></div>
                         </div>
@@ -9107,7 +9120,7 @@
             body.innerHTML = `
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
                     <div style="font-size:15px; font-weight:800; color:#4a3728;">${title}</div>
-                    <button onclick="closeByPartModal()" style="font-size:18px; line-height:1; border:none; background:none; color:#8a7a63; cursor:pointer; padding:4px 8px;">✕</button>
+                    <button class="ios-x" onclick="closeByPartModal()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                 </div>
                 <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">載入統計中…</div>
                 ${byPartPoolHtml()}
@@ -9716,7 +9729,7 @@
                 <input type="checkbox" class="sim-imp-ban" value="${k}" style="display:none;"><input type="checkbox" class="sim-imp-skelpart" value="${k}" style="display:none;">
                 <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp si-part-st" style="color:#8a7a6a;">可打</div></div>`).join('')}</div>`).join('')}</div>`;
             m.innerHTML = `<div class="si-panel">
-                <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="si-x" onclick="closeSimImport()" aria-label="關閉">✕</button></div>
+                <div class="si-head"><b>🖼 匯入模擬器圖片</b><button class="ios-x on-dark" onclick="closeSimImport()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
                 <div class="si-body">
                     <div class="si-card"${a ? ' style="padding:8px 12px;"' : ''}>
                         ${a ? '' : '<div class="si-title">① 選截圖</div>'}
@@ -11869,7 +11882,7 @@
                         // 不用把等級/傷害也塞進去搞亂 assignDeckColumns/orderCardsByColumn
                         const cardMeta = {};
                         (a.cards || []).forEach(c => { cardMeta[c.name] = { level: c.level, damage: (a.cardDamage && a.cardDamage[c.name]) || 0 }; });
-                        allInstances.push({ player: r.player, cards: (a.cards || []).map(c => c.name).filter(Boolean), cardMeta, ts: a.ts, totalDamage: a.totalDamage });
+                        allInstances.push({ player: r.player, cards: (a.cards || []).map(c => c.name).filter(Boolean), cardMeta, ts: a.ts, totalDamage: a.totalDamage, boss: a.boss || '' });
                     });
             });
             if (allInstances.length === 0) return;
@@ -11952,7 +11965,7 @@
             // 連iPhone Pro Max（modal最寬420px）都放得下，不用犧牲排版擠到下一行
             const renderInstanceRow = (d) => `
                 <div style="display:flex; align-items:center; gap:6px; padding:1px 5px; background:#fff; border:1px solid #ece3d4; border-radius:5px;">
-                    <div style="display:grid; grid-template-columns: repeat(3, 26px 42px); column-gap:4px; align-items:center; flex-shrink:0;">
+                    <div style="display:grid; grid-template-columns: repeat(3, 26px 40px); column-gap:3px; align-items:center; flex-shrink:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
                             const meta = d.cardMeta[name] || {};
@@ -11969,7 +11982,9 @@
                             `;
                         }).join('')}
                     </div>
-                    <div style="flex:1; min-width:0; text-align:right;">
+                    <div class="cu-boss" style="flex:1; min-width:0; text-align:center; font-size:11px; font-weight:700; color:#8a7a6a; white-space:nowrap;">${escapeHtml(d.boss)}</div>
+                    <div style="flex-shrink:0; text-align:right;">
+                        <div class="cu-boss2" style="display:none; font-size:10px; font-weight:700; color:#8a7a6a; line-height:1.1;">${escapeHtml(d.boss)}</div>
                         <div style="font-size:13px; font-weight:800; color:#4a3a2a; line-height:1.1; white-space:nowrap;">${escapeHtml(formatNum(d.totalDamage))}</div>
                         <div style="font-size:11px; color:#a89a88; line-height:1.1; white-space:nowrap;">${escapeHtml(raidLogRelativeDate(d.ts))}</div>
                     </div>
@@ -11994,9 +12009,11 @@
             const label = raidCardLabel(cardName);
             const body = document.getElementById('card-usage-detail-body');
             body.innerHTML = `
-                <div style="font-weight:700; font-size:14px; color:#4a3a2a; margin-bottom:2px; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(label)}</div>
+                <div style="position:sticky; top:-8px; z-index:2; background:#fffaf3; margin:-8px -10px 2px; padding:8px 10px 4px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <div style="font-weight:700; font-size:14px; color:#4a3a2a; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(label)}</div>
+                    <button class="ios-x" onclick="closeCardUsageDetail()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                </div>
                 ${groupsHtml}
-                <button class="btn-close" style="width:100%; margin-top:2px; padding-top:6px; padding-bottom:6px;" onclick="closeCardUsageDetail()">關閉</button>
             `;
             document.getElementById('card-usage-detail-modal').style.display = 'flex';
         }
@@ -12315,7 +12332,7 @@
             if (!m) return;
             const keep = m.querySelector('.bosshp-modal-box') ? m.scrollTop : 0;
             const seed = ticketCalc.seed;
-            const head = `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">🎟 門票試算</div><button onclick="document.getElementById('ticket-calc-modal').remove()" style="font-size:18px; color:#8e6a3a; background:none; border:none; padding:2px 6px;">✕</button></div>`;
+            const head = `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">🎟 門票試算</div><button class="ios-x" onclick="document.getElementById('ticket-calc-modal').remove()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>`;
             const upload = `<label style="display:block; text-align:center; padding:7px; border:1.5px dashed #c9b8e0; border-radius:10px; color:#6a3d9a; font-weight:800; font-size:13px; cursor:pointer;" for="tc-file">⬆️ 上傳本週 seed（GameHive Discord 的 raid_seed JSON）</label>
                 <input type="file" id="tc-file" accept=".json,application/json" style="display:none;" onchange="ticketSeedUpload(this.files[0]); this.value='';">
                 <div id="tc-msg" style="font-size:11.5px; color:#8a7a6a; margin:4px 0 8px;">${seed ? `目前的 seed：${seed.valid_from.slice(0, 10)}～${(seed.expire_at || '').slice(0, 10)}（${seed.raids.length} 關）` : ticketCalc.loading ? '讀取中…' : '伺服器上還沒有 seed，請先上傳。'}</div>`;
@@ -12913,12 +12930,11 @@
             modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;';
             modal.innerHTML = `
                 <div style="background:#fff; border-radius:12px; padding:14px; width:100%; max-width:560px; max-height:90vh; display:flex; flex-direction:column; gap:8px; box-sizing:border-box;">
-                    <div style="font-weight:700; font-size:14px;">${escapeHtml(title)}</div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><div style="font-weight:700; font-size:14px;">${escapeHtml(title)}</div><button class="ios-x" id="raid-report-modal-close" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
                     <div style="font-size:13px; font-weight:700;">${report.buffType && RAID_BUFF_ZH[report.buffType] ? `<span style="color:${RAID_BUFF_COLORS[report.buffType]};">加成：${RAID_BUFF_ZH[report.buffType]}</span>　` : '<span style="color:#888;">加成：未偵測到</span>　'}<span style="color:#2E7D32;">${escapeHtml(moraleText)}</span></div>
                     <textarea id="raid-report-modal-text" readonly style="width:100%; height:240px; font-size:12px; box-sizing:border-box;"></textarea>
                     <div style="display:flex; gap:8px;">
                         <button class="btn-backup export" style="flex:1;" id="raid-report-modal-copy">📋 複製戰報</button>
-                        <button class="btn-backup" style="flex:1;" id="raid-report-modal-close">關閉</button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);

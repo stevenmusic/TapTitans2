@@ -10521,13 +10521,14 @@
             const cu = ks.filter(k => info[k].cursed), ar = ks.filter(k => info[k].layer === 'armor' && !info[k].cursed), bo = ks.filter(k => info[k].layer !== 'armor');
             return cu.length ? hpLeast(cu) : (ar.length ? hpMost(ar) : (bo.length ? hpMost(bo) : null));
         };
-        // Focus Torso／Focus Head：這組牌打得到的部位裡有詛咒甲，就改打最薄的詛咒甲（例如牌組能打頭肚、頭是詛咒甲＝打頭）
+        // Focus Torso／Focus Head／四肢單部位：這組牌打得到的部位裡有詛咒甲，就改打最薄的詛咒甲（例如牌組能打頭肚、頭是詛咒甲＝打頭）
         // 雙爆裂卡＋戰鼓：只打單部位，照上面的攻擊順位挑
         picked.forEach(r => {
             if (!r.rawCards || !keys.length) return;
             const fit = keys.filter(k => fitsCards(r, k));
             if (!fit.length) return;
-            if (r.game && (r.role === 'torso' || r.role === 'head')) {
+            // 四肢牌組（Focus One Limb，或只標 1 個部位的 Focus Limbs）一樣：打得到的詛咒甲優先，就算不是四肢
+            if (r.game && (r.role === 'torso' || r.role === 'head' || r.role === 'limb1' || (r.role === 'limbs' && !r.allParts && (r.targets || []).length === 1))) {
                 const cu = fit.filter(k => info[k].cursed);
                 if (cu.length) { r.targets = [asTarget(hpLeast(cu))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
                 return;

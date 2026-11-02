@@ -10373,6 +10373,9 @@
         const asTarget = (k) => ({ part: k, layer: info[k].layer === 'armor' ? 'armor' : 'body', cursed: info[k].cursed });
         const hpMost = (ks) => ks.slice().sort((x, y) => info[y].hp - info[x].hp)[0];
         const hpLeast = (ks) => ks.slice().sort((x, y) => info[x].hp - info[y].hp)[0];   // 詛咒甲一律先打血量最薄的
+        // Focus Torso 的標的：肚子 → 頭；但組裡有只能打盔甲／只能打肉體的卡時，要那個部位現在是那一層才算（例如防空高砲只能打盔甲，肚子已經是肉體就改標頭；頭也不是就標打得到的部位裡血量最多的）
+        const layerOk = (r, k) => (r.rawCards || []).every(n => { const lim = CARD_LIMITS[n]; if (!lim) return true; if (lim.kind === 'armor') return info[k].layer === 'armor'; if (lim.kind === 'body') return info[k].layer === 'body'; return true; });
+        const torsoPick = (r) => { const fit = ['ChestUpper', 'Head'].filter(k => keys.includes(k) && layerOk(r, k)); if (fit.length) return fit[0]; const any = keys.filter(k => layerOk(r, k)); return any.length ? hpMost(any) : (keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null)); };
         // 帶圖騰之力的牌組本來就是單部位牌組：只標 1 個部位——整組牌都打得到的部位裡，剩餘血量最多的那個
         // （場上有詛咒甲時，優先選詛咒甲）
         // 帶毀了雨的牌組（不管是哪一種牌組類型）：場上有詛咒甲就打「詛咒甲血量最薄的那個部位」，只標這 1 個部位
@@ -10420,7 +10423,7 @@
             // 有詛咒甲時：這組牌打得到的詛咒甲優先，只打那 1 個（最薄的）
             // Focus Torso＝肚子：一律只打肚子（肚子不能打才打頭）
             else if (r.game && r.role === 'torso' && keys.length) {
-                const t = keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null);
+                const t = torsoPick(r);
                 if (t) { r.targets = [asTarget(t)]; r.allParts = false; byPartUnCount(r); }
             }
             else if (r.game && r.role === 'head' && (r.targets || []).length) {
@@ -10547,7 +10550,7 @@
         // Focus Torso＝肚子：最後一律只標肚子（蓋過詛咒甲優先、防空高砲、毀了雨、圖騰之力、鏡子力組這些規則）；肚子不能打才標頭
         picked.forEach(r => {
             if (!r.game || r.role !== 'torso') return;
-            const t = keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null);
+            const t = torsoPick(r);
             if (t) { r.targets = [asTarget(t)]; r.allParts = false; r.focus = 0; r.hideParts = false; }
         });
         // 淨化爆裂＋暴食蜂擁（＋輻射萬花筒）：不寫「全部位」，改寫實際能打的部位數（例如只剩 3 個能打＝3部位）；只剩 1 個就寫部位名稱

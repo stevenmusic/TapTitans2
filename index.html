@@ -10171,12 +10171,12 @@
                     if (!attackable.includes('ChestUpper')) return;
                     tg = ['ChestUpper'];
                     // 組裡有只能打盔甲／只能打肉體的卡、但肚子現在不是那一層（例如防空高砲、肚子已經沒有盔甲）：
-                    // 改打其他是那一層的部位——頭優先（三張卡都要能打頭），不行就打三張卡都打得到的那一層部位裡血量最多的；都沒有才不放
+                    // 改打三張卡都打得到的那一層部位：有詛咒甲打最薄的詛咒甲，沒有就打最厚的（不是單純換成頭）；都沒有才不放
                     if (layerCards.length && (!okParts.includes('ChestUpper') || layerCards.some(n => !layerFits(n, 'ChestUpper')))) {
                         const fitAll = okParts.filter(k => layerCards.every(n => layerFits(n, k)));
                         if (!fitAll.length) return;
                         const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
-                        tg = [fitAll.includes('Head') ? 'Head' : thickPick(fitAll, left)];
+                        tg = [thickPick(fitAll, left)];
                         torsoAlt = true;
                         lockPart = tg[0];   // 後面的標記規則不要再改掉這個部位
                     } else if (!okParts.includes('ChestUpper')) return;
@@ -10184,12 +10184,12 @@
                 else if (g.role === 'head') {
                     tg = attackable.filter(k => k === 'Head');
                     // Focus Head 跟 Focus Torso 同一套：組裡有只能打盔甲／只能打肉體的卡時，頭要是那一層而且三張卡都打得到；
-                    // 不是就改打其他那一層的部位——肚子優先（三張卡都要能打肚子），不行就打打得到的那一層部位裡血量最多的；都沒有才不放
+                    // 不是就改打三張卡都打得到的那一層部位：有詛咒甲打最薄的詛咒甲，沒有就打最厚的（不是單純換成肚子）；都沒有才不放
                     if (layerCards.length) {
                         const fitAll = okParts.filter(k => layerCards.every(n => layerFits(n, k)));
                         if (!fitAll.length) return;
                         const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
-                        const pick = fitAll.includes('Head') ? 'Head' : fitAll.includes('ChestUpper') ? 'ChestUpper' : thickPick(fitAll, left);
+                        const pick = fitAll.includes('Head') ? 'Head' : thickPick(fitAll, left);
                         tg = [pick];
                         lockPart = pick;
                     }

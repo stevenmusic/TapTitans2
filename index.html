@@ -6819,6 +6819,7 @@
             if (panel && panel.style.display === 'block') {
                 renderRaidSessionMenu();
                 renderRaidLogQueryResult();
+                refreshCardUsageDetailIfOpen();   // 卡片比較視窗開著時，新的攻擊也自動加進去
                 // 「目前顯示：M-xx丨...（N 筆攻擊）」這行不是 renderRaidSessionMenu/
                 // renderRaidLogQueryResult 畫的，要另外更新，不然筆數會停在舊的
                 if (raidSessionFilter && raidSessionFilter.startedAt === latestSession.startedAt) {
@@ -11936,7 +11937,17 @@
         // 依出現次數多到少排列，只列卡片圖示，不顯示傷害/時間等其他資料。
         // 直接從最近一次排行榜算好的資料撈，資料範圍跟畫面上的排行榜一致：
         // 有選場次就只看那一場，沒選就是全部場次合併
+        let cardUsageOpenName = null;
+        function refreshCardUsageDetailIfOpen() {
+            const m = document.getElementById('card-usage-detail-modal');
+            if (!cardUsageOpenName || !m || m.style.display !== 'flex') return;
+            const box = document.getElementById('card-usage-detail-body');
+            const top = box ? box.scrollTop : 0;
+            openCardUsageDetail(cardUsageOpenName);
+            if (box) box.scrollTop = top;
+        }
         function openCardUsageDetail(cardName) {
+            cardUsageOpenName = cardName;
             // 目前展開中的每一位玩家都會被合併進來一起查詢這張卡的紀錄，不是只看
             // 點擊當下這一位——想比對多位玩家，同時展開他們的攻擊紀錄再點卡片就行
             // 再加上右滑選中的人（不用展開也算），選好多人後展開其中一位點卡片就直接比較
@@ -12101,6 +12112,7 @@
         }
 
         function closeCardUsageDetail() {
+            cardUsageOpenName = null;
             document.getElementById('card-usage-detail-modal').style.display = 'none';
         }
 

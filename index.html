@@ -12283,10 +12283,11 @@
             } catch (e) {}
             refreshBossHpIfOpen();
         }
-        let bossHpRounds = 3;
-        try { bossHpRounds = Number(localStorage.getItem('tt2_bosshp_rounds')) || 3; } catch (e) {}
-        function setBossHpRounds(k) { bossHpRounds = k; try { localStorage.setItem('tt2_bosshp_rounds', k); } catch (e) {} renderBossHpPanel(); }
-        function openBossHp() { bossHpSnapshotTried = false; document.getElementById('panel-bosshp').style.display = 'block'; renderBossHpPanel(); }
+        // 預計幾輪打完：預設 6 輪；照目前進度 5 輪就打得完（5 輪的合計結果是正數）才預設往前跳到 5，4 輪也打得完再跳到 4…
+        // 自己點了別的輪數，這次打開視窗期間照自己選的；關掉再打開又回到自動
+        let bossHpRounds = null;
+        function setBossHpRounds(k) { bossHpRounds = k; renderBossHpPanel(); }
+        function openBossHp() { bossHpSnapshotTried = false; bossHpRounds = null; document.getElementById('panel-bosshp').style.display = 'block'; renderBossHpPanel(); }
         /* ══════════════════════════════════════════════════════════
            門票試算：用 GameHive 每週公布的 raid seed（每一關的王、斬殺線、各部位盔甲上限／出場值），
            選關卡、點禁打部位，算整場要打多少血，再用公會最近的出刀能力算 4～7 輪各要多少門票。
@@ -12692,7 +12693,10 @@
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
             // 選幾輪打完：每一輪的目標跟實際傷害並排，下面一列是總目標跟總傷害，直接看有沒有達標
-            const n = bossHpRounds;
+            const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k) p += got - sumFull / k; }); return p; };
+            let autoN = 6;
+            for (let k = 5; k >= 2; k--) { if (byCycle.size && progressAt(k) >= 0) autoN = k; else break; }
+            const n = bossHpRounds || autoN;
             const per = sumFull / n;
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
             // 結果：每一輪只看「這一輪自己」比目標多或少多少（綠＋、紅－；進行中還沒到目標用紫－）；

@@ -1968,7 +1968,12 @@
             #card-usage-detail-modal { padding-left: 6px !important; padding-right: 6px !important; }
             #card-usage-detail-modal .cu-boss { display: none; }
             #card-usage-detail-modal .cu-boss2 { display: block !important; }
+            #card-usage-detail-modal .cu-tot { width: auto !important; }
         }
+        /* 字比較寬的手機：程式量過放不下時，王名稱一樣移到右邊 */
+        #card-usage-detail-modal.cu-narrow .cu-boss { display: none; }
+        #card-usage-detail-modal.cu-narrow .cu-boss2 { display: block !important; }
+        #card-usage-detail-modal.cu-narrow .cu-tot { width: auto !important; }
         #card-usage-detail-modal .card-usage-detail-box {
             background: #fffaf3; border-radius: 14px; max-width: 420px; width: 100%;
             max-height: 100%; overflow-y: auto; padding: 8px 10px; box-sizing: border-box;
@@ -12033,7 +12038,7 @@
             // 連iPhone Pro Max（modal最寬420px）都放得下，不用犧牲排版擠到下一行
             const renderInstanceRow = (d) => `
                 <div style="display:flex; align-items:center; gap:6px; padding:1px 5px; background:#fff; border:1px solid #ece3d4; border-radius:5px;">
-                    <div style="display:grid; grid-template-columns: repeat(3, 26px 40px); column-gap:3px; align-items:center; flex-shrink:0;">
+                    <div style="display:grid; grid-template-columns: repeat(3, 26px var(--cu-tx, 40px)); column-gap:3px; align-items:center; flex-shrink:0;">
                         ${d.cards.map(name => {
                             const img = raidCardImage(name);
                             const meta = d.cardMeta[name] || {};
@@ -12043,9 +12048,9 @@
                                 : '<span style="font-size:18px; line-height:26px; display:block; text-align:center;">🃏</span>';
                             return `
                                 ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:10px; color:#5a4a3a; overflow:hidden;">
+                                <div class="cu-tx" style="display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:10px; color:#5a4a3a; white-space:nowrap;">
                                     <span>Lv.${escapeHtml(String(meta.level != null ? meta.level : '?'))}</span>
-                                    <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(dmgLabel)}</span>
+                                    <span style="font-weight:600;">${escapeHtml(dmgLabel)}</span>
                                 </div>
                             `;
                         }).join('')}
@@ -12083,7 +12088,16 @@
                 </div>
                 ${groupsHtml}
             `;
-            document.getElementById('card-usage-detail-modal').style.display = 'flex';
+            const cuModal = document.getElementById('card-usage-detail-modal');
+            cuModal.classList.remove('cu-narrow');
+            cuModal.style.display = 'flex';
+            // 卡片旁的文字欄寬：量出最寬的「Lv／傷害」，每一列用同一個寬度（數字不截斷、圖示上下對齊）
+            const txs = [...body.querySelectorAll('.cu-tx')];
+            const txW = Math.ceil(Math.max(30, ...txs.map(e => e.scrollWidth)));
+            body.style.setProperty('--cu-tx', txW + 'px');
+            // 王名稱放不下就移到右邊傷害上面
+            const tight = [...body.querySelectorAll('.cu-boss')].some(e => e.offsetParent && (e.scrollWidth > e.clientWidth + 1 || e.clientWidth < 24));
+            if (tight) cuModal.classList.add('cu-narrow');
         }
 
         function closeCardUsageDetail() {

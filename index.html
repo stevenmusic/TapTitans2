@@ -3024,6 +3024,53 @@
             /* 最上方功能列不要拉滿整個螢幕 */
             .nav-title-row.app-nav-row { width: 100%; max-width: 1080px; margin: 0 auto; box-sizing: border-box; }
         }
+        /* ───────── 電腦版（900px 以上）：像原生桌面版，不是把手機版拉滿 ─────────
+           內容放在置中、最寬 1200px 的區域，左右留邊；按鈕跟分頁照內容寬度，不拉長 */
+        @media (min-width: 900px) {
+            /* 最上方功能列：左邊分頁、右邊選單，按鈕照字的寬度 */
+            .nav-title-row.app-nav-row { width: 100%; max-width: 1200px !important; margin: 0 auto; padding-left: 24px; padding-right: 24px; box-sizing: border-box; }
+            .app-nav-scroll { flex: 0 1 auto; gap: 6px; }
+            .app-nav-item { flex: 0 0 auto; min-width: 92px; padding: 7px 20px; font-size: 14px; }
+            .app-nav-more { margin-left: auto; }
+            /* 各頁第二排分頁（爆裂／苦痛／支援／牌組參考、技能配點／法術出裝）：靠左的小分頁 */
+            .nav-tabs { max-width: 1200px; margin: 0 auto; padding: 0 24px 10px; box-sizing: border-box; gap: 6px; justify-content: flex-start; }
+            .nav-tabs .tab-btn { flex: 0 0 auto; padding: 7px 18px; border-radius: 8px; font-size: 14px; }
+            .nav-tabs .tab-btn.active { color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.85) inset; }
+            .nav-tabs .tab-btn.active::after { display: none; }
+            /* 突襲頁：兩欄，最寬 1200px，左右留邊 */
+            #export-raidstatus { max-width: 1200px !important; padding-left: 24px; padding-right: 24px; column-gap: 24px !important; }
+            /* 深淵模式列表：卡片排成格狀 */
+            #abyss-mode-list { max-width: 1200px; display: grid !important; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-content: start; gap: 16px !important; padding: 16px 24px 40px; }
+            /* 深淵：技能配點、法術出裝並排，不用切換 */
+            #view-abyss-detail .nav-tabs { display: none; }
+            .abyss-swiper-container { width: 100% !important; max-width: 1200px; margin: 0 auto; padding: 0 24px; box-sizing: border-box; transform: none !important; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+            .abyss-swiper-page { width: auto; padding: 12px 0 0; }
+            /* 有返回鍵的標題列（深淵模式頁）也限寬置中，返回鍵和 EN 不會貼在螢幕最兩邊 */
+            .nav-title-row:not(.app-nav-row) { width: 100%; max-width: 1200px; margin-left: auto; margin-right: auto; box-sizing: border-box; padding-left: 24px; padding-right: 24px; }
+            /* 牌組參考：總傷前十、依部位並排 */
+            #deck-ref-wrap { padding-left: 24px !important; padding-right: 24px !important; }
+            #panel-topdecks.tt-wide { max-width: 1200px; margin-left: auto; margin-right: auto; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+            #panel-topdecks.tt-wide > * { grid-column: 1 / -1; }
+            #panel-topdecks.tt-wide > #top-decks-result { grid-column: 1; }
+            #panel-topdecks.tt-wide > #by-part-result { grid-column: 2; margin-top: 0 !important; }
+            #panel-topdecks.tt-wide #deck-subtab-btn-topdecks, #panel-topdecks.tt-wide #deck-subtab-btn-bypart { display: none; }
+            /* 卡片池：跟內容一樣寬、置中，不貼滿螢幕 */
+            .card-pool-drawer { left: 50%; right: auto; width: min(1200px, calc(100% - 48px)); transform: translateX(-50%); }
+        }
+        @media (min-width: 1100px) {
+            /* 牌組：爆裂、苦痛、支援三張卡片並排（各自圓角卡片，中間留空） */
+            #view-deck .swiper-container { width: 100% !important; max-width: 1280px; margin: 0 auto; padding: 8px 20px 0; box-sizing: border-box; transform: none !important; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+            #view-deck .page-view { width: auto; flex: none; min-width: 0; border-radius: 14px; padding: 8px 6px 14px; box-shadow: 0 1px 3px rgba(74,55,40,0.08); }
+            /* 每一欄約手機寬，控制項用手機的大小（平板放大的尺寸會把卡片擠小） */
+            #view-deck .selects-col { width: 72px; gap: 3px; }
+            #view-deck .tier-memo-col { width: 70px; }
+            #view-deck .tier-control-col { width: 44px; }
+            #view-deck .dropdown-trigger, #view-deck .check-select { font-size: 10px !important; height: 26px; }
+            #view-deck .btn-action { font-size: 12px; }
+            #view-deck .tier-num { font-size: 13px; }
+            #view-deck .label-custom-input { font-size: 11px; }
+            .card-pool-drawer { width: min(1240px, calc(100% - 40px)); }
+        }
 </style>
 </head>
 <body>
@@ -3089,7 +3136,7 @@
         <div class="save-indicator" id="save-indicator" data-i18n="savedIndicator">✓ 已儲存</div>
 
         <!-- 牌組參考（從突襲狀態的按鈕列搬過來）：點「牌組參考」分頁才顯示，同時藏起爆裂／苦痛／支援 -->
-        <div id="deck-ref-wrap" style="padding:10px 12px; margin-top:var(--header-h, 100px);">
+        <div id="deck-ref-wrap" style="display:none; padding:10px 12px; margin-top:var(--header-h, 100px);">
                 <div class="backup-section" id="panel-topdecks" style="display:none;">
                     <div class="backup-title"><svg class="panel-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="3.5" y="6.5" width="11" height="14" rx="1.8" transform="rotate(-8 9 13.5)"/><rect x="10" y="4.5" width="11" height="14" rx="1.8" transform="rotate(8 15.5 11.5)"/></svg> 牌組參考</div>
                     <div class="deck-subtab-row">
@@ -4685,7 +4732,8 @@
 
         function syncBodyBackground() {
             if (currentView === 'deck') {
-                document.body.style.backgroundColor = DECK_TAB_BG_MAP[currentPage] || '#e0d5c1';
+                // 電腦版三欄並排時，背景用中性色，三張牌組卡片各自保留顏色
+                document.body.style.backgroundColor = window.matchMedia('(min-width: 1100px)').matches ? '#efe8df' : (DECK_TAB_BG_MAP[currentPage] || '#e0d5c1');
                 const handle = document.getElementById('card-pool-handle');
                 if (handle) handle.style.backgroundColor = DECK_TAB_HANDLE_COLOR_MAP[currentPage] || '#5a4a42';
             } else if (RAID_BODY_BG_MAP[currentView]) {
@@ -4906,6 +4954,7 @@
             document.getElementById('tab-deckref').classList.add('active');
             document.querySelector('#view-deck .swiper-wrapper').style.display = 'none';
             document.getElementById('card-pool-drawer').style.display = 'none';
+            document.getElementById('deck-ref-wrap').style.display = 'block';   // 沒開牌組參考時整塊藏起來（不然上方會空一大段）
             document.getElementById('panel-topdecks').style.display = 'block';
             document.body.style.backgroundColor = '#e0d5c1';
             if (sharedSessionStart) await ensureSessionAttacksLoaded(sharedSessionStart);
@@ -4916,6 +4965,7 @@
             const panel = document.getElementById('panel-topdecks');
             if (panel.style.display !== 'block') return;
             panel.style.display = 'none';
+            document.getElementById('deck-ref-wrap').style.display = 'none';
             document.getElementById('tab-deckref').classList.remove('active');
             document.querySelector('#view-deck .swiper-wrapper').style.display = '';
             document.getElementById('card-pool-drawer').style.display = '';
@@ -8407,11 +8457,26 @@
                 ${body}`;
         }
 
+        function deckRefWide() { const el = document.getElementById('panel-topdecks'); return !!(el && el.classList.contains('tt-wide')); }
         function switchDeckSubtab(id) {
             const isTopDecks = id === 'topdecks';
             const isByPart = id === 'bypart';
             const isQuiz = id === 'quiz';
             const isSuggested = !isTopDecks && !isByPart && !isQuiz;
+            // 電腦版：總傷前十、依部位兩個並排一起顯示
+            const wideRef = window.matchMedia('(min-width: 900px)').matches && (isTopDecks || isByPart);
+            document.getElementById('panel-topdecks').classList.toggle('tt-wide', wideRef);
+            if (wideRef) {
+                deckSubtab = 'topdecks';
+                ['quiz-result', 'suggested-deck-result', 'best-six-dropdown-wrap'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+                document.getElementById('top-decks-session-menu').style.display = 'none';
+                document.getElementById('top-decks-result').style.display = 'flex';
+                document.getElementById('by-part-result').style.display = 'block';
+                ['quiz', 'suggested'].forEach(k => document.getElementById('deck-subtab-btn-' + k).classList.remove('active'));
+                renderTopDecks();
+                renderByPart();
+                return;
+            }
             deckSubtab = isQuiz ? 'quiz' : (isByPart ? 'bypart' : (isTopDecks ? 'topdecks' : 'suggested'));
             document.getElementById('quiz-result').style.display = isQuiz ? 'block' : 'none';
             document.getElementById('deck-subtab-btn-quiz').classList.toggle('active', isQuiz);
@@ -8634,7 +8699,7 @@
             } finally {
                 attackCacheState.loading = false; attackCacheState.lastRun = Date.now();
                 byPartRecoSig = '';
-                if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+                if (typeof renderByPart === 'function' && (deckSubtab === 'bypart' || deckRefWide())) renderByPart();
                 if (typeof byPartRecoRefresh === 'function') byPartRecoRefresh();
             }
         }
@@ -9029,7 +9094,7 @@
             byPartPoolSaveScroll();
             if (byPartModalOpen) renderByPartModal();
             const panel = document.getElementById('panel-topdecks');
-            if (deckSubtab === 'bypart' && panel && panel.style.display === 'block') renderByPart();
+            if ((deckSubtab === 'bypart' || deckRefWide()) && panel && panel.style.display === 'block') renderByPart();
         }
         function toggleByPartPool(name) {
             if (byPartPoolSel.has(name)) byPartPoolSel.delete(name); else byPartPoolSel.add(name);
@@ -9320,7 +9385,7 @@
                 BY_PART_GAME_SCENARIOS = list;
                 try { localStorage.setItem(BY_PART_SCEN_CACHE_KEY, txt); } catch (e) {}
                 byPartRecoSig = ''; byPartRecoRefresh();
-                if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+                if (typeof renderByPart === 'function' && (deckSubtab === 'bypart' || deckRefWide())) renderByPart();
                 if (document.getElementById('sim-import-modal') && !simImp.analysis) renderSimImport();   // 匯入視窗開著、沒有正在填的截圖：清單的打勾也跟著更新（正在填就不重畫，不然選好的狀態會被清掉）
             } catch (e) {}
         }
@@ -10015,7 +10080,7 @@
             if (!byPartUserScenSave(list)) return fail('儲存失敗（瀏覽器儲存空間不夠或被封鎖）。');
             simImp.analysis = null; simImp.target = null;
             byPartRecoSig = ''; byPartRecoRefresh();
-            if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+            if (typeof renderByPart === 'function' && (deckSubtab === 'bypart' || deckRefWide())) renderByPart();
             renderSimImport();
             const bd2 = document.querySelector('#sim-import-modal .si-body'); if (bd2) bd2.scrollTop = 0;
             const m2 = document.getElementById('sim-imp-msg');
@@ -10106,7 +10171,7 @@
             list.splice(i, 1);
             byPartUserScenSave(list);
             byPartRecoSig = ''; byPartRecoRefresh();
-            if (typeof renderByPart === 'function' && deckSubtab === 'bypart') renderByPart();
+            if (typeof renderByPart === 'function' && (deckSubtab === 'bypart' || deckRefWide())) renderByPart();
             renderSimImport();
         }
         function simImportCopy() {

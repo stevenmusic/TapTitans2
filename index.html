@@ -9608,7 +9608,10 @@
         const SIM_CURSE_ZH = { Burst: '爆裂', Afflicted: '苦痛', Body: '肉體' };   // 肉體詛咒：每個詛咒甲 −6% 肉體傷害
         function simTodoCondNow() {
             const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted|Body)/.test(t)) || '';
-            return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : curseT.startsWith('Body') ? 'Body' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
+            // 這隻王的詛咒甲數量（扣掉被禁打的）：禁打的詛咒甲打不到，情境裡不算
+            const bannedNow = (raidBannedParts || []).slice();
+            const cursedMax = raidState && raidState.parts ? RAID_PARTS.map(p => p.key).filter(k => raidState.parts[k] && raidState.parts[k].cursed && !bannedNow.includes(k)).length : undefined;
+            return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : curseT.startsWith('Body') ? 'Body' : (curseT ? 'Afflicted' : ''), banned: bannedNow, ...(cursedMax !== undefined && curseT ? { cursedMax } : {}) };
         }
         // 情境清單：禁打和骨架都是「不能打」，只看能打幾個部位。分三區——頭肚都能打／頭或肚其中一個不能打（頭、肚差別不大，有一個就算有）／
         // 頭＋肚都不能打；每一區照「能打幾個部位」分組，列出各種詛咒甲／盔甲／肉體的組合
@@ -9733,14 +9736,18 @@
                     const t = raid.titans.find(x => x.n === n); if (!t) return '';
                     const ct = ((t.c || [])[0] || [])[0] || '';
                     const curse = ct.startsWith('Burst') ? 'Burst' : ct.startsWith('Afflicted') ? 'Afflicted' : ct ? 'Body' : '';
-                    const cond = { buff, curse, banned: liveBan(n) || bans[n] || ticketBestBans(t), cursedMax: Object.values(t.p).filter(e => e[3]).length };
+                    const banned = liveBan(n) || bans[n] || ticketBestBans(t);
+                    // 詛咒甲也可能被禁打：禁打的詛咒甲打不到，不算進能打部位的詛咒甲數量
+                    const cursedAll = Object.keys(t.p).filter(loc => t.p[loc][3]);
+                    const cursedBanned = cursedAll.filter(loc => banned.includes(loc));
+                    const cond = { buff, curse, banned, cursedMax: cursedAll.length - cursedBanned.length, cursedBanned: cursedBanned.length };
                     const todo = simTodoList(cond);
                     if (!todo) return '';
                     const pre = `simImp.todoCond = ${escapeHtml(JSON.stringify(cond)).replace(/"/g, '&quot;')}; `;
                     const path = simTodoPath(todo).map(r => ({ ...r, pre, now: false }));
                     const zh = (k) => raidPartLabel(k);
                     return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
-                        <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} ×${raid.seq.filter(x => x === n).length}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
+                        <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} ×${raid.seq.filter(x => x === n).length}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）${cond.cursedBanned ? `<span style="color:#c0392b;">（另有 ${cond.cursedBanned} 個詛咒甲被禁打）</span>` : ''}｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
                         ${path.map(simTodoRowHtml).join('')}</div>`;
                 }).join('');
         }

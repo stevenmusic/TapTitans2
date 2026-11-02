@@ -10224,6 +10224,7 @@
                 // 三張卡都打得到才放；放不了的（例如頭和肚子都禁打時的鏡子力＋破碎本能那組）不放，空出來的位置由歷史統計補。
                 // 只看部位限制，不看盔甲／肉體、詛咒、肉體數量這些狀態條件（這些照模擬器）
                 if (byPartRecoAllowCards && !g.cards.every(n => byPartRecoAllowCards.has(n))) return;
+                let torsoAlt = false;
                 const setsOf = g.cards.map(n => (CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null).filter(Boolean);
                 if (setsOf.length && !attackable.some(k => setsOf.every(st => st.includes(k)))) return;
                 // 只能打盔甲／只能打肉體的卡（撼地破甲、防空高砲、稜角裂痕、脊椎穿刺、撕裂風刃、振奮士氣）：
@@ -10238,7 +10239,19 @@
                 let tg;
                 if (g.role === 'armor') tg = attackable.filter(k => scene[k] !== 'body');
                 else if (g.role === 'body') tg = attackable.filter(k => scene[k] === 'body');
-                else if (g.role === 'torso') { tg = attackable.filter(k => k === 'ChestUpper'); if (!tg.length) tg = attackable.filter(k => k === 'Head'); }   // Torso＝肚子；肚子不能打才打頭
+                else if (g.role === 'torso') {   // Focus Torso＝肚子（不包含頭）：肚子不能打，這組不放
+                    if (!attackable.includes('ChestUpper')) return;
+                    tg = ['ChestUpper'];
+                    // 組裡有只能打盔甲／只能打肉體的卡、但肚子現在不是那一層（例如防空高砲、肚子已經沒有盔甲）：
+                    // 改打其他是那一層的部位——頭優先（三張卡都要能打頭），不行就打三張卡都打得到的那一層部位裡血量最多的；都沒有才不放
+                    if (layerCards.length && (!okParts.includes('ChestUpper') || layerCards.some(n => !layerFits(n, 'ChestUpper')))) {
+                        const fitAll = okParts.filter(k => layerCards.every(n => layerFits(n, k)));
+                        if (!fitAll.length) return;
+                        const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
+                        tg = [fitAll.includes('Head') ? 'Head' : fitAll.slice().sort((x, y) => left(y) - left(x))[0]];
+                        torsoAlt = true;
+                    } else if (!okParts.includes('ChestUpper')) return;
+                }
                 else if (g.role === 'head') tg = attackable.filter(k => k === 'Head');
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));
                 else if (g.role === 'cursed1') {
@@ -10256,7 +10269,7 @@
                     const tg2 = tg.filter(fit);
                     tg = tg2.length ? tg2 : (okParts.filter(fit).length ? okParts.filter(fit) : tg);
                 }
-                rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || (g.role === 'any' ? 3 : 0), partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
+                rows.push({ torsoAlt, cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || (g.role === 'any' ? 3 : 0), partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
             });
             return rows;
         }
@@ -10373,9 +10386,9 @@
         const asTarget = (k) => ({ part: k, layer: info[k].layer === 'armor' ? 'armor' : 'body', cursed: info[k].cursed });
         const hpMost = (ks) => ks.slice().sort((x, y) => info[y].hp - info[x].hp)[0];
         const hpLeast = (ks) => ks.slice().sort((x, y) => info[x].hp - info[y].hp)[0];   // 詛咒甲一律先打血量最薄的
-        // Focus Torso 的標的：肚子 → 頭；但組裡有只能打盔甲／只能打肉體的卡時，要那個部位現在是那一層才算（例如防空高砲只能打盔甲，肚子已經是肉體就改標頭；頭也不是就標打得到的部位裡血量最多的）
-        const layerOk = (r, k) => (r.rawCards || []).every(n => { const lim = CARD_LIMITS[n]; if (!lim) return true; if (lim.kind === 'armor') return info[k].layer === 'armor'; if (lim.kind === 'body') return info[k].layer === 'body'; return true; });
-        const torsoPick = (r) => { const fit = ['ChestUpper', 'Head'].filter(k => keys.includes(k) && layerOk(r, k)); if (fit.length) return fit[0]; const any = keys.filter(k => layerOk(r, k)); return any.length ? hpMost(any) : (keys.includes('ChestUpper') ? 'ChestUpper' : (keys.includes('Head') ? 'Head' : null)); };
+        // Focus Torso＝肚子（不包含頭）：只標肚子；組裡的防空高砲這類卡打不到現在的肚子、已改打頭或其他部位的，維持那個部位
+        // 肚子不是防空高砲這類卡能打的那一層、已經改打頭或其他部位的（torsoAlt），維持情境比對時選的部位
+        const torsoPick = (r) => r.torsoAlt ? ((r.targets && r.targets[0] && keys.includes(r.targets[0].part)) ? r.targets[0].part : null) : (keys.includes('ChestUpper') ? 'ChestUpper' : null);
         // 帶圖騰之力的牌組本來就是單部位牌組：只標 1 個部位——整組牌都打得到的部位裡，剩餘血量最多的那個
         // （場上有詛咒甲時，優先選詛咒甲）
         // 帶毀了雨的牌組（不管是哪一種牌組類型）：場上有詛咒甲就打「詛咒甲血量最薄的那個部位」，只標這 1 個部位
@@ -10421,7 +10434,7 @@
             // 模擬器的 Focus Head 牌組打肉體時：不照模擬器的部位，改打「這組牌都打得到的部位」裡肉體剩餘血量最多的
             // （例如碎顱打擊能打頭跟腳，頭快打完了就改打腳）
             // 有詛咒甲時：這組牌打得到的詛咒甲優先，只打那 1 個（最薄的）
-            // Focus Torso＝肚子：一律只打肚子（肚子不能打才打頭）
+            // Focus Torso＝肚子：一律只打肚子（不包含頭）
             else if (r.game && r.role === 'torso' && keys.length) {
                 const t = torsoPick(r);
                 if (t) { r.targets = [asTarget(t)]; r.allParts = false; byPartUnCount(r); }
@@ -10547,7 +10560,7 @@
                 }
             }
         });
-        // Focus Torso＝肚子：最後一律只標肚子（蓋過詛咒甲優先、防空高砲、毀了雨、圖騰之力、鏡子力組這些規則）；肚子不能打才標頭
+        // Focus Torso＝肚子：最後一律只標肚子（蓋過詛咒甲優先、防空高砲、毀了雨、圖騰之力、鏡子力組這些規則），不包含頭
         picked.forEach(r => {
             if (!r.game || r.role !== 'torso') return;
             const t = torsoPick(r);

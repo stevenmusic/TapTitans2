@@ -3013,6 +3013,17 @@
         /* 載入中：灰色骨架 */
         .tt-skel { background: linear-gradient(90deg, #efe7dc 25%, #f8f3ec 50%, #efe7dc 75%); background-size: 200% 100%; animation: ttSkel 1.2s ease-in-out infinite; border-radius: 7px; }
         @keyframes ttSkel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+        /* ───────── 電腦／橫向：突襲頁改左右兩欄 ─────────
+           左欄（王、部位、推薦牌組、最近攻擊）固定在畫面上不跟著捲；右欄（場次、攻擊紀錄等工具）自己往下捲 */
+        @media (min-width: 900px), (min-width: 740px) and (orientation: landscape) {
+            #export-raidstatus { max-width: 1080px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; align-items: start; }
+            #export-raidstatus > #raid-settings-sheet { grid-column: 1 / -1; }
+            #raid-tab-live { grid-column: 1; position: sticky; top: calc(var(--header-h, 64px) + 6px); max-height: calc(100vh - var(--header-h, 64px) - 12px); overflow-y: auto; scrollbar-width: thin; }
+            #raid-tab-records { grid-column: 2; min-width: 0; }
+            #raid-tab-records .raid-records-head { padding-top: 0; }
+            /* 最上方功能列不要拉滿整個螢幕 */
+            .nav-title-row.app-nav-row { width: 100%; max-width: 1080px; margin: 0 auto; box-sizing: border-box; }
+        }
 </style>
 </head>
 <body>

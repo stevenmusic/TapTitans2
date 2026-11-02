@@ -10151,6 +10151,8 @@
                 // 只看部位限制，不看盔甲／肉體、詛咒、肉體數量這些狀態條件（這些照模擬器）
                 if (byPartRecoAllowCards && !g.cards.every(n => byPartRecoAllowCards.has(n))) return;
                 let torsoAlt = false, lockPart = null;
+                // 只能打盔甲／肉體的卡改打其他部位時：打得到的詛咒甲先打最薄的；沒有詛咒甲就打那一層裡最厚的
+                const thickPick = (ks, left) => { const cu = ks.filter(k => scene[k] === 'cursed'); return cu.length ? cu.slice().sort((x, y) => left(x) - left(y))[0] : ks.slice().sort((x, y) => left(y) - left(x))[0]; };
                 const setsOf = g.cards.map(n => (CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null).filter(Boolean);
                 if (setsOf.length && !attackable.some(k => setsOf.every(st => st.includes(k)))) return;
                 // 只能打盔甲／只能打肉體的卡（撼地破甲、防空高砲、稜角裂痕、脊椎穿刺、撕裂風刃、振奮士氣）：
@@ -10174,7 +10176,7 @@
                         const fitAll = okParts.filter(k => layerCards.every(n => layerFits(n, k)));
                         if (!fitAll.length) return;
                         const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
-                        tg = [fitAll.includes('Head') ? 'Head' : fitAll.slice().sort((x, y) => left(y) - left(x))[0]];
+                        tg = [fitAll.includes('Head') ? 'Head' : thickPick(fitAll, left)];
                         torsoAlt = true;
                     } else if (!okParts.includes('ChestUpper')) return;
                 }
@@ -10186,7 +10188,7 @@
                         const fitAll = okParts.filter(k => layerCards.every(n => layerFits(n, k)));
                         if (!fitAll.length) return;
                         const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
-                        const pick = fitAll.includes('Head') ? 'Head' : fitAll.includes('ChestUpper') ? 'ChestUpper' : fitAll.slice().sort((x, y) => left(y) - left(x))[0];
+                        const pick = fitAll.includes('Head') ? 'Head' : fitAll.includes('ChestUpper') ? 'ChestUpper' : thickPick(fitAll, left);
                         tg = [pick];
                         lockPart = pick;
                     }

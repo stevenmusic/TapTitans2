@@ -12617,9 +12617,9 @@
                 if (st) {
                     const bodyLeft = Object.entries(st.p).reduce((x, [loc, e]) => x + (banned.includes(loc) ? 0 : e[2]), 0);
                     const best = ticketBestBans(st);
-                    const save = (list) => list.reduce((x, loc) => x + ((st.p[loc] || [])[1] || 0), 0);
+                    const gain = ticketEffHp(st, banned).eff - ticketEffHp(st, best).eff;   // 有效血量（含扛詛咒）可以少打多少
                     if (bodyLeft < st.k) banTip = '<br><small style="color:#c0392b; font-weight:800;">⚠ 禁太多打不死</small>';
-                    else if (save(best) - save(banned) > 0.5e9) banTip = `<br><small style="color:#6a3d9a; font-weight:700;">建議禁打：${best.map(k => raidPartLabel(k)).join('、')}（可多省 ${formatNum(save(best) - save(banned))}）</small>`;
+                    else if (gain > 0.5e9) banTip = `<br><small style="color:#6a3d9a; font-weight:700;">建議禁打：${best.map(k => raidPartLabel(k)).join('、')}（可多省 ${formatNum(gain)}）</small>`;
                 }
                 return { no, name, ...f, banned, now, done: no < cur, left, banTip };
             });
@@ -12667,8 +12667,8 @@
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">
                 <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="${th}">盔甲${seedRaid ? '' : '(85%)'}</td><td style="${th}">斬殺線</td><td style="${th}">合計</td><td style="${th}">剩餘</td></tr>
-                ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}${r.banTip || ''}</td>
-                    <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>`).join('')}
+                ${rows.map(r => `<tr style="${r.now ? 'background:#f3ebfa; font-weight:800;' : r.done ? 'color:#b0a090;' : ''}"><td style="${td} text-align:left;">${r.no}</td><td style="${td} text-align:left; white-space:normal;">${escapeHtml(r.name)}${r.now ? ' <small style="color:#6a3d9a;">目前</small>' : ''}${r.banned.length ? `<br><small style="color:${r.done ? '#d8a8a0' : '#c0392b'}; font-weight:600;">禁打 ${r.banned.length}</small>` : ''}</td>
+                    <td style="${td}">${r.hasParts ? formatNum(r.armor) : '—'}</td><td style="${td}">${formatNum(r.kill)}</td><td style="${td} font-weight:800;">${formatNum(r.armor + r.kill)}</td><td style="${td}">${r.done ? '已擊殺' : formatNum(r.left)}</td></tr>${r.banTip ? `<tr style="${r.now ? 'background:#f3ebfa;' : ''}"><td></td><td colspan="5" style="padding:0 3px 6px; text-align:left; line-height:1.3;">${r.banTip.replace(/^<br>/, '')}</td></tr>` : ''}`).join('')}
                 <tr style="font-weight:800; background:#f0e6d2;"><td colspan="4" style="${td} text-align:left;">加總</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(sumLeft)}</td></tr>
             </table>${rows.some(r => !r.hasParts) ? '<div style="font-size:11px; color:#a0522d; margin-top:6px;">盔甲「—」：還沒拿到這隻王的盔甲，先不算進合計（目標會偏低），打到同名的王後會自動補上。</div>' : ''}`;
         }

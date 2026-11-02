@@ -9282,6 +9282,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '';
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -10953,11 +10954,8 @@
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
             if (!attackCacheState.ready && attackCacheCanStart() && attackCacheState.error) attackCacheEnsure();   // 上次失敗、已經隔夠久：重試（這次先用伺服器統計顯示）
-            if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error) {
-                if (!attackCacheState.loading) attackCacheEnsure();
-                if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
-                return;   // 載好之後 attackCacheEnsure 結束時會再呼叫一次
-            }
+            // 歷史攻擊紀錄還在背景載入時不再空等：先用伺服器算好的統計（很快）把推薦牌組顯示出來，載好之後再用網頁端統計重算一次
+            if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error && !attackCacheState.loading) attackCacheEnsure();
             // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫
             const sig = JSON.stringify(RAID_PARTS.map(({ key }) => {
                 const p = raidState.parts[key];
@@ -10967,8 +10965,14 @@
             })) + raidState.bossName
                 // 加成類型、詛咒類型也會改變推薦（模擬器情境要比對這兩個），變了也要重算
                 + '|' + (raidSimActive ? simBuffKey() : currentSessionBuff()) + '|' + (raidCurseInfo || []).map(d => d.type).join(',');
-            if (sig === byPartRecoSig) return;
-            byPartRecoSig = sig;
+            // 上次在同一個狀態算好的推薦牌組記在這台裝置上：重新打開網頁、狀態沒變就先直接顯示，不用等資料載入
+            if (!box.innerHTML || box.querySelector('.tt-skel')) {
+                try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.sig === sig && last.html) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; } } catch (e) {}
+                if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
+            }
+            const sigFull = sig + '|' + (attackCacheState.ready ? 'local' : 'server');   // 網頁端統計載好後要再算一次
+            if (sigFull === byPartRecoSig) return;
+            byPartRecoSig = sigFull;
             const token = ++byPartRecoToken;
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));   // 場次類型相同的場次才算（偵測不到的場次不算）
             if (token !== byPartRecoToken) return;
@@ -10980,6 +10984,7 @@
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
             const html = byPartRecoGridHtml(rows, 'home');
             if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
+            if (attackCacheState.ready) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }
         }
 
         function byPartOnRaidStatusChanged() {

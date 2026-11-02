@@ -2954,6 +2954,60 @@
             .raid-boss-hp-label { font-size: 11px !important; width: 26px !important; }
             .raid-boss-hp-text { font-size: 10.5px !important; }
         }
+
+        /* ───────── 突襲頁設計系統（統一顏色、按鈕層級、圖示、卡片、字） ─────────
+           強調色只有酒紅；按鈕三層：主要（酒紅實心）／次要（淺酒紅底＋酒紅字）／文字按鈕 */
+        :root { --tt-accent: #8b263e; --tt-accent-soft: rgba(139,38,62,0.10); --tt-accent-soft2: rgba(139,38,62,0.18);
+                 --tt-ink: #4a3728; --tt-ink-2: #8a7a6a; --tt-line: #eadfd3; --tt-card: #ffffff;
+                 --tt-shadow: 0 1px 2px rgba(74,55,40,0.06); }
+        #view-raidstatus { font-variant-numeric: tabular-nums; }
+        /* 線條圖示：用 CSS 畫在文字前面，顏色跟著文字走（切換語言改文字也不會不見） */
+        .ic::before { content: ''; display: inline-block; width: 1.15em; height: 1.15em; margin-right: 0.3em; vertical-align: -0.2em;
+                      background-color: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+        .ic.ic-only::before { margin-right: 0; }
+        .ic-swords { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M14.5%2017.5L3%206V3h3l11.5%2011.5M13%2019l6-6M16%2016l4%204M19%2021l2-2M9.5%2017.5L21%206V3h-3L6.5%2014.5M11%2019l-6-6M8%2016l-4%204M5%2021l-2-2%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-upload { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2015V3M7%208l5-5%205%205M4%2015v4a2%202%200%200%200%202%202h12a2%202%200%200%200%202-2v-4%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-download { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203v12M7%2010l5%205%205-5M4%2015v4a2%202%200%200%200%202%202h12a2%202%200%200%200%202-2v-4%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-refresh { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M21%2012a9%209%200%201%201-2.64-6.36L21%208M21%203v5h-5%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-image { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2218%22%20height%3D%2218%22%20rx%3D%222%22%2F%3E%3Ccircle%20cx%3D%229%22%20cy%3D%229%22%20r%3D%222%22%2F%3E%3Cpath%20d%3D%22M21%2015l-5-5L5%2021%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-copy { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%229%22%20y%3D%229%22%20width%3D%2212%22%20height%3D%2212%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M5%2015H4a1%201%200%200%201-1-1V4a1%201%200%200%201%201-1h10a1%201%200%200%201%201%201v1%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-search { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%227%22%2F%3E%3Cpath%20d%3D%22M20%2020l-3.5-3.5%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-bell { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%208a6%206%200%200%201%2012%200c0%207%203%209%203%209H3s3-2%203-9M10.3%2021a1.94%201.94%200%200%200%203.4%200%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-play { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M7%204l13%208-13%208z%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-flask { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203h6M10%203v6L4.2%2019.5A1%201%200%200%200%205.1%2021h13.8a1%201%200%200%200%20.9-1.5L14%209V3M7%2015h10%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-pip { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%225%22%20width%3D%2218%22%20height%3D%2214%22%20rx%3D%222%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2211%22%20width%3D%226%22%20height%3D%225%22%20rx%3D%221%22%2F%3E%3C%2Fsvg%3E"); }
+        /* 次要按鈕 */
+        .tt-btn2 { border: none !important; background: var(--tt-accent-soft) !important; color: var(--tt-accent) !important; box-shadow: none !important;
+                   font-family: inherit; font-weight: 700; cursor: pointer; border-radius: 8px; }
+        .tt-btn2:active { background: var(--tt-accent-soft2) !important; }
+        /* 主要按鈕 */
+        .tt-btn1 { border: none !important; background: var(--tt-accent) !important; color: #fff !important; box-shadow: 0 2px 6px rgba(139,38,62,0.3) !important;
+                   font-family: inherit; font-weight: 800; cursor: pointer; border-radius: 10px !important; }
+        .tt-btn1:active { filter: brightness(0.9); }
+        /* 文字按鈕 */
+        .tt-btn3 { border: none !important; background: none !important; color: var(--tt-accent) !important; font-family: inherit; font-weight: 700; cursor: pointer; }
+        .tt-btn3:active { opacity: 0.6; }
+        /* 四個工具：iPhone 分段控制 */
+        #raid-tab-records .raid-tool-menu { gap: 2px; padding: 2px; background: rgba(118,118,128,0.12); border-radius: 10px; box-sizing: border-box; }
+        #raid-tab-records .raid-tool-btn { border: none; background: transparent; color: var(--tt-ink); min-height: 34px; padding: 6px 2px; border-radius: 8px; font-weight: 600; transition: background .15s, box-shadow .15s; }
+        #raid-tab-records .raid-tool-btn:active { transform: none; background: rgba(255,255,255,0.5); border-color: transparent; }
+        #raid-tab-records .raid-tool-btn.active { background: #fff; color: var(--tt-accent); font-weight: 800; border-color: transparent;
+                                                   box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04); }
+        /* 拿掉虛線分隔 */
+        #raid-tab-records .raid-records-head { border-top: none; padding-top: 6px; }
+        /* 區塊標題統一 */
+        .raid-recent-title { font-size: 13px; color: var(--tt-ink); }
+        /* 卡片統一：白底、細邊、淡陰影 */
+        .raid-recent-item { border-color: var(--tt-line); box-shadow: var(--tt-shadow); }
+        /* 搜尋框：放大鏡圖示 */
+        #raid-log-query-input { padding-left: 32px; background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a08c78%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%227%22%2F%3E%3Cpath%20d%3D%22M20%2020l-3.5-3.5%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: 10px center; background-size: 15px 15px; }
+        /* 設定裡的按鈕：連線＝主要，其他＝次要 */
+        #view-raidstatus .btn-raid-connect { background: var(--tt-accent); box-shadow: 0 2px 6px rgba(139,38,62,0.3); }
+        #view-raidstatus .btn-raid-demo, #view-raidstatus .btn-raid-tool, #view-raidstatus .btn-raid-pip-float { border: none; background: var(--tt-accent-soft); color: var(--tt-accent); }
+        #view-raidstatus .btn-raid-demo.active, #view-raidstatus .btn-raid-tool.active { background: var(--tt-accent); color: #fff; }
+        /* 載入中：灰色骨架 */
+        .tt-skel { background: linear-gradient(90deg, #efe7dc 25%, #f8f3ec 50%, #efe7dc 75%); background-size: 200% 100%; animation: ttSkel 1.2s ease-in-out infinite; border-radius: 7px; }
+        @keyframes ttSkel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 </style>
 </head>
 <body>
@@ -3445,10 +3499,10 @@
                         <input type="text" id="raid-app-token-input" class="player-name-input" data-i18n-placeholder="raidAppTokenPlaceholder" placeholder="Application Token" style="display:none;">
                         <input type="text" id="raid-player-token-input" class="player-name-input" data-i18n-placeholder="raidPlayerTokenPlaceholder" placeholder="Player Token" style="display:none;">
                         <button class="btn-raid-connect" onclick="connectRaidAPI()" style="display:none;" data-i18n="btnRaidConnect">🔌 連線</button>
-                        <button class="btn-raid-demo" onclick="toggleRaidDemoMode()" id="raid-demo-btn" style="width:100%; margin-bottom:6px;" data-i18n="btnRaidDemo">🎬 示範模式</button>
-                        <button class="btn-raid-demo" onclick="toggleRaidSettingsSheet(false); toggleRaidSim();" style="width:100%; margin-bottom:6px;">🧪 模擬畫面（自己設定部位狀態）</button>
-                        <button class="btn-raid-tool" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%; display:none;">🔔 開啟通知</button>
-                        <button class="btn-raid-tool" onclick="subscribeBackgroundPush()" style="width:100%;">🔔 開啟通知（不用開網頁也會收到）</button>
+                        <button class="btn-raid-demo ic ic-play" onclick="toggleRaidDemoMode()" id="raid-demo-btn" style="width:100%; margin-bottom:6px;" data-i18n="btnRaidDemo">範模式</button>
+                        <button class="btn-raid-demo ic ic-flask" onclick="toggleRaidSettingsSheet(false); toggleRaidSim();" style="width:100%; margin-bottom:6px;">模擬畫面（自己設定部位狀態）</button>
+                        <button class="btn-raid-tool ic ic-bell" onclick="requestRaidNotifyPermission()" data-i18n="btnRaidNotify" style="width:100%; display:none;">開啟通知</button>
+                        <button class="btn-raid-tool ic ic-bell" onclick="subscribeBackgroundPush()" style="width:100%;">開啟通知（不用開網頁也會收到）</button>
                         <div id="push-subscribe-status" style="font-size:11px; color:#8a7a6a; margin-top:4px;"></div>
                         <div class="raid-ios-hint" id="raid-ios-hint" style="display:none;" data-i18n="raidNotifyNeedHomeScreen">
                             📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）
@@ -3458,19 +3512,19 @@
                             <div id="raid-debug-panel" style="display:none; margin-top:8px;">
                                 <div style="font-size:12px; color:#8a7a6a; margin-bottom:6px;">突襲期間會即時記錄最近 5 筆事件，畫面卡住時可以截圖或複製這裡的內容回報</div>
                                 <pre id="raid-debug-output" style="white-space:pre-wrap; word-break:break-all; font-size:10px; background:#f7f1e8; border:1px solid #e5dcd2; border-radius:8px; padding:8px; max-height:260px; overflow-y:auto; margin:0;">（尚未收到任何突襲事件資料）</pre>
-                                <button class="btn-backup import" style="margin-top:8px;" onclick="copyRaidDebugOutput()">📋 複製除錯資料</button>
+                                <button class="btn-backup import tt-btn2 ic ic-copy" style="margin-top:8px;" onclick="copyRaidDebugOutput()">複製除錯資料</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <button class="btn-raid-pip-float" onclick="openRaidPip()" id="raid-pip-btn" data-i18n="btnRaidPip">🗗 浮動小工具</button>
+                <button class="btn-raid-pip-float ic ic-pip" onclick="openRaidPip()" id="raid-pip-btn" data-i18n="btnRaidPip">浮動小工具</button>
                 </div>
 
                 <div id="raid-tab-live">
                 <div class="raid-empty-state" id="raid-empty-state">
                     <span data-i18n="raidEmptyState">尚未有任何突襲資料，請先連線或使用示範模式</span><br>
-                    <button class="btn-raid-tool" style="margin-top:10px; width:auto; padding:8px 18px;" onclick="toggleRaidSim()">🧪 模擬畫面</button>
+                    <button class="btn-raid-tool ic ic-flask" style="margin-top:10px; width:auto; padding:8px 18px;" onclick="toggleRaidSim()">模擬畫面</button>
                     <button class="btn-raid-tool" style="margin-top:10px; width:auto; padding:8px 18px;" onclick="toggleRaidSettingsSheet(true)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>連線設定</button>
                 </div>
 
@@ -3530,7 +3584,7 @@
 
                     <div id="by-part-reco" style="display:none;"></div>
 
-                    <div class="raid-recent-title" data-i18n="raidRecentAttacksTitle">⚔️ 最近攻擊</div>
+                    <div class="raid-recent-title ic ic-swords" data-i18n="raidRecentAttacksTitle">最近攻擊</div>
                     <div class="raid-recent-list" id="raid-recent-list"></div>
 
                     <div class="raid-updated-at" id="raid-updated-at"></div>
@@ -3558,8 +3612,8 @@
                         <button onclick="clearRaidSessionFilter()" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:3px 8px; flex-shrink:0;">返回全部場次</button>
                     </div>
                     <div style="display:flex; gap:8px; width:100%; align-items:stretch;">
-                        <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="🔍 篩選玩家名稱（留空顯示全部排行）">
-                        <button id="attacklog-reload-btn" onclick="reloadAttackLogPanel()" style="font-size:19px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:8px; width:36px; height:auto; min-height:36px; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; line-height:1;"><span id="attacklog-reload-icon" style="display:inline-block;">🔄</span></button>
+                        <input type="text" id="raid-log-query-input" class="player-name-input" style="flex:1;" placeholder="篩選玩家名稱（留空顯示全部排行）">
+                        <button id="attacklog-reload-btn" class="tt-btn2 ic ic-only ic-refresh" aria-label="重新整理" onclick="reloadAttackLogPanel()" style="font-size:19px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:8px; width:36px; height:auto; min-height:36px; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; line-height:1;"></button>
                     </div>
                     <div id="low-damage-list-wrap" style="display:none; width:100%; margin-top:12px; background:#fdf5f4; border:1px solid #f0c9c5; border-radius:10px; padding:10px 12px; box-sizing:border-box;">
                         <div style="font-size:12px; font-weight:700; color:#8e3a3a; margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#c0392b" stroke-width="2"/><line x1="12" y1="7" x2="12" y2="13.5" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#c0392b"/></svg> 低傷名單（低於自己均傷一半的次數）</div>
@@ -3570,8 +3624,8 @@
                         <div id="raid-log-query-list" style="display:flex; flex-direction:column; gap:4px;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:10px;">
-                        <button class="btn-backup export" onclick="exportRaidFullLog()">📤 匯出（JSON）</button>
-                        <button class="btn-backup import" onclick="document.getElementById('raid-log-import-input').click()">📥 匯入（JSON）</button>
+                        <button class="btn-backup export tt-btn2 ic ic-upload" onclick="exportRaidFullLog()">匯出 JSON</button>
+                        <button class="btn-backup import tt-btn2 ic ic-download" onclick="document.getElementById('raid-log-import-input').click()">匯入 JSON</button>
                     </div>
                     <input type="file" id="raid-log-import-input" accept="application/json" style="display:none;" onchange="importRaidFullLog(this.files[0])">
                     <button id="raid-log-legacy-import-btn" class="btn-backup" style="display:none; margin-top:8px; width:100%; background:#eef2f9; color:#3a4a63;" onclick="importLegacyRaidFullLog()">📦 匯入這台裝置上殘留的舊版攻擊紀錄</button>
@@ -3592,7 +3646,7 @@
                 <div class="backup-section" id="panel-report" style="display:none;">
                     <div id="raid-report-export" class="raid-report-export"></div>
                     <div id="raid-report-actions" style="display:none; gap:8px; margin-top:10px;">
-                        <button class="btn-analysis export btn-save-deco" style="flex:1;" onclick="saveRaidReportPanelImage()">✨ 儲存圖片 ✨</button>
+                        <button class="btn-analysis export btn-save-deco tt-btn1 ic ic-download" style="flex:1; font-size:13px;" onclick="saveRaidReportPanelImage()">儲存圖片</button>
                     </div>
                     <div style="text-align:center; margin-top:14px;">
                         <button onclick="analysisReturnView = 'raidStatus'; showView('analysis');" style="background:none; border:none; color:#8e6a3a; font-size:12px; text-decoration:underline; font-family:inherit; cursor:pointer;">手動貼上遊戲匯出的 CSV →</button>
@@ -3673,10 +3727,10 @@
                 raidAppTokenPlaceholder: 'Application Token',
                 raidPlayerTokenPlaceholder: 'Player Token',
                 btnRaidConnect: '🔌 連線',
-                btnRaidDemo: '🎬 示範模式',
+                btnRaidDemo: '示範模式',
                 btnRaidDemoStop: '⏹ 停止示範',
-                btnRaidNotify: '🔔 開啟通知',
-                btnRaidPip: '🗗 浮動小工具',
+                btnRaidNotify: '開啟通知',
+                btnRaidPip: '浮動小工具',
                 raidStatusNotConnected: '尚未連線',
                 raidStatusNoAppToken: 'Application Token 尚未核發，暫時無法連線真實資料',
                 raidStatusDemoRunning: '🎬 示範模式中（假資料）',
@@ -3705,7 +3759,7 @@
                 raidNotifyDenied: '通知權限被拒絕，請至瀏覽器設定手動開啟',
                 raidBossChangedNotify: '換王了！目前為',
                 raidNotifyNeedHomeScreen: '📱 iOS 上要先把此網頁「加入主畫面」，並從主畫面圖示打開，才能開啟通知（Safari／Chrome／Edge 都適用）',
-                raidRecentAttacksTitle: '⚔️ 最近攻擊',
+                raidRecentAttacksTitle: '最近攻擊',
                 raidNoRecentAttacks: '尚無攻擊紀錄',
                 abyssListPageTitle: '深淵錦標賽懶人包',
                 tabSkillPoints: '技能配點',
@@ -3845,10 +3899,10 @@
                 raidAppTokenPlaceholder: 'Application Token (pending approval)',
                 raidPlayerTokenPlaceholder: 'Player Token',
                 btnRaidConnect: '🔌 Connect',
-                btnRaidDemo: '🎬 Demo Mode',
+                btnRaidDemo: 'Demo Mode',
                 btnRaidDemoStop: '⏹ Stop Demo',
-                btnRaidNotify: '🔔 Enable Notifications',
-                btnRaidPip: '🗗 Floating Widget',
+                btnRaidNotify: 'Enable Notifications',
+                btnRaidPip: 'Floating Widget',
                 raidStatusNotConnected: 'Not connected',
                 raidStatusNoAppToken: 'Application Token not issued yet — live data unavailable for now',
                 raidStatusDemoRunning: '🎬 Demo mode running (mock data)',
@@ -3877,7 +3931,7 @@
                 raidNotifyDenied: 'Notification permission denied — enable it in browser settings',
                 raidBossChangedNotify: 'Boss changed! Now fighting',
                 raidNotifyNeedHomeScreen: '📱 On iOS, add this page to your Home Screen first, then open it from the Home Screen icon to enable notifications (works in Safari, Chrome, and Edge)',
-                raidRecentAttacksTitle: '⚔️ Recent Attacks',
+                raidRecentAttacksTitle: 'Recent Attacks',
                 raidNoRecentAttacks: 'No attacks yet',
                 abyssListPageTitle: 'Abyssal Tournament',
                 tabSkillPoints: 'Skill Points',
@@ -7285,7 +7339,7 @@
                     <div style="margin-top:4px;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
                             <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${t('cardUsageGridTitle')}</div>
-                            <button onclick="copyCardUsageMissed()" style="font-size:12px; font-weight:700; color:#8e3a3a; background:#fff; border:1px solid #e0c4c0; border-radius:6px; padding:4px 10px; font-family:inherit; cursor:pointer;">📋 ${en ? 'Copy list' : '複製名單'}</button>
+                            <button class="tt-btn2 ic ic-copy" onclick="copyCardUsageMissed()" style="font-size:12px; border-radius:6px; padding:4px 10px;">${en ? 'Copy list' : '複製名單'}</button>
                         </div>
                         <div style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e5d9c5; border-radius:10px;">
                             <table style="border-collapse:collapse; width:100%;">
@@ -7363,6 +7417,9 @@
         // 背景自動更新重畫排行榜時名次可能會變動，用名字才能正確對回同一個人，
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
+        // 載入中的灰色骨架：推薦牌組（6 格）、清單（n 列）
+        function ttSkelGrid(n) { return `<div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; margin:28px 0 8px;">${Array.from({ length: n || 6 }, () => '<div class="tt-skel" style="height:72px;"></div>').join('')}</div>`; }
+        function ttSkelRows(n) { return `<div style="display:flex; flex-direction:column; gap:5px; margin:4px 0;">${Array.from({ length: n || 4 }, () => '<div class="tt-skel" style="height:44px;"></div>').join('')}</div>`; }
         // 右滑選中的玩家：點卡片時這些人一起比較
         let raidLogCompareSet = new Set();
 
@@ -9132,7 +9189,7 @@
                     <div style="font-size:15px; font-weight:800; color:#4a3728;">${title}</div>
                     <button class="ios-x" onclick="closeByPartModal()" aria-label="關閉"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                 </div>
-                <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">載入統計中…</div>
+                <div id="by-part-modal-list" style="font-size:12px; color:#8a7a6a;">${ttSkelRows(4)}</div>
                 ${byPartPoolHtml()}
             `;
             byPartPoolRestoreScroll();
@@ -10765,8 +10822,8 @@
         function byPartRecoGridHtmlInner(rows, view) {
             return `
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
-                    <div style="font-size:12.5px; font-weight:800; color:#4a3728;">推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
-                    <button onclick="saveByPartRecoImage('${view || 'home'}')" style="font-size:11.5px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:3px 9px; font-family:inherit; cursor:pointer;">🖼 存成圖片</button>
+                    <div style="font-size:13px; font-weight:800; color:#4a3728;">推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
+                    <button class="tt-btn2 ic ic-image" onclick="saveByPartRecoImage('${view || 'home'}')" style="font-size:11.5px; border-radius:6px; padding:4px 9px;">存成圖片</button>
                 </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                     ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall && !r.hideCount ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
@@ -10844,7 +10901,7 @@
             if (!attackCacheState.ready && attackCacheCanStart() && attackCacheState.error) attackCacheEnsure();   // 上次失敗、已經隔夠久：重試（這次先用伺服器統計顯示）
             if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error) {
                 if (!attackCacheState.loading) attackCacheEnsure();
-                if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; margin:8px 0;">推薦牌組載入中…</div>'; byPartRecoHtmlLast = ''; }
+                if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
                 return;   // 載好之後 attackCacheEnsure 結束時會再呼叫一次
             }
             // 狀態沒變（部位狀態、禁打、血量差不到 5%）就不重畫
@@ -10902,7 +10959,7 @@
                 <div class="raid-parts-grid" style="margin-top:8px;">
                     ${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cellHtml).join('')}</div>`).join('')}
                 </div>
-                <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">載入統計中…</div>
+                <div id="by-part-sim-reco" style="margin-top:6px; font-size:12px; color:#8a7a6a;">${ttSkelGrid(6)}</div>
             `;
 
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(simBuffKey()));
@@ -11379,7 +11436,7 @@
                     <div style="background:#fdf9f3; border:1px solid #e5d9c5; border-radius:10px; padding:10px 12px;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
                             <div style="font-size:13.5px; font-weight:700; color:#5a4a3a;">${currentLang === 'en' ? `${missed.length} players` : `共 ${missed.length} 人`}</div>
-                            ${missed.length ? `<button onclick="copyMissedRound(${roundNo})" style="font-size:12px; font-weight:700; color:#8e3a3a; background:#fff; border:1px solid #e0c4c0; border-radius:6px; padding:4px 10px; font-family:inherit; cursor:pointer;">📋 複製名單</button>` : ''}
+                            ${missed.length ? `<button class="tt-btn2 ic ic-copy" onclick="copyMissedRound(${roundNo})" style="font-size:12px; border-radius:6px; padding:4px 10px;">複製名單</button>` : ''}
                         </div>
                         ${listHtml}
                     </div>
@@ -11463,11 +11520,11 @@
             listEl.innerHTML = ranked.map((r, rIdx) => {
                 const isExpanded = raidLogExpandedPlayers.has(r.player);
                 return `
-                <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : '#e5dcd2'}; border-radius:10px; overflow:hidden;">
+                <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : 'var(--tt-line)'}; border-radius:10px; overflow:hidden; box-shadow:var(--tt-shadow);">
                     <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:9px 8px 9px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
-                            ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; font-weight:700; color:#6b4a8a; background:#fff; border:1px solid #d9cce8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
+                            ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <span style="font-size:12.5px; font-weight:700; white-space:nowrap; min-width:6.8em; text-align:right; font-variant-numeric:tabular-nums; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
@@ -11476,7 +11533,7 @@
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
-                            <button id="raidlog-toggle-all-${rIdx}" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; color:#8e6a3a; background:#fff; border:1px solid #d8c8a8; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
+                            <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
@@ -12085,12 +12142,12 @@
             if (activeIdx >= SHARED_SESSION_RECENT_COUNT) sharedSessionMenuShowOlder = true; // 選到的在收合區時自動展開
             const row = (x, i) => {
                 const isActive = i === activeIdx;
-                return `<div style="display:flex; gap:6px; align-items:stretch;"><button onclick="selectSharedSession(${i})" style="flex:1; min-width:0; text-align:left; padding:8px 12px; border-radius:10px; border:1.5px solid ${isActive ? '#8b263e' : '#e5d5c0'}; background:${isActive ? '#8b263e' : '#fffaf3'}; color:${isActive ? '#fff' : '#6b4a2a'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆）</button><button onclick="saveSessionReportImage(${i})" title="把這一場的戰報存成圖片" style="flex:0 0 auto; padding:0 14px; border-radius:10px; border:1.5px solid #2E7D32; background:#eef6ee; color:#2E7D32; font-size:13px; font-weight:800; font-family:inherit; cursor:pointer; white-space:nowrap;">戰報</button></div>`;
+                return `<div style="display:flex; gap:6px; align-items:stretch;"><button onclick="selectSharedSession(${i})" style="flex:1; min-width:0; text-align:left; padding:8px 12px; border-radius:10px; border:1px solid ${isActive ? '#8b263e' : 'var(--tt-line)'}; background:${isActive ? '#8b263e' : '#fff'}; box-shadow:${isActive ? 'none' : 'var(--tt-shadow)'}; color:${isActive ? '#fff' : '#4a3728'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆）</button><button class="tt-btn2" onclick="saveSessionReportImage(${i})" title="把這一場的戰報存成圖片" style="flex:0 0 auto; padding:0 14px; border-radius:10px; font-size:13px; white-space:nowrap;">戰報</button></div>`;
             };
             const recent = sessions.slice(0, SHARED_SESSION_RECENT_COUNT).map((x, i) => row(x, i)).join('');
             const olderList = sessions.slice(SHARED_SESSION_RECENT_COUNT);
             const olderToggle = olderList.length === 0 ? '' : `
-                <button onclick="sharedSessionMenuShowOlder = !sharedSessionMenuShowOlder; renderSharedSessionMenu();" style="width:100%; text-align:center; padding:6px 12px; border-radius:10px; border:1px dashed #d8c8a8; background:#fff; color:#8e6a3a; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer;">
+                <button class="tt-btn3" onclick="sharedSessionMenuShowOlder = !sharedSessionMenuShowOlder; renderSharedSessionMenu();" style="width:100%; text-align:center; padding:6px 12px; border-radius:10px; font-size:12.5px;">
                     ${sharedSessionMenuShowOlder ? '▴ 收合更早的場次' : `▾ 顯示更早的場次（${olderList.length} 場）`}
                 </button>`;
             const older = sharedSessionMenuShowOlder ? olderList.map((x, k) => row(x, k + SHARED_SESSION_RECENT_COUNT)).join('') : '';

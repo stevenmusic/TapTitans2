@@ -6443,7 +6443,7 @@
         let raidPreview = null;   // 下一場預告（伺服器 /current-boss-status 帶 preview）：{ buff, startAt, level }；有值時禁打、詛咒、加成都用預告的
         function raidCurseTypeLabel(type) {
             const base = String(type || '').replace(/PerCurse$/, '').replace(/Damage$/, '');
-            const map = { Burst: '爆裂傷害', Afflicted: '苦痛傷害', Affliction: '苦痛傷害', Support: '支援傷害', Raid: '突襲傷害', Tap: '點擊傷害' };
+            const map = { Burst: '爆裂傷害', Afflicted: '苦痛傷害', Affliction: '苦痛傷害', Body: '肉體傷害', Support: '支援傷害', Raid: '突襲傷害', Tap: '點擊傷害' };
             return map[base] || String(type || '');
         }
         function updateCurseInfo() {
@@ -9677,9 +9677,10 @@
         // 這一場會用到的情境：照現在這隻王的加成、詛咒類型、禁打部位，列出打下去會經過的部位狀態（詛咒甲／盔甲／肉體／骨架），
         // 標出已經有模擬器情境的（✅）和還缺的（❌）。點缺的那一列，選截圖後會自動帶入那個狀態
         // 條件預設是這一場的（加成、詛咒類型、禁打部位），也可以在清單上方自己改（simImp.todoCond）
+        const SIM_CURSE_ZH = { Burst: '爆裂', Afflicted: '苦痛', Body: '肉體' };   // 肉體詛咒：每個詛咒甲 −6% 肉體傷害
         function simTodoCondNow() {
-            const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted)/.test(t)) || '';
-            return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
+            const curseT = (raidCurseInfo || []).map(d => String(d.type)).find(t => /^(Burst|Afflicted|Body)/.test(t)) || '';
+            return { buff: (raidSimActive && typeof simBuffKey === 'function' ? simBuffKey() : currentSessionBuff()) || '', curse: curseT.startsWith('Burst') ? 'Burst' : curseT.startsWith('Body') ? 'Body' : (curseT ? 'Afflicted' : ''), banned: (raidBannedParts || []).slice() };
         }
         // 情境清單：禁打和骨架都是「不能打」，只看能打幾個部位。分三區——頭肚都能打／頭或肚其中一個不能打（頭、肚差別不大，有一個就算有）／
         // 頭＋肚都不能打；每一區照「能打幾個部位」分組，列出各種詛咒甲／盔甲／肉體的組合
@@ -9829,11 +9830,11 @@
             const secName = (sec) => (SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1];
             return Object.keys(SESSION_BUFFS).map(buff => {
                 const rows = [], miss = new Set();
-                ['Burst', 'Afflicted'].forEach(curse => {
+                ['Burst', 'Afflicted', 'Body'].forEach(curse => {
                     const t = simTodoList({ buff, curse, banned: [] });
                     SIM_TODO_SECS.forEach(([sec]) => {
                         const com = t.rows.filter(r => r.sec === sec && r.common);
-                        rows.push({ curse, sec, text: `${curse === 'Burst' ? '爆裂' : '苦痛'}｜${secName(sec)}`, have: com.filter(r => r.ok).length, total: com.length });
+                        rows.push({ curse, sec, text: `${SIM_CURSE_ZH[curse] || '苦痛'}｜${secName(sec)}`, have: com.filter(r => r.ok).length, total: com.length });
                         com.filter(x => !x.ok).forEach(x => miss.add([x.c ? curse : '', x.c, x.a, x.b, x.n, sec].join('|')));
                     });
                 });
@@ -9890,7 +9891,7 @@
                         <div class="si-title">${simImp.todoCond ? '情境清單（自選條件）' : '這一場會用到的情境'}</div>
                         <div class="si-grid2" style="margin-bottom:8px;">
                             <label class="si-field">加成類型<select onchange="simTodoSet('buff', this.value)">${simOptionsHtml(buffOpts, todo.buff)}</select></label>
-                            <label class="si-field">詛咒類型<select onchange="simTodoSet('curse', this.value)">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], todo.curse)}</select></label>
+                            <label class="si-field">詛咒類型<select onchange="simTodoSet('curse', this.value)">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒'], ['Body', '肉體詛咒']], todo.curse)}</select></label>
                         </div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
                         ${(() => { if (simImp.todoMode === undefined && simSeedPick()) simImp.todoMode = 'seed'; return ''; })()}
@@ -9925,7 +9926,7 @@
                         <div class="si-title">③ 這張圖的狀態</div>
                         <div class="si-grid2" style="margin-bottom:8px;">
                             <label class="si-field">加成類型<select id="sim-imp-buff">${simOptionsHtml(buffOpts, simImpNow.buff)}</select></label>
-                            <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒']], simImpNow.curse)}</select></label>
+                            <label class="si-field">詛咒類型<select id="sim-imp-curse">${simOptionsHtml([['', '沒有詛咒'], ['Burst', '爆裂詛咒'], ['Afflicted', '苦痛詛咒'], ['Body', '肉體詛咒']], simImpNow.curse)}</select></label>
                         </div>
                         <div class="si-grid4" style="margin-bottom:8px;">
                             ${num('sim-imp-cursed', '詛咒甲')}${num('sim-imp-armor', '盔甲')}
@@ -9969,7 +9970,7 @@
         }
         function simScenarioTitle(sc) {
             const c = sc.counts;
-            const curse = sc.cursed > 0 ? `${sc.curse === 'Burst' ? '爆裂' : '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
+            const curse = sc.cursed > 0 ? `${SIM_CURSE_ZH[sc.curse] || '苦痛'}詛咒甲 ${sc.cursed}` : '無詛咒甲';
             const ban = (sc.banned || []).map(k => raidPartLabel(k)).join('、') || `${c.banned} 個`;
             return `${(SESSION_BUFFS[sc.buff] || {}).label || sc.buff}｜${curse}｜盔甲 ${c.armor - (sc.cursed || 0)}、肉體 ${c.body}｜不能打 ${ban}`;   // 盔甲不含詛咒甲
         }

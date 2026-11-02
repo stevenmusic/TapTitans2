@@ -10199,7 +10199,14 @@
                 else if (g.role === 'cursed1') {
                     // 詛咒甲位置放最後考慮：情境只決定牌組，這組要先打哪個詛咒甲，看現在的狀況——剩餘盔甲血量最薄的那個
                     const armorLeft = (k) => Number(parts && parts[k] && parts[k].armor) || 0;
-                    tg = attackable.filter(k => scene[k] === 'cursed').sort((x, y) => armorLeft(x) - armorLeft(y)).slice(0, 1);   // 詛咒甲先打血量最薄的
+                    // 只看三張卡都打得到的部位（例如靈魂之火只能打頭肚，雙手的詛咒甲就打不到）
+                    tg = okParts.filter(k => scene[k] === 'cursed').sort((x, y) => armorLeft(x) - armorLeft(y)).slice(0, 1);   // 詛咒甲先打血量最薄的
+                    if (!tg.length) {   // 打得到的部位沒有詛咒甲：盔甲打最厚的，都沒有盔甲就打肉體最厚的
+                        const left = (k) => Number(parts && parts[k] && (scene[k] === 'body' ? parts[k].body : parts[k].armor)) || 0;
+                        const ar = okParts.filter(k => scene[k] === 'armor'), bo = okParts.filter(k => scene[k] === 'body');
+                        const pool = ar.length ? ar : bo;
+                        tg = pool.length ? [pool.slice().sort((x, y) => left(y) - left(x))[0]] : [];
+                    }
                 }
                 else if (g.role === 'limbs') tg = attackable.filter(k => /Arm|Hand/.test(k));   // 肩（ArmUpper）與手
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));   // Focus One Limb：單一四肢部位
@@ -10336,7 +10343,7 @@
         // 帶毀了雨的牌組（不管是哪一種牌組類型）：場上有詛咒甲就打「詛咒甲血量最薄的那個部位」，只標這 1 個部位
         picked.forEach(r => {
             if (!(r.rawCards && r.rawCards.includes('RuinousRust'))) return;
-            const okParts = keys.filter(k => info[k].cursed && r.rawCards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok));
+            const okParts = keys.filter(k => info[k].cursed && r.rawCards.every(n => (!QUIZ_CARDS[n] || quizCardUsable(n, sceneNow, k).ok) && !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part' && BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] && !BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag].includes(k))));
             let cc = r.limbOnly ? okParts.filter(k => /Arm|Hand|Leg/.test(k)) : okParts;
             if (!cc.length) cc = okParts;
             if (cc.length) { r.targets = [asTarget(hpLeast(cc))]; r.allParts = false; byPartUnCount(r); }

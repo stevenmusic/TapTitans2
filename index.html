@@ -10226,6 +10226,13 @@
                 if (byPartRecoAllowCards && !g.cards.every(n => byPartRecoAllowCards.has(n))) return;
                 const setsOf = g.cards.map(n => (CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') ? BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] : null).filter(Boolean);
                 if (setsOf.length && !attackable.some(k => setsOf.every(st => st.includes(k)))) return;
+                // 只能打盔甲／只能打肉體的卡（撼地破甲、防空高砲、稜角裂痕、脊椎穿刺、撕裂風刃、振奮士氣）：
+                // 情境只記「幾個盔甲、幾個肉體」，沒記是哪幾個部位，所以要用真實突襲的部位再確認一次——
+                // 這組牌限定部位卡能打的部位裡，要有這張卡能打的那一層（盔甲含詛咒盔甲），不然整組不放
+                const okParts = attackable.filter(k => setsOf.every(st => st.includes(k)));
+                const layerCards = g.cards.filter(n => CARD_LIMITS[n] && (CARD_LIMITS[n].kind === 'armor' || CARD_LIMITS[n].kind === 'body'));
+                const layerFits = (n, k) => CARD_LIMITS[n].kind === 'armor' ? scene[k] !== 'body' : scene[k] === 'body';
+                if (layerCards.some(n => !okParts.some(k => layerFits(n, k)))) return;
                 const real = data && data.decks ? data.decks.find(d => keyOf(d.cards) === keyOf(g.cards)) : null;
                 if (BY_PART_GAME_MIN_USE > 0 && data && (!real || real.attacks < BY_PART_GAME_MIN_USE)) return;
                 let tg;
@@ -10243,6 +10250,12 @@
                 else if (g.role === 'limb1') tg = attackable.filter(k => /Arm|Hand|Leg/.test(k));   // Focus One Limb：單一四肢部位
                 else tg = attackable;
                 if (!tg.length) tg = attackable;
+                // 有限定層別的卡時，標的部位只留那一層、而且限定部位卡打得到的（例如撕裂風刃只標肉體部位）
+                if (layerCards.length) {
+                    const fit = (k) => okParts.includes(k) && layerCards.every(n => layerFits(n, k));
+                    const tg2 = tg.filter(fit);
+                    tg = tg2.length ? tg2 : (okParts.filter(fit).length ? okParts.filter(fit) : tg);
+                }
                 rows.push({ cards: byPartOrderCards(g.cards), rawCards: g.cards, targets: tg.map(target), usable: 0, game: true, role: g.role, focus: g.focus || (g.role === 'any' ? 3 : 0), partLabel: (g.role === 'limbs' && !g.focus) ? '四肢' : '', hideParts: g.role === 'any', limbOnly: g.role === 'limb1', allParts: g.role === 'cycle', score: 100 - i });
             });
             return rows;

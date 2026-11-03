@@ -9714,6 +9714,13 @@
             if (raidPreview && raidPreview.level && ticketCalc.seed) { const r = ticketCalc.seed.raids.find(x => x.t === 9999 && x.l === raidPreview.level); if (r) return { raid: r, why: '下一場預告' }; }
             const cr = typeof bossHpSeedRaid === 'function' && !raidPreview ? bossHpSeedRaid() : null;
             if (cr) return { raid: cr, why: '這一場', live: true };
+            // 正在打、但沒有 seed：用即時資料（出場順序、詛咒類型；目前這隻王的詛咒甲位置用即時部位狀態）
+            if (!raidPreview && raidState && raidState.parts) {
+                const titans = (apiRaidTitans && apiRaidTitans.length ? apiRaidTitans : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.titans) || []);
+                const seq = (apiSpawnSequence && apiSpawnSequence.length ? apiSpawnSequence : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.spawn_sequence) || []);
+                const lv = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier;
+                if (titans.length && seq.length) return { raid: { l: lv || '?', seq, buffs: [], titans: titans.map(t => ({ n: t.enemy_name, c: (t.cursed_debuffs || []).map(d => [d.bonus_type, d.bonus_amount]), p: null })) }, why: '這一場', live: true, liveOnly: true };
+            }
             if (ticketCalc.seed) {
                 const curLv = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier;
                 const lv = ticketCalc.level || (curLv ? curLv + 1 : null);
@@ -9726,19 +9733,26 @@
             const pk = simSeedPick();
             if (!pk) return '<div class="si-tip">還沒有 seed（到「門票試算」上傳），或還在讀取中。</div>';
             const raid = pk.raid, lv = raid.l;
-            const buff = (raid.buffs || []).map(b => SEED_BUFF_KEY[b[0]]).find(Boolean) || '';
+            const buff = pk.liveOnly ? (currentSessionBuff() || '') : ((raid.buffs || []).map(b => SEED_BUFF_KEY[b[0]]).find(Boolean) || '');
             // 禁打：開打中知道實際禁打（每隻王的 titan_target）就用實際的；不然用門票試算那一關的設定（預設最佳禁打）
             const targets = (apiTitanTarget && apiTitanTarget.length ? apiTitanTarget : (bossHpSnapshot && bossHpSnapshot.titan_target) || []);
-            const liveBan = (n) => { if (!pk.live) return null; const tt = (apiRaidTitans || []).find(x => x.enemy_name === n); const e = tt && targets.find(x => x.enemy_id === tt.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : null; };
+            const liveBan = (n) => { if (!pk.live) return null; const tt = ((apiRaidTitans && apiRaidTitans.length ? apiRaidTitans : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.titans)) || []).find(x => x.enemy_name === n); const e = tt && targets.find(x => x.enemy_id === tt.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : null; };
             const bans = ticketCalc.bansByLv[lv] || {};
-            return `<div class="si-tip" style="margin-bottom:4px;">M-${lv}（${pk.why}，照 seed）｜${(SESSION_BUFFS[buff] || {}).label || '加成不明'}｜每隻王照 seed 的詛咒甲數量與類型，依序列出會遇到的狀態，點 ❌ 帶入條件。</div>`
+            return `<div class="si-tip" style="margin-bottom:4px;">M-${lv}（${pk.why}，${pk.liveOnly ? "照即時資料" : "照 seed"}${pk.live ? "；正在打的王用即時部位" : ""}）｜${(SESSION_BUFFS[buff] || {}).label || '加成不明'}｜每隻王照 seed 的詛咒甲數量與類型，依序列出會遇到的狀態，點 ❌ 帶入條件。</div>`
                 + [...new Set(raid.seq)].map(n => {
                     const t = raid.titans.find(x => x.n === n); if (!t) return '';
                     const ct = ((t.c || [])[0] || [])[0] || '';
                     const curse = ct.startsWith('Burst') ? 'Burst' : ct.startsWith('Afflicted') ? 'Afflicted' : ct ? 'Body' : '';
-                    const banned = liveBan(n) || bans[n] || ticketBestBans(t);
+                    // 正在打的這隻王：詛咒甲位置、禁打都用即時資料（最準）；其他王照 seed
+                    const isCur = pk.live && raidState && raidState.parts && raidState.bossName === n;
+                    if (!t.p && !isCur) {
+                        const curOrd = (raidState && raidState.bossOrdinal) || 0;
+                        const later = raid.seq.some((x, i) => x === n && i + 1 > curOrd);
+                        return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8; font-size:12px; color:#8a7a6a;"><b style="color:#4a3728;">${escapeHtml(n)}</b>　${later ? '還沒出場：沒有 seed，打到這隻才知道詛咒甲幾個' : '已經打完'}</div>`;
+                    }
+                    const banned = (isCur && raidBannedParts && raidBannedParts.length ? raidBannedParts.slice() : null) || liveBan(n) || bans[n] || (t.p ? ticketBestBans(t) : []);
                     // 詛咒甲也可能被禁打：禁打的詛咒甲打不到，不算進能打部位的詛咒甲數量
-                    const cursedAll = Object.keys(t.p).filter(loc => t.p[loc][3]);
+                    const cursedAll = isCur ? RAID_PARTS.map(x => x.key).filter(k => raidState.parts[k] && raidState.parts[k].cursed) : Object.keys(t.p).filter(loc => t.p[loc][3]);
                     const cursedBanned = cursedAll.filter(loc => banned.includes(loc));
                     const cond = { buff, curse, banned, cursedMax: cursedAll.length - cursedBanned.length, cursedBanned: cursedBanned.length };
                     const todo = simTodoList(cond);
@@ -9830,7 +9844,7 @@
                         </div>
                         ${simImp.todoCond ? '<button class="si-btn ghost" style="margin-bottom:6px;" onclick="simTodoSet(\'reset\')">↺ 改回這一場的條件</button>' : ''}
                         ${(() => { if (simImp.todoMode === undefined && simSeedPick()) simImp.todoMode = 'seed'; return ''; })()}
-                        <div style="display:flex; gap:6px; margin:6px 0;">${[['seed', (() => { const pk = simSeedPick(); return pk ? `M-${pk.raid.l}（seed）` : '照 seed'; })()], ['', '手動條件']].map(([k, l]) => `<button onclick="simImp.todoMode = '${k}'; ${k === 'seed' ? `if (!ticketCalc.seed) ticketSeedFetch().then(sd => { ticketCalc.seed = sd; renderSimImport(); });` : 'simImp.todoCond = null;'} renderSimImport();" style="flex:1; font:inherit; font-size:13px; font-weight:800; padding:6px; border-radius:8px; border:1px solid ${(simImp.todoMode || '') === k ? '#6a3d9a' : '#ddd0bb'}; background:${(simImp.todoMode || '') === k ? '#6a3d9a' : '#fbf6ee'}; color:${(simImp.todoMode || '') === k ? '#fff' : '#6b4a2a'};">${l}</button>`).join('')}</div>
+                        <div style="display:flex; gap:6px; margin:6px 0;">${[['seed', (() => { const pk = simSeedPick(); return pk ? `M-${pk.raid.l}（${pk.liveOnly ? '即時' : 'seed'}）` : '照 seed'; })()], ['', '手動條件']].map(([k, l]) => `<button onclick="simImp.todoMode = '${k}'; ${k === 'seed' ? `if (!ticketCalc.seed) ticketSeedFetch().then(sd => { ticketCalc.seed = sd; renderSimImport(); });` : 'simImp.todoCond = null;'} renderSimImport();" style="flex:1; font:inherit; font-size:13px; font-weight:800; padding:6px; border-radius:8px; border:1px solid ${(simImp.todoMode || '') === k ? '#6a3d9a' : '#ddd0bb'}; background:${(simImp.todoMode || '') === k ? '#6a3d9a' : '#fbf6ee'}; color:${(simImp.todoMode || '') === k ? '#fff' : '#6b4a2a'};">${l}</button>`).join('')}</div>
                         ${simImp.todoMode === 'seed' ? simSeedTodoHtml() : simTodoTopHtml(todo)}
                         <details ${simImp.allOpen ? 'open' : ''} ontoggle="simImp.allOpen = this.open" style="margin-top:10px;"><summary class="si-title" style="cursor:pointer;">其他狀態（常見的缺 ${todo.rows.filter(r => r.common && !r.ok && !simTodoPath(todo).includes(r)).length} 個）</summary>
                         <div class="si-tip" style="margin:2px 0 4px;">不在上面順序裡的狀態。禁打和骨架都算不能打。</div>

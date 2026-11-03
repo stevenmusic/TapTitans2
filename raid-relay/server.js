@@ -637,7 +637,8 @@ async function getRecentAttacksLight(limit) {
     player: a.player,
     parts: a.parts,
     dmg: a.totalDamage,
-    dedupKey: attackDedupKey(a)
+    dedupKey: attackDedupKey(a),
+    cards: a.cards || []   // 帶卡片：網頁的「最近攻擊」不用等完整攻擊紀錄才補上卡片
   }));
 }
 

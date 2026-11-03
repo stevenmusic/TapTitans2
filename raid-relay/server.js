@@ -1914,8 +1914,9 @@ let deckScenarios = [];
 function deckScenarioKey(s) {
   const c = s.counts || {};
   const cu = Number(s.cursed) > 0 ? s.cursed : '';
+  const cb = Number(s.cursedBanned) > 0 ? s.cursedBanned : '';   // 禁打部位裡的詛咒甲（詛咒甲數量含這些）
   return [s.buff, cu ? (s.curse || '') : '', cu, c.armor, c.body, 0, (c.skeleton || 0) + (c.banned || 0),
-    (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|');
+    (s.bannedParts || []).slice().sort().join('+'), (s.cursedAt || []).slice().sort().join('+'), s.only || ''].join('|') + (cb ? `|cb${cb}` : '');
 }
 async function loadDeckScenariosFromDb() {
   const result = await db.execute('SELECT data FROM deck_scenarios ORDER BY sort, updated_at');
@@ -1976,12 +1977,15 @@ function cleanDeckScenario(s) {
   if (!s || typeof s !== 'object' || typeof s.buff !== 'string' || !s.buff) return null;
   const c = s.counts;
   if (!c || !['armor', 'body', 'skeleton', 'banned'].every(k => n(c[k])) || c.armor + c.body + c.skeleton + c.banned !== 8) return null;
-  if (s.cursed !== undefined && !(n(s.cursed) && s.cursed <= c.armor)) return null;
+  // 詛咒甲數量含禁打部位裡的詛咒甲（cursedBanned）：能打的詛咒甲 ≤ 能打的盔甲、禁打的詛咒甲 ≤ 不能打的部位
+  const cb = s.cursedBanned === undefined ? 0 : s.cursedBanned;
+  if (!n(cb)) return null;
+  if (s.cursed !== undefined && !(n(s.cursed) && cb <= s.cursed && s.cursed - cb <= c.armor && cb <= c.skeleton + c.banned)) return null;
   if (!Array.isArray(s.decks) || s.decks.length < 1 || s.decks.length > 6) return null;
   if (!s.decks.every(d => d && Array.isArray(d.cards) && d.cards.length === 3 && d.cards.every(x => typeof x === 'string' && x.length <= 40) && typeof d.role === 'string')) return null;
   return {
     ...(typeof s.note === 'string' && s.note ? { note: s.note.slice(0, 300) } : {}), buff: s.buff,
-    ...(s.cursed !== undefined ? { cursed: s.cursed } : {}), ...(s.curse ? { curse: String(s.curse) } : {}),
+    ...(s.cursed !== undefined ? { cursed: s.cursed } : {}), ...(cb > 0 ? { cursedBanned: cb } : {}), ...(s.curse ? { curse: String(s.curse) } : {}),
     counts: { armor: c.armor, body: c.body, skeleton: 0, banned: c.skeleton + c.banned },   // 骨架併進不能打（禁打）
     ...(Array.isArray(s.bannedParts) ? { bannedParts: s.bannedParts.filter(x => x === 'Head' || x === 'ChestUpper') } : {}),
     ...(s.needTorso ? { needTorso: true } : {}),

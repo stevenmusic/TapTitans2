@@ -10985,13 +10985,14 @@
                     <div style="font-size:20px; font-weight:800;">推薦牌組　${sv.title ? escapeHtml(sv.bossName) : ''}${sv.title && sv.ordinal ? ` ${sv.ordinal}/${apiBossTotal}` : ''}</div>
                     <div style="font-size:11px; color:#8a7a6a;">${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}</div>
                 </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 10px;">
-                    ${sv.rows.map(r => `
-                        <div style="padding:6px; border-radius:10px; background:#fbf2e2; border:1px solid #ead9b8;">
-                            <div style="display:flex; gap:3px; justify-content:center;">${r.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
-                            <div style="text-align:center; margin-top:6px; font-size:15px; font-weight:800; min-height:22px;">${byPartRecoTagHtml(r)}</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${sv.rows.map((r, i) => `
+                        <div style="display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:10px; background:#fbf2e2; border:1px solid #ead9b8;">
+                            <div style="flex:0 0 26px; height:26px; border-radius:50%; background:#8b263e; color:#fff; font-size:15px; font-weight:800; display:flex; align-items:center; justify-content:center;">${i + 1}</div>
+                            <div style="display:flex; gap:3px;">${r.cards.map(n => byPartCardHtml(n, 56)).join('')}</div>
+                            <div style="flex:1; text-align:center; font-size:15px; font-weight:800;">${byPartRecoTagHtml(r)}</div>
                         </div>`).join('')}
-                </div>`;
+                </div>`;   // 六組由上到下 1～6 直排，看得出排列順序
             document.body.appendChild(node);
             html2canvas(node, { useCORS: true, scale: 2, backgroundColor: '#fdf6e8' }).then(canvas => {
                 node.remove();

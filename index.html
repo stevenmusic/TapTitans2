@@ -11996,22 +11996,25 @@
             const X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
             m.innerHTML = `<div class="bosshp-modal-box">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">玩家卡片等級</div><button class="ios-x" onclick="document.getElementById('cardlv-modal').style.display='none'" aria-label="關閉">${X}</button></div>
-                <input id="cardlv-q" class="player-name-input" placeholder="輸入玩家名稱（打一個字就會列出）" autocomplete="off" oninput="cardLevelsSuggest(this.value)">
+                <select id="cardlv-sel" onchange="if (this.value) cardLevelsShow(this.value)" style="width:100%; font:inherit; font-size:14px; font-weight:700; padding:9px 10px; border:1px solid #e2d7c5; border-radius:8px; background:#faf8f5; color:#4a3728; margin-bottom:6px;"><option value="">選擇玩家</option></select>
+                <input id="cardlv-q" class="player-name-input" placeholder="或輸入名稱搜尋（打一個字就會列出）" autocomplete="off" oninput="cardLevelsSuggest(this.value)">
                 <div id="cardlv-sug" style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;"></div>
                 <div id="cardlv-name" style="font-size:14px; font-weight:800; color:#4a3728; margin:8px 0 4px;"></div>
                 <div id="cardlv-body"></div>
             </div>`;
             m.style.display = 'block';
             await loadAllCardLevels();
-            cardLevelsSuggest('');
+            const sel = document.getElementById('cardlv-sel');
+            if (sel) sel.innerHTML = '<option value="">選擇玩家</option>' + Object.keys(allCardLevels || {}).sort((a, b) => a.localeCompare(b, 'zh-Hant')).map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
         }
         function cardLevelsSuggest(q) {
             const box = document.getElementById('cardlv-sug');
             if (!box) return;
             const lq = String(q || '').trim().toLowerCase();
             const names = Object.keys(allCardLevels || {}).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-            const hit = lq ? names.filter(n => n.toLowerCase().includes(lq)) : names;
-            box.innerHTML = hit.length ? hit.slice(0, lq ? 30 : 80).map(n => `<button class="tt-btn2" data-n="${escapeHtml(n)}" onclick="cardLevelsShow(this.dataset.n)" style="font-size:12.5px; padding:4px 10px; border-radius:7px;">${escapeHtml(n)}</button>`).join('')
+            if (!lq) { box.innerHTML = ''; return; }   // 沒打字就不列（用上面的下拉選單選）
+            const hit = names.filter(n => n.toLowerCase().includes(lq));
+            box.innerHTML = hit.length ? hit.slice(0, 30).map(n => `<button class="tt-btn2" data-n="${escapeHtml(n)}" onclick="cardLevelsShow(this.dataset.n)" style="font-size:12.5px; padding:4px 10px; border-radius:7px;">${escapeHtml(n)}</button>`).join('')
                 : '<span style="font-size:12px; color:#c0392b;">找不到這個名字</span>';
         }
         function cardLevelsShow(name) {
@@ -12019,7 +12022,8 @@
             document.getElementById('cardlv-name').textContent = name;
             document.getElementById('cardlv-body').innerHTML = cardLevelsHtml(lv);
             document.getElementById('cardlv-sug').innerHTML = '';
-            const q = document.getElementById('cardlv-q'); if (q) { q.value = name; q.blur(); }
+            const q = document.getElementById('cardlv-q'); if (q) { q.value = ''; q.blur(); }
+            const sel = document.getElementById('cardlv-sel'); if (sel) sel.value = name;
         }
         function toggleRaidLogPlayerGroup(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);

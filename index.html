@@ -12769,7 +12769,7 @@
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">如果要幾輪打完（每輪目標＝整場總傷害 ÷ 輪數）</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
-                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">刀數</td><td style="${th}">結果</td></tr>
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">次數</td><td style="${th}">結果</td></tr>
                     ${rows}
                     <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(total)}</td><td style="${td}">${formatNum(total)}</td><td style="${td}">${attacks.length}</td><td style="${td}">${diffHtml(progress)}</td></tr>
                 </table>
@@ -12822,11 +12822,12 @@
             const th = 'padding:4px 3px; text-align:right;';
             // 每一輪已造成的傷害：這場的攻擊紀錄依輪次（cycle）加總每一刀的總傷害；最新一輪是進行中
             const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
-            const byCycle = new Map();
+            const byCycle = new Map(), cntCycle = new Map();   // 每一輪的傷害、打王次數（刀數）
             (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
                 if (rsa && a.raidStartedAt && a.raidStartedAt !== rsa) return;
                 if (typeof a.cycle !== 'number') return;
                 byCycle.set(a.cycle, (byCycle.get(a.cycle) || 0) + (Number(a.totalDamage) || 0));
+                cntCycle.set(a.cycle, (cntCycle.get(a.cycle) || 0) + 1);
             });
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
@@ -12847,9 +12848,9 @@
                 if (got != null) dealtSum += got;
                 let res = '';
                 if (got != null && c <= n) { progress += got - per; res = diffHtml(got - per, live); }
-                return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a;">進行中</small>' : ''}</td>
+                return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left; white-space:normal;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a; white-space:nowrap;">進行中</small>' : ''}</td>
                     <td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>
-                    <td style="${td}">${res}</td></tr>`;
+                    <td style="${td}">${cntCycle.get(c) || '—'}</td><td style="${td}">${res}</td></tr>`;
             }).join('');
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場應打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumFull)}</div></div>
@@ -12858,9 +12859,9 @@
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">預計幾輪打完</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
-                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">結果</td></tr>
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">次數</td><td style="${th}">結果</td></tr>
                     ${roundRows}
-                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(dealtSum)}</td><td style="${td}">${cycles.length ? diffHtml(progress, false) : ''}</td></tr>
+                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(sumFull)}</td><td style="${td}">${formatNum(dealtSum)}</td><td style="${td}">${[...cntCycle.values()].reduce((x, y) => x + y, 0) || '—'}</td><td style="${td}">${cycles.length ? diffHtml(progress, false) : ''}</td></tr>
                 </table>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">

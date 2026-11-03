@@ -6817,6 +6817,12 @@
             if (raidSessionFilter && raidSessionFilter.startedAt === latestSession.startedAt) {
                 raidSessionFilter = { ...latestSession, attacks: serverAttackLogCache };
             }
+            // 剩餘次數面板開著：有新攻擊也一起更新（合併 1.5 秒內的多筆，只重畫一次）
+            const missedPanel = document.getElementById('panel-missed');
+            if (missedPanel && missedPanel.style.display === 'block') {
+                clearTimeout(appendLiveAttackToRankingCache.missedTimer);
+                appendLiveAttackToRankingCache.missedTimer = setTimeout(() => renderMissedAttackList(true), 1500);
+            }
             // 面板沒開著就不用重畫，純粹更新資料就好，下次打開面板自然就是最新的
             const panel = document.getElementById('panel-attacklog');
             if (panel && panel.style.display === 'block') {
@@ -11422,10 +11428,10 @@
             `;
         }
 
-        async function renderMissedAttackList() {
+        async function renderMissedAttackList(silent) {
             const box = document.getElementById('missed-attack-result');
             box.style.display = 'flex';
-            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;
+            if (!silent || !box.innerHTML) box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t('cardUsageLoading')}</div>`;   // 有新攻擊的即時更新不閃「載入中」
 
             // 先跟中繼伺服器要最新攻擊紀錄再分場次，順便確保「全部成員名單」有抓過
             await Promise.all([ensureServerRaidDataFresh(), ensureAllPlayersLoaded()]);

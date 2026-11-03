@@ -2674,8 +2674,9 @@
             min-height: 0;
             flex-shrink: 0;
             box-sizing: border-box;
-            animation: raidRecentFadeIn 0.3s ease;
+
         }
+        .raid-recent-item.is-new { animation: raidRecentFadeIn 0.3s ease; }
         @keyframes raidRecentFadeIn {
             from { opacity: 0; transform: translateY(-4px); }
             to { opacity: 1; transform: translateY(0); }
@@ -13802,7 +13803,7 @@
                 serverAttackLogCache.forEach(x => { if (x.cards && x.cards.length) byKey.set(`${x.attackDatetime || x.ts}_${x.player}`, x.cards); });
                 raidRecentAttacks.forEach(a => { if (!(a.cards && a.cards.length) && a.dedupKey && byKey.has(a.dedupKey)) a.cards = byKey.get(a.dedupKey); });
             }
-            listEl.innerHTML = raidRecentAttacks.map(a => {
+            const html = raidRecentAttacks.map(a => {
                 const allParts = Array.isArray(a.parts) ? a.parts : [];
                 // 傷害低於這一刀 5% 的部位不列出（濺射的零星傷害）
                 const dmgOf = p => Number(p.damage) || 0;
@@ -13832,7 +13833,7 @@
                 const pad = n => String(n).padStart(2, '0');
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 return `
-                    <div class="raid-recent-item">
+                    <div class="raid-recent-item${a.dedupKey && renderRaidRecentAttacks.seen && !renderRaidRecentAttacks.seen.has(a.dedupKey) ? ' is-new' : ''}">
                         <span class="raid-recent-player"><span class="raid-recent-time">${timeStr}</span><span class="raid-recent-name">${escapeHtml(a.player)}</span></span>
                         <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
@@ -13841,6 +13842,11 @@
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');
+            // 內容沒變就不重畫（以前每次定期同步都整個重畫，淡入動畫一直重播，看起來一直閃）；只有新的那一刀才淡入
+            renderRaidRecentAttacks.seen = new Set(raidRecentAttacks.map(a => a.dedupKey).filter(Boolean));
+            if (html === renderRaidRecentAttacks.last && listEl.innerHTML) return;
+            renderRaidRecentAttacks.last = html;
+            listEl.innerHTML = html;
         }
 
         function simulateRaidAttack() {

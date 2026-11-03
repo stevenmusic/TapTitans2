@@ -2126,6 +2126,22 @@ app.get('/current-boss-status', (req, res) => {
 // 輕量版「最近攻擊」：只回傳最後幾筆、且每筆只有畫面真正用得到的欄位，
 // 不含卡片/傷害明細——見 getRecentAttacksLight 的說明。limit 上限 50，避免被濫用
 // 帶一個超大數字又變回整包傳輸。
+// 每位玩家每張卡「所有攻擊紀錄裡最近一次出現」的等級（個人推薦牌組用）；只讀記憶體快取，算好的結果留 10 分鐘
+let cardLevelsCache = null;
+app.get('/card-levels', (req, res) => {
+  if (!cardLevelsCache || Date.now() - cardLevelsCache.at > 10 * 60 * 1000) {
+    const players = {};
+    for (const a of cacheAllAttacksSorted()) {   // 由舊到新，後面的覆蓋前面＝最新的等級
+      if (!a.player) continue;
+      const m = players[a.player] || (players[a.player] = {});
+      (a.cards || []).forEach(c => { if (c && c.name && Number(c.level) > 0) m[c.name] = Number(c.level); });
+    }
+    cardLevelsCache = { at: Date.now(), body: JSON.stringify({ players }) };
+  }
+  res.set('Content-Type', 'application/json');
+  res.send(cardLevelsCache.body);
+});
+
 app.get('/recent-attacks', async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 50);
   res.json({ attacks: await getRecentAttacksLight(limit) });

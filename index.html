@@ -11801,11 +11801,16 @@
                     const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
                     const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
                     const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+                    // 這位玩家的卡片等級（所有攻擊紀錄裡最近一次的）：跟公會中位數比，強的卡組合往前排
+                    const [allLv] = await Promise.all([loadAllCardLevels(), cardCsvLoad()]);
+                    const pLv = (allLv && allLv[r.player]) || {};
+                    const medLv = guildCardMedians();
+                    const deckF = (cards) => Math.cbrt(cards.reduce((x, c) => x * myCardFactor(c, medLv, pLv), 1));
                     const recoWith = (exclude, n) => {
                         const allow = new Set([...info.owned].filter(c => !exclude.has(c) && !BY_PART_RECO_EXCLUDE.has(c)));
                         byPartRecoAllowCards = allow;
                         try {
-                            return byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(c => allow.has(c))) })
+                            return byPartRecoCompute({ ...data, decks: data.decks.filter(d => d.cards.every(c => allow.has(c))).map(d => ({ ...d, attacks: Math.round((d.attacks || 0) * Math.pow(deckF(d.cards), 2)) })) })
                                 .filter(r => !r.synthetic && realSigs.has(sigOf(r.rawCards || r.cards)) && (r.rawCards || r.cards).every(c => allow.has(c))).slice(0, n);
                         } finally { byPartRecoAllowCards = null; }
                     };
@@ -12535,8 +12540,31 @@
             } catch (e) {}
             return cardCsvA;
         }
-        // 公會每張卡的中位數等級（最新一場的攻擊紀錄）
+        // 每位玩家每張卡在「所有攻擊紀錄」裡最近一次的等級（伺服器 /card-levels，10 分鐘內不重抓）
+        let allCardLevels = null, allCardLevelsAt = 0;
+        async function loadAllCardLevels() {
+            if (allCardLevels && Date.now() - allCardLevelsAt < 10 * 60 * 1000) return allCardLevels;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const r = await fetch(`${relayUrl}/card-levels`);
+                if (r.ok) { const j = await r.json(); if (j && j.players) { allCardLevels = j.players; allCardLevelsAt = Date.now(); } }
+            } catch (e) {}
+            if (!allCardLevels) {   // 伺服器還沒有這個端點：用這一場的攻擊紀錄
+                const p = {};
+                (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).slice().sort((a, b) => a.ts - b.ts).forEach(a => (a.cards || []).forEach(c => { if (c && c.name && c.level > 0) (p[a.player] = p[a.player] || {})[c.name] = c.level; }));
+                return p;
+            }
+            return allCardLevels;
+        }
+        // 公會每張卡的中位數等級（所有人最近的等級；還沒載入就用最新一場的攻擊紀錄）
         function guildCardMedians() {
+            if (allCardLevels) {
+                const by = {};
+                Object.values(allCardLevels).forEach(m => Object.entries(m).forEach(([k, v]) => (by[k] = by[k] || []).push(v)));
+                const med = {};
+                Object.entries(by).forEach(([k, v]) => { v.sort((x, y) => x - y); med[k] = v[Math.floor(v.length / 2)]; });
+                return med;
+            }
             const lv = {};
             (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => (a.cards || []).forEach(c => { if (c && c.name && c.level > 0) (lv[c.name] = lv[c.name] || new Map()).set(a.player, c.level); }));
             const med = {};
@@ -12544,9 +12572,9 @@
             return med;
         }
         // 你這張卡比公會中位數強多少（倍數）：傷害卡用主要數值的比例，支援卡用 (1＋數值) 的比例
-        function myCardFactor(id, med) {
-            const my = Number(myCards.levels[id]) || 0;
-            if (!my) return 0;
+        function myCardFactor(id, med, levels) {
+            const my = Number((levels || myCards.levels)[id]) || 0;
+            if (!my) return levels ? 1 : 0;   // 別人的等級（攻擊紀錄）：沒出現過的卡當作跟公會一樣；自己的：0＝沒有這張卡
             const ref = med[id] || 50;
             const c = cardCsvA && cardCsvA[id];
             let f;
@@ -12573,14 +12601,14 @@
             } catch (e) { if (msg) { msg.textContent = '讀取失敗：請貼上遊戲「匯出」的完整資料（JSON，裡面要有 raidCards）。'; msg.style.color = '#c0392b'; } }
         }
         // 用攻擊紀錄抓：這個名字每張卡最近一次出現的等級
-        function myDeckFromLog() {
+        async function myDeckFromLog() {
             const name = (document.getElementById('mydeck-player').value || '').trim();
             if (!name) return;
-            const lv = {};
-            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).slice().sort((a, b) => a.ts - b.ts).forEach(a => { if (a.player === name) (a.cards || []).forEach(c => { if (c && c.name && c.level > 0) lv[c.name] = c.level; }); });
-            if (!Object.keys(lv).length) { const msg = document.getElementById('mydeck-msg'); if (msg) { msg.textContent = '這一場的攻擊紀錄找不到這個名字。'; msg.style.color = '#c0392b'; } return; }
+            const all = await loadAllCardLevels();
+            const lv = { ...((all && all[name]) || {}) };
+            if (!Object.keys(lv).length) { const msg = document.getElementById('mydeck-msg'); if (msg) { msg.textContent = '攻擊紀錄找不到這個名字。'; msg.style.color = '#c0392b'; } return; }
             myCards.levels = { ...myCards.levels, ...lv }; myCards.from = `攻擊紀錄（${name}）`; myCardsSave();
-            renderMyDeck(`✔ 從攻擊紀錄抓到 ${Object.keys(lv).length} 張卡的等級，沒用過的卡維持原本的數字`);
+            renderMyDeck(`✔ 從攻擊紀錄抓到 ${Object.keys(lv).length} 張卡的等級`);
         }
         function myDeckSetLevel(id, v) { const n = Math.max(0, Math.min(150, Math.round(Number(v) || 0))); if (n) myCards.levels[id] = n; else delete myCards.levels[id]; myCardsSave(); myDeckRefreshReco(); }
         function openMyDeck() {
@@ -12593,13 +12621,13 @@
             }
             m.style.display = 'block';
             renderMyDeck();
-            cardCsvLoad().then(() => myDeckRefreshReco());
+            Promise.all([cardCsvLoad(), loadAllCardLevels()]).then(() => renderMyDeck());
         }
         function renderMyDeck(note) {
             const m = document.getElementById('mydeck-modal');
             if (!m) return;
             const X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-            const names = [...new Set((Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).map(a => a.player))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+            const names = [...new Set([...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).map(a => a.player), ...Object.keys(allCardLevels || {})])].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
             const n = Object.keys(myCards.levels).length;
             const cats = BY_PART_POOL.map(([label, rgb, ids]) => `<div style="margin:6px 0 2px; font-size:12px; font-weight:800; color:rgb(${rgb});">${label}</div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:4px;">${ids.map(id => `<label style="display:flex; align-items:center; gap:4px; background:#fbf2e2; border-radius:7px; padding:3px;">
@@ -12608,14 +12636,13 @@
                     <input type="number" min="0" max="150" value="${myCards.levels[id] || ''}" placeholder="—" onchange="myDeckSetLevel('${id}', this.value)" style="width:38px; font:inherit; font-size:12px; padding:2px; border:1px solid #ddd0bb; border-radius:5px; text-align:center;"></label>`).join('')}</div>`).join('');
             m.innerHTML = `<div class="bosshp-modal-box">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">🃏 個人推薦牌組</div><button class="ios-x" onclick="document.getElementById('mydeck-modal').style.display='none'" aria-label="關閉">${X}</button></div>
-                <div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">照現在王的部位狀態，用你自己的卡片等級排 6 組。卡片等級：${n ? `${n} 張（來源：${escapeHtml(myCards.from || '手動')}）` : '還沒有，先用下面其中一種方式帶入'}</div>
                 <div id="mydeck-msg" style="font-size:12px; font-weight:700; color:#2e7d32; margin-bottom:4px;">${note ? escapeHtml(note) : ''}</div>
                 <div id="mydeck-reco" style="margin-bottom:10px;">${n ? ttSkelGrid(6) : ''}</div>
                 <details ${n ? '' : 'open'} style="margin-bottom:8px;"><summary style="cursor:pointer; font-size:13px; font-weight:800; color:#5a3a2a;">帶入卡片等級</summary>
                     <div style="font-size:12px; color:#6b5a48; margin:6px 0 3px;">① 貼上遊戲匯出的資料（JSON）</div>
                     <textarea id="mydeck-json" placeholder='{"playerStats":…,"raidCards":{…}}' style="width:100%; height:70px; box-sizing:border-box; font-size:11px; border:1px solid #ddd0bb; border-radius:8px; padding:6px;"></textarea>
                     <button class="tt-btn1" onclick="myDeckImport()" style="width:100%; padding:8px; margin-top:4px; font-size:13px;">讀取卡片等級</button>
-                    <div style="font-size:12px; color:#6b5a48; margin:10px 0 3px;">② 用這一場的攻擊紀錄抓（只抓得到出過的卡）</div>
+                    <div style="font-size:12px; color:#6b5a48; margin:10px 0 3px;">② 用攻擊紀錄抓</div>
                     <div style="display:flex; gap:6px;"><select id="mydeck-player" style="flex:1; min-width:0; font:inherit; font-size:13px; padding:6px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee;"><option value="">選自己的名字</option>${names.map(x => `<option>${escapeHtml(x)}</option>`).join('')}</select><button class="tt-btn2" onclick="myDeckFromLog()" style="padding:6px 12px; font-size:13px;">抓等級</button></div>
                 </details>
                 <details><summary style="cursor:pointer; font-size:13px; font-weight:800; color:#5a3a2a;">每張卡的等級（可以直接改，0＝沒有這張卡）</summary>${cats}</details>
@@ -12630,6 +12657,7 @@
             const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));
             if (!data) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">統計還沒載入好，請稍後再打開一次。</div>'; return; }
+            await loadAllCardLevels();
             const med = guildCardMedians();
             const owned = new Set(myAllCardIds().filter(id => myCards.levels[id] > 0));
             const deckF = (cards) => Math.cbrt(cards.reduce((x, c) => x * (myCardFactor(c, med) || 0.4), 1));
@@ -12643,7 +12671,7 @@
             byPartRecoBuffNow = buff;
             const pct = (f) => { const v = Math.round((f - 1) * 100); return `<span style="color:${v >= 0 ? '#2e7d32' : '#c0392b'}; font-weight:800;">${v >= 0 ? '+' : ''}${v}%</span>`; };
             box.innerHTML = byPartRecoGridHtml(rows, 'my') + `<div style="font-size:11.5px; color:#6b5a48; margin-top:6px; line-height:1.6;">你的卡片比公會平均等級：${rows.map((r, i) => `第 ${i + 1} 組 ${pct(deckF(r.rawCards || r.cards))}`).join('　')}</div>`
-                + (cardCsvA ? '' : '<div style="font-size:11px; color:#a0522d;">卡片數值表（CSV）還沒載入，先用等級比例粗估。</div>');
+;
         }
         async function openTicketCalc() {
             let m = document.getElementById('ticket-calc-modal');

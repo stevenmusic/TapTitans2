@@ -14336,9 +14336,11 @@
                         if (isBanned) {
                             // 禁打是幹部手動標記的最高優先級——不需要盔甲/肉體/詛咒的色塊跟邊框，
                             // 保留原本專屬的紅框＋✗，血量數字直接標紅提醒不要打這個部位
+                            // 禁打的部位如果是詛咒甲（遊戲回傳的 cursed、盔甲還在）：拆不掉、詛咒一直都在，標上紫色「詛咒甲」並用淡紫底
+                            if (isCursedArmor) cell.style.background = 'linear-gradient(135deg, #fff5f5 0%, #f3e9fb 100%)';
                             cell.innerHTML = `
                                 <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                                <div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}</div>
+                                <div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}${isCursedArmor ? ' <span style="display:inline-block; font-size:10.5px; font-weight:800; color:#fff; background:#5b2a86; border-radius:5px; padding:1px 5px; vertical-align:2px;">詛咒甲</span>' : ''}</div>
                             `;
                         } else {
                             cell.style.background = `linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%)`;

@@ -2142,6 +2142,22 @@ app.get('/card-levels', (req, res) => {
   res.send(cardLevelsCache.body);
 });
 
+// 某位玩家每張卡的等級變化（所有攻擊紀錄，只留等級有變的那一刀）：[[時間, 等級], ...]
+app.get('/card-level-history', (req, res) => {
+  const name = String(req.query.player || '');
+  const cards = {};
+  if (name) for (const a of cacheAllAttacksSorted()) {
+    if (a.player !== name) continue;
+    (a.cards || []).forEach(c => {
+      const lv = Number(c && c.level);
+      if (!c || !c.name || !(lv > 0)) return;
+      const h = cards[c.name] || (cards[c.name] = []);
+      if (!h.length || h[h.length - 1][1] !== lv) h.push([a.ts, lv]);
+    });
+  }
+  res.json({ player: name, cards });
+});
+
 app.get('/recent-attacks', async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 50);
   res.json({ attacks: await getRecentAttacksLight(limit) });

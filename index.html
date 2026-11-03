@@ -13828,7 +13828,11 @@
                 const attackableNow = raidState && raidState.parts ? Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k)
                     && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)) : [];
                 const hitAll8 = new Set(allParts.map(p => p.part)).size >= RAID_PARTS.length;   // 8 個部位都打到（不管傷害多少）
-                const partLabel = hitAll8 || (attackableNow.length > 1 && attackableNow.every(k => hitSet.has(k))) ? (currentLang === 'en' ? 'All' : '全部位') : raidPartShortCombined(parts);
+                // 涵蓋判斷用「有打到」的所有部位（不套 5% 門檻：濺射到的也算打到）；頭肚肩手腳五類都有也直接寫全部位（太長）
+                const hitAny = new Set(allParts.map(p => p.part));
+                const shortLabel = raidPartShortCombined(parts);
+                const fiveGroups = ['頭', '肚', '肩', '手', '腳'].every(ch => shortLabel.includes(ch));
+                const partLabel = hitAll8 || fiveGroups || (attackableNow.length > 1 && attackableNow.every(k => hitSet.has(k) || hitAny.has(k))) ? (currentLang === 'en' ? 'All' : '全部位') : shortLabel;
                 const d = new Date(a.ts);
                 const pad = n => String(n).padStart(2, '0');
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;

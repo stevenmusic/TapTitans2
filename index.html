@@ -10592,6 +10592,12 @@
                 if (cu.length) { r.targets = [asTarget(hpLeast(cu))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
                 return;
             }
+            // 皎月光束＋振奮士氣＋星體迴聲：只打 1 個部位——打得到的部位裡血量最多的那個
+            if (sameDeck(r, ['MoonBeam', 'ImpactAttack', 'AstralEcho'])) {
+                const t = hpMost(fit);
+                if (t) { r.targets = [asTarget(t)]; r.allParts = false; r.focus = 0; r.hideParts = false; byPartUnCount(r); }
+                return;
+            }
             const burstN = r.rawCards.filter(n => CARD_CATEGORY[n] === 'burst').length;
             if (burstN >= 2 && r.rawCards.includes('BattleDrums')) {
                 const t = singlePick(fit);

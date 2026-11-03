@@ -2153,7 +2153,7 @@ app.get('/card-levels', (req, res) => {
         e[id] = last[1];
         const lastTs = last[0];
         let mn = Infinity; for (let i = h.length - 1; i >= 0 && h[i][0] >= lastTs - WEEK; i--) mn = Math.min(mn, h[i][1]);
-        b[id] = mn;
+        b[id] = last[1] - mn <= 2 ? last[1] : mn;   // 差 1～2 級是真的升級（加成都是 +3 以上），不要延遲 8 天才算
       });
     });
     cardLevelsCache = { at: Date.now(), body: JSON.stringify({ players, effective }) };

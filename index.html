@@ -10061,6 +10061,7 @@
                 }
                 else if (g.role === 'head') {
                     tg = attackable.filter(k => k === 'Head');
+                    if (!tg.length && !layerCards.length) return;   // 跟 Focus Torso 一樣：頭不能打（禁打／骨架）這組不放
                     // Focus Head 跟 Focus Torso 同一套：組裡有只能打盔甲／只能打肉體的卡時，頭要是那一層而且三張卡都打得到；
                     // 不是就改打三張卡都打得到的那一層部位：有詛咒甲打最薄的詛咒甲，沒有就打最厚的（不是單純換成肚子）；都沒有才不放
                     if (layerCards.length) {
@@ -10407,13 +10408,20 @@
             // 四肢牌組（Focus One Limb，或只標 1 個部位的 Focus Limbs）一樣：打得到的詛咒甲優先，就算不是四肢
             if (r.game && (r.role === 'torso' || r.role === 'head' || r.role === 'limb1' || (r.role === 'limbs' && !r.allParts && (r.targets || []).length === 1))) {
                 const cu = fit.filter(k => info[k].cursed);
-                if (cu.length) { r.targets = [asTarget(hpLeast(cu))]; r.allParts = false; r.focus = 0; r.hideParts = false; }
-                return;
+                if (cu.length) { r.targets = [asTarget(hpLeast(cu))]; r.allParts = false; r.focus = 0; r.hideParts = false; return; }
+                if (r.role !== 'limb1') return;   // Focus One Limb 沒有詛咒甲：往下挑單一四肢
             }
             // 皎月光束＋振奮士氣＋星體迴聲：只打 1 個部位——打得到的部位裡血量最多的那個
             if (sameDeck(r, ['MoonBeam', 'ImpactAttack', 'AstralEcho'])) {
                 const t = hpMost(fit);
                 if (t) { r.targets = [asTarget(t)]; r.allParts = false; r.focus = 0; r.hideParts = false; byPartUnCount(r); }
+                return;
+            }
+            // Focus One Limb：只打 1 個四肢（詛咒甲已在上面處理）：盔甲最厚 ＞ 肉體最厚
+            if (r.game && r.role === 'limb1' && !r.allParts) {
+                const limbs = fit.filter(k => /Arm|Hand|Leg/.test(k));
+                const t = singlePick(limbs.length ? limbs : fit);
+                if (t) { r.targets = [asTarget(t)]; r.focus = 0; r.hideParts = false; byPartUnCount(r); }
                 return;
             }
             const burstN = r.rawCards.filter(n => CARD_CATEGORY[n] === 'burst').length;
@@ -11894,15 +11902,16 @@
                 // 攻擊紀錄的等級含「加成欄位」的加成（每週換卡會上下跳），用「之後的最低等級」去掉暫時加成，只留真的升級
                 // 真正的卡片等級只升不降，加成期間會被拉高：每個時間點取「之後出現過的最低等級」，
                 // 最後一段再壓到「最近 8 天最低等級」（加成一週一換），跟伺服器 /card-levels 的算法一致
-                const base = (h) => {
+                const srvBase = (allCardLevels && allCardLevels[name]) || {};
+                const base = (h, id) => {
                     if (!h.length) return [];
-                    const lastTs = h[h.length - 1][0];
-                    let cur = Infinity; for (let i = h.length - 1; i >= 0 && h[i][0] >= lastTs - 8 * 86400000; i--) cur = Math.min(cur, h[i][1]);
+                    // 最後的等級跟上面卡片格一致（伺服器 /card-levels 算的去加成等級）
+                    let cur = srvBase[id] || h[h.length - 1][1];
                     const out = []; let mn = cur;
                     for (let i = h.length - 1; i >= 0; i--) { mn = Math.min(mn, h[i][1]); out.unshift([h[i][0], mn]); }
                     return out.filter((p, i) => i === 0 || p[1] !== out[i - 1][1]);
                 };
-                const ups = Object.entries(j.cards || {}).map(([id, raw]) => ({ id, h: base(raw) })).filter(u => u.h.length > 1).map(u => ({ ...u, last: u.h[u.h.length - 1][0] })).sort((a, b) => b.last - a.last);
+                const ups = Object.entries(j.cards || {}).map(([id, raw]) => ({ id, h: base(raw, id) })).filter(u => u.h.length > 1).map(u => ({ ...u, last: u.h[u.h.length - 1][0] })).sort((a, b) => b.last - a.last);
                 const since = Date.now() - 30 * 86400000;
                 const recent = ups.reduce((x, u) => x + u.h.reduce((y, p, i) => y + (i > 0 && p[0] >= since ? Math.max(0, p[1] - u.h[i - 1][1]) : 0), 0), 0);
                 el.innerHTML = ups.length ? `<div style="color:#4a3728; font-weight:700; margin-bottom:4px;">近 30 天共升了 ${recent} 級</div>` + ups.map(u => `<div style="display:flex; align-items:center; gap:6px; padding:2px 0; color:#4a3728;">${icon(u.id, 26)}<span>${u.h.map(p => `<b>${p[1]}</b><small style="color:#a89a88;">(${fmt(p[0])})</small>`).join(' → ')}</span></div>`).join('')
@@ -12820,6 +12829,7 @@
         }
         // 場次選單：最新一場（進行中）或已完成的場次；已完成的場次用攻擊紀錄算每輪傷害
         let bossHpSession = null;   // null＝最新一場
+        let bossHpPastFailed = null;   // 讀攻擊紀錄失敗的場次（顯示重試，不自動一直重抓）
         function setBossHpSession(v) { bossHpSession = v || null; bossHpRounds = null; renderBossHpPanel(); }
         function renderBossHpSessionSelect() {
             const el = document.getElementById('bosshp-session');
@@ -12836,7 +12846,12 @@
             const s = (serverSessionsSummary || []).find(x => x.startedAt === bossHpSession);
             if (!s) { bossHpSession = null; return renderBossHpPanel(); }
             const attacks = sessionAttacksCache.get(s.startedAt);
-            if (!attacks) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入這一場的攻擊紀錄…</div>'; ensureSessionAttacksLoaded(s.startedAt).then(() => { if (bossHpSession === s.startedAt) renderBossHpPanel(); }); return; }
+            if (!attacks) {
+                if (bossHpPastFailed === s.startedAt) { box.innerHTML = `<div style="font-size:12px; color:#c0392b;">讀不到這一場的攻擊紀錄（伺服器可能在重新啟動）。<button class="tt-btn2" onclick="bossHpPastFailed = null; renderBossHpPanel();" style="font-size:12px; padding:3px 10px; margin-left:6px;">重試</button></div>`; return; }
+                box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入這一場的攻擊紀錄…</div>';
+                ensureSessionAttacksLoaded(s.startedAt).then(() => { if (!sessionAttacksCache.has(s.startedAt)) bossHpPastFailed = s.startedAt; if (bossHpSession === s.startedAt) renderBossHpPanel(); });   // 讀失敗不再一直重抓
+                return;
+            }
             const byCycle = new Map(), cntCycle = new Map(), bosses = new Map();
             let total = 0, maxOrd = 0, bossTotal = 0;
             attacks.forEach(a => {

@@ -12075,7 +12075,9 @@
                 const el = document.getElementById('cardlv-hist');
                 if (!el || document.getElementById('cardlv-name').textContent !== name) return;
                 const fmt = (ts) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
-                const ups = Object.entries(j.cards || {}).filter(([, h]) => h.length > 1).map(([id, h]) => ({ id, h, last: h[h.length - 1][0], gain: h[h.length - 1][1] - h[0][1] })).sort((a, b) => b.last - a.last);
+                // 攻擊紀錄的等級含「加成欄位」的加成（每週換卡會上下跳），用「之後的最低等級」去掉暫時加成，只留真的升級
+                const base = (h) => { const out = []; let mn = Infinity; for (let i = h.length - 1; i >= 0; i--) { mn = Math.min(mn, h[i][1]); out.unshift([h[i][0], mn]); } return out.filter((p, i) => i === 0 || p[1] !== out[i - 1][1]); };
+                const ups = Object.entries(j.cards || {}).map(([id, raw]) => ({ id, h: base(raw) })).filter(u => u.h.length > 1).map(u => ({ ...u, last: u.h[u.h.length - 1][0] })).sort((a, b) => b.last - a.last);
                 const since = Date.now() - 30 * 86400000;
                 const recent = ups.reduce((x, u) => x + u.h.reduce((y, p, i) => y + (i > 0 && p[0] >= since ? Math.max(0, p[1] - u.h[i - 1][1]) : 0), 0), 0);
                 el.innerHTML = ups.length ? `<div style="color:#4a3728; font-weight:700; margin-bottom:4px;">近 30 天共升了 ${recent} 級</div>` + ups.map(u => `<div style="display:flex; align-items:center; gap:6px; padding:2px 0; color:#4a3728;">${icon(u.id, 26)}<span>${u.h.map(p => `<b>${p[1]}</b><small style="color:#a89a88;">(${fmt(p[0])})</small>`).join(' → ')}</span></div>`).join('')

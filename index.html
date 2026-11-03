@@ -3670,6 +3670,7 @@
         <button onclick="closeAppNavMenu(); showView('raidStatus'); toggleRaidSettingsSheet(true);">⚙️ <span data-nav-label="settings"></span></button>
         <button onclick="closeAppNavMenu(); openSimImport();">🖼 匯入模擬器圖片</button>
         <button onclick="closeAppNavMenu(); openTicketCalc();">🎟 門票試算</button>
+        <button onclick="closeAppNavMenu(); openCardLevels();">🃏 玩家卡片等級</button>
         <button onclick="closeAppNavMenu(); toggleLanguage();">🌐 中文／English</button>
     </div>
 
@@ -11691,7 +11692,6 @@
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
-                        <div class="rl-levels" data-player="${escapeHtml(r.player)}" style="margin-bottom:5px;"></div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
@@ -11699,7 +11699,6 @@
                 </div>
             `;
             }).join('');
-            raidLogFillLevels();
             raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
         }
 
@@ -11964,25 +11963,55 @@
         // 每位玩家的卡片等級（所有攻擊紀錄裡最後一次出現的等級）：只放卡片圖示＋等級；
         // 比這個人自己的平均等級低 RAID_LOG_LV_LOW 級以上的卡加紅框（該升級了）
         const RAID_LOG_LV_LOW = 10;
-        async function raidLogFillLevels() {
-            const boxes = [...document.querySelectorAll('#raid-log-query-list .rl-levels')];
-            if (!boxes.length) return;
-            const all = await loadAllCardLevels();
-            boxes.forEach(box => {
-                const lv = (all && all[box.dataset.player]) || {};
-                const ids = myAllCardIds().filter(id => lv[id] > 0);
-                if (!ids.length) { box.innerHTML = ''; return; }
-                const avg = ids.reduce((x, id) => x + lv[id], 0) / ids.length;
-                const html = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:2px;">卡片等級（平均 ${avg.toFixed(0)}，紅框＝低於平均 ${RAID_LOG_LV_LOW} 級以上）</div>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(30px, 1fr)); gap:3px;">${ids.map(id => {
-                        const low = lv[id] <= avg - RAID_LOG_LV_LOW;
-                        const img = raidCardImage(id);
-                        return `<div title="${escapeHtml(raidCardLabel(id))} Lv.${lv[id]}" style="text-align:center;">
-                            ${img ? `<img src="${img}" alt="" style="width:100%; max-width:30px; aspect-ratio:1; border-radius:5px; display:block; margin:0 auto; box-sizing:border-box; ${low ? 'border:2px solid #e53935;' : ''}">` : ''}
-                            <div style="font-size:9.5px; font-weight:700; line-height:1.1; color:${low ? '#e53935' : '#6b5a4a'};">${lv[id]}</div></div>`;
-                    }).join('')}</div>`;
-                if (box.innerHTML !== html) box.innerHTML = html;
-            });
+        function cardLevelsHtml(lv) {
+            const ids = myAllCardIds().filter(id => lv[id] > 0);
+            if (!ids.length) return '<div style="font-size:12px; color:#8a7a6a;">攻擊紀錄裡找不到這位玩家的卡片。</div>';
+            const avg = ids.reduce((x, id) => x + lv[id], 0) / ids.length;
+            return `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:4px;">平均 ${avg.toFixed(0)} 級，紅框＝低於平均 ${RAID_LOG_LV_LOW} 級以上</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(38px, 1fr)); gap:4px;">${ids.map(id => {
+                    const low = lv[id] <= avg - RAID_LOG_LV_LOW;
+                    const img = raidCardImage(id);
+                    return `<div title="${escapeHtml(raidCardLabel(id))} Lv.${lv[id]}" style="text-align:center;">
+                        ${img ? `<img src="${img}" alt="" style="width:100%; max-width:38px; aspect-ratio:1; border-radius:6px; display:block; margin:0 auto; box-sizing:border-box; ${low ? 'border:2.5px solid #e53935;' : ''}">` : ''}
+                        <div style="font-size:11px; font-weight:800; line-height:1.2; color:${low ? '#e53935' : '#4a3728'};">${lv[id]}</div></div>`;
+                }).join('')}</div>`;
+        }
+        // 玩家卡片等級（選單打開）：打名字的任一個字，下面列出符合的名字，點一下顯示那個人的卡片等級
+        async function openCardLevels() {
+            let m = document.getElementById('cardlv-modal');
+            if (!m) {
+                m = document.createElement('div');
+                m.id = 'cardlv-modal'; m.className = 'bosshp-modal';
+                m.onclick = (e) => { if (e.target === m) m.style.display = 'none'; };
+                document.body.appendChild(m);
+            }
+            const X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+            m.innerHTML = `<div class="bosshp-modal-box">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;"><div style="font-size:15px; font-weight:800; color:#5a3a2a;">玩家卡片等級</div><button class="ios-x" onclick="document.getElementById('cardlv-modal').style.display='none'" aria-label="關閉">${X}</button></div>
+                <input id="cardlv-q" class="player-name-input" placeholder="輸入玩家名稱（打一個字就會列出）" autocomplete="off" oninput="cardLevelsSuggest(this.value)">
+                <div id="cardlv-sug" style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;"></div>
+                <div id="cardlv-name" style="font-size:14px; font-weight:800; color:#4a3728; margin:8px 0 4px;"></div>
+                <div id="cardlv-body"></div>
+            </div>`;
+            m.style.display = 'block';
+            await loadAllCardLevels();
+            cardLevelsSuggest('');
+        }
+        function cardLevelsSuggest(q) {
+            const box = document.getElementById('cardlv-sug');
+            if (!box) return;
+            const lq = String(q || '').trim().toLowerCase();
+            const names = Object.keys(allCardLevels || {}).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+            const hit = lq ? names.filter(n => n.toLowerCase().includes(lq)) : names;
+            box.innerHTML = hit.length ? hit.slice(0, lq ? 30 : 80).map(n => `<button class="tt-btn2" data-n="${escapeHtml(n)}" onclick="cardLevelsShow(this.dataset.n)" style="font-size:12.5px; padding:4px 10px; border-radius:7px;">${escapeHtml(n)}</button>`).join('')
+                : '<span style="font-size:12px; color:#c0392b;">找不到這個名字</span>';
+        }
+        function cardLevelsShow(name) {
+            const lv = (allCardLevels && allCardLevels[name]) || {};
+            document.getElementById('cardlv-name').textContent = name;
+            document.getElementById('cardlv-body').innerHTML = cardLevelsHtml(lv);
+            document.getElementById('cardlv-sug').innerHTML = '';
+            const q = document.getElementById('cardlv-q'); if (q) { q.value = name; q.blur(); }
         }
         function toggleRaidLogPlayerGroup(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);

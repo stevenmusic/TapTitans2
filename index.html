@@ -11691,6 +11691,7 @@
                             <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
+                        <div class="rl-levels" data-player="${escapeHtml(r.player)}" style="margin-bottom:5px;"></div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
                             ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
                         </div>
@@ -11698,6 +11699,7 @@
                 </div>
             `;
             }).join('');
+            raidLogFillLevels();
             raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
         }
 
@@ -11958,6 +11960,29 @@
             };
             list.addEventListener('touchend', end);
             list.addEventListener('touchcancel', end);
+        }
+        // 每位玩家的卡片等級（所有攻擊紀錄裡最後一次出現的等級）：只放卡片圖示＋等級；
+        // 比這個人自己的平均等級低 RAID_LOG_LV_LOW 級以上的卡加紅框（該升級了）
+        const RAID_LOG_LV_LOW = 10;
+        async function raidLogFillLevels() {
+            const boxes = [...document.querySelectorAll('#raid-log-query-list .rl-levels')];
+            if (!boxes.length) return;
+            const all = await loadAllCardLevels();
+            boxes.forEach(box => {
+                const lv = (all && all[box.dataset.player]) || {};
+                const ids = myAllCardIds().filter(id => lv[id] > 0);
+                if (!ids.length) { box.innerHTML = ''; return; }
+                const avg = ids.reduce((x, id) => x + lv[id], 0) / ids.length;
+                const html = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:2px;">卡片等級（平均 ${avg.toFixed(0)}，紅框＝低於平均 ${RAID_LOG_LV_LOW} 級以上）</div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(30px, 1fr)); gap:3px;">${ids.map(id => {
+                        const low = lv[id] <= avg - RAID_LOG_LV_LOW;
+                        const img = raidCardImage(id);
+                        return `<div title="${escapeHtml(raidCardLabel(id))} Lv.${lv[id]}" style="text-align:center;">
+                            ${img ? `<img src="${img}" alt="" style="width:100%; max-width:30px; aspect-ratio:1; border-radius:5px; display:block; margin:0 auto; box-sizing:border-box; ${low ? 'border:2px solid #e53935;' : ''}">` : ''}
+                            <div style="font-size:9.5px; font-weight:700; line-height:1.1; color:${low ? '#e53935' : '#6b5a4a'};">${lv[id]}</div></div>`;
+                    }).join('')}</div>`;
+                if (box.innerHTML !== html) box.innerHTML = html;
+            });
         }
         function toggleRaidLogPlayerGroup(rIdx) {
             const group = document.getElementById(`raidlog-player-group-${rIdx}`);

@@ -2136,22 +2136,24 @@ app.get('/current-boss-status', (req, res) => {
 let cardLevelsCache = null;
 app.get('/card-levels', (req, res) => {
   if (!cardLevelsCache || Date.now() - cardLevelsCache.at > 10 * 60 * 1000) {
-    // 攻擊紀錄的等級含「加成欄位」的加成（每週換加成卡時一次 +4 級以上、之後又一次掉回去）。
-    // base＝去掉加成後的等級：依時間走一遍，跳上 4 級以上記成加成、掉 4 級以上記成加成結束，等級扣掉目前的加成
+    // 攻擊紀錄的等級含「加成欄位」的加成：加成期間等級會被拉高到加成等級，之後又掉回去；真正的卡片等級只會升不會降。
+    // base（去掉加成）＝最近 8 天出現過的最低等級（加成一週一換，8 天內通常有沒加成的時候），而且不低於更早的「之後最低等級」
+    const WEEK = 8 * 24 * 3600 * 1000, now = Date.now();
     const hist = {};
     for (const a of cacheAllAttacksSorted()) {   // 由舊到新
       if (!a.player) continue;
       const m = hist[a.player] || (hist[a.player] = {});
-      (a.cards || []).forEach(c => { const lv = Number(c && c.level); if (c && c.name && lv > 0) { const h = m[c.name] || (m[c.name] = []); if (!h.length || h[h.length - 1] !== lv) h.push(lv); } });
+      (a.cards || []).forEach(c => { const lv = Number(c && c.level); if (c && c.name && lv > 0) (m[c.name] || (m[c.name] = [])).push([Number(a.ts) || 0, lv]); });
     }
     const players = {}, effective = {};
     Object.entries(hist).forEach(([p, m]) => {
       const b = players[p] = {}, e = effective[p] = {};
       Object.entries(m).forEach(([id, h]) => {
-        let off = 0;
-        for (let i = 1; i < h.length; i++) { const d = h[i] - h[i - 1]; if (d >= 4) off += d; else if (d <= -4) off = Math.max(0, off + d); }
-        e[id] = h[h.length - 1];
-        b[id] = h[h.length - 1] - off;
+        const last = h[h.length - 1];
+        e[id] = last[1];
+        const lastTs = last[0];
+        let mn = Infinity; for (let i = h.length - 1; i >= 0 && h[i][0] >= lastTs - WEEK; i--) mn = Math.min(mn, h[i][1]);
+        b[id] = mn;
       });
     });
     cardLevelsCache = { at: Date.now(), body: JSON.stringify({ players, effective }) };

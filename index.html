@@ -11879,7 +11879,8 @@
             let html = sec('建議先升級', cand.length ? cand.map((x, i) => `<div style="display:flex; align-items:center; gap:8px; padding:3px 0;"><b style="color:#8b263e;">${i + 1}</b>${icon(x.id, 32)}<div style="font-size:12px; color:#4a3728; line-height:1.35;">Lv.${lv[x.id]}（公會中位數 ${med[x.id] || '—'}）<br><small style="color:#8a7a6a;">公會 ${Math.round((use[x.id] || 0) * 100)}% 的刀會用到，升 1 級效果 +${(cardUpgradeGain(x.id, lv[x.id]) * 100).toFixed(1)}%</small></div></div>`).join('') : '<div style="font-size:12px; color:#8a7a6a;">沒有特別需要升級的常用卡。</div>');
             // ⑤ 常用牌組的關鍵卡：公會最常用的 5 組，這個人哪一張比公會中位數低 8 級以上
             const warn = [];
-            top.forEach(d => d.cards.forEach(c => { if (!CARD_UPGRADE_EXCLUDE.has(c) && lv[c] && med[c] && lv[c] <= med[c] - RAID_LOG_LV_LOW) warn.push({ d, c }); }));
+            const warned = new Set();   // 同一張卡只提醒一次（列它出現的第一組常用牌組）
+            top.forEach(d => d.cards.forEach(c => { if (!warned.has(c) && !CARD_UPGRADE_EXCLUDE.has(c) && lv[c] && med[c] && lv[c] <= med[c] - RAID_LOG_LV_LOW) { warned.add(c); warn.push({ d, c }); } }));
             html += sec('常用牌組的關鍵卡', warn.length ? warn.map(w => `<div style="display:flex; align-items:center; gap:6px; padding:3px 0; font-size:12px; color:#4a3728;">${w.d.cards.map(c => `<span style="display:inline-block; ${c === w.c ? 'outline:2.5px solid #e53935; border-radius:6px;' : 'opacity:0.55;'}">${icon(c, 28)}</span>`).join('')}<span><b style="color:#c0392b;">Lv.${lv[w.c]}</b>（公會 ${med[w.c]}）</span></div>`).join('') : '<div style="font-size:12px; color:#2e7d32; font-weight:700;">公會最常用的 5 組牌，沒有特別低的卡。</div>');
             html += sec('等級成長紀錄', '<div id="cardlv-hist" style="font-size:12px; color:#8a7a6a;">載入中…</div>');
             body.insertAdjacentHTML('beforeend', html);
@@ -11891,8 +11892,16 @@
                 if (!el || document.getElementById('cardlv-name').textContent !== name) return;
                 const fmt = (ts) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
                 // 攻擊紀錄的等級含「加成欄位」的加成（每週換卡會上下跳），用「之後的最低等級」去掉暫時加成，只留真的升級
-                // 跟伺服器 /card-levels 同一套：跳上 4 級以上＝加成開始、掉 4 級以上＝加成結束，等級扣掉目前的加成
-                const base = (h) => { let off = 0; const out = h.map((p, i) => { if (i) { const d = p[1] - h[i - 1][1]; if (d >= 4) off += d; else if (d <= -4) off = Math.max(0, off + d); } return [p[0], p[1] - off]; }); return out.filter((p, i) => i === 0 || p[1] !== out[i - 1][1]); };
+                // 真正的卡片等級只升不降，加成期間會被拉高：每個時間點取「之後出現過的最低等級」，
+                // 最後一段再壓到「最近 8 天最低等級」（加成一週一換），跟伺服器 /card-levels 的算法一致
+                const base = (h) => {
+                    if (!h.length) return [];
+                    const lastTs = h[h.length - 1][0];
+                    let cur = Infinity; for (let i = h.length - 1; i >= 0 && h[i][0] >= lastTs - 8 * 86400000; i--) cur = Math.min(cur, h[i][1]);
+                    const out = []; let mn = cur;
+                    for (let i = h.length - 1; i >= 0; i--) { mn = Math.min(mn, h[i][1]); out.unshift([h[i][0], mn]); }
+                    return out.filter((p, i) => i === 0 || p[1] !== out[i - 1][1]);
+                };
                 const ups = Object.entries(j.cards || {}).map(([id, raw]) => ({ id, h: base(raw) })).filter(u => u.h.length > 1).map(u => ({ ...u, last: u.h[u.h.length - 1][0] })).sort((a, b) => b.last - a.last);
                 const since = Date.now() - 30 * 86400000;
                 const recent = ups.reduce((x, u) => x + u.h.reduce((y, p, i) => y + (i > 0 && p[0] >= since ? Math.max(0, p[1] - u.h[i - 1][1]) : 0), 0), 0);
@@ -12499,23 +12508,30 @@
         }
         // 每位玩家每張卡在「所有攻擊紀錄」裡最近一次的等級（伺服器 /card-levels，10 分鐘內不重抓）
         let allCardLevels = null, allCardLevelsAt = 0;
-        async function loadAllCardLevels() {
-            if (allCardLevels && Date.now() - allCardLevelsAt < 10 * 60 * 1000) return allCardLevels;
+        let allCardLevelsPending = null;
+        function loadAllCardLevels() {
+            if (allCardLevels && Date.now() - allCardLevelsAt < 10 * 60 * 1000) return Promise.resolve(allCardLevels);
+            if (!allCardLevelsPending) allCardLevelsPending = loadAllCardLevelsNow().finally(() => { allCardLevelsPending = null; });
+            return allCardLevelsPending;
+        }
+        // 先在區域變數篩好（只留現在的成員）才一次放進 allCardLevels，同時呼叫的人不會拿到還沒篩的名單
+        async function loadAllCardLevelsNow() {
+            let got = null;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 const r = await fetch(`${relayUrl}/card-levels`);
-                if (r.ok) { const j = await r.json(); if (j && j.players) { allCardLevels = j.players; allCardLevelsAt = Date.now(); } }
+                if (r.ok) { const j = await r.json(); if (j && j.players) got = j.players; }
             } catch (e) {}
             // 已經離開公會的人排除：跟「剩餘次數」同一套——這一場或上一場（最近一場完整的）有出刀的人才算現在的成員，
             // 另外扣掉伺服器記到離開／被踢的人（/raid-players 已扣掉）
-            if (allCardLevels) {
+            if (got) {
                 // 最準：官方回傳的公會成員名單（/clan-members）；拿不到才用下面的推算
                 try {
                     const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                     const cm = await (await fetch(`${relayUrl}/clan-members`)).json();
                     if (cm && Array.isArray(cm.members) && cm.members.length) {
                         const names = new Set(cm.members.map(m => m.name));
-                        allCardLevels = Object.fromEntries(Object.entries(allCardLevels).filter(([n]) => names.has(n)));
+                        allCardLevels = Object.fromEntries(Object.entries(got).filter(([n]) => names.has(n))); allCardLevelsAt = Date.now();
                         return allCardLevels;
                     }
                 } catch (e) {}
@@ -12529,9 +12545,9 @@
                     (cur && cur.attacks || []).forEach(a => active.add(a.player));
                     if (prev) ((await ensureSessionAttacksLoaded(prev.startedAt)) || []).forEach(a => active.add(a.player));
                 } catch (e) {}
-                allCardLevels = Object.fromEntries(Object.entries(allCardLevels).filter(([n]) => (!members.size || members.has(n)) && (!active.size || active.has(n))));
+                allCardLevels = Object.fromEntries(Object.entries(got).filter(([n]) => (!members.size || members.has(n)) && (!active.size || active.has(n)))); allCardLevelsAt = Date.now();
             }
-            if (!allCardLevels) {   // 伺服器還沒有這個端點：用這一場的攻擊紀錄
+            if (!got) {   // 伺服器還沒有這個端點：用這一場的攻擊紀錄
                 const p = {};
                 (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).slice().sort((a, b) => a.ts - b.ts).forEach(a => (a.cards || []).forEach(c => { if (c && c.name && c.level > 0) (p[a.player] = p[a.player] || {})[c.name] = c.level; }));
                 return p;

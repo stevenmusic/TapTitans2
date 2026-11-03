@@ -9772,7 +9772,7 @@
                     const zh = (k) => raidPartLabel(k);
                     return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
                         <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} ×${raid.seq.filter(x => x === n).length}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）${cond.cursedBanned ? `<span style="color:#c0392b;">（其中 ${cond.cursedBanned} 個在禁打部位）</span>` : ''}｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
-                        ${path.map(simTodoRowHtml).join('')}</div>`;
+                        ${simTodoVariantsHtml(todo, path, pre)}</div>`;
                 }).join('');
         }
         function simTodoTopHtml(todo) {
@@ -9782,7 +9782,27 @@
             const miss = path.filter(r => !r.ok).length;
             return `<div class="si-title" style="margin:8px 0 2px;">打法順序 <small style="font-weight:600; color:#8a7a6a;">${secName(path[0].sec)}｜缺 ${miss}／${path.length}</small></div>
                 <div class="si-tip" style="margin-bottom:4px;">照最容易發生的順序：詛咒甲先拆 → 再拆盔甲 → 肉體打光變骨架。點 ❌ 帶入條件，再選那個狀態的截圖。</div>
-                ${path.map(simTodoRowHtml).join('')}`;
+                ${simTodoVariantsHtml(todo, path, '')}`;
+        }
+        // 每個部位狀態（能打幾個、詛咒甲、盔甲、肉體）一列，後面分「頭肚都能打／頭或肚其中一個能打／頭肚都不能打」三種，
+        // 各自標 ✅／❌（禁打讓某一種不可能的就不列），點 ❌ 帶入那一種
+        function simTodoVariantsHtml(todo, path, pre) {
+            const seen = new Set(), lines = [];
+            path.forEach(r => { const k = `${r.n}|${r.c}|${r.a}`; if (!seen.has(k)) { seen.add(k); lines.push(r); } });
+            const short = { '': '頭肚都能打', one: '頭或肚一個能打', both: '頭肚都不能打' };
+            const tg = simImp.target;
+            return lines.map(r => {
+                const vars = SIM_TODO_SECS.map(([sec]) => todo.rows.find(x => x.sec === sec && x.n === r.n && x.c === r.c && x.a === r.a)).filter(Boolean);
+                const chips = vars.map(v => {
+                    const sel = tg && tg.sec === v.sec && tg.n === v.n && tg.cursed === v.c && tg.armor === v.c + v.a;
+                    const st = v.ok ? 'background:#eef6ee; color:#2e7d32; border-color:#cfe6cf;' : 'background:#fff; color:#8b263e; border-color:#e8c6cc; cursor:pointer; font-weight:800;';
+                    return `<span ${v.ok ? '' : `onclick="${pre || ''}simTodoPick('${v.sec}', ${v.n}, ${v.c}, ${v.a})"`} style="display:inline-block; font-size:11px; padding:2px 7px; border:1px solid; border-radius:6px; margin:2px 4px 0 0; ${st}${sel ? ' box-shadow:0 0 0 2px #6a3d9a;' : ''}">${v.ok ? '✅' : '❌'} ${short[v.sec]}${v.now ? ' <b style="color:#6a3d9a;">現在</b>' : ''}</span>`;
+                }).join('');
+                const allOk = vars.every(v => v.ok);
+                return `<div class="si-row" style="display:block;">
+                    <div style="${allOk ? 'color:#8a7a6a;' : 'font-weight:700;'}">能打 ${r.n}｜詛咒甲 ${r.c}${r.cb ? `＋禁打 ${r.cb}` : ''}｜盔甲 ${r.a}｜肉體 ${r.b}</div>
+                    <div>${chips}</div></div>`;
+            }).join('');
         }
         function simTodoSummary() {
             // 每種加成 × 詛咒（爆裂／苦痛）× 頭肚三區，常見的情境補了幾個（沒有詛咒甲的情境不分詛咒類型，標題的缺幾個只算一次）

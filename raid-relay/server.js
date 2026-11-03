@@ -1560,6 +1560,7 @@ async function saveRawRaidSnapshot(event, payload) {
 // 診斷用：背景側錄實際收到哪些事件、訂閱結果如何（/watcher-debug 查看）
 const watcherDebug = { eventCounts: {}, lastEvents: [], lastSubscribe: null, lastConnectAt: null, lastError: null, lastDisconnect: null, startAttempts: 0 };
 
+let clanMembersNow = null;   // { at, members:[{name, playerCode}] }
 function watcherSubscribe() {
   fetch(`${RAID_REST_BASE}/raid/subscribe`, {
     method: 'POST',
@@ -1575,6 +1576,11 @@ function watcherSubscribe() {
       console.log(`[watcher] 訂閱成功：${text}`);
     }
     watcherDebug.lastSubscribe = { at: new Date().toISOString(), status: resp.status, body: text.slice(0, 500) };
+    // 官方訂閱回傳的公會成員名單（目前真的在公會的人），記在記憶體給 /clan-members 用
+    try {
+      const clan = parsed && Array.isArray(parsed.ok) && parsed.ok[0];
+      if (clan && Array.isArray(clan.member_list) && clan.member_list.length) clanMembersNow = { at: Date.now(), members: clan.member_list.map(m => ({ name: m.name, playerCode: m.player_code })) };
+    } catch (e) {}
   }).catch((e) => console.error('[watcher] 訂閱請求失敗:', e));
 }
 
@@ -2130,13 +2136,25 @@ app.get('/current-boss-status', (req, res) => {
 let cardLevelsCache = null;
 app.get('/card-levels', (req, res) => {
   if (!cardLevelsCache || Date.now() - cardLevelsCache.at > 10 * 60 * 1000) {
-    const players = {};
-    for (const a of cacheAllAttacksSorted()) {   // 由舊到新，後面的覆蓋前面＝最新的等級
+    // 攻擊紀錄的等級含「加成欄位」的加成（每週換加成卡時一次 +4 級以上、之後又一次掉回去）。
+    // base＝去掉加成後的等級：依時間走一遍，跳上 4 級以上記成加成、掉 4 級以上記成加成結束，等級扣掉目前的加成
+    const hist = {};
+    for (const a of cacheAllAttacksSorted()) {   // 由舊到新
       if (!a.player) continue;
-      const m = players[a.player] || (players[a.player] = {});
-      (a.cards || []).forEach(c => { if (c && c.name && Number(c.level) > 0) m[c.name] = Number(c.level); });
+      const m = hist[a.player] || (hist[a.player] = {});
+      (a.cards || []).forEach(c => { const lv = Number(c && c.level); if (c && c.name && lv > 0) { const h = m[c.name] || (m[c.name] = []); if (!h.length || h[h.length - 1] !== lv) h.push(lv); } });
     }
-    cardLevelsCache = { at: Date.now(), body: JSON.stringify({ players }) };
+    const players = {}, effective = {};
+    Object.entries(hist).forEach(([p, m]) => {
+      const b = players[p] = {}, e = effective[p] = {};
+      Object.entries(m).forEach(([id, h]) => {
+        let off = 0;
+        for (let i = 1; i < h.length; i++) { const d = h[i] - h[i - 1]; if (d >= 4) off += d; else if (d <= -4) off = Math.max(0, off + d); }
+        e[id] = h[h.length - 1];
+        b[id] = h[h.length - 1] - off;
+      });
+    });
+    cardLevelsCache = { at: Date.now(), body: JSON.stringify({ players, effective }) };
   }
   res.set('Content-Type', 'application/json');
   res.send(cardLevelsCache.body);
@@ -2157,6 +2175,9 @@ app.get('/card-level-history', (req, res) => {
   }
   res.json({ player: name, cards });
 });
+
+// 現在的公會成員（官方訂閱回傳的 member_list；還沒拿到就回 null）
+app.get('/clan-members', (req, res) => { res.json(clanMembersNow || { at: null, members: null }); });
 
 app.get('/recent-attacks', async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 50);

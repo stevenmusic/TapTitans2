@@ -12549,6 +12549,12 @@
                 const r = await fetch(`${relayUrl}/card-levels`);
                 if (r.ok) { const j = await r.json(); if (j && j.players) { allCardLevels = j.players; allCardLevelsAt = Date.now(); } }
             } catch (e) {}
+            // 已經離開公會的人排除（公會成員名單＝伺服器 /raid-players，已扣掉離開／被踢的人）
+            if (allCardLevels) {
+                try { await ensureAllPlayersLoaded(); } catch (e) {}
+                const members = new Set((serverAllPlayersCache || []).map(p => typeof p === 'string' ? p : p && p.name).filter(Boolean));
+                if (members.size) allCardLevels = Object.fromEntries(Object.entries(allCardLevels).filter(([n]) => members.has(n)));
+            }
             if (!allCardLevels) {   // 伺服器還沒有這個端點：用這一場的攻擊紀錄
                 const p = {};
                 (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).slice().sort((a, b) => a.ts - b.ts).forEach(a => (a.cards || []).forEach(c => { if (c && c.name && c.level > 0) (p[a.player] = p[a.player] || {})[c.name] = c.level; }));

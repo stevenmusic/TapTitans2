@@ -12694,10 +12694,14 @@
             const b = {};
             raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); });
             ticketCalc.bansByLv[ticketCalc.level] = b;
+            if (ticketCalcActual) ticketCalc.manualLv = ticketCalc.level;   // 這一場按「改回最佳禁打」＝改成自己試算
             ticketCalcSave();
             renderTicketCalc();
         }
+        let ticketCalcActual = null;   // 這一場用公會實際禁打時的禁打表（點部位會從這裡開始改）
         function ticketCalcSet(field, v) {
+            if (field === 'ban' && ticketCalcActual) { ticketCalc.bansByLv[ticketCalc.level] = JSON.parse(JSON.stringify(ticketCalcActual)); ticketCalc.manualLv = ticketCalc.level; }   // 從實際禁打開始改
+            if (field === 'actual') { ticketCalc.manualLv = v ? null : ticketCalc.level; ticketCalcSave(); renderTicketCalc(); return; }
             if (field === 'ban') { const [name, loc] = v; const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {}); const l = new Set(lb[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); lb[name] = [...l]; }
             else ticketCalc[field] = v;
             ticketCalcSave();
@@ -12724,7 +12728,20 @@
                     const names = [...new Set(raid.seq)];
                     const cnt = (n) => raid.seq.filter(x => x === n).length;
                     if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
-                    const banOf = (n) => (ticketCalc.bansByLv[ticketCalc.level][n] || []);
+                    // 這一場（正在打）：預設用公會實際標的禁打（官方 titan_target），可以切回自己試算
+                    const actualBans = (() => {
+                        if (raidPreview || raid.l !== curLv) return null;
+                        const titans = (apiRaidTitans && apiRaidTitans.length ? apiRaidTitans : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.titans)) || [];
+                        const targets = (apiTitanTarget && apiTitanTarget.length ? apiTitanTarget : (bossHpSnapshot && bossHpSnapshot.titan_target)) || [];
+                        if (!titans.length || !targets.length) return null;
+                        const out = {};
+                        titans.forEach(tt => { const e = targets.find(x => x.enemy_id === tt.enemy_id); if (e && Array.isArray(e.state)) out[tt.enemy_name] = e.state.filter(x => String(x.state) === '1').map(x => x.id); });
+                        return Object.keys(out).length ? out : null;
+                    })();
+                    if (!actualBans && !bossHpSnapshotTried && !raidPreview && raid.l === curLv) { bossHpSnapshotTried = true; loadBossHpSnapshot().then(() => renderTicketCalc()).catch(() => {}); }
+                    const useActual = !!actualBans && ticketCalc.manualLv !== ticketCalc.level;
+                    ticketCalcActual = useActual ? actualBans : null;
+                    const banOf = (n) => useActual ? (actualBans[n] || []) : (ticketCalc.bansByLv[ticketCalc.level][n] || []);
                     const unkillable = names.filter(n => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[2]), 0) < T[n].k);
                     const armorOf = (n) => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[1]), 0);
                     const killSum = raid.seq.reduce((x, n) => x + T[n].k, 0);
@@ -12773,6 +12790,7 @@
                         </div>
                         <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取 PR30${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
+                        ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
                         ${names.some(n => { const best = ticketBestBans(T[n]).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
                         ${titanCards}

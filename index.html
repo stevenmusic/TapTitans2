@@ -12551,7 +12551,8 @@
                         v = full.length && players ? { r: full, p: players } : null;
                         if (v && se.startedAt !== latest) roundCache[se.startedAt] = v;
                     }
-                    if (v) parts.push({ lv: se.levelTier, part: v.r.reduce((x, y) => x + y, 0) / v.r.length / (v.p * RAID_ATTACKS_PER_CYCLE) });
+                    // 打完的輪裡，刀數低於該場中位數 85% 的輪多半是紀錄漏抓（例如 M-77 第 1 輪只有 91 刀），不算進平均（29 場回測：平均誤差 4.3% → 3.4%）
+                    if (v) { const srt = v.r.slice().sort((x, y) => x - y), med = srt[Math.floor(srt.length / 2)], rr = v.r.filter(x => x >= med * 0.85); parts.push({ lv: se.levelTier, part: rr.reduce((x, y) => x + y, 0) / rr.length / (v.p * RAID_ATTACKS_PER_CYCLE) }); }
                 }
                 try { localStorage.setItem('tt2_round_part_v3', JSON.stringify(roundCache)); ['tt2_round_attacks', 'tt2_round_attacks_v2'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
                 // 每輪刀數＝現在公會人數 × 6 × 最近 3 場的出刀率（回測比直接平均刀數準：人數變了也會跟著變）

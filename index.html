@@ -12414,6 +12414,7 @@
         const TICKET_BUFF_ADJ = { burstChance: 0.05, burstDamage: 0.05, support: -0.023, timeBoost: -0.025 };
         const TICKET_BUFF_ZH = { burstChance: '爆裂機率', burstDamage: '爆裂傷害', support: '支援', timeBoost: '時間增益', afflictionChance: '苦痛機率', afflictionDamage: '苦痛傷害', allDamage: '全突襲傷害' };
         const TICKET_SEED_BUFF = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', AllRaidDamage: 'allDamage' };
+        const TICKET_GROWTH_PER_DAY = 0.0009;   // 公會均傷每天成長（卡片升級），回測擬合
         const TC_BURDEN_KEY = 'tt2_curse_burden_v2';   // 每場（開始時間）的詛咒負擔，算過就存著
         // 整場的詛咒負擔：有效血量 ÷ 實際血量 − 1（沒給禁打就用最佳禁打，過去場次不知道實際禁法時用）
         // 公會的傷害組成（爆裂／苦痛佔總傷害幾成）會跟著突襲加成變：攻擊紀錄實測各加成的比例；其他加成用平均
@@ -12521,11 +12522,16 @@
                     try { localStorage.setItem(TC_BURDEN_KEY, JSON.stringify(bc)); } catch (e) {}
                     const known = used.filter(x => typeof x.burden === 'number');
                     const avgBurden = known.length ? known.reduce((a, x) => a + x.burden, 0) / known.length : 0;   // 伺服器沒有那一週的 seed：用其他場的平均
-                    used.forEach(x => { if (typeof x.burden !== 'number') x.burden = avgBurden; x.clean = x.v * (1 + x.burden) / (1 + (TICKET_BUFF_ADJ[x.buff] || 0)); });
+                    // 公會越練越強：均傷每天約 +0.09%（10 月 9 場回測擬合），每場依「離現在幾天」往前推到今天（最多推 30 天）
+                    used.forEach(x => {
+                        if (typeof x.burden !== 'number') x.burden = avgBurden;
+                        x.days = Math.min(30, Math.max(0, (Date.now() - Date.parse(x.at)) / 86400000));
+                        x.clean = x.v * (1 + x.burden) / (1 + (TICKET_BUFF_ADJ[x.buff] || 0)) * (1 + TICKET_GROWTH_PER_DAY * x.days);
+                    });
                     perAtk = used.reduce((x, y) => x + y.clean, 0) / used.length / (1 + TICKET_BASE_BONUS);
                     ticketCalc.capN = { all: per30.length, used: used.length };
                     const pctS = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-                    src = `每刀＝最近 ${used.length} 場換算成 30% 增傷、還原詛咒和加成後的平均（${used.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M→${Math.round(x.clean / 1e6)}M（詛咒${pctS(x.burden)}${TICKET_BUFF_ADJ[x.buff] ? `、${TICKET_BUFF_ZH[x.buff]}${pctS(TICKET_BUFF_ADJ[x.buff])}` : ''}）`).join('、')}）`;
+                    src = `每刀＝最近 ${used.length} 場換算成 30% 增傷、還原詛咒和加成、推到今天（每天 +0.09%）後的平均（${used.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M→${Math.round(x.clean / 1e6)}M（詛咒${pctS(x.burden)}${TICKET_BUFF_ADJ[x.buff] ? `、${TICKET_BUFF_ZH[x.buff]}${pctS(TICKET_BUFF_ADJ[x.buff])}` : ''}）`).join('、')}）`;
                 }
                 // 每輪刀數：同樣這幾場「打完的輪次」（最後一輪通常沒打完，不算）全部放在一起，取平均。
                 // 打完的場次數字不會變，算一次就存在手機上，之後不用再下載整場紀錄
@@ -12852,7 +12858,7 @@
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
                         </div>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `每刀取最近 3 場平均（已還原各場詛咒和加成）、刀數＝公會人數×6×出刀率；「保守」＝出刀能力少 5%${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `每刀取最近 3 場平均（已還原各場詛咒和加成，並加上成長趨勢）、刀數＝公會人數×6×出刀率；「保守」＝出刀能力少 5%${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>

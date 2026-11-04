@@ -2983,6 +2983,7 @@
         .ic-bell { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%208a6%206%200%200%201%2012%200c0%207%203%209%203%209H3s3-2%203-9M10.3%2021a1.94%201.94%200%200%200%203.4%200%22%2F%3E%3C%2Fsvg%3E"); }
         .ic-play { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M7%204l13%208-13%208z%22%2F%3E%3C%2Fsvg%3E"); }
         .ic-flask { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203h6M10%203v6L4.2%2019.5A1%201%200%200%200%205.1%2021h13.8a1%201%200%200%200%20.9-1.5L14%209V3M7%2015h10%22%2F%3E%3C%2Fsvg%3E"); }
+        .ic-cards { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%227%22%20y%3D%223%22%20width%3D%2212%22%20height%3D%2216%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M5%206.5v12A2.5%202.5%200%200%200%207.5%2021H15%22%2F%3E%3C%2Fsvg%3E"); }
         .ic-pip { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.1%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%225%22%20width%3D%2218%22%20height%3D%2214%22%20rx%3D%222%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2211%22%20width%3D%226%22%20height%3D%225%22%20rx%3D%221%22%2F%3E%3C%2Fsvg%3E"); }
         /* 次要按鈕 */
         .tt-btn2 { border: none !important; background: var(--tt-accent-soft) !important; color: var(--tt-accent) !important; box-shadow: none !important;
@@ -3016,6 +3017,9 @@
         /* 載入中：灰色骨架 */
         .tt-skel { background: linear-gradient(90deg, #efe7dc 25%, #f8f3ec 50%, #efe7dc 75%); background-size: 200% 100%; animation: ttSkel 1.2s ease-in-out infinite; border-radius: 7px; }
         @keyframes ttSkel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+        /* 推薦牌組：一律 3 欄 2 排（不會變成 3 排浪費空間），窄手機卡片圖自動縮小 */
+        .reco3 .bp-card { width: auto !important; height: auto !important; flex: 1 1 0; min-width: 0; max-width: 38px; aspect-ratio: 1; }
+        .reco3 .bp-card img { width: 100% !important; height: 100% !important; }
 </style>
 </head>
 <body>
@@ -8874,13 +8878,13 @@
             // 有適用部位限制的卡片，在卡片圖底部加標籤（4 個字的標籤字級小一點才塞得下）
             const tag = limit ? `<span style="position:absolute; left:0; right:0; bottom:0; text-align:center; font-size:${limit.tag.length >= 4 ? 9 : 10}px; font-weight:700; line-height:13px; color:#fff; background:rgba(${CARD_LIMIT_RGB[limit.kind]},0.92); border-radius:0 0 7px 7px; white-space:nowrap;">${byPartBadgeText(limit)}</span>` : '';
             const glow = byPartPoolSel.has(name) ? 'box-shadow:0 0 0 2px rgba(38,198,218,0.95); border-radius:7px;' : '';
-            return `<div style="position:relative; width:${size}px; height:${size}px; flex-shrink:0; ${glow}">${thumb}${tag}</div>`;
+            return `<div class="bp-card" style="position:relative; width:${size}px; height:${size}px; flex-shrink:0; ${glow}">${thumb}${tag}</div>`;
         }
 
         // 一組牌組（三張卡）；如果有提醒標籤（多部位≥6）放在卡片下方
         function renderByPartRow(r) {
             return `
-                <div style="display:flex; gap:2px; min-width:0;">${r.cards.map(n => byPartCardHtml(n)).join('')}</div>
+                <div style="display:flex; gap:2px; min-width:0; justify-content:center;">${r.cards.map(n => byPartCardHtml(n)).join('')}</div>
             `;
         }
 
@@ -10798,10 +10802,10 @@
         function byPartRecoGridHtmlInner(rows, view) {
             return `
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 3px;">
-                    <div style="font-size:13px; font-weight:800; color:#4a3728;">推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
+                    <div style="font-size:13px; font-weight:800; color:#4a3728;"><span class="ic ic-cards"></span>推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
                     <button class="tt-btn2 ic ic-image" onclick="saveByPartRecoImage('${view || 'home'}')" style="font-size:11.5px; border-radius:6px; padding:4px 9px;">存成圖片</button>
                 </div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
+                <div class="reco3" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px;">
                     ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall && !r.hideCount ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
                 </div>`;
         }
@@ -11503,7 +11507,7 @@
                 return `
                 <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : 'var(--tt-line)'}; border-radius:10px; overflow:hidden; box-shadow:var(--tt-shadow);">
                     <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:9px 8px 9px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
-                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;">${rIdx + 1}. ${escapeHtml(r.player)}</span>
+                        <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; color:#a89a88; font-weight:700;">${rIdx + 1}</span>${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦牌組</button>` : ''}
                             <span style="font-size:12.5px; font-weight:700; white-space:nowrap; min-width:6.8em; text-align:right; font-variant-numeric:tabular-nums; color:${r.hasLowAttack ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次</span>

@@ -9595,7 +9595,7 @@
                         const later = raid.seq.some((x, i) => x === n && i + 1 > curOrd);
                         return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8; font-size:12px; color:#8a7a6a;"><b style="color:#4a3728;">${escapeHtml(n)}</b>　${later ? '還沒出場：沒有 seed，打到這隻才知道詛咒甲幾個' : '已經打完'}</div>`;
                     }
-                    const banned = (isCur && raidBannedParts && raidBannedParts.length ? raidBannedParts.slice() : null) || liveBan(n) || bans[n] || (t.p ? ticketBestBans(t) : []);
+                    const banned = (isCur && raidBannedParts && raidBannedParts.length ? raidBannedParts.slice() : null) || liveBan(n) || bans[n] || (t.p ? ticketBestBans(t, ticketSharesOf(raid)) : []);
                     // 詛咒甲也可能被禁打：禁打的詛咒甲打不到，不算進能打部位的詛咒甲數量
                     const cursedAll = isCur ? RAID_PARTS.map(x => x.key).filter(k => raidState.parts[k] && raidState.parts[k].cursed) : Object.keys(t.p).filter(loc => t.p[loc][3]);
                     const cursedBanned = cursedAll.filter(loc => banned.includes(loc));
@@ -12399,12 +12399,17 @@
         const TICKET_BUFF_ADJ = { burstChance: 0.05, burstDamage: 0.05, support: -0.023, timeBoost: -0.025 };
         const TICKET_BUFF_ZH = { burstChance: '爆裂機率', burstDamage: '爆裂傷害', support: '支援', timeBoost: '時間增益', afflictionChance: '苦痛機率', afflictionDamage: '苦痛傷害' };
         const TICKET_SEED_BUFF = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage' };
-        const TC_BURDEN_KEY = 'tt2_curse_burden_v1';   // 每場（開始時間）的詛咒負擔，算過就存著
+        const TC_BURDEN_KEY = 'tt2_curse_burden_v2';   // 每場（開始時間）的詛咒負擔，算過就存著
         // 整場的詛咒負擔：有效血量 ÷ 實際血量 − 1（沒給禁打就用最佳禁打，過去場次不知道實際禁法時用）
+        // 公會的傷害組成（爆裂／苦痛佔總傷害幾成）會跟著突襲加成變：攻擊紀錄實測各加成的比例；其他加成用平均
+        const TICKET_SHARE_AVG = { burst: 0.60, aff: 0.33 };
+        const TICKET_SHARE_BY_BUFF = { burstChance: { burst: 0.70, aff: 0.23 }, burstDamage: { burst: 0.79, aff: 0.15 }, timeBoost: { burst: 0.565, aff: 0.36 }, afflictionChance: { burst: 0.41, aff: 0.53 }, afflictionDamage: { burst: 0.31, aff: 0.62 }, support: { burst: 0.56, aff: 0.37 } };
+        function ticketBuffKey(raid) { return ((raid && raid.buffs) || []).map(b => TICKET_SEED_BUFF[b[0]]).find(Boolean) || null; }
+        function ticketSharesOf(raid) { return TICKET_SHARE_BY_BUFF[ticketBuffKey(raid)] || TICKET_SHARE_AVG; }
         function ticketRaidBurden(raid, banOf) {
-            const sh = ticketDmgShares();
+            const sh = ticketSharesOf(raid);
             let e = 0, w = 0;
-            raid.seq.forEach(n => { const t = raid.titans.find(x => x.n === n); if (!t) return; const x = ticketEffHp(t, banOf ? banOf(n) : ticketBestBans(t), sh); e += x.eff; w += x.raw; });
+            raid.seq.forEach(n => { const t = raid.titans.find(x => x.n === n); if (!t) return; const x = ticketEffHp(t, banOf ? banOf(n) : ticketBestBans(t, sh), sh); e += x.eff; w += x.raw; });
             return w ? e / w - 1 : 0;
         }
         const TC_KEY = 'tt2_ticket_calc';
@@ -12412,8 +12417,9 @@
         try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
         if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};
         if (ticketCalc.v !== 2 && ticketCalc.v !== 3) { ticketCalc.margin = 0; }
-        if (ticketCalc.v !== 3 && ticketCalc.v !== 4 && ticketCalc.v !== 5) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }
-        if (ticketCalc.v !== 5) { ticketCalc.margin = 0; ticketCalc.v = 5; }   // 改成「最可能＋保守（出刀能力 −5%）」兩個數字，保險預設 0%   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        if (![3, 4, 5, 6].includes(ticketCalc.v)) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }
+        if (ticketCalc.v === 6) {} else if (ticketCalc.v !== 5) { ticketCalc.margin = 0; ticketCalc.v = 5; }   // 改成「最可能＋保守（出刀能力 −5%）」兩個數字，保險預設 0%   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        if (ticketCalc.v !== 6) { ticketCalc.bansByLv = {}; ticketCalc.v = 6; }   // 爆裂／苦痛佔比改成看每一關的加成：最佳禁打全部重算
         delete ticketCalc.bans;
         function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
         // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
@@ -12674,26 +12680,10 @@
             const curse = (t.c || []).map(([type, v]) => { const k = { BurstDamagePerCurse: '爆裂傷害', AfflictedDamagePerCurse: '苦痛傷害', BodyDamagePerCurse: '肉體傷害' }[type] || type; return `每個詛咒甲 ${k} ${pct(v)}（詛咒甲 ${cursedN} 個）`; });
             return { area, curse };
         }
-        // 公會的傷害組成（爆裂／苦痛／點擊佔比），從最近一場的攻擊紀錄算；資料太少就用上次算好的，再沒有就用預設
-        const TC_SHARE_KEY = 'tt2_dmg_shares';
-        function ticketDmgShares() {
-            try {
-                const at = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a.totalDamage > 0);
-                if (at.length >= 100) {
-                    const B = new Set(BY_PART_POOL[0][2]), A = new Set(BY_PART_POOL[1][2]);
-                    let tot = 0, bu = 0, af = 0;
-                    at.forEach(a => { tot += a.totalDamage; Object.entries(a.cardDamage || {}).forEach(([k, v]) => { if (B.has(k)) bu += v; else if (A.has(k)) af += v; }); });
-                    if (tot > 0) { const sh = { burst: bu / tot, aff: af / tot, n: at.length }; try { localStorage.setItem(TC_SHARE_KEY, JSON.stringify(sh)); } catch (e) {} return sh; }
-                }
-                const saved = JSON.parse(localStorage.getItem(TC_SHARE_KEY) || 'null');
-                if (saved && saved.burst >= 0) return saved;
-            } catch (e) {}
-            return { burst: 0.65, aff: 0.28, n: 0 };
-        }
         // 有效血量：詛咒甲先拆（薄的先拆），拆的時候被詛咒扣傷害；禁掉的詛咒甲拆不掉，整場一直扣
         //   爆裂／苦痛詛咒只扣那一種傷害（乘上公會這種傷害的佔比）；肉體詛咒只扣打在肉體（斬殺線）的傷害
         function ticketEffHp(t, bans, sh) {
-            sh = sh || ticketDmgShares();
+            sh = sh || TICKET_SHARE_AVG;
             const c = (t.c && t.c[0]) || null;
             const per = c ? Math.abs(c[1]) : 0;
             const type = c ? c[0] : '';
@@ -12713,10 +12703,10 @@
             const carryExtra = carried ? (restArmor / mult(carried) - restArmor) + (t.k / bodyMult - t.k) : 0;
             return { eff, raw, carried, carryExtra };
         }
-        function ticketBestBans(t) {
+        function ticketBestBans(t, sh) {
             const locs = Object.keys(t.p);
             const bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0);
-            const sh = ticketDmgShares();
+            sh = sh || TICKET_SHARE_AVG;
             let best = { v: Infinity, list: [] };
             for (let m = 0; m < (1 << locs.length); m++) {
                 const list = locs.filter((l, i) => m >> i & 1);
@@ -12733,7 +12723,7 @@
             let rows = '';
             if (ticketCalc.allBansOpen) {
                 const key = ticketCalc.seed.valid_from;
-                if (!ticketAllBansCache || ticketAllBansCache.key !== key) ticketAllBansCache = { key, list: master.map(r => ({ l: r.l, t: [...new Set(r.seq)].map(n => { const t = r.titans.find(x => x.n === n); return { n, cnt: r.seq.filter(x => x === n).length, bans: t ? ticketBestBans(t) : [] }; }) })) };
+                if (!ticketAllBansCache || ticketAllBansCache.key !== key) ticketAllBansCache = { key, list: master.map(r => ({ l: r.l, t: [...new Set(r.seq)].map(n => { const t = r.titans.find(x => x.n === n); return { n, cnt: r.seq.filter(x => x === n).length, bans: t ? ticketBestBans(t, ticketSharesOf(r)) : [] }; }) })) };
                 rows = ticketAllBansCache.list.map(x => `<div onclick="ticketCalcSet('level', ${x.l}); document.getElementById('ticket-calc-modal').scrollTop = 0;" style="cursor:pointer; padding:5px 2px; border-top:1px solid #eadfcb; font-size:12px; color:#4a3728; ${x.l === ticketCalc.level ? 'background:#f3ebfa; font-weight:800;' : ''}">
                     <b>M-${x.l}</b>　${x.t.map(t => `${escapeHtml(t.n)}${t.cnt > 1 ? `×${t.cnt}` : ''}：${t.bans.length ? t.bans.map(zh).join('、') : '不禁'}`).join('｜')}</div>`).join('');
             }
@@ -12744,7 +12734,7 @@
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
             if (!raid) return;
             const b = {};
-            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); });
+            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t, ticketSharesOf(raid)); });
             ticketCalc.bansByLv[ticketCalc.level] = b;
             if (ticketCalcActual) ticketCalc.manualLv = ticketCalc.level;   // 這一場按「改回最佳禁打」＝改成自己試算
             ticketCalcSave();
@@ -12777,9 +12767,10 @@
                 const fmt = formatNum;
                 if (raid) {
                     const T = Object.fromEntries(raid.titans.map(t => [t.n, t]));
+                    const sh = ticketSharesOf(raid);   // 這一關加成下的爆裂／苦痛佔比
                     const names = [...new Set(raid.seq)];
                     const cnt = (n) => raid.seq.filter(x => x === n).length;
-                    if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
+                    if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t, sh); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
                     // 這一場（正在打）：預設用公會實際標的禁打（官方 titan_target），可以切回自己試算
                     const actualBans = (() => {
                         if (raidPreview || raid.l !== curLv) return null;
@@ -12798,9 +12789,9 @@
                     const armorOf = (n) => Object.entries(T[n].p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[1]), 0);
                     const killSum = raid.seq.reduce((x, n) => x + T[n].k, 0);
                     const armorSum = raid.seq.reduce((x, n) => x + armorOf(n), 0);
-                    const effSum = raid.seq.reduce((x, n) => x + ticketEffHp(T[n], banOf(n)).eff, 0);   // 有效血量（詛咒扣傷害換算成多打的血）
+                    const effSum = raid.seq.reduce((x, n) => x + ticketEffHp(T[n], banOf(n), sh).eff, 0);   // 有效血量（詛咒扣傷害換算成多打的血）
                     const burdenNow = killSum + armorSum > 0 ? effSum / (killSum + armorSum) - 1 : 0;
-                    const buffKey = (raid.buffs || []).map(b => TICKET_SEED_BUFF[b[0]]).find(Boolean) || null;
+                    const buffKey = ticketBuffKey(raid);
                     const buffAdj = TICKET_BUFF_ADJ[buffKey] || 0;
                     const buffLabel = { BurstChance: '爆裂機率', BurstDamage: '爆裂傷害', AfflictedChance: '苦痛機率', AfflictedDamage: '苦痛傷害', SupportDamage: '支援傷害', SupportEffect: '支援效果', RaidAttackDuration: '時間增益', AfflictedDuration: '苦痛持續時間', AllRaidDamage: '全突襲傷害' };
                     const titanCards = names.map(n => {
@@ -12811,7 +12802,7 @@
                         const dead = bodyLeft < t.k;
                         return `<div style="border:1px solid ${dead ? '#e57373' : '#eadfcc'}; border-radius:10px; padding:8px; margin-bottom:8px; background:${dead ? '#fff5f5' : '#fffdf8'};">
                             <div style="display:flex; justify-content:space-between; font-weight:800; color:#4a3728; font-size:13px; margin-bottom:2px;"><span>${escapeHtml(n)} ×${cnt(n)}</span><span style="font-size:12px;">斬殺線 ${fmt(t.k)}｜盔甲 ${fmt(armorOf(n))}</span></div>
-                            ${(() => { const e = ticketEffHp(t, banOf(n)); return e.carried ? `<div style="font-size:11.5px; font-weight:700; color:#6a3d9a; margin-bottom:2px;">禁了 ${e.carried} 個詛咒甲：整場扛詛咒，傷害變少，相當於多打 ${fmt(e.carryExtra)}（選禁法時已比較過，比不禁還划算）</div>` : ''; })()}
+                            ${(() => { const e = ticketEffHp(t, banOf(n), sh); return e.carried ? `<div style="font-size:11.5px; font-weight:700; color:#6a3d9a; margin-bottom:2px;">禁了 ${e.carried} 個詛咒甲：整場扛詛咒，傷害變少，相當於多打 ${fmt(e.carryExtra)}（選禁法時已比較過，比不禁還划算）</div>` : ''; })()}
                             ${(() => { const md = ticketTitanMods(t); return md.area.length || md.curse.length ? `<div style="font-size:11.5px; margin-bottom:2px;">${md.area.map(x => `<span style="color:#a0522d; font-weight:800;">${x}</span>`).join('　')}${md.area.length && md.curse.length ? '　' : ''}${md.curse.map(x => `<span style="color:#6a3d9a; font-weight:800;">${x}</span>`).join('　')}</div>` : ''; })()}
                             <div style="font-size:11.5px; font-weight:700; margin-bottom:4px; color:${dead ? '#c0392b' : '#8a7a6a'};">能打部位的肉體 ${fmt(bodyLeft)}${dead ? `，比斬殺線少 ${fmt(t.k - bodyLeft)}：<b>這樣打不死</b>，請少禁一點` : `（比斬殺線多 ${fmt(bodyLeft - t.k)}）`}</div>
                             <div class="raid-parts-grid">${cells}</div></div>`;
@@ -12850,7 +12841,7 @@
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
-                        ${names.some(n => { const best = ticketBestBans(T[n]).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
+                        ${names.some(n => { const best = ticketBestBans(T[n], sh).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
                         ${titanCards}
                         ${ticketAllBansHtml(master)}`;
                 } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';
@@ -12898,7 +12889,7 @@
                 return out.join('、');
             };
             const cursed = Object.entries(t.p).filter(([, e]) => e[3]).map(([k]) => k);
-            el.innerHTML = `下一隻 <b>${escapeHtml(nextName)}</b>｜詛 <b style="color:#6a3d9a;">${short(cursed) || '無'}</b>｜禁 <b>${short(ticketBestBans(t)) || '不禁'}</b>`;
+            el.innerHTML = `下一隻 <b>${escapeHtml(nextName)}</b>｜詛 <b style="color:#6a3d9a;">${short(cursed) || '無'}</b>｜禁 <b>${short(ticketBestBans(t, ticketSharesOf(sr))) || '不禁'}</b>`;
             el.style.display = 'block';
         }
         function refreshBossHpIfOpen() {

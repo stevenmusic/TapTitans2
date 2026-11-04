@@ -3276,6 +3276,7 @@
                             <option value="afflictionChance">苦痛機會</option>
                             <option value="support">支援</option>
                             <option value="timeBoost">時間增益</option>
+                            <option value="allDamage">全突襲傷害</option>
                         </select>
                         <input type="text" inputmode="decimal" class="tier-stage-select" id="analysis-morale-input" placeholder="士氣%" title="士氣加成 %" maxlength="5" oninput="onMoraleInput()">
                         <select class="tier-stage-select" id="analysis-tier-select" title="Tier">
@@ -4963,12 +4964,12 @@
         const RAID_BUFF_COLORS = {
             burstDamage: '#d32f2f', burstChance: '#d32f2f',
             afflictionDamage: '#1976d2', afflictionChance: '#1976d2',
-            support: '#2E7D32', timeBoost: '#ef8f00'
+            support: '#2E7D32', timeBoost: '#ef8f00', allDamage: '#6a3d9a'
         };
         const RAID_BUFF_ZH = {
             burstDamage: '爆發傷害', burstChance: '爆發機會',
             afflictionDamage: '苦痛傷害', afflictionChance: '苦痛機會',
-            support: '支援', timeBoost: '時間增益'
+            support: '支援', timeBoost: '時間增益', allDamage: '全突襲傷害'
         };
         function applyBuffSelectColor() {
             const el = document.getElementById('analysis-buff-select');
@@ -7362,7 +7363,19 @@
         const SESSION_BUFF_OVERRIDES = [
             { startedAt: '2026-10-24T02:30:00Z', buffType: 'timeBoost' }, // M-37 時間增益
             { startedAt: '2026-10-15T14:30:00Z', buffType: 'burstDamage' }, // M-22 爆裂傷害
-            { startedAt: '2026-10-07T15:30:00Z', buffType: 'burstChance' }  // M-14 爆裂機會
+            { startedAt: '2026-10-07T15:30:00Z', buffType: 'burstChance' }, // M-14 爆裂機會
+            // 以下依 GameHive 每週 raid seed（該週該關卡的 area_buffs）補上
+            { startedAt: '2026-09-30T14:40:10Z', buffType: 'burstDamage' }, // M-50 爆裂傷害
+            { startedAt: '2026-09-22T14:30:17Z', buffType: 'burstDamage' }, // M-44 爆裂傷害
+            { startedAt: '2026-09-20T14:35:30Z', buffType: 'timeBoost' }, // M-41 時間增益
+            { startedAt: '2026-09-17T02:30:59Z', buffType: 'timeBoost' }, // M-100 時間增益
+            { startedAt: '2026-09-13T14:40:10Z', buffType: 'afflictionChance' }, // M-99 苦痛機會
+            { startedAt: '2026-09-10T02:30:11Z', buffType: 'burstChance' }, // M-98 爆裂機會
+            { startedAt: '2026-09-06T14:40:10Z', buffType: 'afflictionDamage' }, // M-97 苦痛傷害
+            { startedAt: '2026-09-02T15:40:09Z', buffType: 'allDamage' }, // M-96 全突襲傷害
+            { startedAt: '2026-08-30T14:30:12Z', buffType: 'afflictionChance' }, // M-95 苦痛機會
+            { startedAt: '2026-08-26T15:31:40Z', buffType: 'burstDamage' }, // M-94 爆裂傷害
+            { startedAt: '2026-08-23T14:30:11Z', buffType: 'afflictionDamage' } // M-93 苦痛傷害
         ];
         function sessionBuffOverride(startedAt) {
             if (!startedAt) return null;
@@ -7389,7 +7402,8 @@
             afflictionDamage: ['苦痛傷害', 'Affliction Damage'],
             afflictionChance: ['苦痛機會', 'Affliction Chance'],
             support: ['支援', 'Support'],
-            timeBoost: ['時間增益', 'Time Boost']
+            timeBoost: ['時間增益', 'Time Boost'],
+            allDamage: ['全突襲傷害', 'All Raid Damage']
         };
 
         // 顯示格式改成「等級丨日期時間丨（筆數 筆攻擊）」，等級放最前面方便一眼掃過去找場次
@@ -8492,7 +8506,8 @@
             afflictionDamage: { label: '苦痛傷害 +30%', type: 'torment', mul: 0.3 },
             afflictionChance: { label: '苦痛機率 ×1.3', type: 'torment', mul: 0.3 },
             support:          { label: '支援傷害 +15%', type: null, mul: 0 },
-            timeBoost:        { label: '時間增益', type: null, mul: 0 }
+            timeBoost:        { label: '時間增益', type: null, mul: 0 },
+            allDamage:        { label: '全突襲傷害 +15%', type: null, mul: 0 }
         };
         let attackCacheLatestBuff = null;   // 最新一場（本場）的加成類型
         function currentSessionBuff() {
@@ -9553,7 +9568,7 @@
             return path;
         }
         // 下一場（seed）：門票試算選的那一關，每種王照 seed 的加成、詛咒類型、詛咒甲數量，加上那一關的禁打（沒設就用最佳禁打）
-        const SEED_BUFF_KEY = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost' };
+        const SEED_BUFF_KEY = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost', AllRaidDamage: 'allDamage' };
         // 清單要用哪一關的 seed：下一場預告 → 預告那一關（最新 seed）；開打中、這一場有 seed → 這一場；都沒有 → 門票試算選的關卡
         function simSeedPick() {
             if (raidPreview && raidPreview.level && ticketCalc.seed) { const r = ticketCalc.seed.raids.find(x => x.t === 9999 && x.l === raidPreview.level); if (r) return { raid: r, why: '下一場預告' }; }
@@ -12397,8 +12412,8 @@
         const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665;
         // 突襲加成對每刀傷害的影響（攻擊紀錄實測：爆裂場約 +5%、支援場約 −2.3%、時間增益約 −2.5%；苦痛場還沒有足夠資料，當 0）
         const TICKET_BUFF_ADJ = { burstChance: 0.05, burstDamage: 0.05, support: -0.023, timeBoost: -0.025 };
-        const TICKET_BUFF_ZH = { burstChance: '爆裂機率', burstDamage: '爆裂傷害', support: '支援', timeBoost: '時間增益', afflictionChance: '苦痛機率', afflictionDamage: '苦痛傷害' };
-        const TICKET_SEED_BUFF = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage' };
+        const TICKET_BUFF_ZH = { burstChance: '爆裂機率', burstDamage: '爆裂傷害', support: '支援', timeBoost: '時間增益', afflictionChance: '苦痛機率', afflictionDamage: '苦痛傷害', allDamage: '全突襲傷害' };
+        const TICKET_SEED_BUFF = { BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportDamage: 'support', SupportEffect: 'support', RaidAttackDuration: 'timeBoost', AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', AllRaidDamage: 'allDamage' };
         const TC_BURDEN_KEY = 'tt2_curse_burden_v2';   // 每場（開始時間）的詛咒負擔，算過就存著
         // 整場的詛咒負擔：有效血量 ÷ 實際血量 − 1（沒給禁打就用最佳禁打，過去場次不知道實際禁法時用）
         // 公會的傷害組成（爆裂／苦痛佔總傷害幾成）會跟著突襲加成變：攻擊紀錄實測各加成的比例；其他加成用平均

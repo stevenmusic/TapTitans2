@@ -6633,6 +6633,7 @@
                 totalDamage: a.totalDamage
             };
 
+            raidFixCycles([entry]);
             serverAttackLogCache = [...serverAttackLogCache, entry];
             sessionAttacksCache.set(latestSession.startedAt, serverAttackLogCache);
             latestSession.attackCount = (latestSession.attackCount || 0) + 1;
@@ -6738,7 +6739,7 @@
             if (logResp.ok) {
                 const data = await logResp.json();
                 if (Array.isArray(data.attacks)) {
-                    serverAttackLogCache = data.attacks;
+                    serverAttackLogCache = raidFixCycles(data.attacks);
                     setTimeout(refreshBossHpIfOpen, 0);
                     mergeIntoRaidFullLogBackup(data.attacks); // 雙重保險：合併備份到本機，絕對不主動清空
                     // 這批資料就是最新一場的內容，順便存進場次快取，選到最新這場就不用再抓一次
@@ -6824,7 +6825,7 @@
                 const resp = await fetch(`${relayUrl}/full-attack-log?session=${encodeURIComponent(startedAt)}`);
                 if (!resp.ok) return [];
                 const data = await resp.json();
-                const attacks = Array.isArray(data.attacks) ? data.attacks : [];
+                const attacks = raidFixCycles(Array.isArray(data.attacks) ? data.attacks : []);
                 sessionAttacksCache.set(startedAt, attacks);
                 mergeIntoRaidFullLogBackup(attacks);
                 return attacks;
@@ -7586,6 +7587,18 @@
             return ranked;
         }
 
+        // 輪次校正：伺服器偶爾在換輪後幾十秒內還把攻擊記成上一輪（官方換輪事件比攻擊晚到）。
+        // 每輪 12 小時，從場次開始時間跟攻擊時間算出應該的輪次，記錄的比較小就用算出來的
+        function raidFixCycles(list) {
+            (list || []).forEach(a => {
+                if (!a || typeof a.cycle !== 'number' || !a.raidStartedAt) return;
+                const st = Date.parse(a.raidStartedAt), t = a.attackDatetime ? Date.parse(a.attackDatetime) : Number(a.ts);
+                if (!(st > 0) || !(t > 0) || t < st) return;
+                const c = Math.floor((t - st) / (12 * 3600 * 1000)) + 1;
+                if (c > a.cycle && c - a.cycle === 1) a.cycle = c;
+            });
+            return list;
+        }
         function raidLogMissedPlaceholders(attacks) {
             const asc = attacks.filter(a => !a.placeholder && typeof a.cycle === 'number' && typeof a.attacksRemaining === 'number').sort((a, b) => a.ts - b.ts);
             const out = [];

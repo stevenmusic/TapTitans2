@@ -1759,7 +1759,14 @@ function watcherHandleAttack(payload) {
   const attackEntry = {
     ts: Date.now(),
     attackDatetime: (payload.attack_log && payload.attack_log.attack_datetime) || null,
-    cycle: (typeof payload.cycle === 'number') ? payload.cycle : null, // 第幾輪，卡片使用檢查會用到
+    cycle: (() => {   // 第幾輪，卡片使用檢查會用到。官方換輪事件偶爾比攻擊晚到：用場次開始時間算出的輪次校正（只往後校正 1 輪）
+      const c0 = (typeof payload.cycle === 'number') ? payload.cycle : null;
+      try {
+        const st = Date.parse(watcherCurrentRaidStartedAt), t = Date.parse((payload.attack_log && payload.attack_log.attack_datetime) || '') || Date.now();
+        if (c0 !== null && st > 0 && t >= st) { const c = Math.floor((t - st) / (12 * 3600 * 1000)) + 1; if (c - c0 === 1) return c; }
+      } catch (e) {}
+      return c0;
+    })(),
     raidStartedAt: watcherCurrentRaidStartedAt, // 這筆攻擊屬於哪一場突襲（用突襲開始時間當場次識別碼）
     raidLevelTier: watcherCurrentRaidLevel, // 這場突襲的等級，畫面顯示成 M-62 這種格式
     player: playerName,

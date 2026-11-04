@@ -12396,11 +12396,12 @@
            ══════════════════════════════════════════════════════════ */
         const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665;
         const TC_KEY = 'tt2_ticket_calc';
-        const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 0, cap: null };
+        const ticketCalc = { seed: null, loading: false, level: null, bans: {}, rounds: null, perAtk: null, margin: 3, cap: null };
         try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
         if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};
         if (ticketCalc.v !== 2 && ticketCalc.v !== 3) { ticketCalc.margin = 0; }
-        if (ticketCalc.v !== 3) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        if (ticketCalc.v !== 3 && ticketCalc.v !== 4) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }
+        if (ticketCalc.v !== 4) { if (!Number(ticketCalc.margin)) ticketCalc.margin = 3; ticketCalc.v = 4; }   // 刀數改用平均值後，保險預設 3%（M-42 實測平均比實際只差約 3%）   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
         delete ticketCalc.bans;
         function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
         // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
@@ -12475,7 +12476,7 @@
                     ticketCalc.capN = { all: per30.length, used: used.length };
                     src = `最近 ${per30.length} 場換算成 30% 增傷的平均（${per30.map(x => `M-${x.lv} ${Math.round(x.v / 1e6)}M`).join('、')}）`;
                 }
-                // 每輪刀數：同樣這幾場「打完的輪次」（最後一輪通常沒打完，不算）全部放在一起，取 PR30（7 成的輪次刀數比它多，比平均保守）。
+                // 每輪刀數：同樣這幾場「打完的輪次」（最後一輪通常沒打完，不算）全部放在一起，取平均。
                 // 打完的場次數字不會變，算一次就存在手機上，之後不用再下載整場紀錄
                 let roundCache = {};
                 try { roundCache = JSON.parse(localStorage.getItem('tt2_round_attacks_v2')) || {}; } catch (e) {}   // 每場存各輪刀數
@@ -12495,9 +12496,9 @@
                 }
                 try { localStorage.setItem('tt2_round_attacks_v2', JSON.stringify(roundCache)); localStorage.removeItem('tt2_round_attacks'); } catch (e) {}
                 if (rounds.length) {
-                    const srt = rounds.slice().sort((x, y) => x - y), pos = (srt.length - 1) * 0.3, lo = Math.floor(pos);
-                    perRound = Math.round(srt[lo] + (srt[Math.min(lo + 1, srt.length - 1)] - srt[lo]) * (pos - lo));
-                    src += `；每輪刀數取這幾場 ${srt.length} 個打完輪次的 PR30（最少 ${srt[0]}、最多 ${srt[srt.length - 1]}）`;
+                    const srt = rounds.slice().sort((x, y) => x - y);
+                    perRound = Math.round(srt.reduce((x, y) => x + y, 0) / srt.length);   // 平均值（M-42 實測：PR30 比實際保守約 3%）
+                    src += `；每輪刀數取這幾場 ${srt.length} 個打完輪次的平均（最少 ${srt[0]}、最多 ${srt[srt.length - 1]}）`;
                 }
                 // 人數參考：最新一場有出刀的人數 × 6 刀＝一輪理論最多刀數（扣掉已經離開公會的人）
                 const lastLog = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(x => x.raidStartedAt === latest);
@@ -12801,7 +12802,7 @@
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
                         </div>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取 PR30${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
+                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `最近 ${(ticketCalc.capN || {}).all || 7} 場：均傷去頭尾取平均、刀數取平均${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>

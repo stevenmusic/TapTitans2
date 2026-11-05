@@ -5647,12 +5647,19 @@
             }
         }
 
+        // 空間不夠時先清掉可以重抓的快取（攻擊紀錄備份縮成最新一場、seed 快取），再存一次；還是不行就提示
         function savePlayersData(data) {
+            const json = JSON.stringify(data);
+            try { localStorage.setItem(PLAYERS_STORAGE_KEY, json); return true; } catch (e) { console.error('儲存玩家資料失敗:', e); }
             try {
-                localStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(data));
-            } catch (e) {
-                console.error('儲存玩家資料失敗:', e);
-            }
+                const b = JSON.parse(localStorage.getItem('tt2_raid_full_attack_log_backup') || '[]');
+                const starts = [...new Set(b.map(a => a.raidStartedAt).filter(Boolean))].sort().reverse().slice(0, 1);
+                localStorage.setItem('tt2_raid_full_attack_log_backup', JSON.stringify(b.filter(a => starts.includes(a.raidStartedAt))));
+            } catch (e) { try { localStorage.removeItem('tt2_raid_full_attack_log_backup'); } catch (e2) {} }
+            ['tt2_raid_seed_cache', 'tt2_deck_scenarios_cache'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+            try { localStorage.setItem(PLAYERS_STORAGE_KEY, json); return true; } catch (e) { console.error('儲存玩家資料失敗:', e); }
+            alert('手機的瀏覽器儲存空間不夠，玩家資料沒有存進去。可以先刪掉幾筆不用的玩家資料再試。');
+            return false;
         }
 
         function formatPlayerSavedTime(ts) {
@@ -5728,7 +5735,7 @@
             if (players[name] && !confirm(t('playerNameExistsConfirm'))) return;
 
             players[name] = { data: data, updatedAt: Date.now() };
-            savePlayersData(players);
+            if (!savePlayersData(players)) return;   // 沒存成功：保留輸入的內容
             nameInput.value = '';
             dataInput.value = '';
             renderPlayersList();
@@ -6690,13 +6697,19 @@
             }
         }
 
+        // 本機備份只留最近 keep 場（離線時看最新的就夠了，舊場次伺服器都有）：手機瀏覽器儲存空間只有約 5MB，
+        // 全部場次都存會塞滿，連玩家資料庫都存不進去
+        function trimRaidLog(log, keep) {
+            const starts = [...new Set(log.map(a => a.raidStartedAt).filter(Boolean))].sort().reverse().slice(0, keep);
+            return log.filter(a => !a.raidStartedAt || starts.includes(a.raidStartedAt));
+        }
         function saveRaidFullLogBackup(log) {
-            try {
-                localStorage.setItem(RAID_FULL_LOG_BACKUP_KEY, JSON.stringify(log));
-            } catch (e) {
-                console.error('儲存本機攻擊紀錄備份失敗（可能超過瀏覽器儲存空間上限）:', e);
+            for (const keep of [2, 1]) {
+                try { localStorage.setItem(RAID_FULL_LOG_BACKUP_KEY, JSON.stringify(trimRaidLog(log, keep))); return; }
+                catch (e) { console.error('儲存本機攻擊紀錄備份失敗（可能超過瀏覽器儲存空間上限）:', e); }
             }
         }
+        try { const b = loadRaidFullLogBackup(); if (b.length) saveRaidFullLogBackup(b); } catch (e) {}   // 舊版存了全部場次：開網頁時先縮成最近 2 場
 
         // 現在畫面一次只會載入「一個場次」的資料（節省載入時間），但雙重保險的本機備份
         // 希望愈完整愈好，所以用「累加合併」而不是整個覆蓋掉——每載入一場，就把那一場

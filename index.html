@@ -9598,8 +9598,9 @@
             const targets = (apiTitanTarget && apiTitanTarget.length ? apiTitanTarget : (bossHpSnapshot && bossHpSnapshot.titan_target) || []);
             const liveBan = (n) => { if (!pk.live) return null; const tt = ((apiRaidTitans && apiRaidTitans.length ? apiRaidTitans : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.titans)) || []).find(x => x.enemy_name === n); const e = tt && targets.find(x => x.enemy_id === tt.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : null; };
             const bans = ticketCalc.bansByLv[lv] || {};
-            // 只剩肉體（沒有詛咒甲、沒有盔甲、也沒有禁打的詛咒甲）的狀態，每隻王都一樣：從各隻王拿出來，最後統一列一次
-            const bodyOnly = new Map();   // 能打幾個 → 會出現的區（頭肚都能打／頭或肚一個／頭肚都不能打）
+            // 純肉（能打的部位沒有盔甲、詛咒甲）：從各隻王拿出來，最後統一列在「純肉」，同樣的狀態只列一次
+            //   禁打部位有詛咒甲的（詛咒一直都在）另外分組：同詛咒類型、同數量的王合在一起
+            const bodyOnly = new Map();   // 分組 → { cond, names, ns: 能打幾個 → 會出現的區 }
             const titanHtml = [...new Set(raid.seq)].map(n => {
                     const t = raid.titans.find(x => x.n === n); if (!t) return '';
                     const ct = ((t.c || [])[0] || [])[0] || '';
@@ -9619,12 +9620,15 @@
                     const todo = simTodoList(cond);
                     if (!todo) return '';
                     const pre = `simImp.todoCond = ${escapeHtml(JSON.stringify(cond)).replace(/"/g, '&quot;')}; `;
-                    const isBodyOnly = (r) => r.c === 0 && r.a === 0 && !r.cb;
+                    const isBodyOnly = (r) => r.c === 0 && r.a === 0;
+                    const gk = cond.cursedBanned ? `${curse}|${cond.cursedBanned}` : '|0';
                     const path = simTodoPath(todo).map(r => ({ ...r, pre, now: false })).filter(r => {
                         if (!isBodyOnly(r)) return true;
-                        const secs = bodyOnly.get(r.n) || new Set();
+                        if (!bodyOnly.has(gk)) bodyOnly.set(gk, { cond: cond.cursedBanned ? cond : { buff, curse: '', banned: [], cursedMax: 0, cursedBanned: 0 }, names: new Set(), ns: new Map() });
+                        const grp = bodyOnly.get(gk); grp.names.add(n);
+                        const secs = grp.ns.get(r.n) || new Set();
                         todo.rows.filter(x => x.n === r.n && isBodyOnly(x)).forEach(x => secs.add(x.sec));
-                        bodyOnly.set(r.n, secs);
+                        grp.ns.set(r.n, secs);
                         return false;
                     });
                     const zh = (k) => raidPartLabel(k);
@@ -9634,15 +9638,19 @@
                 }).join('');
             let bodyHtml = '';
             if (bodyOnly.size) {
-                const gCond = { buff, curse: '', banned: [], cursedMax: 0, cursedBanned: 0 };
-                const g = simTodoList(gCond);
-                const rows = g.rows.filter(r => r.c === 0 && r.a === 0 && bodyOnly.has(r.n) && bodyOnly.get(r.n).has(r.sec));
-                const gTodo = { ...g, rows };
-                const gPath = [...bodyOnly.keys()].sort((x, y) => y - x).map(nn => rows.find(r => r.n === nn)).filter(Boolean);
-                const gPre = `simImp.todoCond = ${escapeHtml(JSON.stringify(gCond)).replace(/"/g, '&quot;')}; `;
+                let miss = 0, total = 0;
+                const parts = [...bodyOnly.entries()].sort((x, y) => x[0] === '|0' ? -1 : y[0] === '|0' ? 1 : 0).map(([k, grp]) => {
+                    const g = simTodoList(grp.cond);
+                    const rows = g.rows.filter(r => r.c === 0 && r.a === 0 && grp.ns.has(r.n) && grp.ns.get(r.n).has(r.sec));
+                    miss += rows.filter(r => !r.ok).length; total += rows.length;
+                    const gPath = [...grp.ns.keys()].sort((x, y) => y - x).map(nn => rows.find(r => r.n === nn)).filter(Boolean);
+                    const gPre = `simImp.todoCond = ${escapeHtml(JSON.stringify(grp.cond)).replace(/"/g, '&quot;')}; `;
+                    const sub = k === '|0' ? '' : `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin-top:6px;">禁打部位還有 ${grp.cond.cursedBanned} 個${SIM_CURSE_ZH[grp.cond.curse] || '苦痛'}詛咒甲（詛咒一直都在）：${[...grp.names].map(escapeHtml).join('、')}</div>`;
+                    return sub + simTodoVariantsHtml({ ...g, rows }, gPath, gPre);
+                });
                 bodyHtml = `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
-                    <div style="font-weight:800; font-size:13px; color:#4a3728;">純肉<small style="font-weight:700; color:#8a7a6a;">　每隻王都一樣（沒有詛咒甲、盔甲）｜缺 ${rows.filter(r => !r.ok).length}／${rows.length}</small></div>
-                    ${simTodoVariantsHtml(gTodo, gPath, gPre)}</div>`;
+                    <div style="font-weight:800; font-size:13px; color:#4a3728;">純肉<small style="font-weight:700; color:#8a7a6a;">　能打的部位沒有盔甲、詛咒甲｜缺 ${miss}／${total}</small></div>
+                    ${parts.join('')}</div>`;
             }
             return `<div class="si-tip" style="margin-bottom:4px;">M-${lv}（${pk.why}，${pk.liveOnly ? "照即時資料" : "照 seed"}${pk.live ? "；正在打的王用即時部位" : ""}）｜${(SESSION_BUFFS[buff] || {}).label || '加成不明'}｜每隻王照 seed 的詛咒甲數量與類型，依序列出會遇到的狀態，點 ❌ 帶入條件。</div>` + titanHtml + bodyHtml;
         }

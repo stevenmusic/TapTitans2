@@ -9599,7 +9599,7 @@
             const liveBan = (n) => { if (!pk.live) return null; const tt = ((apiRaidTitans && apiRaidTitans.length ? apiRaidTitans : (bossHpSnapshot && bossHpSnapshot.raid && bossHpSnapshot.raid.titans)) || []).find(x => x.enemy_name === n); const e = tt && targets.find(x => x.enemy_id === tt.enemy_id); return e && Array.isArray(e.state) ? e.state.filter(x => String(x.state) === '1').map(x => x.id) : null; };
             const bans = ticketCalc.bansByLv[lv] || {};
             // 純肉（能打的部位沒有盔甲、詛咒甲）：從各隻王拿出來，最後統一列在「純肉」，同樣的狀態只列一次
-            //   禁打部位有詛咒甲的（詛咒一直都在）另外分組：同詛咒類型、同數量的王合在一起
+            //   禁打部位還有詛咒甲的王也算同一種（推薦牌組找不到那種情境時，用一般純肉的）
             const bodyOnly = new Map();   // 分組 → { cond, names, ns: 能打幾個 → 會出現的區 }
             const titanHtml = [...new Set(raid.seq)].map(n => {
                     const t = raid.titans.find(x => x.n === n); if (!t) return '';
@@ -9621,10 +9621,10 @@
                     if (!todo) return '';
                     const pre = `simImp.todoCond = ${escapeHtml(JSON.stringify(cond)).replace(/"/g, '&quot;')}; `;
                     const isBodyOnly = (r) => r.c === 0 && r.a === 0;
-                    const gk = cond.cursedBanned ? `${curse}|${cond.cursedBanned}` : '|0';
+                    const gk = '|0';
                     const path = simTodoPath(todo).map(r => ({ ...r, pre, now: false })).filter(r => {
                         if (!isBodyOnly(r)) return true;
-                        if (!bodyOnly.has(gk)) bodyOnly.set(gk, { cond: cond.cursedBanned ? cond : { buff, curse: '', banned: [], cursedMax: 0, cursedBanned: 0 }, names: new Set(), ns: new Map() });
+                        if (!bodyOnly.has(gk)) bodyOnly.set(gk, { cond: { buff, curse: '', banned: [], cursedMax: 0, cursedBanned: 0 }, names: new Set(), ns: new Map() });
                         const grp = bodyOnly.get(gk); grp.names.add(n);
                         const secs = grp.ns.get(r.n) || new Set();
                         todo.rows.filter(x => x.n === r.n && isBodyOnly(x)).forEach(x => secs.add(x.sec));
@@ -10058,8 +10058,8 @@
             const torsoOk = ['Head', 'ChestUpper'].some(k => ['armor', 'body', 'cursed'].includes(scene[k]));
             const cursedKeys = RAID_PARTS.map(p => p.key).filter(k => scene[k] === 'cursed');
             // 禁打部位裡的詛咒甲（拆不掉，詛咒一直都在）也算詛咒甲：情境的詛咒甲＝能打的＋禁打的
-            const cursedBannedN = (banned || []).filter(k => parts && parts[k] && parts[k].cursed && Number(parts[k].armor) > 0).length;
-            const cursedN = cursedKeys.length + cursedBannedN;
+            let cursedBannedN = (banned || []).filter(k => parts && parts[k] && parts[k].cursed && Number(parts[k].armor) > 0).length;
+            let cursedN = cursedKeys.length + cursedBannedN;
             const attackableNow = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
             // 只看能打的部位：詛咒甲、盔甲、肉體各幾個要一樣；不能打的（禁打或骨架）合在一起算，不管是禁打還是骨架。
             // 頭、肚子能不能打會讓模擬器配卡不同（四肢哪幾個不能打不影響），所以「頭／肚子哪個不能打」（禁打或骨架都算）要跟情境一樣
@@ -10069,6 +10069,8 @@
             const matchWith = (tk, onlyPart) => byPartAllScenarios().filter(x => x.buff === buffKey && (!x.only || (attackableNow.length === 1 && (onlyPart || attackableNow[0]) === x.only)) && (x.cursed === undefined || (cursedN === x.cursed && (Number(x.cursedBanned) || 0) === cursedBannedN && (x.cursed === 0 || (curseTypes || []).some(d => String(d.type).startsWith(x.curse))))) && cnt.armor === x.counts.armor && cnt.body === x.counts.body && offN === (x.counts.skeleton || 0) + (x.counts.banned || 0) && (!x.needTorso || torsoOk) && (!x.cursedAt || (x.cursedAt.length === cursedKeys.length && x.cursedAt.every(k => cursedKeys.includes(k)))) && (x.only || torsoBanKey(x.bannedParts || []) === tk));   // 指定「只剩哪個部位」的情境（only）已經指定位置，不再比對頭／肚
             // 只有頭或只有肚不能打：差別不大，找不到完全一樣的情境時，用另一個（只有肚／只有頭不能打）的情境
             let matches = matchWith(torsoBanKey(torsoOff));
+            // 能打的只剩肉體、詛咒甲都在禁打部位：找不到這種情境，就用一般純肉的（匯入模擬器圖片把它們併在「純肉」）
+            if (!matches.length && !cursedKeys.length && cursedBannedN > 0 && cnt.armor === 0) { cursedN = 0; cursedBannedN = 0; matches = matchWith(torsoBanKey(torsoOff)); }
             // 只剩頭或只剩肚子：找不到這一種，就用另一種（只剩肚子／只剩頭）的情境，碎顱打擊↔皎月光束、打頭↔打肚子對調
             const onlyTorso = attackableNow.length === 1 && (attackableNow[0] === 'Head' || attackableNow[0] === 'ChestUpper') ? attackableNow[0] : null;
             let mirrored = false;

@@ -9667,7 +9667,7 @@
                     <div style="font-weight:800; font-size:13px; color:#4a3728;">純肉<small style="font-weight:700; color:#8a7a6a;">　能打的部位沒有盔甲、詛咒甲｜缺 ${miss}／${total}</small></div>
                     ${parts.join('')}</div>`;
             }
-            return `<div class="si-tip" style="margin-bottom:4px;">M-${lv}（${pk.why}，${pk.liveOnly ? "照即時資料" : "照 seed"}${pk.live ? "；正在打的王用即時部位" : ""}）｜${(SESSION_BUFFS[buff] || {}).label || '加成不明'}｜每隻王照 seed 的詛咒甲數量與類型，依序列出會遇到的狀態，<b style="color:#2e7d32;">綠＝有</b>、<b style="color:#c0392b;">紅＝缺（點了帶入條件）</b>；頭肚＝頭肚都能打、頭/肚＝只剩其中一個、四肢＝頭肚都不能打。</div>` + titanHtml + bodyHtml;
+            return `<div class="si-tip" style="margin-bottom:4px;">M-${lv}（${pk.why}，${pk.liveOnly ? "照即時資料" : "照 seed"}${pk.live ? "；正在打的王用即時部位" : ""}）｜${(SESSION_BUFFS[buff] || {}).label || '加成不明'}｜每隻王照 seed 的詛咒甲數量與類型，依序列出會遇到的狀態，<b style="color:#2e7d32;">綠＝有（點了可以重新匯入取代）</b>、<b style="color:#c0392b;">紅＝缺（點了帶入條件）</b>；頭肚＝頭肚都能打、頭/肚＝只剩其中一個、四肢＝頭肚都不能打。</div>` + titanHtml + bodyHtml;
         }
         function simTodoTopHtml(todo) {
             const path = simTodoPath(todo);
@@ -9691,8 +9691,8 @@
                 const vars = SIM_TODO_SECS.map(([sec]) => todo.rows.find(x => x.sec === sec && x.n === r.n && x.c === r.c && x.a === r.a)).filter(Boolean);
                 const chips = vars.map(v => {
                     const sel = tg && tg.sec === v.sec && tg.n === v.n && tg.cursed === v.c && tg.armor === v.c + v.a && (Number(tg.cursedBanned) || 0) === (v.cb || 0);   // 禁打的詛咒甲數量也要一樣（純肉和「禁打部位有詛咒甲」的純肉是不同狀態）
-                    const st = v.ok ? 'background:#eef6ee; color:#2e7d32; border-color:#cfe6cf;' : 'background:#fdecee; color:#c0392b; border-color:#eba5ad; cursor:pointer; font-weight:800;';
-                    return `<span ${v.ok ? '' : `onclick="${pre || ''}simTodoPick('${v.sec}', ${v.n}, ${v.c}, ${v.a})"`} style="display:inline-block; font-size:11px; padding:1px 6px; border:1px solid; border-radius:6px; margin:3px 3px 0 0; white-space:nowrap; ${st}${sel ? ' box-shadow:0 0 0 2px #6a3d9a;' : ''}">${short[v.sec]}${v.now ? ' <b style="color:#6a3d9a;">現在</b>' : ''}</span>`;
+                    const st = v.ok ? 'background:#eef6ee; color:#2e7d32; border-color:#cfe6cf; cursor:pointer;' : 'background:#fdecee; color:#c0392b; border-color:#eba5ad; cursor:pointer; font-weight:800;';   // 綠的也能點：重新匯入就取代原本的情境
+                    return `<span onclick="${pre || ''}simTodoPick('${v.sec}', ${v.n}, ${v.c}, ${v.a})" style="display:inline-block; font-size:11px; padding:1px 6px; border:1px solid; border-radius:6px; margin:3px 3px 0 0; white-space:nowrap; ${st}${sel ? ' box-shadow:0 0 0 2px #6a3d9a;' : ''}">${short[v.sec]}${v.now ? ' <b style="color:#6a3d9a;">現在</b>' : ''}</span>`;
                 }).join('');
                 const allOk = vars.every(v => v.ok);
                 return `<div style="padding:5px 0; border-top:1px solid #f0e6d4; font-size:12.5px; min-width:0;">
@@ -9727,7 +9727,7 @@
             simImp.target = { sec, n, buff: t.buff, curse: c + (r.cb || 0) > 0 ? t.curse : '', cursed: c, cursedBanned: r.cb || 0, armor: c + a, body: r.b, skeleton: 0, banned: r.off };
             renderSimImport();
             const m = document.getElementById('sim-imp-msg');
-            if (m) { m.textContent = `已選：${(SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1]}｜能打 ${n} 個｜詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${r.b}。請選這個狀態的模擬器截圖，條件會自動帶入（不能打的部位跟截圖不一樣再點格子改）。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
+            if (m) { m.textContent = `${r.ok ? '（這個狀態已經有了，上傳後會取代原本的）' : ''}已選：${(SIM_TODO_SECS.find(x => x[0] === sec) || SIM_TODO_SECS[0])[1]}｜能打 ${n} 個｜詛咒甲 ${c}｜盔甲 ${a}｜肉體 ${r.b}。請選這個狀態的模擬器截圖，條件會自動帶入（不能打的部位跟截圖不一樣再點格子改）。`; m.style.color = '#6a3d9a'; m.style.fontWeight = '700'; }
             const bd = document.querySelector('#sim-import-modal .si-body'); if (bd) bd.scrollTop = 0;
         }
         function renderSimImport() {

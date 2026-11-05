@@ -6786,7 +6786,7 @@
             raidBossOrdinal = cb.ordinal || 1;
             apiBossTotal = cb.total || 6;
             if (cb.preview) {   // 下一場預告：禁打、詛咒、加成都用預告帶來的
-                raidPreview = { buff: cb.buff || null, startAt: cb.startAt || null, level: cb.level || null };
+                raidPreview = { buff: cb.buff || null, startAt: cb.startAt || null, level: cb.level || null, bansByName: cb.bansByName || null };   // bansByName：公會已經先設定的每隻王禁打
                 raidBannedParts = Array.isArray(cb.banned) ? cb.banned.slice() : [];
                 raidCurseInfo = Array.isArray(cb.curse) ? cb.curse : [];
             } else {
@@ -9626,7 +9626,9 @@
                         const later = raid.seq.some((x, i) => x === n && i + 1 > curOrd);
                         return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8; font-size:12px; color:#8a7a6a;"><b style="color:#4a3728;">${escapeHtml(n)}</b>　${later ? '還沒出場：沒有 seed，打到這隻才知道詛咒甲幾個' : '已經打完'}</div>`;
                     }
-                    const banned = (isCur && raidBannedParts && raidBannedParts.length ? raidBannedParts.slice() : null) || liveBan(n) || bans[n] || (t.p ? ticketBestBans(t, ticketSharesOf(raid)) : []);
+                    // 下一場預告：公會已經先設定好這隻王的禁打，就照實際設定（跟最佳禁打不一樣也一樣）
+                    const pvBan = raidPreview && raidPreview.bansByName && String(raidPreview.level) === String(lv) && Array.isArray(raidPreview.bansByName[n]) && raidPreview.bansByName[n].length ? raidPreview.bansByName[n].slice() : null;
+                    const banned = (isCur && raidBannedParts && raidBannedParts.length ? raidBannedParts.slice() : null) || liveBan(n) || pvBan || bans[n] || (t.p ? ticketBestBans(t, ticketSharesOf(raid)) : []);
                     // 詛咒甲也可能被禁打：禁打的詛咒甲打不到，不算進能打部位的詛咒甲數量
                     const cursedAll = isCur ? RAID_PARTS.map(x => x.key).filter(k => raidState.parts[k] && raidState.parts[k].cursed) : Object.keys(t.p).filter(loc => t.p[loc][3]);
                     const cursedBanned = cursedAll.filter(loc => banned.includes(loc));

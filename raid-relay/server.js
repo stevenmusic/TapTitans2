@@ -1602,7 +1602,12 @@ function buildRaidPreview(payload) {
     ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight']
       .forEach(loc => { parts[loc] = { armor: per, armorMax: per, body: per, bodyMax: per, cursed: false }; });
   }
+  // 每隻王的禁打（公會在預告期間就能先設定）：enemy_id → 王名稱，之後收到 target 事件用它更新
+  const enemyNames = {}, bansByName = {};
+  titans.forEach(t => { if (t && t.enemy_id && t.enemy_name) enemyNames[t.enemy_id] = t.enemy_name; });
+  (payload.titan_target || []).forEach(tt => { const n = enemyNames[tt.enemy_id]; if (n && Array.isArray(tt.state)) bansByName[n] = tt.state.filter(x => String(x.state) === '1').map(x => x.id); });
   return {
+    raidId: payload.raid_id || null, enemyNames, bansByName,
     name: titan.enemy_name, ordinal: 1, total: seq.length, enemyId: titan.enemy_id,
     parts, killMaxHp: titan.total_hp || 0, bossCurrentHp: titan.current_hp || titan.total_hp || 0,
     banned: target && Array.isArray(target.state) ? target.state.filter(x => String(x.state) === '1').map(x => x.id) : [],
@@ -1620,7 +1625,14 @@ function watcherHandleRaidSnapshot(payload, event) {
   // 下一場還沒開打的預告：只記預告，不拿來改目前這場的王總數、王狀態
   if (payload && payload.raid && !payload.raid_started_at && typeof payload.start_at === 'string' && Date.parse(payload.start_at) > Date.now()) {
     const pv = buildRaidPreview(payload);
-    if (pv) watcherPreview = pv;
+    if (pv) {
+      // 這份預告沒帶 titan_target（例如 start 事件）：同一場的話沿用之前記到的禁打
+      if (!Array.isArray(payload.titan_target) && watcherPreview && watcherPreview.raidId && watcherPreview.raidId === pv.raidId) {
+        pv.bansByName = watcherPreview.bansByName || {};
+        if (pv.bansByName[pv.name]) pv.banned = pv.bansByName[pv.name].slice();
+      }
+      watcherPreview = pv;
+    }
     // 下一場預告也帶了每隻王的部位（都還沒被打過）：存下來，開打前就能算整場血量
     if (payload.raid && Array.isArray(payload.raid.titans)) saveTitanSpawnParts(payload.raid.titans, 'preview:' + payload.start_at);
     return;
@@ -1846,6 +1858,18 @@ function startWatcher() {
 
   ['sub_start', 'start', 'sub_cycle', 'cycle_reset'].forEach((evt) => watcherSocket.on(evt, (payload) => watcherHandleRaidSnapshot(payload, evt)));
   watcherSocket.on('attack', watcherHandleAttack);
+  // 公會改禁打（target 事件，帶 raid_id、enemy_id、state）：是下一場預告的王，就更新預告的禁打
+  watcherSocket.on('target', (payload) => {
+    try {
+      if (!watcherPreview || !payload || !Array.isArray(payload.state)) return;
+      if (watcherPreview.raidId && payload.raid_id && payload.raid_id !== watcherPreview.raidId) return;
+      const name = (watcherPreview.enemyNames || {})[payload.enemy_id];
+      if (!name) return;
+      const bans = payload.state.filter(x => String(x.state) === '1').map(x => x.id);
+      watcherPreview.bansByName = { ...(watcherPreview.bansByName || {}), [name]: bans };
+      if (name === watcherPreview.name) watcherPreview.banned = bans.slice();
+    } catch (e) { console.error('[watcher] 處理 target 事件失敗:', e.message); }
+  });
   // 不管官方送來什麼事件都記一筆，找出加成到底放在哪個事件（名稱不在上面清單裡的也存原始內容）
   const knownEvents = new Set(['sub_start', 'start', 'sub_cycle', 'cycle_reset', 'attack']);
   watcherSocket.onAny((eventName, payload) => {

@@ -9668,20 +9668,22 @@
         function simTodoVariantsHtml(todo, path, pre) {
             const seen = new Set(), lines = [];
             path.forEach(r => { const k = `${r.n}|${r.c}|${r.a}`; if (!seen.has(k)) { seen.add(k); lines.push(r); } });
-            const short = { '': '頭肚都能打', one: '頭或肚一個能打', both: '頭肚都不能打' };
+            const short = { '': '頭肚', one: '頭或肚', both: '無頭肚' };   // 頭肚都能打／頭或肚只剩一個能打／頭肚都不能打
             const tg = simImp.target;
-            return lines.map(r => {
+            const rows = lines.map(r => {
                 const vars = SIM_TODO_SECS.map(([sec]) => todo.rows.find(x => x.sec === sec && x.n === r.n && x.c === r.c && x.a === r.a)).filter(Boolean);
                 const chips = vars.map(v => {
                     const sel = tg && tg.sec === v.sec && tg.n === v.n && tg.cursed === v.c && tg.armor === v.c + v.a;
                     const st = v.ok ? 'background:#eef6ee; color:#2e7d32; border-color:#cfe6cf;' : 'background:#fff; color:#8b263e; border-color:#e8c6cc; cursor:pointer; font-weight:800;';
-                    return `<span ${v.ok ? '' : `onclick="${pre || ''}simTodoPick('${v.sec}', ${v.n}, ${v.c}, ${v.a})"`} style="display:inline-block; font-size:11px; padding:2px 7px; border:1px solid; border-radius:6px; margin:2px 4px 0 0; ${st}${sel ? ' box-shadow:0 0 0 2px #6a3d9a;' : ''}">${v.ok ? '✅' : '❌'} ${short[v.sec]}${v.now ? ' <b style="color:#6a3d9a;">現在</b>' : ''}</span>`;
+                    return `<span ${v.ok ? '' : `onclick="${pre || ''}simTodoPick('${v.sec}', ${v.n}, ${v.c}, ${v.a})"`} style="display:inline-block; font-size:11px; padding:2px 6px; border:1px solid; border-radius:6px; margin:3px 3px 0 0; white-space:nowrap; ${st}${sel ? ' box-shadow:0 0 0 2px #6a3d9a;' : ''}">${v.ok ? '✅' : '❌'} ${short[v.sec]}${v.now ? ' <b style="color:#6a3d9a;">現在</b>' : ''}</span>`;
                 }).join('');
                 const allOk = vars.every(v => v.ok);
-                return `<div class="si-row" style="display:block;">
-                    <div style="${allOk ? 'color:#8a7a6a;' : 'font-weight:700;'}">能打 ${r.n}｜詛咒甲 ${r.c}${r.cb ? `＋禁打 ${r.cb}` : ''}｜盔甲 ${r.a}｜肉體 ${r.b}</div>
+                return `<div style="padding:5px 0; border-top:1px solid #f0e6d4; font-size:12.5px; min-width:0;">
+                    <div style="white-space:nowrap; ${allOk ? 'color:#8a7a6a;' : 'font-weight:700;'}">能打 ${r.n}｜詛${r.c}${r.cb ? `<small>+禁${r.cb}</small>` : ''}｜盔${r.a}｜肉${r.b}</div>
                     <div>${chips}</div></div>`;
-            }).join('');
+            });
+            // 兩個狀態排一橫排，節省空間
+            return `<div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:10px;">${rows.join('')}</div>`;
         }
         function simTodoSummary() {
             // 每種加成 × 詛咒（爆裂／苦痛）× 頭肚三區，常見的情境補了幾個（沒有詛咒甲的情境不分詛咒類型，標題的缺幾個只算一次）

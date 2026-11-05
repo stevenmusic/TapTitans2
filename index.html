@@ -9649,9 +9649,22 @@
                     });
                     const zh = (k) => raidPartLabel(k);
                     const sameN = path.length > 0 && path.every(r => r.n === path[0].n);   // 有甲的狀態能打幾個都一樣：寫在標題
+                    // 少見情境：主要順序（詛咒甲先拆完再拆盔甲）以外的組合，例如薄的盔甲先被打光、厚的詛咒甲還在；
+                    // 一般盔甲最多幾個照這隻王能打的部位（seed 或即時部位）
+                    const aMax = isCur ? RAID_PARTS.map(x => x.key).filter(k => !banned.includes(k) && raidState.parts[k] && !raidState.parts[k].cursed && raidState.parts[k].armor > 0).length
+                        : (t.p ? Object.keys(t.p).filter(l => !banned.includes(l) && !t.p[l][3] && t.p[l][1] > 0).length : 8);
+                    const onPath = new Set(path.map(r => `${r.n}|${r.c}|${r.a}`));
+                    const ns = new Set(path.map(r => r.n));
+                    const rareSeen = new Set();
+                    const rare = todo.rows.filter(r => ns.has(r.n) && !(r.c === 0 && r.a === 0) && r.a <= aMax && !onPath.has(`${r.n}|${r.c}|${r.a}`))
+                        .filter(r => { const k = `${r.n}|${r.c}|${r.a}`; if (rareSeen.has(k)) return false; rareSeen.add(k); return true; })
+                        .map(r => ({ ...r, pre, now: false }))
+                        .sort((x, y) => (y.n - x.n) || (y.c - x.c) || (y.a - x.a));
+                    const rareVars = rare.flatMap(r => todo.rows.filter(x => x.n === r.n && x.c === r.c && x.a === r.a));
+                    const rareHtml = rare.length ? `<div style="font-size:12px; font-weight:800; color:#8a7a6a; margin-top:6px;">少見情境｜缺 ${rareVars.filter(r => !r.ok).length}／${rareVars.length}</div>${simTodoVariantsHtml(todo, rare, pre, sameN ? { mode: 'titan' } : null)}` : '';
                     return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
                         <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} 有甲 ×${raid.seq.filter(x => x === n).length}${sameN ? `｜能打 ${path[0].n}` : ''}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）${cond.cursedBanned ? `<span style="color:#c0392b;">（其中 ${cond.cursedBanned} 個在禁打部位）</span>` : ''}｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
-                        ${simTodoVariantsHtml(todo, path, pre, sameN ? { mode: 'titan' } : null)}</div>`;
+                        ${simTodoVariantsHtml(todo, path, pre, sameN ? { mode: 'titan' } : null)}${rareHtml}</div>`;
                 }).join('');
             let bodyHtml = '';
             if (bodyOnly.size) {

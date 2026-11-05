@@ -7657,15 +7657,14 @@
             return `${dayLabel} ${timeStr}`;
         }
 
-        // 跟遊戲畫面一致：Boss 面向我們，所以畫面左邊顯示 Boss 的「右」側部位，
-        // 畫面右邊顯示 Boss 的「左」側部位（左右鏡射），頭／肚子置中
-        //   右肩  頭   左肩
-        //   右手  肚   左手
-        //     右腳  左腳
+        // 跟遊戲畫面一致：左邊放左側部位、右邊放右側部位（官方的 ArmUpperLeft＝遊戲裡的左肩），頭／肚子置中
+        //   左肩  頭   右肩
+        //   左手  肚   右手
+        //     左腳  右腳
         const RAID_LOG_PART_LAYOUT = [
-            ['ArmUpperRight', 'Head', 'ArmUpperLeft'],
-            ['HandRight', 'ChestUpper', 'HandLeft'],
-            ['LegUpperRight', 'LegUpperLeft']
+            ['ArmUpperLeft', 'Head', 'ArmUpperRight'],
+            ['HandLeft', 'ChestUpper', 'HandRight'],
+            ['LegUpperLeft', 'LegUpperRight']
         ];
         const RAID_LOG_LAYERS = ['armor', 'body']; // 骨架幾乎不會造成傷害，拿掉節省版面
 
@@ -9753,7 +9752,7 @@
                     </div>`).join('')}</div>
                 </div>`;
             }).join('') : '';
-            // 禁打部位：跟首頁一樣的部位格子（右肩 頭 左肩／右手 肚 左手／右腳 左腳），點一下切換禁打（紅框＋✗）
+            // 禁打部位：跟首頁一樣的部位格子（左肩 頭 右肩／左手 肚 右手／左腳 右腳），點一下切換禁打（紅框＋✗）
             const partChips = `<div class="raid-parts-grid" style="margin-top:2px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(k => `<div class="raid-part-cell si-part" onclick="simImpPartCycle(this)" style="cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;">
                 <input type="checkbox" class="sim-imp-ban" value="${k}" style="display:none;"><input type="checkbox" class="sim-imp-skelpart" value="${k}" style="display:none;">
                 <div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp si-part-st" style="color:#8a7a6a;">可打</div></div>`).join('')}</div>`).join('')}</div>`;

@@ -9632,9 +9632,10 @@
                         return false;
                     });
                     const zh = (k) => raidPartLabel(k);
+                    const sameN = path.length > 0 && path.every(r => r.n === path[0].n);   // 有甲的狀態能打幾個都一樣：寫在標題
                     return `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
-                        <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} 有甲 ×${raid.seq.filter(x => x === n).length}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）${cond.cursedBanned ? `<span style="color:#c0392b;">（其中 ${cond.cursedBanned} 個在禁打部位）</span>` : ''}｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
-                        ${simTodoVariantsHtml(todo, path, pre)}</div>`;
+                        <div style="font-weight:800; font-size:13px; color:#4a3728;">${escapeHtml(n)} 有甲 ×${raid.seq.filter(x => x === n).length}${sameN ? `｜能打 ${path[0].n}` : ''}<small style="font-weight:700; color:#8a7a6a;">　詛咒甲 ${cond.cursedMax} 個（${curse === 'Burst' ? '爆裂' : curse === 'Afflicted' ? '苦痛' : '肉體'}）${cond.cursedBanned ? `<span style="color:#c0392b;">（其中 ${cond.cursedBanned} 個在禁打部位）</span>` : ''}｜禁打 ${cond.banned.map(zh).join('、') || '無'}｜缺 ${path.filter(r => !r.ok).length}／${path.length}</small></div>
+                        ${simTodoVariantsHtml(todo, path, pre, sameN ? { mode: 'titan' } : null)}</div>`;
                 }).join('');
             let bodyHtml = '';
             if (bodyOnly.size) {
@@ -9646,7 +9647,7 @@
                     const gPath = [...grp.ns.keys()].sort((x, y) => y - x).map(nn => rows.find(r => r.n === nn)).filter(Boolean);
                     const gPre = `simImp.todoCond = ${escapeHtml(JSON.stringify(grp.cond)).replace(/"/g, '&quot;')}; `;
                     const sub = k === '|0' ? '' : `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin-top:6px;">禁打部位還有 ${grp.cond.cursedBanned} 個${SIM_CURSE_ZH[grp.cond.curse] || '苦痛'}詛咒甲（詛咒一直都在）：${[...grp.names].map(escapeHtml).join('、')}</div>`;
-                    return sub + simTodoVariantsHtml({ ...g, rows }, gPath, gPre);
+                    return sub + simTodoVariantsHtml({ ...g, rows }, gPath, gPre, { mode: 'body' });
                 });
                 bodyHtml = `<div style="border:1px solid #eadfcc; border-radius:10px; padding:6px 8px; margin:6px 0; background:#fffdf8;">
                     <div style="font-weight:800; font-size:13px; color:#4a3728;">純肉<small style="font-weight:700; color:#8a7a6a;">　能打的部位沒有盔甲、詛咒甲｜缺 ${miss}／${total}</small></div>
@@ -9665,7 +9666,9 @@
         }
         // 每個部位狀態（能打幾個、詛咒甲、盔甲、肉體）一列，後面分「頭肚都能打／頭或肚其中一個能打／頭肚都不能打」三種，
         // 各自標 ✅／❌（禁打讓某一種不可能的就不列），點 ❌ 帶入那一種
-        function simTodoVariantsHtml(todo, path, pre) {
+        // opt.mode：'body'＝純肉（只寫能打幾個）；'titan'＝某隻王（能打幾個都一樣時寫在標題，格子只寫詛／盔／肉）
+        function simTodoVariantsHtml(todo, path, pre, opt) {
+            const mode = (opt && opt.mode) || '';
             const seen = new Set(), lines = [];
             path.forEach(r => { const k = `${r.n}|${r.c}|${r.a}`; if (!seen.has(k)) { seen.add(k); lines.push(r); } });
             const short = { '': '頭肚', one: '頭或肚', both: '無頭肚' };   // 頭肚都能打／頭或肚只剩一個能打／頭肚都不能打
@@ -9679,7 +9682,7 @@
                 }).join('');
                 const allOk = vars.every(v => v.ok);
                 return `<div style="padding:5px 0; border-top:1px solid #f0e6d4; font-size:12.5px; min-width:0;">
-                    <div style="white-space:nowrap; ${allOk ? 'color:#8a7a6a;' : 'font-weight:700;'}">能打 ${r.n}｜詛${r.c}${r.cb ? `<small>+禁${r.cb}</small>` : ''}｜盔${r.a}｜肉${r.b}</div>
+                    <div style="white-space:nowrap; ${allOk ? 'color:#8a7a6a;' : 'font-weight:700;'}">${mode === 'body' ? `能打 ${r.n}` : mode === 'titan' ? `詛${r.c}｜盔${r.a}｜肉${r.b}` : `能打 ${r.n}｜詛${r.c}${r.cb ? `<small>+禁${r.cb}</small>` : ''}｜盔${r.a}｜肉${r.b}`}</div>
                     <div>${chips}</div></div>`;
             });
             // 兩個狀態排一橫排，節省空間

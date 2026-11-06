@@ -10565,7 +10565,13 @@
             const order = (ks) => [...ks.filter(k => info[k].cursed).sort((x, y) => info[x].hp - info[y].hp), ...ks.filter(k => !info[k].cursed).sort((x, y) => info[y].hp - info[x].hp)];
             let pick = order(fit.filter(k => sb ? /^LegUpper/.test(k) : /^(ArmUpper|Hand)/.test(k))).slice(0, 2);
             if (pick.length < 2) pick = [...pick, ...order(fit.filter(k => !pick.includes(k))).slice(0, 2 - pick.length)];
-            if (pick.length) { r.targets = pick.map(asTarget); r.allParts = false; r.focus = 0; r.hideParts = false; r.partLabel = ''; }
+            if (pick.length) {
+                r.targets = pick.map(asTarget); r.allParts = false; r.focus = 0; r.hideParts = false;
+                // 標籤：碎顱打擊打兩隻腳寫「雙腳」；皎月光束打的是肩手區寫「肩手」；補了其他部位就照實際部位寫
+                const legs2 = pick.length === 2 && pick.every(k => /^LegUpper/.test(k));
+                const armHand = pick.every(k => /^(ArmUpper|Hand)/.test(k));
+                r.partLabel = sb && legs2 ? '雙腳' : (mb && armHand ? '肩手' : '');
+            }
         });
         // 最後統一檢查：列出的部位已經涵蓋所有能打的部位（扣掉禁打、骨架，2 個以上）＝全部位，不一個一個列名稱；
         // 寫數量的牌組（Focus Three／Four、淨化爆裂＋暴食蜂擁…）照舊寫「N部位」

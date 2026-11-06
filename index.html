@@ -9178,7 +9178,15 @@
         let BY_PART_GAME_SCENARIOS = (() => {
             try { const x = JSON.parse(localStorage.getItem(BY_PART_SCEN_CACHE_KEY) || '[]'); return Array.isArray(x) ? x : []; } catch (e) { return []; }
         })();
+        // 模擬器情境有沒有從伺服器確認過（開網頁先等它，不然會先跳出攻擊紀錄統計的推薦，幾秒後才換成模擬器的）
+        let byPartScenReady = false;
+        const byPartRecoBootAt = Date.now();
         async function byPartScenariosFetch() {
+            try { await byPartScenariosFetchInner(); } finally {
+                if (!byPartScenReady) { byPartScenReady = true; byPartRecoSig = ''; if (typeof byPartRecoRefresh === 'function') byPartRecoRefresh(); }
+            }
+        }
+        async function byPartScenariosFetchInner() {
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
                 const r = await fetch(`${relayUrl}/deck-scenarios`, { cache: 'no-store' });
@@ -11014,6 +11022,9 @@
                 try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.sig === sig && last.html) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; } } catch (e) {}
                 if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
             }
+            // 開網頁前 10 秒：模擬器情境還沒從伺服器確認、或還不知道這場的加成時先等（畫面維持上次的結果或載入中），
+            // 不要先排出攻擊紀錄統計的推薦，幾秒後又換成模擬器的；超過 10 秒還沒好就照現有資料排
+            if ((!byPartScenReady || !(raidSimActive ? simBuffKey() : currentSessionBuff())) && Date.now() - byPartRecoBootAt < 10000) { setTimeout(byPartRecoRefresh, 700); return; }
             const sigFull = sig + '|' + (attackCacheState.ready ? 'local' : 'server');   // 網頁端統計載好後要再算一次
             if (sigFull === byPartRecoSig) return;
             byPartRecoSig = sigFull;
@@ -11028,7 +11039,7 @@
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
             const html = byPartRecoGridHtml(rows, 'home');
             if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
-            if (attackCacheState.ready) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }
+            if (attackCacheState.ready && byPartScenReady) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 只記模擬器情境確認過之後的結果
         }
 
         function byPartOnRaidStatusChanged() {

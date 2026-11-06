@@ -1001,6 +1001,7 @@ let watcherBossChangedAt = 0;
 let watcherLastSkillReminder = 'none';
 let watcherLastSkillReminderAt = 0;
 let watcherLastCycle = null;
+let watcherRaidEndedFor = null;   // 收到 end／retire 的那一場（開始時間）：網頁看到就不再依時間推進輪數
 let watcherCurrentRaidStartedAt = null; // 這場突襲的開始時間，用來把攻擊紀錄依「場次」分組
 let watcherCurrentRaidLevel = null; // 這場突襲的等級（畫面顯示成 M-62 這種格式）
 
@@ -1643,6 +1644,7 @@ function watcherHandleRaidSnapshot(payload, event) {
   if (payload && typeof payload.raid_started_at === 'string') {
     // 換了新場次：上一場最後一隻王的 enemy_id 可能跟這一場第一隻同名同 id，
     // 不歸零的話 watcherHandleAttack 會當成「同一隻王」，沿用上一場的詛咒甲位置
+    if (watcherRaidEndedFor && watcherRaidEndedFor !== payload.raid_started_at) watcherRaidEndedFor = null;
     if (watcherCurrentRaidStartedAt && watcherCurrentRaidStartedAt !== payload.raid_started_at) {
       watcherCurrentEnemyId = null;
       watcherPartStatus = {};
@@ -1804,6 +1806,7 @@ function handleWatcherRaidEnd(reason) {
     const totalDamage = summary.reduce((s, p) => s + (p.total_damage || 0), 0);
     const totalAttacks = summary.reduce((s, p) => s + (p.num_attacks || 0), 0);
     console.log(`[watcher] 突襲${reason}：總傷害 ${totalDamage}，總攻擊次數 ${totalAttacks}`);
+    watcherRaidEndedFor = watcherCurrentRaidStartedAt;
     cycleSummaries.push({
       ts: Date.now(), reason, cycle: watcherLastCycle, totalDamage, totalAttacks,
       players: summary.map(p => ({ name: p.name, playerCode: p.player_code, numAttacks: p.num_attacks || 0, totalDamage: p.total_damage || 0 }))
@@ -1907,7 +1910,9 @@ function buildCurrentBossPayload() {
   return {
     name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,
     enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
-    bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack
+    bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack,
+    // 這場的開始時間、是否已結束：新的一輪還沒人出刀時，網頁靠這個知道已經進到下一輪（缺打名單照時間推進）
+    raidStartedAt: watcherCurrentRaidStartedAt, raidEnded: !!watcherRaidEndedFor && watcherRaidEndedFor === watcherCurrentRaidStartedAt
   };
 }
 

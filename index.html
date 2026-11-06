@@ -6774,7 +6774,15 @@
 
         // 把伺服器回傳的「目前王狀態」套用到畫面上，heavy（fetchServerRaidData）跟
         // light（fetchRaidLiveEssentials）兩條路徑共用同一份邏輯
+        let raidLiveInfo = null;   // 伺服器說的「這場開始時間、有沒有結束」：新的一輪還沒人出刀時，靠這個知道已經進到下一輪
+        // 現在是這場的第幾輪（照時間算）；這場已經結束、有下一場預告、或不是正在打的這場就回 0
+        function raidLiveRoundNow(startedAt) {
+            if (!raidLiveInfo || raidLiveInfo.ended || raidPreview || !startedAt || raidLiveInfo.startedAt !== startedAt) return 0;
+            const st = parseRaidSessionTs(startedAt);
+            return st ? Math.max(1, Math.floor((Date.now() - st) / CARD_USAGE_ROUND_MS) + 1) : 0;
+        }
         function applyCurrentBossPayload(cb, silent) {
+            if (cb && !cb.preview && 'raidStartedAt' in cb) raidLiveInfo = { startedAt: cb.raidStartedAt || null, ended: !!cb.raidEnded };
             if (raidSimActive) return;
             if (!cb || !cb.hasReceivedAttack || !cb.parts || Object.keys(cb.parts).length === 0) return;
             // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
@@ -11477,6 +11485,15 @@
                 m.set(identity, (m.get(identity) || 0) + 1);
             });
 
+            // 正在打的這場：新的一輪還沒人出刀，也要算進到這一輪（照時間），不然缺打不會更新
+            if (sessionIdx === 0) {
+                const nowRound = raidLiveRoundNow(session.startedAt);
+                const maxSeen = Math.max(0, ...perRoundCounts.keys());
+                for (let r = maxSeen + 1; r <= nowRound; r++) perRoundCounts.set(r, new Map());
+                // 視窗開著的話，到下一輪開始時自動重算
+                clearTimeout(renderMissedAttackList._t);
+                if (nowRound) renderMissedAttackList._t = setTimeout(() => { const b = document.getElementById('missed-attack-result'); if (b && b.offsetParent) renderMissedAttackList(true); }, Math.max(5000, startTs + nowRound * CARD_USAGE_ROUND_MS - Date.now() + 5000));
+            }
             // 累計次數：第 N 輪顯示的是「從第 1 輪到第 N 輪」總共出了幾刀，
             // 對照的總次數也跟著累加（第 1 輪 6 次、第 2 輪 12 次、第 3 輪 18 次...），
             // 這樣才符合「這場突襲到目前為止，還缺幾刀」的概念，而不是只看單輪
@@ -11646,7 +11663,9 @@
         function raidPlayerCycleInfo(playerName, identityAttacks) {
             const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : [];
             const cycles = log.map(a => a.cycle).filter(c => typeof c === 'number');
-            const cycle = cycles.length ? Math.max(...cycles) : null;
+            const latestStart = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const nowRound = raidLiveRoundNow(latestStart);   // 新的一輪還沒人出刀：照時間算已經進到下一輪
+            const cycle = cycles.length || nowRound ? Math.max(nowRound, ...cycles) : null;
             const names = new Set([playerName, ...(identityAttacks || []).map(a => a.player)].filter(Boolean));
             const codes = new Set((identityAttacks || []).map(a => a.playerCode).filter(Boolean));
             log.forEach(a => { if (names.has(a.player) && a.playerCode) codes.add(a.playerCode); });

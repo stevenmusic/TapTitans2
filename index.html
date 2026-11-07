@@ -7569,9 +7569,41 @@
         }
 
         /* 期望均傷：均傷 ＝ e^(a＋b×ln(突襲等級 RL)＋c×卡片平均等級)，a、b、c 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合
-           （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 70% 標紅（80% 會標到約 2 成的刀，太多） */
-        const RAID_LOG_LOW_RATIO = 0.7;
-        function raidLogExpectedDamage(attacksByIdentity) {
+           （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 80% 標紅 */
+        const RAID_LOG_LOW_RATIO = 0.8;   // 加了個人修正之後：80% 約標紅 13% 的刀（70% 只剩 4%）
+        // 個人修正：公式算不到的因素（死靈熊、寵物、裝備…）每個人幾乎固定（同一人相鄰兩場的偏差相關 0.94～0.97），
+        // 用這個人前 3 場的平均偏差修正（M-42 驗證：誤差中位數 14% → 5%）。打完的場次算好就存在手機上
+        const RAID_LOG_ADJ_KEY = 'tt2_dmg_resid_v1';
+        let raidLogPersonalAdj = null, raidLogPersonalAdjLoading = false;
+        async function raidLogLoadPersonalAdj() {
+            if (raidLogPersonalAdj || raidLogPersonalAdjLoading || raidLogDemoActive) return;
+            raidLogPersonalAdjLoading = true;
+            try {
+                let cache = {};
+                try { cache = JSON.parse(localStorage.getItem(RAID_LOG_ADJ_KEY)) || {}; } catch (e) {}
+                const prev = (serverSessionsSummary || []).slice(1).filter(x => (x.attackCount || 0) >= 300).slice(0, 3);
+                const keep = {};
+                for (const se of prev) {
+                    let res = cache[se.startedAt];
+                    if (!res) {
+                        const at = (await ensureSessionAttacksLoaded(se.startedAt)) || [];
+                        const idOf = makePlayerIdentityResolver(at), by = new Map();
+                        at.forEach(a => { const id = idOf(a); if (!by.has(id)) by.set(id, []); by.get(id).push(a); });
+                        const fit = raidLogFitDamage(by);
+                        res = {};
+                        if (fit) fit.rows.forEach(r => { res[r.id] = Math.round((r.y - fit.predict(r.x)) * 1000) / 1000; });
+                    }
+                    keep[se.startedAt] = res;
+                }
+                try { localStorage.setItem(RAID_LOG_ADJ_KEY, JSON.stringify(keep)); } catch (e) {}
+                const sum = new Map();
+                Object.values(keep).forEach(m => Object.entries(m).forEach(([id, v]) => { const x = sum.get(id) || [0, 0]; sum.set(id, [x[0] + v, x[1] + 1]); }));
+                raidLogPersonalAdj = new Map([...sum].map(([id, [t, n]]) => [id, t / n]));
+                if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+            } catch (e) {} finally { raidLogPersonalAdjLoading = false; }
+        }
+        // 擬合 ln(均傷) ＝ a＋b×ln(突襲等級 RL)＋c×卡片平均等級（這一場出刀 3 次以上的人）
+        function raidLogFitDamage(attacksByIdentity) {
             const feat = new Map(), rows = [];
             attacksByIdentity.forEach((list, id) => {
                 const real = list.filter(a => !a.placeholder && a.totalDamage > 0);
@@ -7580,7 +7612,7 @@
                 if (!rlA || !lvs.length) return;
                 const x = [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length];
                 feat.set(id, x);
-                if (real.length >= 3) rows.push({ x, y: Math.log(real.reduce((p, a) => p + a.totalDamage, 0) / real.length) });
+                if (real.length >= 3) rows.push({ id, x, y: Math.log(real.reduce((p, a) => p + a.totalDamage, 0) / real.length) });
             });
             if (rows.length < 10) return null;
             // 最小平方法（3×3 正規方程，高斯消去）
@@ -7593,8 +7625,14 @@
                 for (let r = 0; r < 3; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let c = i; c < 3; c++) A[r][c] -= f * A[i][c]; B[r] -= f * B[i]; }
             }
             const coef = B.map((v, i) => v / A[i][i]);
+            return { feat, rows, predict: (x) => x[0] * coef[0] + x[1] * coef[1] + x[2] * coef[2] };
+        }
+        function raidLogExpectedDamage(attacksByIdentity) {
+            const fit = raidLogFitDamage(attacksByIdentity);
+            if (!fit) return null;
+            if (!raidLogPersonalAdj) raidLogLoadPersonalAdj();   // 個人修正在背景載入，好了會重畫
             const out = new Map();
-            feat.forEach((x, id) => out.set(id, Math.exp(x[0] * coef[0] + x[1] * coef[1] + x[2] * coef[2])));
+            fit.feat.forEach((x, id) => out.set(id, Math.exp(fit.predict(x) + ((raidLogPersonalAdj && raidLogPersonalAdj.get(id)) || 0))));
             return out;
         }
 
@@ -7640,7 +7678,7 @@
                 // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
                 // 真正異常低的那幾刀（例如漏按卡片、斷線只點擊沒出卡等情況）
                 const avgOwnDamage = attacks.length > 0 ? totalDamage / attacks.length : 0;
-                // 低傷：有期望均傷（突襲等級 RL＋卡片等級算出來的）就用「低於期望的 70%」；算不出來才退回「低於自己均傷的一半」
+                // 低傷：有期望均傷（突襲等級 RL＋卡片等級算出來的）就用「低於期望的 80%」；算不出來才退回「低於自己均傷的一半」
                 const expectedAvg = expectedById ? expectedById.get(identity) || 0 : 0;
                 const lowDamageThreshold = expectedAvg > 0 ? expectedAvg * RAID_LOG_LOW_RATIO : avgOwnDamage / 2;
                 attacks.forEach(a => { a.isLowDamage = lowDamageThreshold > 0 && a.totalDamage < lowDamageThreshold; a.expectedRatio = expectedAvg > 0 ? a.totalDamage / expectedAvg : null; });

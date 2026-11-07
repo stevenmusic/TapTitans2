@@ -7688,7 +7688,10 @@
                     a.expectedRatio = avgOwnDamage > 0 ? a.totalDamage / avgOwnDamage : null;
                     a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < avgOwnDamage * RAID_LOG_LOW_RATIO;
                 });
-                const hasLowAttack = attacks.some(a => a.isLowDamage);
+                // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；
+                // 9 場回測每場約 4～10 人
+                const lowCount = attacks.filter(a => a.isLowDamage).length;
+                const hasLowAttack = lowCount >= 2 && lowCount >= attacks.length * 0.1;
                 // 伺服器漏收的刀：遊戲每一刀都會回報剩餘次數（每輪多 6 刀、沒打完會累積），前後兩刀的剩餘次數跳號就是中間有刀沒收到。
                 // 卡片、傷害拿不回來，只補一筆「漏記」的佔位，讓攻擊次數對得上（不算進傷害、均傷、低傷判斷）
                 const missed = raidLogMissedPlaceholders(attacks);

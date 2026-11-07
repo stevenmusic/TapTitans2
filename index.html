@@ -12129,8 +12129,11 @@
             const sel = document.getElementById('cardlv-sel'); if (sel) sel.value = name;
             const icon = (id, sz) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:${sz}px; height:${sz}px; border-radius:6px; vertical-align:middle;">` : escapeHtml(raidCardLabel(id));
             const sec = (title, inner) => `<div style="margin-top:12px; padding:8px; border-radius:10px; background:#fbf6ee; border:1px solid #eadfcc;"><div style="font-size:13px; font-weight:800; color:#5a3a2a; margin-bottom:5px;">${title}</div>${inner}</div>`;
-            const { use, top } = await cardUsageStats();
+            const [{ use, top }] = await Promise.all([cardUsageStats(), raidLoadClanData()]);
             if (document.getElementById('cardlv-name').textContent !== name) return;
+            // ⓪ 帳號資料（官方 clan_data，每 12 小時更新）
+            const acct = raidAccountInfo(name);
+            if (acct) body.insertAdjacentHTML('beforeend', sec('帳號資料', raidAccountHtml(acct, icon)));
             // ① 建議先升級：常用（公會使用比例）× 升 1 級多的效果 × 比公會中位數低越多越優先
             const cand = myAllCardIds().filter(id => lv[id] > 0 && lv[id] < 150 && !CARD_UPGRADE_EXCLUDE.has(id) && (use[id] || 0) > 0.01)
                 .map(id => ({ id, score: (use[id] || 0) * cardUpgradeGain(id, lv[id]) * (1 + Math.max(0, (med[id] || lv[id]) - lv[id]) / 10) }))
@@ -12177,12 +12180,67 @@
             if (!me) cardLevelsGuild();
         }
         // ④ 公會總覽：每張卡的中位數、最低～最高、低於中位數 8 級以上的人數（依中位數低到高排，先看大家普遍偏低的卡）
+        /* 帳號資料：官方 clan_data（伺服器每 12 小時查一次）——突襲等級、卡片總等級、忠誠度、死靈熊研究、突襲研究、寶石研究、加成卡、未使用的研究點數 */
+        function raidAccountInfo(name) {
+            if (!raidClanData) return null;
+            for (const v of raidClanData.byCode.values()) if (v.raw && v.raw.name === name) return v;
+            return null;
+        }
+        function raidAccountSummary(v) {
+            const p = v.raw, t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;
+            const en = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
+            const necro = { 盔甲: g('ArmorDamage'), 肉體: g('BodyDamage'), 頭: g('HeadDamage'), 肚: g('ChestDamage'), 四肢: g('LimbDamage'), 王: en };
+            const necroPct = Object.values(necro).reduce((x, y) => x + y, 0) / 6;   // 各類平均點了幾成（每類點滿＝100%）
+            return { p, necro, necroPct, unusedNecro: Number(p.necrobear_research_points) || 0, unusedRaid: Number(p.raid_research_points) || 0, unusedGem: Number(p.gemstone_research_points) || 0 };
+        }
+        // 公會死靈熊研究的中位數（標紅用：低於公會中位數一半的才標）
+        function raidAccountNecroMedian() {
+            const v = [...raidClanData.byCode.values()].map(x => raidAccountSummary(x).necroPct).sort((x, y) => x - y);
+            return v.length ? v[Math.floor(v.length / 2)] : 0;
+        }
+        function raidAccountHtml(v, icon) {
+            const a = raidAccountSummary(v), p = a.p, med = raidAccountNecroMedian();
+            const pct = (x) => `+${Math.round(x * 100)}%`;
+            const loyLv = Math.max(0, Math.min(12, Number(p.loyalty_level) || 0));
+            const rr = p.raid_research_bonuses || {}, gb = p.gemstone_research_tree_raid_bonuses || {};
+            const row = (k, val) => `<div style="display:flex; justify-content:space-between; gap:8px; padding:2px 0; font-size:12.5px; color:#4a3728;"><span style="color:#8a7a6a;">${k}</span><span style="font-weight:700; text-align:right;">${val}</span></div>`;
+            const warn = (n) => n >= 10 ? `<b style="color:#c0392b;">${n} 點沒用</b>` : `${n} 點`;
+            const boosted = (p.boosted_cards || []).slice().sort((x, y) => y.boost_level - x.boost_level);
+            return row('突襲等級', p.player_raid_level)
+                + row('卡片總等級', p.total_card_level)
+                + row('忠誠度', `Lv.${loyLv}（傷害 ×${RAID_LOYALTY_MULT[loyLv]}）`)
+                + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#6a3d9a;">死靈熊研究（每類點滿 +100%｜平均 <span style="color:${a.necroPct < med / 2 ? '#c0392b' : '#6a3d9a'};">${Math.round(a.necroPct * 100)}%</span>，公會中位數 ${Math.round(med * 100)}%）</div>`
+                + `<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:3px; margin-top:3px;">${Object.entries(a.necro).map(([k, x]) => `<div style="text-align:center; background:#fff; border:1px solid #eadfcc; border-radius:6px; padding:2px; font-size:11.5px;"><div style="color:#8a7a6a;">${k}</div><b style="color:#4a3728;">${pct(x)}</b></div>`).join('')}</div>`
+                + row('未使用的死靈熊研究點數', warn(a.unusedNecro))
+                + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#5a3a2a;">突襲研究</div>`
+                + row('基礎傷害（全部／爆裂／苦痛）', `+${rr.RaidBaseDamage || 0}%／+${rr.BurstBaseDamage || 0}%／+${rr.AfflictionBaseDamage || 0}%`)
+                + row('盔甲／肉體', `+${rr.ArmorBaseDamage || 0}%／+${rr.BodyBaseDamage || 0}%`)
+                + row('未使用的突襲研究點數', warn(a.unusedRaid))
+                + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#5a3a2a;">寶石研究</div>`
+                + row('盔甲／肉體', `+${gb.ArmorBaseDamage || 0}%／+${gb.BodyBaseDamage || 0}%`)
+                + row('寶石研究點數', a.unusedGem.toLocaleString())
+                + (boosted.length ? `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#5a3a2a;">加成卡（水晶／賽季）</div><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:3px;">${boosted.map(b => `<span style="display:inline-flex; flex-direction:column; align-items:center; font-size:11px; color:#4a3728;">${icon(b.skill_name, 30)}<b>Lv.${b.boost_level}</b></span>`).join('')}</div>` : '')
+                + `<div style="margin-top:6px; font-size:10.5px; color:#a89a88;">官方資料，${raidClanData.at ? new Date(raidClanData.at).toLocaleString() : ''} 更新（每 12 小時）</div>`;
+        }
+        // 公會總覽：帳號資料一覽（死靈熊研究點得少、研究點數放著沒用的排前面）
+        function raidAccountGuildHtml() {
+            if (!raidClanData) return '';
+            const med = raidAccountNecroMedian();
+            const list = [...raidClanData.byCode.values()].map(v => raidAccountSummary(v)).sort((x, y) => (y.unusedNecro + y.unusedRaid) - (x.unusedNecro + x.unusedRaid) || x.necroPct - y.necroPct);
+            const th = (t2) => `<th style="padding:3px 4px; font-size:11px; color:#8a7a6a; font-weight:700; text-align:right; white-space:nowrap;">${t2}</th>`;
+            const td = (t2, st) => `<td style="padding:3px 4px; font-size:12px; text-align:right; white-space:nowrap; ${st || ''}">${t2}</td>`;
+            return `<div style="margin-top:4px; font-size:12.5px; font-weight:800; color:#5a3a2a;">帳號資料（官方，每 12 小時更新）</div>
+                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">死靈熊＝研究平均點了幾成（點滿 100%，公會中位數 ${Math.round(med * 100)}%，不到一半標紅）｜未用＝還沒用掉的研究點數（死靈熊／突襲），10 點以上標紅｜研究點得少、點數沒用的排前面</div>
+                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 4px; font-size:11px; color:#8a7a6a; text-align:left;">玩家</th>${th('突襲等級')}${th('卡片總等級')}${th('死靈熊')}${th('未用')}${th('忠誠')}</tr>
+                ${list.map(a => `<tr style="border-top:1px solid #f0e6d4; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 4px; font-size:12px; max-width:9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.p.name)}</td>${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${td(Math.round(a.necroPct * 100) + '%', a.necroPct < med / 2 ? 'color:#c0392b; font-weight:800;' : '')}${td(a.unusedNecro + '／' + a.unusedRaid, a.unusedNecro + a.unusedRaid >= 10 ? 'color:#c0392b; font-weight:800;' : '')}${td('Lv.' + (Number(a.p.loyalty_level) || 0))}</tr>`).join('')}</table></div>`;
+        }
         function cardLevelsGuild() {
             const box = document.getElementById('cardlv-guild');
             const by = {};
             Object.values(allCardLevels || {}).forEach(m => Object.entries(m).forEach(([k, v]) => (by[k] = by[k] || []).push(v)));
             const n = Object.keys(allCardLevels || {}).length;
-            box.innerHTML = `<div style="font-size:11.5px; color:#8a7a6a; margin-bottom:4px;">${n} 位成員｜大字＝中位數｜小字＝最低～最高｜紅字＝低於中位數 ${RAID_LOG_LV_LOW} 級以上的人數</div>` + BY_PART_POOL.map(([label, rgb, ids]) => {
+            if (!raidClanData) raidLoadClanData().then(() => { if (raidClanData && document.getElementById('cardlv-guild')) cardLevelsGuild(); });
+            box.innerHTML = raidAccountGuildHtml() + `<div style="font-size:11.5px; color:#8a7a6a; margin:10px 0 4px;">${n} 位成員｜大字＝中位數｜小字＝最低～最高｜紅字＝低於中位數 ${RAID_LOG_LV_LOW} 級以上的人數</div>` + BY_PART_POOL.map(([label, rgb, ids]) => {
                 const rows = ids.filter(id => by[id] && by[id].length).map(id => { const v = by[id].slice().sort((a, b) => a - b); const md = v[Math.floor(v.length / 2)]; return { id, md, mn: v[0], mx: v[v.length - 1], n: v.length, low: v.filter(x => x <= md - RAID_LOG_LV_LOW).length }; }).sort((a, b) => a.md - b.md);
                 return `<div style="margin-top:8px; font-size:12.5px; font-weight:800; color:rgb(${rgb});">${label}</div>
                     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(58px, 1fr)); gap:5px; margin-top:3px;">${rows.map(r => `<div title="${escapeHtml(raidCardLabel(r.id))}｜${r.n} 人有用過" style="text-align:center; background:#fbf6ee; border-radius:7px; padding:3px 1px;">

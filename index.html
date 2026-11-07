@@ -3819,7 +3819,7 @@
                 missedAttackAllDone: '✓ 全員都打滿 {n} 刀',
                 playerFilterPlaceholder: '🔍 搜尋玩家名稱…',
                 playerFilterNoMatch: '沒有符合的玩家',
-                raidLogAttackCountLabel: '共 {n} 次・總傷害 {dmg}',
+                raidLogAttackCountLabel: '{n} 次・{dmg}',
                 raidLogExpandAll: '全部展開',
                 raidLogCollapseAll: '全部收合',
                 analysisPageTitle: '戰報分析',
@@ -7725,8 +7725,8 @@
                 const missed = raidLogMissedPlaceholders(attacks);
                 const shown = missed.length ? attacks.concat(missed).sort((a, b) => b.ts - a.ts) : attacks;
                 // 整體偏低：這場均傷低於同條件（突襲等級、卡片等級、突襲研究樹）應有的 80%，而且出刀 6 次以上——抓「每刀都打不好」的人
-                const overallRatio = expectedAvg > 0 && attacks.length >= 6 ? avgOwnDamage / expectedAvg : null;
-                const overallLow = overallRatio != null && overallRatio < RAID_LOG_OVERALL_LOW;
+                const overallRatio = expectedAvg > 0 ? avgOwnDamage / expectedAvg : null;   // 目前的傷害水準（均傷 ÷ 期望均傷）
+                const overallLow = overallRatio != null && attacks.length >= 6 && overallRatio < RAID_LOG_OVERALL_LOW;   // 出刀 6 次以上才標偏低
                 return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
@@ -11781,7 +11781,7 @@
                     <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
-                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.expectedAvg > 0 ? `・期望均傷 <b style="color:${r.overallLow ? '#d35400' : '#6b5a4a'};">${escapeHtml(formatNumAlwaysM(r.expectedAvg))}</b>` : ''}</span>
+                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.expectedAvg > 0 ? `・期望均傷 ${escapeHtml(formatNumAlwaysM(r.expectedAvg))}${r.overallRatio != null ? `・目前 <b style="color:${r.overallLow ? '#d35400' : r.overallRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.overallRatio * 100)}%</b>` : ''}` : ''}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">

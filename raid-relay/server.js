@@ -316,6 +316,18 @@ const dbReady = (async () => {
       data TEXT NOT NULL
     )
   `);
+  // 每人每天的帳號成長（死靈熊等級、突襲等級、卡片總等級），從 clan_data 整理出來，長期保留畫線圖用
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clan_player_daily (
+      day TEXT NOT NULL,
+      player_code TEXT NOT NULL,
+      name TEXT,
+      necro INTEGER,
+      raid_level INTEGER,
+      card_level INTEGER,
+      PRIMARY KEY (day, player_code)
+    )
+  `);
   // GameHive 每週公布的 raid seed（網頁整理成精簡版再上傳）：每一關的王、斬殺線、各部位盔甲上限／出場值、詛咒甲
   await db.execute(`
     CREATE TABLE IF NOT EXISTS raid_seed (
@@ -1581,11 +1593,26 @@ const CLAN_DATA_INTERVAL_MS = 12 * 3600 * 1000 + 5 * 60 * 1000;   // 12 小時�
 let clanDataLatest = null;   // { at, data }
 let clanDataLastTry = null;  // { at, status, error }
 let clanDataTimer = null;
+// 一份 clan_data → 每人一列（台灣日期；同一天後面的蓋掉前面的）
+async function clanDataSaveDaily(at, data) {
+  try {
+    await dbReady;
+    const day = new Date(at + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    for (const p of (data && data.players_data) || []) {
+      if (!p.player_code) continue;
+      await db.execute({ sql: 'INSERT OR REPLACE INTO clan_player_daily (day, player_code, name, necro, raid_level, card_level) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [day, p.player_code, p.name || null, Number(p.summon_level) || 0, Number(p.player_raid_level) || 0, Number(p.total_card_level) || 0] });
+    }
+  } catch (e) { console.error('[clan_data] 寫入每日紀錄失敗:', e.message); }
+}
 async function clanDataLoadFromDb() {
   try {
     await dbReady;
     const r = await db.execute('SELECT captured_at, data FROM clan_data_snapshots ORDER BY captured_at DESC LIMIT 1');
     if (r.rows.length) clanDataLatest = { at: Number(r.rows[0].captured_at), data: JSON.parse(r.rows[0].data) };
+    // 之前已經存的 clan_data 也整理進每日紀錄（只做一次，已經有的會被同一天的蓋掉）
+    const all = await db.execute('SELECT captured_at, data FROM clan_data_snapshots ORDER BY captured_at ASC');
+    for (const row of all.rows) { try { await clanDataSaveDaily(Number(row.captured_at), JSON.parse(row.data)); } catch (e) {} }
   } catch (e) { console.error('[clan_data] 讀取資料庫失敗:', e.message); }
 }
 async function clanDataFetch() {
@@ -1610,6 +1637,7 @@ async function clanDataFetch() {
         await db.execute({ sql: 'INSERT OR REPLACE INTO clan_data_snapshots (captured_at, data) VALUES (?, ?)', args: [clanDataLatest.at, JSON.stringify(parsed)] });
         await db.execute('DELETE FROM clan_data_snapshots WHERE captured_at NOT IN (SELECT captured_at FROM clan_data_snapshots ORDER BY captured_at DESC LIMIT 60)');   // 留最近 60 份（約 1 個月）
       } catch (e) { console.error('[clan_data] 寫入資料庫失敗:', e.message); }
+      clanDataSaveDaily(clanDataLatest.at, parsed);   // 每日紀錄（長期保留）
       clanDataTimer = setTimeout(clanDataFetch, CLAN_DATA_INTERVAL_MS);
     } else {
       console.error('[clan_data] 查詢失敗:', resp.status, text.slice(0, 300));
@@ -2282,6 +2310,17 @@ app.get('/card-level-history', (req, res) => {
 
 // 現在的公會成員（官方訂閱回傳的 member_list；還沒拿到就回 null）
 app.get('/clan-members', (req, res) => { res.json(clanMembersNow || { at: null, members: null }); });
+// 每人每天的死靈熊等級、突襲等級、卡片總等級（畫成長線圖）：?player=玩家代碼；不給就回全部
+app.get('/clan-data/history', async (req, res) => {
+  try {
+    await dbReady;
+    const code = typeof req.query.player === 'string' ? req.query.player : null;
+    const r = code
+      ? await db.execute({ sql: 'SELECT day, player_code, name, necro, raid_level, card_level FROM clan_player_daily WHERE player_code = ? ORDER BY day', args: [code] })
+      : await db.execute('SELECT day, player_code, name, necro, raid_level, card_level FROM clan_player_daily ORDER BY day');
+    res.json({ rows: r.rows.map(x => ({ day: x.day, code: x.player_code, name: x.name, necro: Number(x.necro), raidLevel: Number(x.raid_level), cardLevel: Number(x.card_level) })) });
+  } catch (e) { res.status(500).json({ error: '讀取失敗' }); }
+});
 // 官方 clan_data（全公會每個人的死靈熊研究點數、突襲研究、卡片等級、加成卡…）：最近一份
 app.get('/clan-data', (req, res) => { res.json({ at: clanDataLatest ? clanDataLatest.at : null, lastTry: clanDataLastTry, data: clanDataLatest ? clanDataLatest.data : null }); });
 

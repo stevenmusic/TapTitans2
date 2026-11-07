@@ -7572,7 +7572,8 @@
            （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 80% 標紅 */
         const RAID_LOG_LOW_RATIO = 0.8;   // 加了個人修正之後：80% 約標紅 13% 的刀（70% 只剩 4%）
         // 個人修正：公式算不到的因素（死靈熊、寵物、裝備…）每個人幾乎固定（同一人相鄰兩場的偏差相關 0.94～0.97），
-        // 用這個人前 12 場的偏差修正，越近的場次比重越高（每往前一場 ×0.6）；29 場回測：誤差中位數 4.1%（只用前 3 場 4.25%），
+        // 用這個人前 6 場的偏差修正，越近的場次比重越高（每往前一場 ×0.7）；160 種組合回測：6 場以上準確度就不再提升
+        // （6 場 ×0.7 誤差中位數 4.16%、平均 5.19% 最低；12 場 4.14%；只用前 3 場 4.25%），下載量少一半，
         // 最近沒出刀的人也能用更早的場次。打完的場次算好就存在手機上（第一次要下載幾場紀錄，之後不用）
         const RAID_LOG_ADJ_KEY = 'tt2_dmg_resid_v1';
         let raidLogPersonalAdj = null, raidLogPersonalAdjLoading = false;
@@ -7582,7 +7583,7 @@
             try {
                 let cache = {};
                 try { cache = JSON.parse(localStorage.getItem(RAID_LOG_ADJ_KEY)) || {}; } catch (e) {}
-                const prev = (serverSessionsSummary || []).slice(1).filter(x => (x.attackCount || 0) >= 300).slice(0, 12);
+                const prev = (serverSessionsSummary || []).slice(1).filter(x => (x.attackCount || 0) >= 300).slice(0, 6);
                 const keep = {};
                 for (const se of prev) {
                     let res = cache[se.startedAt];
@@ -7598,7 +7599,7 @@
                 }
                 try { localStorage.setItem(RAID_LOG_ADJ_KEY, JSON.stringify(keep)); } catch (e) {}
                 const sum = new Map();
-                prev.forEach((se, j) => { const w = Math.pow(0.6, j); Object.entries(keep[se.startedAt] || {}).forEach(([id, v]) => { const x = sum.get(id) || [0, 0]; sum.set(id, [x[0] + v * w, x[1] + w]); }); });
+                prev.forEach((se, j) => { const w = Math.pow(0.7, j); Object.entries(keep[se.startedAt] || {}).forEach(([id, v]) => { const x = sum.get(id) || [0, 0]; sum.set(id, [x[0] + v * w, x[1] + w]); }); });
                 raidLogPersonalAdj = new Map([...sum].map(([id, [t, n]]) => [id, t / n]));
                 if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
             } catch (e) {} finally { raidLogPersonalAdjLoading = false; }

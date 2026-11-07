@@ -309,6 +309,13 @@ const dbReady = (async () => {
       PRIMARY KEY (started_at, enemy_name)
     )
   `);
+  // 官方 /raid/clan_data：全公會每個人的屬性（死靈熊研究點數、突襲研究、所有卡片等級、加成卡…），每 12 小時查一次
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clan_data_snapshots (
+      captured_at INTEGER PRIMARY KEY,
+      data TEXT NOT NULL
+    )
+  `);
   // GameHive 每週公布的 raid seed（網頁整理成精簡版再上傳）：每一關的王、斬殺線、各部位盔甲上限／出場值、詛咒甲
   await db.execute(`
     CREATE TABLE IF NOT EXISTS raid_seed (
@@ -1562,6 +1569,64 @@ async function saveRawRaidSnapshot(event, payload) {
 const watcherDebug = { eventCounts: {}, lastEvents: [], lastSubscribe: null, lastConnectAt: null, lastError: null, lastDisconnect: null, startAttempts: 0 };
 
 let clanMembersNow = null;   // { at, members:[{name, playerCode}] }
+/* ══════════════════════════════════════════════════════════
+   官方 /raid/clan_data：一次拿到全公會每個人的屬性。同一個應用程式 Token 對同一個公會每 12 小時只能查一次，
+   所以只在背景側錄連上之後查、存進資料庫（重開機先讀資料庫，距離上次不到 12 小時就不查）
+   ══════════════════════════════════════════════════════════ */
+const CLAN_DATA_PROPS = ['max_stage', 'player_code', 'country_code', 'raid_wildcard_count', 'name', 'total_raid_player_xp', 'player_raid_level',
+  'summon_level', 'total_card_level', 'role', 'weekly_ticket_count', 'titan_cards', 'boosted_cards', 'raid_research_tree', 'raid_research_bonuses',
+  'titan_souls', 'necrobear_research_points', 'raid_research_points', 'gemstone_research_tree_raid_bonuses', 'gemstone_currency',
+  'gemstone_research_points', 'gemstone_num_pulls', 'loyalty_level', 'daily_raid_tickets', 'previous_rank', 'cards', 'equipment_set'];
+const CLAN_DATA_INTERVAL_MS = 12 * 3600 * 1000 + 5 * 60 * 1000;   // 12 小時多 5 分鐘，避免剛好卡在限制邊緣
+let clanDataLatest = null;   // { at, data }
+let clanDataLastTry = null;  // { at, status, error }
+let clanDataTimer = null;
+async function clanDataLoadFromDb() {
+  try {
+    await dbReady;
+    const r = await db.execute('SELECT captured_at, data FROM clan_data_snapshots ORDER BY captured_at DESC LIMIT 1');
+    if (r.rows.length) clanDataLatest = { at: Number(r.rows[0].captured_at), data: JSON.parse(r.rows[0].data) };
+  } catch (e) { console.error('[clan_data] 讀取資料庫失敗:', e.message); }
+}
+async function clanDataFetch() {
+  clearTimeout(clanDataTimer);
+  if (!WATCHER_APP_TOKEN || !WATCHER_PLAYER_TOKEN) return;
+  const wait = clanDataLatest ? clanDataLatest.at + CLAN_DATA_INTERVAL_MS - Date.now() : 0;
+  if (wait > 0) { clanDataTimer = setTimeout(clanDataFetch, wait); return; }
+  try {
+    const resp = await fetch(`${RAID_REST_BASE}/raid/clan_data`, {
+      method: 'POST',
+      headers: { 'API-Authenticate': WATCHER_APP_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_token: WATCHER_PLAYER_TOKEN, properties: CLAN_DATA_PROPS })
+    });
+    const text = await resp.text();
+    let parsed = null; try { parsed = JSON.parse(text); } catch (e) {}
+    clanDataLastTry = { at: Date.now(), status: resp.status, error: resp.ok && parsed && !parsed._error ? null : text.slice(0, 300) };
+    if (resp.ok && parsed && Array.isArray(parsed.players_data)) {
+      clanDataLatest = { at: Date.now(), data: parsed };
+      console.log(`[clan_data] 取得 ${parsed.players_data.length} 位成員的資料`);
+      try {
+        await dbReady;
+        await db.execute({ sql: 'INSERT OR REPLACE INTO clan_data_snapshots (captured_at, data) VALUES (?, ?)', args: [clanDataLatest.at, JSON.stringify(parsed)] });
+        await db.execute('DELETE FROM clan_data_snapshots WHERE captured_at NOT IN (SELECT captured_at FROM clan_data_snapshots ORDER BY captured_at DESC LIMIT 60)');   // 留最近 60 份（約 1 個月）
+      } catch (e) { console.error('[clan_data] 寫入資料庫失敗:', e.message); }
+      clanDataTimer = setTimeout(clanDataFetch, CLAN_DATA_INTERVAL_MS);
+    } else {
+      console.error('[clan_data] 查詢失敗:', resp.status, text.slice(0, 300));
+      clanDataTimer = setTimeout(clanDataFetch, 60 * 60 * 1000);   // 失敗（例如還沒滿 12 小時）：1 小時後再試
+    }
+  } catch (e) {
+    clanDataLastTry = { at: Date.now(), status: 0, error: e.message };
+    clanDataTimer = setTimeout(clanDataFetch, 60 * 60 * 1000);
+  }
+}
+let clanDataStarted = false;
+function clanDataStart() {   // 背景側錄連上 /raid 之後才查（官方要求先登入 /raid）
+  if (clanDataStarted) return;
+  clanDataStarted = true;
+  clanDataLoadFromDb().then(() => setTimeout(clanDataFetch, 10000));
+}
+
 function watcherSubscribe() {
   fetch(`${RAID_REST_BASE}/raid/subscribe`, {
     method: 'POST',
@@ -1842,6 +1907,7 @@ function startWatcher() {
     watcherDebug.lastConnectAt = new Date().toISOString();
     watcherConsecutiveFailures = 0;
     watcherSubscribe();
+    clanDataStart();
   });
   watcherSocket.on('connect_error', (err) => {
     console.error('[watcher] 連線錯誤:', err && err.message);
@@ -2216,6 +2282,8 @@ app.get('/card-level-history', (req, res) => {
 
 // 現在的公會成員（官方訂閱回傳的 member_list；還沒拿到就回 null）
 app.get('/clan-members', (req, res) => { res.json(clanMembersNow || { at: null, members: null }); });
+// 官方 clan_data（全公會每個人的死靈熊研究點數、突襲研究、卡片等級、加成卡…）：最近一份
+app.get('/clan-data', (req, res) => { res.json({ at: clanDataLatest ? clanDataLatest.at : null, lastTry: clanDataLastTry, data: clanDataLatest ? clanDataLatest.data : null }); });
 
 app.get('/recent-attacks', async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 50);

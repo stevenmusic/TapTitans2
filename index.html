@@ -7568,11 +7568,14 @@
             return (a) => a.playerCode || codeByName.get(a.player) || a.player;
         }
 
-        /* 期望均傷（同條件的人應該打出的均傷）：
-             ln(均傷) ＝ a＋b×ln(突襲等級 RL)＋c×卡片平均等級＋d×突襲研究樹
-           突襲研究樹（官方 clan_data 的 raid_research_tree，死靈熊研究）＝ ln(1＋盔甲／肉體)＋ln(1＋頭／肚／四肢)＋ln(1＋各王) 三項加總；
-           a～d 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合。M-43 驗證：留一誤差中位數 15.7% → 6.7%（R² 0.91 → 0.98），
-           之前「長期偏低」的人多半只是研究點得少（換算後 105～111%）。拿不到研究資料（官方資料還沒載入、已離開公會）就不加這一項 */
+        /* 期望均傷（同條件的人應該打出的均傷），照遊戲機制精細計算：
+             ① 死靈熊研究（官方 clan_data 的 raid_research_tree，遊戲 TitanResearchInfo）：每一刀打到的每個部位，傷害 ÷ (1＋盔甲或肉體)(1＋頭／肚／四肢)(1＋各王)
+             ② 忠誠度（RaidLoyaltyInfo，×1.0～×1.34）：再 ÷ 忠誠度倍率
+             ③ 剩下的「去掉研究與忠誠度的均傷」用 ln(均傷) ＝ a＋b×ln(突襲等級 RL)＋c×卡片平均等級 擬合（每場重算 a、b、c）
+             期望均傷 ＝ ③ 的預測 × 忠誠度 × 這個人實際打到的部位的研究倍率
+           4 場回測（每次拿掉一個人所有場次來預測）：誤差中位數 6.7%（不算研究 15.9%）；加交叉項（RL×卡片、RL×死靈熊、卡片×死靈熊）沒有更準，三者各自相乘。
+           拿不到官方資料（還沒載入、已離開公會）的人：用原始傷害擬合突襲等級＋卡片等級 */
+        const RAID_LOYALTY_MULT = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
         const RAID_LOG_LOW_RATIO = 0.7;        // 單刀：低於自己這場均傷的 70% 標紅（約 3% 的刀）
         const RAID_LOG_OVERALL_LOW = 0.8;      // 整體偏低：這場均傷低於同條件應有的 80%（M-43 只有 1 人）
         let raidClanData = null, raidClanDataLoading = false;   // 官方 clan_data：playerCode → { tree（研究樹換算值）, raw }
@@ -7587,9 +7590,11 @@
                     const m = new Map();
                     list.forEach(p => {
                         const t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;
-                        const en = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
-                        const tree = Math.log(1 + (g('ArmorDamage') + g('BodyDamage')) / 2) + Math.log(1 + (g('ChestDamage') + g('HeadDamage') + g('LimbDamage')) / 3) + Math.log(1 + en);
-                        m.set(p.player_code, { tree, raw: p });
+                        const en = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;   // 王的編號跟名字對不上，用 8 隻的平均
+                        // 打某個部位時的死靈熊研究倍率
+                        const partMult = (part, layer) => (1 + g(layer === 'armor' ? 'ArmorDamage' : 'BodyDamage')) * (1 + g(part === 'Head' ? 'HeadDamage' : part === 'ChestUpper' ? 'ChestDamage' : 'LimbDamage')) * (1 + en);
+                        const loy = RAID_LOYALTY_MULT[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))];
+                        m.set(p.player_code, { partMult, loy, raw: p });
                     });
                     raidClanData = { at: j.at, byCode: m };
                     if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
@@ -7620,20 +7625,24 @@
                 if (!rlA || !lvs.length) return;
                 const code = (real.find(a => a.playerCode) || {}).playerCode;
                 const cd = raidClanData && code ? raidClanData.byCode.get(code) : null;
-                base.push({ id, x: [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length], tree: cd ? cd.tree : null, n: real.length,
-                    y: Math.log(real.reduce((p, a) => p + a.totalDamage, 0) / real.length) });
+                const rawAvg = real.reduce((p, a) => p + a.totalDamage, 0) / real.length;
+                let neuAvg = null;
+                if (cd) {   // 去掉死靈熊研究（照每刀打到的部位）
+                    neuAvg = real.reduce((p, a) => p + ((a.parts || []).length ? a.parts.reduce((q, pt) => q + (Number(pt.damage) || 0) / cd.partMult(pt.part, pt.layer), 0) : a.totalDamage), 0) / real.length;
+                }
+                base.push({ id, x: [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length], n: real.length, yRaw: Math.log(rawAvg),
+                    yNeu: neuAvg > 0 ? Math.log(neuAvg / cd.loy) : null, mult: neuAvg > 0 ? rawAvg / neuAvg : null, loy: cd ? cd.loy : null });
             });
             const fitRows = base.filter(r => r.n >= 3);
             if (fitRows.length < 10) return null;
-            const useTree = fitRows.filter(r => r.tree != null).length >= 10;
-            let coef, coef3 = raidLsq(fitRows.map(r => r.x), fitRows.map(r => r.y));
-            if (useTree) { const fr = fitRows.filter(r => r.tree != null); coef = raidLsq(fr.map(r => [...r.x, r.tree]), fr.map(r => r.y)); }
+            const coefRaw = raidLsq(fitRows.map(r => r.x), fitRows.map(r => r.yRaw));
+            const neuRows = fitRows.filter(r => r.yNeu != null);
+            const coefNeu = neuRows.length >= 10 ? raidLsq(neuRows.map(r => r.x), neuRows.map(r => r.yNeu)) : null;
+            const dot = (x, c) => x.reduce((p, v, i) => p + v * c[i], 0);
             const out = new Map();
             base.forEach(r => {
-                const c = useTree && coef && r.tree != null ? coef : coef3;
-                if (!c) return;
-                const x = c.length === 4 ? [...r.x, r.tree] : r.x;
-                out.set(r.id, Math.exp(x.reduce((p, v, i) => p + v * c[i], 0)));
+                if (coefNeu && r.yNeu != null) out.set(r.id, Math.exp(dot(r.x, coefNeu)) * r.loy * r.mult);
+                else if (coefRaw) out.set(r.id, Math.exp(dot(r.x, coefRaw)));
             });
             return out;
         }

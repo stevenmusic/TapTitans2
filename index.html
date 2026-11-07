@@ -10581,6 +10581,21 @@
                 r.partLabel = sb && legs2 ? '雙腳' : (mb && armHand ? '肩手' : '');
             }
         });
+        // 能打的部位全部只剩肉體：所有牌組都打「這組牌打得到的部位裡肉體血量最多的」，原本標幾個就標幾個
+        // （Focus Torso 固定肚子、Focus Legs／冷酷之影＋碎顱打擊固定雙腳、冷酷之影＋皎月光束固定肩手，照原本的規則）
+        if (keys.length && keys.every(k => info[k].layer === 'body')) {
+            picked.forEach(r => {
+                if (!r.rawCards || r.allParts || !(r.targets || []).length) return;
+                if (r.game && (r.role === 'torso' || r.role === 'legs')) return;
+                if (r.rawCards.includes('Shadow') && (r.rawCards.includes('SkullBash') || r.rawCards.includes('MoonBeam'))) return;
+                const n = r.targets.length;
+                const cand = keys.filter(k => fitsCards(r, k)).sort((x, y) => info[y].hp - info[x].hp);
+                if (cand.length < n) return;
+                const pick = cand.slice(0, n);
+                if (pick.every(k => r.targets.some(t => t.part === k))) return;
+                r.targets = pick.map(asTarget); r.partLabel = '';
+            });
+        }
         // 最後統一檢查：列出的部位已經涵蓋所有能打的部位（扣掉禁打、骨架，2 個以上）＝全部位，不一個一個列名稱；
         // 寫數量的牌組（Focus Three／Four、淨化爆裂＋暴食蜂擁…）照舊寫「N部位」
         picked.forEach(r => {

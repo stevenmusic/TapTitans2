@@ -7568,7 +7568,7 @@
             return (a) => a.playerCode || codeByName.get(a.player) || a.player;
         }
 
-        /* 期望均傷：均傷 ＝ e^(a＋b×ln(死靈熊等級)＋c×卡片平均等級)，a、b、c 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合
+        /* 期望均傷：均傷 ＝ e^(a＋b×ln(突襲等級 RL)＋c×卡片平均等級)，a、b、c 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合
            （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 70% 標紅（80% 會標到約 2 成的刀，太多） */
         const RAID_LOG_LOW_RATIO = 0.7;
         function raidLogExpectedDamage(attacksByIdentity) {
@@ -7619,7 +7619,7 @@
                 if (!latest || a.ts > latest.ts) latestByIdentity.set(identity, { ts: a.ts, name: a.player });
             });
 
-            const expectedById = raidLogExpectedDamage(attacksByIdentity);   // 每人的期望均傷（死靈熊等級＋卡片等級擬合），整場一起算（不受搜尋影響）
+            const expectedById = raidLogExpectedDamage(attacksByIdentity);   // 每人的期望均傷（突襲等級 RL＋卡片等級擬合），整場一起算（不受搜尋影響）
             const keywordLower = (keyword || '').toLowerCase();
             let identities = [...attacksByIdentity.keys()];
             if (keywordLower) {
@@ -7640,7 +7640,7 @@
                 // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
                 // 真正異常低的那幾刀（例如漏按卡片、斷線只點擊沒出卡等情況）
                 const avgOwnDamage = attacks.length > 0 ? totalDamage / attacks.length : 0;
-                // 低傷：有期望均傷（死靈熊等級＋卡片等級算出來的）就用「低於期望的 70%」；算不出來才退回「低於自己均傷的一半」
+                // 低傷：有期望均傷（突襲等級 RL＋卡片等級算出來的）就用「低於期望的 70%」；算不出來才退回「低於自己均傷的一半」
                 const expectedAvg = expectedById ? expectedById.get(identity) || 0 : 0;
                 const lowDamageThreshold = expectedAvg > 0 ? expectedAvg * RAID_LOG_LOW_RATIO : avgOwnDamage / 2;
                 attacks.forEach(a => { a.isLowDamage = lowDamageThreshold > 0 && a.totalDamage < lowDamageThreshold; a.expectedRatio = expectedAvg > 0 ? a.totalDamage / expectedAvg : null; });

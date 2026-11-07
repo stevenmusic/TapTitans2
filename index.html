@@ -7570,7 +7570,7 @@
 
         /* 期望均傷：均傷 ＝ e^(a＋b×ln(突襲等級 RL)＋c×卡片平均等級)，a、b、c 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合
            （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 80% 標紅 */
-        const RAID_LOG_LOW_RATIO = 0.8;   // 加了個人修正之後：80% 約標紅 13% 的刀（70% 只剩 4%）
+        const RAID_LOG_LOW_RATIO = 0.7;   // 低於自己這場均傷的 70% 標紅（約 3% 的刀）
         // 個人修正：公式算不到的因素（死靈熊、寵物、裝備…）每個人幾乎固定（同一人相鄰兩場的偏差相關 0.94～0.97），
         // 用這個人前 6 場的偏差修正，越近的場次比重越高（每往前一場 ×0.7）；160 種組合回測：6 場以上準確度就不再提升
         // （6 場 ×0.7 誤差中位數 4.16%、平均 5.19% 最低；12 場 4.14%；只用前 3 場 4.25%），下載量少一半，
@@ -7680,10 +7680,14 @@
                 // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
                 // 真正異常低的那幾刀（例如漏按卡片、斷線只點擊沒出卡等情況）
                 const avgOwnDamage = attacks.length > 0 ? totalDamage / attacks.length : 0;
-                // 低傷：有期望均傷（突襲等級 RL＋卡片等級算出來的）就用「低於期望的 80%」；算不出來才退回「低於自己均傷的一半」
+                // 低傷：低於「這個人這場的平均傷害」的 70% 標紅。
+                //   9 場回測：自己均傷的 80% 會標 11%（每人每場約 2.5 刀，很多是當下狀態本來就該用的弱牌組，模擬器最弱的那組約是 6 組平均的 85%）；
+                //   70% 標 3.3%（每人每場約 0.8 刀），剛好在最弱牌組正常的下限以下，被標紅就是真的打得差
                 const expectedAvg = expectedById ? expectedById.get(identity) || 0 : 0;
-                const lowDamageThreshold = expectedAvg > 0 ? expectedAvg * RAID_LOG_LOW_RATIO : avgOwnDamage / 2;
-                attacks.forEach(a => { a.isLowDamage = lowDamageThreshold > 0 && a.totalDamage < lowDamageThreshold; a.expectedRatio = expectedAvg > 0 ? a.totalDamage / expectedAvg : null; });
+                attacks.forEach(a => {
+                    a.expectedRatio = avgOwnDamage > 0 ? a.totalDamage / avgOwnDamage : null;
+                    a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < avgOwnDamage * RAID_LOG_LOW_RATIO;
+                });
                 const hasLowAttack = attacks.some(a => a.isLowDamage);
                 // 伺服器漏收的刀：遊戲每一刀都會回報剩餘次數（每輪多 6 刀、沒打完會累積），前後兩刀的剩餘次數跳號就是中間有刀沒收到。
                 // 卡片、傷害拿不回來，只補一筆「漏記」的佔位，讓攻擊次數對得上（不算進傷害、均傷、低傷判斷）

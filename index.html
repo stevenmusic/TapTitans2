@@ -12204,7 +12204,7 @@
             const loyLv = Math.max(0, Math.min(12, Number(p.loyalty_level) || 0));
             const rr = p.raid_research_bonuses || {}, gb = p.gemstone_research_tree_raid_bonuses || {};
             const row = (k, val) => `<div style="display:flex; justify-content:space-between; gap:8px; padding:2px 0; font-size:12.5px; color:#4a3728;"><span style="color:#8a7a6a;">${k}</span><span style="font-weight:700; text-align:right;">${val}</span></div>`;
-            const warn = (n) => n >= 10 ? `<b style="color:#c0392b;">${n} 點沒用</b>` : `${n} 點`;
+            const warn = (n) => n >= 10 ? `<b style="color:#c0392b;">${n} 點沒點</b>` : `${n} 點`;
             const boosted = (p.boosted_cards || []).slice().sort((x, y) => y.boost_level - x.boost_level);
             return row('死靈熊等級', `<span style="color:${a.necroLv < med / 2 ? '#c0392b' : '#4a3728'};">Lv.${a.necroLv}</span>`)
                 + row('突襲等級', p.player_raid_level)
@@ -12212,11 +12212,11 @@
                 + row('忠誠度', `Lv.${loyLv}（傷害 ×${RAID_LOYALTY_MULT[loyLv]}）`)
                 + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#6a3d9a;">死靈熊研究的突襲加成（公會死靈熊中位數 Lv.${med}）</div>`
                 + `<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:3px; margin-top:3px;">${Object.entries(a.necro).map(([k, x]) => `<div style="text-align:center; background:#fff; border:1px solid #eadfcc; border-radius:6px; padding:2px; font-size:11.5px;"><div style="color:#8a7a6a;">${k}</div><b style="color:#4a3728;">${pct(x)}</b></div>`).join('')}</div>`
-                + row('未使用的死靈熊研究點數', warn(a.unusedNecro))
+                + row('沒點的死靈熊研究點數', warn(a.unusedNecro))
                 + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#5a3a2a;">突襲研究</div>`
                 + row('基礎傷害（全部／爆裂／苦痛）', `+${rr.RaidBaseDamage || 0}%／+${rr.BurstBaseDamage || 0}%／+${rr.AfflictionBaseDamage || 0}%`)
                 + row('盔甲／肉體', `+${rr.ArmorBaseDamage || 0}%／+${rr.BodyBaseDamage || 0}%`)
-                + row('未使用的突襲研究點數', warn(a.unusedRaid))
+                + row('沒點的突襲研究點數', warn(a.unusedRaid) + (a.unusedRaid >= 10 ? '<div style="font-size:10.5px; font-weight:400; color:#8a7a6a;">研究還沒點滿，去突襲研究點掉，傷害會變高</div>' : ''))
                 + `<div style="margin-top:6px; font-size:12px; font-weight:800; color:#5a3a2a;">寶石研究</div>`
                 + row('盔甲／肉體', `+${gb.ArmorBaseDamage || 0}%／+${gb.BodyBaseDamage || 0}%`)
                 + row('寶石研究點數', a.unusedGem.toLocaleString())
@@ -12231,9 +12231,9 @@
             const th = (t2) => `<th style="padding:3px 4px; font-size:11px; color:#8a7a6a; font-weight:700; text-align:right; white-space:nowrap;">${t2}</th>`;
             const td = (t2, st) => `<td style="padding:3px 4px; font-size:12px; text-align:right; white-space:nowrap; ${st || ''}">${t2}</td>`;
             return `<div style="margin-top:4px; font-size:12.5px; font-weight:800; color:#5a3a2a;">帳號資料（官方，每 12 小時更新）</div>
-                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">照死靈熊等級排列（公會中位數 Lv.${med}，不到一半標紅）｜未用＝還沒用掉的研究點數（死靈熊／突襲），10 點以上標紅</div>
-                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 4px; font-size:11px; color:#8a7a6a; text-align:left;">玩家</th>${th('死靈熊')}${th('突襲等級')}${th('卡片總等級')}${th('未用')}${th('忠誠')}</tr>
-                ${list.map(a => `<tr style="border-top:1px solid #f0e6d4; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 4px; font-size:12px; max-width:9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.p.name)}</td>${td('Lv.' + a.necroLv, a.necroLv < med / 2 ? 'color:#c0392b; font-weight:800;' : 'font-weight:700;')}${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${td(a.unusedNecro + '／' + a.unusedRaid, a.unusedNecro + a.unusedRaid >= 10 ? 'color:#c0392b; font-weight:800;' : '')}${td('Lv.' + (Number(a.p.loyalty_level) || 0))}</tr>`).join('')}</table></div>`;
+                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">照死靈熊等級排列（公會中位數 Lv.${med}，不到一半標紅）｜<b>沒點的點數</b>＝突襲研究點數還放著沒用（研究還沒點滿，點下去傷害會變高），10 點以上標紅</div>
+                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 4px; font-size:11px; color:#8a7a6a; text-align:left;">玩家</th>${th('死靈熊')}${th('突襲等級')}${th('卡片總等級')}${th('沒點的點數')}${th('忠誠')}</tr>
+                ${list.map(a => `<tr style="border-top:1px solid #f0e6d4; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 4px; font-size:12px; max-width:9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.p.name)}</td>${td('Lv.' + a.necroLv, a.necroLv < med / 2 ? 'color:#c0392b; font-weight:800;' : 'font-weight:700;')}${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${td(a.unusedRaid + (a.unusedNecro ? `<small>（死靈熊 ${a.unusedNecro}）</small>` : ''), a.unusedNecro + a.unusedRaid >= 10 ? 'color:#c0392b; font-weight:800;' : '')}${td('Lv.' + (Number(a.p.loyalty_level) || 0))}</tr>`).join('')}</table></div>`;
         }
         function cardLevelsGuild() {
             const box = document.getElementById('cardlv-guild');

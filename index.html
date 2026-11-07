@@ -7568,6 +7568,36 @@
             return (a) => a.playerCode || codeByName.get(a.player) || a.player;
         }
 
+        /* 期望均傷：均傷 ＝ e^(a＋b×ln(死靈熊等級)＋c×卡片平均等級)，a、b、c 每次用這一場所有人（出刀 3 次以上）的實際均傷自動擬合
+           （M-39／40／42 驗證：可解釋約 9 成的玩家差距）；單刀低於期望的 70% 標紅（80% 會標到約 2 成的刀，太多） */
+        const RAID_LOG_LOW_RATIO = 0.7;
+        function raidLogExpectedDamage(attacksByIdentity) {
+            const feat = new Map(), rows = [];
+            attacksByIdentity.forEach((list, id) => {
+                const real = list.filter(a => !a.placeholder && a.totalDamage > 0);
+                const rlA = real.find(a => Number(a.raidLevel) > 0);
+                const lvs = real.flatMap(a => (a.cards || []).map(c => Number(c && c.level)).filter(v => v > 0));
+                if (!rlA || !lvs.length) return;
+                const x = [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length];
+                feat.set(id, x);
+                if (real.length >= 3) rows.push({ x, y: Math.log(real.reduce((p, a) => p + a.totalDamage, 0) / real.length) });
+            });
+            if (rows.length < 10) return null;
+            // 最小平方法（3×3 正規方程，高斯消去）
+            const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], B = [0, 0, 0];
+            rows.forEach(({ x, y }) => { for (let i = 0; i < 3; i++) { B[i] += x[i] * y; for (let j = 0; j < 3; j++) A[i][j] += x[i] * x[j]; } });
+            for (let i = 0; i < 3; i++) {
+                let p = i; for (let r = i + 1; r < 3; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+                [A[i], A[p]] = [A[p], A[i]]; [B[i], B[p]] = [B[p], B[i]];
+                if (Math.abs(A[i][i]) < 1e-12) return null;
+                for (let r = 0; r < 3; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let c = i; c < 3; c++) A[r][c] -= f * A[i][c]; B[r] -= f * B[i]; }
+            }
+            const coef = B.map((v, i) => v / A[i][i]);
+            const out = new Map();
+            feat.forEach((x, id) => out.set(id, Math.exp(x[0] * coef[0] + x[1] * coef[1] + x[2] * coef[2])));
+            return out;
+        }
+
         function buildRaidLogRanking(keyword) {
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
@@ -7589,6 +7619,7 @@
                 if (!latest || a.ts > latest.ts) latestByIdentity.set(identity, { ts: a.ts, name: a.player });
             });
 
+            const expectedById = raidLogExpectedDamage(attacksByIdentity);   // 每人的期望均傷（死靈熊等級＋卡片等級擬合），整場一起算（不受搜尋影響）
             const keywordLower = (keyword || '').toLowerCase();
             let identities = [...attacksByIdentity.keys()];
             if (keywordLower) {
@@ -7609,14 +7640,16 @@
                 // 幾乎每一刀都被誤標紅。用自己的平均單次傷害當基準，才抓得出
                 // 真正異常低的那幾刀（例如漏按卡片、斷線只點擊沒出卡等情況）
                 const avgOwnDamage = attacks.length > 0 ? totalDamage / attacks.length : 0;
-                const lowDamageThreshold = avgOwnDamage / 2;
-                attacks.forEach(a => { a.isLowDamage = avgOwnDamage > 0 && a.totalDamage < lowDamageThreshold; });
+                // 低傷：有期望均傷（死靈熊等級＋卡片等級算出來的）就用「低於期望的 70%」；算不出來才退回「低於自己均傷的一半」
+                const expectedAvg = expectedById ? expectedById.get(identity) || 0 : 0;
+                const lowDamageThreshold = expectedAvg > 0 ? expectedAvg * RAID_LOG_LOW_RATIO : avgOwnDamage / 2;
+                attacks.forEach(a => { a.isLowDamage = lowDamageThreshold > 0 && a.totalDamage < lowDamageThreshold; a.expectedRatio = expectedAvg > 0 ? a.totalDamage / expectedAvg : null; });
                 const hasLowAttack = attacks.some(a => a.isLowDamage);
                 // 伺服器漏收的刀：遊戲每一刀都會回報剩餘次數（每輪多 6 刀、沒打完會累積），前後兩刀的剩餘次數跳號就是中間有刀沒收到。
                 // 卡片、傷害拿不回來，只補一筆「漏記」的佔位，讓攻擊次數對得上（不算進傷害、均傷、低傷判斷）
                 const missed = raidLogMissedPlaceholders(attacks);
                 const shown = missed.length ? attacks.concat(missed).sort((a, b) => b.ts - a.ts) : attacks;
-                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
+                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, expectedAvg, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
@@ -11670,7 +11703,7 @@
                     <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
-                            <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}</span>
+                            <span style="font-size:12px; color:#6b5a4a;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.expectedAvg > 0 ? `・期望均傷 <b style="color:#8b263e;">${escapeHtml(formatNumAlwaysM(r.expectedAvg))}</b>` : ''}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
@@ -12210,7 +12243,7 @@
                     <div onclick="toggleRaidLogDetail('${uid}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:2px 8px; line-height:1.3; cursor:pointer; background:#faf6f0;">
                         <span style="font-size:12px; color:#5a4a3a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bossStr} ・ ${raidLogRelativeDate(a.ts)}${attacksLeftInline}</span>
                         <span style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
-                            <span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
+                            ${a.isLowDamage && a.expectedRatio != null ? `<span style="font-size:10.5px; font-weight:800; color:#c0392b;">${Math.round(a.expectedRatio * 100)}%</span>` : ''}<span style="font-size:12.5px; font-weight:700; color:${a.isLowDamage ? '#c0392b' : '#4a3a2a'};">${escapeHtml(formatNumAlwaysM(a.totalDamage))}</span>
                             <span id="${uid}-chevron" class="raid-log-chevron" style="font-size:11px; color:#a89a88;">${expandByDefault ? '▴' : '▾'}</span>
                         </span>
                     </div>

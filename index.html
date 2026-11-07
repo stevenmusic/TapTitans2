@@ -7588,7 +7588,8 @@
                         // 打某個部位時的死靈熊研究倍率
                         const partMult = (part, layer) => (1 + g(layer === 'armor' ? 'ArmorDamage' : 'BodyDamage')) * (1 + g(part === 'Head' ? 'HeadDamage' : part === 'ChestUpper' ? 'ChestDamage' : 'LimbDamage')) * (1 + en);
                         const loy = RAID_LOYALTY_MULT[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))];
-                        m.set(p.player_code, { partMult, loy, raw: p });
+                        const necroMult = (1 + (g('ArmorDamage') + g('BodyDamage')) / 2) * (1 + (g('HeadDamage') + g('ChestDamage') + g('LimbDamage')) / 3) * (1 + en);   // 死靈熊研究的突襲加成倍率
+                        m.set(p.player_code, { partMult, loy, necroMult, raw: p });
                     });
                     raidClanData = { at: j.at, byCode: m };
                     if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
@@ -7609,9 +7610,11 @@
             return B.map((v, i) => v / A[i][i]);
         }
         // 每個人的「同條件應有均傷」（identity → 期望均傷）
-        /* 期望突襲均傷：均傷 ≈ K × e^(b×死靈熊等級) × e^(c×突襲等級)（官方 clan_data 的 summon_level、player_raid_level）
-           K、b、c 每場用全公會（出刀 3 次以上）的實際均傷擬合；M-42／M-43 擬合出 b≈0.0013（死靈熊每高 100 級 ×1.14）、c≈0.0023（突襲等級每高 100 級 ×1.25），
-           兩場幾乎一樣。卡片總等級跟突襲等級相關 0.993，加進去沒有幫助；交叉項也沒有幫助。誤差中位數約 7～9%。
+        /* 期望突襲均傷：均傷 ≈ K × e^(c×突襲等級) × 死靈熊突襲加成倍率
+             死靈熊不是每一級都加突襲傷害：每升 1 級給 1 個研究點，研究樹 150 列裡只有 46 列是突襲項目，解鎖到才會跳一階，
+             所以直接用官方 raid_research_tree（實際點到的突襲加成）：(1＋盔甲／肉體)×(1＋頭／肚／四肢)×(1＋各王)。
+             擬合這個倍率的次方得到 1.03～1.04（≈1，就是遊戲裡直接相乘），所以固定乘上去；K、c 每場擬合（c≈0.0023，突襲等級每高 100 級 ×1.25）。
+             卡片總等級跟突襲等級相關 0.993，加進去沒有幫助；交叉項也沒有幫助。M-42／M-43 誤差中位數約 8～9%。
            拿不到官方資料的人（已離開公會、資料還沒載入）：用攻擊紀錄裡的突襲等級＋卡片平均等級擬合 */
         function raidExpectedModel(attacksByIdentity) {
             if (!raidClanData) raidLoadClanData();   // 官方資料在背景載入，好了會重畫
@@ -7625,15 +7628,15 @@
                 const lvs = real.flatMap(a => (a.cards || []).map(c => Number(c && c.level)).filter(v => v > 0));
                 const y = Math.log(real.reduce((p, a) => p + a.totalDamage, 0) / real.length);
                 base.push({ id, code, n: real.length, y,
-                    xOff: cd ? [1, Number(cd.raw.summon_level) || 0, Number(cd.raw.player_raid_level) || 0] : null,
+                    xOff: cd ? [1, Number(cd.raw.player_raid_level) || 0] : null, lm: cd ? Math.log(cd.necroMult) : 0,
                     xRaw: rlA && lvs.length ? [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length] : null });
             });
-            const fit = (key) => { const rows = base.filter(r => r.n >= 3 && r[key]); return rows.length >= 10 ? raidLsq(rows.map(r => r[key]), rows.map(r => r.y)) : null; };
+            const fit = (key) => { const rows = base.filter(r => r.n >= 3 && r[key]); return rows.length >= 10 ? raidLsq(rows.map(r => r[key]), rows.map(r => r.y - (key === 'xOff' ? r.lm : 0))) : null; };   // 死靈熊倍率固定乘上去（次方 1）
             const coefOff = fit('xOff'), coefRaw = fit('xRaw');
             const dot = (x, c) => x.reduce((p, v, i) => p + v * c[i], 0);
             const out = new Map();
             base.forEach(r => {
-                if (coefOff && r.xOff) out.set(r.id, Math.exp(dot(r.xOff, coefOff)));
+                if (coefOff && r.xOff) out.set(r.id, Math.exp(dot(r.xOff, coefOff) + r.lm));
                 else if (coefRaw && r.xRaw) out.set(r.id, Math.exp(dot(r.xRaw, coefRaw)));
             });
             return { out, coefOff, base };
@@ -7651,7 +7654,7 @@
             const m = raidExpectedModel(by), res = new Map();
             m.base.forEach(r => { const e = m.out.get(r.id); if (e) res.set(r.code || r.id, { expected: e, actual: Math.exp(r.y), n: r.n }); });
             // 這場還沒出刀、但有官方資料的人：也算得出期望值
-            if (m.coefOff && raidClanData) raidClanData.byCode.forEach((v, code) => { if (!res.has(code)) res.set(code, { expected: Math.exp(m.coefOff[0] + m.coefOff[1] * (Number(v.raw.summon_level) || 0) + m.coefOff[2] * (Number(v.raw.player_raid_level) || 0)), actual: null, n: 0 }); });
+            if (m.coefOff && raidClanData) raidClanData.byCode.forEach((v, code) => { if (!res.has(code)) res.set(code, { expected: Math.exp(m.coefOff[0] + m.coefOff[1] * (Number(v.raw.player_raid_level) || 0)) * v.necroMult, actual: null, n: 0 }); });
             return res;
         }
 
@@ -12216,7 +12219,7 @@
             const boosted = (p.boosted_cards || []).slice().sort((x, y) => y.boost_level - x.boost_level);
             const ex = raidExpectedByCode().get(p.player_code);
             return (ex ? row('期望突襲均傷（這場）', `${escapeHtml(formatNumAlwaysM(ex.expected))}${ex.actual ? `<div style="font-size:11px; font-weight:400; color:${ex.actual < ex.expected * 0.8 ? '#d35400' : '#8a7a6a'};">實際 ${escapeHtml(formatNumAlwaysM(ex.actual))}（${Math.round(ex.actual / ex.expected * 100)}%）</div>` : ''}`) : '')
-                + row('死靈熊等級', `<span style="color:${a.necroLv < med / 2 ? '#c0392b' : '#4a3728'};">Lv.${a.necroLv}</span>`)
+                + row('死靈熊等級', `<span style="color:${a.necroLv < med / 2 ? '#c0392b' : '#4a3728'};">Lv.${a.necroLv}</span><div style="font-size:11px; font-weight:400; color:#8a7a6a;">突襲傷害 ×${v.necroMult.toFixed(2)}（研究實際點到的突襲加成）</div>`)
                 + row('突襲等級', p.player_raid_level)
                 + row('卡片總等級', p.total_card_level)
                 + row('忠誠度', `Lv.${loyLv}（傷害 ×${RAID_LOYALTY_MULT[loyLv]}）`)
@@ -12242,7 +12245,7 @@
             const th = (t2) => `<th style="padding:3px 4px; font-size:11px; color:#8a7a6a; font-weight:700; text-align:right; white-space:nowrap;">${t2}</th>`;
             const td = (t2, st) => `<td style="padding:3px 4px; font-size:12px; text-align:right; white-space:nowrap; ${st || ''}">${t2}</td>`;
             return `<div style="margin-top:4px; font-size:12.5px; font-weight:800; color:#5a3a2a;">帳號資料（官方，每 12 小時更新）</div>
-                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">照死靈熊等級排列（公會中位數 Lv.${med}，不到一半標紅）｜期望均傷＝這場同死靈熊等級、同突襲等級的人應有的平均每刀傷害，下面小字是實際打到幾 %（低於 80% 橘色）</div>
+                <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">照死靈熊等級排列（公會中位數 Lv.${med}，不到一半標紅）｜期望均傷＝這場同突襲等級、同死靈熊突襲加成的人應有的平均每刀傷害，下面小字是實際打到幾 %（低於 80% 橘色）</div>
                 <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 4px; font-size:11px; color:#8a7a6a; text-align:left;">玩家</th>${th('死靈熊')}${th('突襲等級')}${th('卡片總等級')}${th('期望均傷')}</tr>
                 ${list.map(a => `<tr style="border-top:1px solid #f0e6d4; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 4px; font-size:12px; max-width:7em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.p.name)}</td>${td('Lv.' + a.necroLv, a.necroLv < med / 2 ? 'color:#c0392b; font-weight:800;' : 'font-weight:700;')}${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${(() => { const e = exp.get(a.p.player_code); if (!e) return td('—'); const low = e.actual && e.actual < e.expected * 0.8; return td(escapeHtml(formatNumAlwaysM(e.expected)) + (e.actual ? `<div style="font-size:10px; color:${low ? '#d35400' : '#a89a88'}; font-weight:${low ? 800 : 400};">實際 ${Math.round(e.actual / e.expected * 100)}%</div>` : '')); })()}</tr>`).join('')}</table></div>`;
         }

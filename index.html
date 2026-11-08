@@ -7657,12 +7657,24 @@
         // 最新一場：每個人（玩家代碼）的期望突襲均傷、實際均傷（玩家卡片等級頁用）
         function raidExpectedByCode() {
             const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !a.placeholder);
-            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            const by = new Map();
-            log.forEach(a => { if (latest && a.raidStartedAt !== latest) return; const k = a.playerCode || a.player; if (!by.has(k)) by.set(k, []); by.get(k).push(a); });
-            const m = raidExpectedModel(by), res = new Map();
-            m.base.forEach(r => { const e = m.out.get(r.id); if (e) res.set(r.code || r.id, { expected: e, actual: Math.exp(r.y), n: r.n }); });
+            // 用最新一場；這場打完也繼續顯示，直到下一場開打、算得出期望均傷（至少 10 人各打 3 刀）才換成下一場
+            const ss = (serverSessionsSummary || []).map(x => x.startedAt);
+            if (!ss.length) ss.push(null);
+            let res = new Map();
+            for (const sa of ss.slice(0, 2)) {
+                const by = new Map();
+                ((sa && sessionAttacksCache.get(sa)) || log).forEach(a => { if (a.placeholder || (sa && a.raidStartedAt && a.raidStartedAt !== sa)) return; const k = a.playerCode || a.player; if (!by.has(k)) by.set(k, []); by.get(k).push(a); });
+                const m = raidExpectedModel(by);
+                res = new Map();
+                m.base.forEach(r => { const e = m.out.get(r.id); if (e) res.set(r.code || r.id, { expected: e, actual: Math.exp(r.y), n: r.n }); });
+                if (res.size) break;
+            }
             return res;
+        }
+        // 新一場剛開打、還算不出期望均傷時，先把上一場的攻擊紀錄載進來（網頁平常只抓最新一場）
+        async function raidExpectedPrep() {
+            const ss = serverSessionsSummary || [];
+            if (ss[1] && !sessionAttacksCache.has(ss[1].startedAt) && !raidExpectedByCode().size) await ensureSessionAttacksLoaded(ss[1].startedAt);
         }
 
         function buildRaidLogRanking(keyword) {
@@ -12148,7 +12160,7 @@
             const sel = document.getElementById('cardlv-sel'); if (sel) sel.value = name;
             const icon = (id, sz) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:${sz}px; height:${sz}px; border-radius:6px; vertical-align:middle;">` : escapeHtml(raidCardLabel(id));
             const sec = (title, inner) => `<div style="margin-top:12px; padding:8px; border-radius:10px; background:#fbf6ee; border:1px solid #eadfcc;"><div style="font-size:13px; font-weight:800; color:#5a3a2a; margin-bottom:5px;">${title}</div>${inner}</div>`;
-            const [{ use, top }] = await Promise.all([cardUsageStats(), raidLoadClanData(), raidLoadClanHistory()]);
+            const [{ use, top }] = await Promise.all([cardUsageStats(), raidLoadClanData(), raidLoadClanHistory(), raidExpectedPrep()]);
             if (document.getElementById('cardlv-name').textContent !== name) return;
             // ⓪ 帳號資料（官方 clan_data，每 12 小時更新）
             const acct = raidAccountInfo(name);
@@ -12309,6 +12321,8 @@
             Object.values(allCardLevels || {}).forEach(m => Object.entries(m).forEach(([k, v]) => (by[k] = by[k] || []).push(v)));
             const n = Object.keys(allCardLevels || {}).length;
             if (!raidClanData || !raidClanHistory) Promise.all([raidLoadClanData(), raidLoadClanHistory()]).then(() => { if (raidClanData && raidClanHistory && document.getElementById('cardlv-guild')) cardLevelsGuild(); });
+            const ss1 = (serverSessionsSummary || [])[1];
+            if (ss1 && !sessionAttacksCache.has(ss1.startedAt) && !raidExpectedByCode().size) raidExpectedPrep().then(() => { if (sessionAttacksCache.has(ss1.startedAt) && document.getElementById('cardlv-guild')) cardLevelsGuild(); });
             box.innerHTML = raidAccountGuildHtml() + `<div style="font-size:11.5px; color:#8a7a6a; margin:10px 0 4px;">${n} 位成員｜大字＝中位數｜小字＝最低～最高｜紅字＝低於中位數 ${RAID_LOG_LV_LOW} 級以上的人數</div>` + BY_PART_POOL.map(([label, rgb, ids]) => {
                 const rows = ids.filter(id => by[id] && by[id].length).map(id => { const v = by[id].slice().sort((a, b) => a - b); const md = v[Math.floor(v.length / 2)]; return { id, md, mn: v[0], mx: v[v.length - 1], n: v.length, low: v.filter(x => x <= md - RAID_LOG_LV_LOW).length }; }).sort((a, b) => a.md - b.md);
                 return `<div style="margin-top:8px; font-size:12.5px; font-weight:800; color:rgb(${rgb});">${label}</div>

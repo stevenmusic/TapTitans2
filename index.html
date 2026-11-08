@@ -13190,7 +13190,7 @@
                     const titanCards = names.map(n => {
                         const t = T[n];
                         const cells = RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(loc => { const e = t.p[loc] || [0, 0, 0, 0]; const ban = banOf(n).includes(loc);
-                            return `<div class="raid-part-cell${ban ? ' is-banned' : ''}" onclick="ticketCalcSet('ban', ['${n}', '${loc}'])" style="cursor:pointer; padding:4px 2px; ${e[3] && !ban ? 'border-color:#8e5cc0; background:#f3ebfa;' : ''}"><div class="raid-part-name" style="font-size:11.5px;">${escapeHtml(raidPartLabel(loc))}${e[3] ? '<small style="color:#8e5cc0;">詛</small>' : ''}</div><div class="raid-part-hp" style="font-size:11.5px;">${ban ? '禁打' : fmt(e[1])}</div></div>`; }).join('')}</div>`).join('');
+                            return `<div class="raid-part-cell${ban ? ' is-banned' : ''}" onclick="ticketCalcSet('ban', ['${n}', '${loc}'])" style="cursor:pointer; padding:4px 2px; ${e[3] && !ban ? 'border-color:#8e5cc0; background:#f3ebfa;' : ''}"><div class="raid-part-name" style="font-size:11.5px;">${escapeHtml(raidPartLabel(loc))}${e[3] ? '<small style="color:#8e5cc0;">詛</small>' : ''}</div><div class="raid-part-hp${ban ? ' is-banned' : ''}" style="font-size:11.5px;">${fmt(e[1])}</div></div>`; }).join('')}</div>`).join('');
                         const bodyLeft = Object.entries(t.p).reduce((x, [loc, e]) => x + (banOf(n).includes(loc) ? 0 : e[2]), 0);
                         const dead = bodyLeft < t.k;
                         return `<div style="border:1px solid ${dead ? '#e57373' : '#eadfcc'}; border-radius:10px; padding:8px; margin-bottom:8px; background:${dead ? '#fff5f5' : '#fffdf8'};">
@@ -15012,7 +15012,7 @@
                             if (isCursedArmor) cell.style.background = 'linear-gradient(135deg, #fff5f5 0%, #f3e9fb 100%)';
                             cell.innerHTML = `
                                 <div class="raid-part-name">${raidPartLabel(def.key)}</div>
-                                <div class="raid-part-hp is-banned">${t('raidPartBannedLabel')}${isCursedArmor ? ' <span style="display:inline-block; font-size:10.5px; font-weight:800; color:#fff; background:#5b2a86; border-radius:5px; padding:1px 5px; vertical-align:2px;">詛咒甲</span>' : ''}</div>
+                                <div class="raid-part-hp is-banned">${formatNum(activeValue)}${isCursedArmor ? ' <span style="display:inline-block; font-size:10.5px; font-weight:800; color:#fff; background:#5b2a86; border-radius:5px; padding:1px 5px; vertical-align:2px;">詛咒甲</span>' : ''}</div>
                             `;
                         } else {
                             cell.style.background = `linear-gradient(to right, rgba(${themeColor},0.30) ${pct}%, #ffffff ${pct}%)`;

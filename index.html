@@ -13218,7 +13218,7 @@
                     const inp = (field, val, step) => `<input type="number" inputmode="decimal" step="${step}" value="${val}" onchange="ticketCalcSet('${field}', Number(this.value) || null)" style="width:100%; box-sizing:border-box; font:inherit; font-size:15px; padding:5px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee; text-align:center;">`;
                     body = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;"><span style="font-size:13px; font-weight:800; color:#5a3a2a;">關卡</span>
                             <select onchange="ticketCalcSet('level', Number(this.value))" style="flex:1; font:inherit; font-size:15px; padding:5px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee;">${master.map(r => `<option value="${r.l}" ${r.l === ticketCalc.level ? 'selected' : ''}>M-${r.l}${r.l === curLv ? '（這一場）' : ''}</option>`).join('')}</select></div>
-                        <div style="font-size:12px; color:#6b4a2a; margin-bottom:6px;">加成：${raid.buffs.map(b => buffLabel[b[0]] || b[0]).join('、') || '—'}｜出場順序：${raid.seq.map(escapeHtml).join(' → ')}</div>
+                        <div style="font-size:12px; color:#6b4a2a; margin-bottom:6px;">${raid.buffs.map(b => buffLabel[b[0]] || b[0]).join('、') || '—'}<br>${raid.seq.map(escapeHtml).join(' → ')}</div>
                         <div style="display:flex; gap:6px; margin-bottom:8px;">
                             <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">斬殺線</div><div style="font-size:14px; font-weight:800;">${fmt(killSum)}</div></div>
                             <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:6px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">盔甲（扣禁打）</div><div style="font-size:14px; font-weight:800;">${fmt(armorSum)}</div></div>
@@ -13230,7 +13230,7 @@
                         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:4px; font-size:11.5px; color:#8a7a6a; font-weight:700;">
                             <label>每輪刀數${inp('rounds', perRound, 1)}</label><label>30%均傷(M)${inp('perAtk', Math.round(perAtk * (1 + TICKET_BASE_BONUS) / 1e6), 1).replace("Number(this.value) || null", "Number(this.value) * 1e6 / (1 + TICKET_BASE_BONUS) || null")}</label><label>保險 %${inp('margin', margin, 1)}</label>
                         </div>
-                        <div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${cap ? `每刀取最近 3 場平均（已還原各場詛咒和加成，並加上成長趨勢）、刀數＝公會人數×6×出刀率；「保守」＝出刀能力少 5%${ticketCalc.members ? `｜上一場出刀 ${ticketCalc.members} 人，一輪最多 ${ticketCalc.members * 6} 刀` : ''}` : '計算中…'}</div>
+                        ${cap ? "" : `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">計算中…</div>`}
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
@@ -13421,13 +13421,10 @@
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">扛詛咒換算</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(eff)}</div></div>
                 </div>
                 <div style="background:#eef7ee; border-radius:8px; padding:8px; margin-bottom:8px; font-size:12.5px; color:#2e5d32;">
-                    <div style="font-weight:800; font-size:14px; margin-bottom:4px;">預估第 ${finR} 輪打完（不用門票）</div>
-                    <table style="width:100%; border-collapse:collapse; color:#2e5d32;">
-                        <tr style="font-weight:800; font-size:11.5px; color:#6b8a6b;"><td style="padding:2px 3px;">目標</td><td style="padding:2px 3px; text-align:right;">門票</td></tr>
-                        ${[finR - 2, finR - 1, finR].filter(k => k >= 2).map(k => { const tk = ticketsFor(k); return `<tr><td style="padding:4px 3px; border-top:1px solid #cfe3cf;">${k} 輪</td><td style="padding:4px 3px; border-top:1px solid #cfe3cf; text-align:right; font-weight:800; color:${tk ? '#8b263e' : '#2e7d32'};">${tk ? `${tk.toLocaleString()} 張` : '不用'}</td></tr>`; }).join('')}
-                    </table>
+                    <div style="font-weight:800; font-size:14px;">預估第 ${finR} 輪打完（不用門票）</div>
+                    ${finR - 1 >= 2 && ticketsFor(finR - 1) <= 30000 ? `<div>${finR - 1} 輪打完要 ${ticketsFor(finR - 1).toLocaleString()} 張門票（增傷 ${((need / (finR - 1) / capEff - 1) * 100).toFixed(1)}%）</div>` : ''}
                 </div>
-                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標（第 2 輪起多鏡子力 4.4%）</div>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">預估</td><td style="${th}">預估累計</td></tr>

@@ -13409,24 +13409,25 @@
             const predOf = (c) => capEff * (1 + TICKET_BASE_BONUS) * (total / eff) * w(c) / mw;   // 預估這一輪打出的實際傷害
             let finR = 1, sumP = predOf(1);
             while (sumP < total * 1.005 && finR < 20) sumP += predOf(++finR);   // 不用門票第幾輪打完
-            const finPct = Math.round((total * 1.005 - (sumP - predOf(finR))) / predOf(finR) * 100);
             const n = bossHpRounds || Math.min(6, Math.max(2, finR));
             let tw = 0; for (let i = 1; i <= n; i++) tw += w(i);
             const ticketsFor = (k) => { const bonus = need / k / capEff - 1; return bonus <= TICKET_BASE_BONUS ? 0 : Math.ceil((bonus - TICKET_BASE_BONUS) / TICKET_PER / 100) * 100; };
             let acc = 0;
             const td = 'padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; white-space:nowrap;';
             const th = 'padding:4px 3px; text-align:right;';
-            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a; margin-bottom:6px;">下一場還沒開打，先照 seed 列出 ${formatRaidLevel(lv)}（${(bossHpNextSeed.valid_from || '').slice(5, 10).replace('-', '/')} 那一週的 seed）。開打後會換成即時的打王進度。</div>
+            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a; margin-bottom:6px;">照 ${(bossHpNextSeed.valid_from || '').slice(5, 10).replace('-', '/')} seed 估算，開打後換成即時進度</div>
                 <div style="display:flex; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場要打</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(total)}</div></div>
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">扛詛咒換算</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(eff)}</div></div>
                 </div>
                 <div style="background:#eef7ee; border-radius:8px; padding:8px; margin-bottom:8px; font-size:12.5px; color:#2e5d32;">
-                    <div style="font-weight:800; font-size:14px;">預估第 ${finR} 輪打完（不用門票，第 ${finR} 輪打到約 ${finPct}%）</div>
-                    <div style="margin-top:2px;">每輪預估打 ${formatNum(predOf(2))}（實際傷害，第 1 輪 ${formatNum(predOf(1))}）${[finR - 1, finR - 2].filter(k => k >= 2).map(k => `｜${k} 輪打完要 ${ticketsFor(k).toLocaleString()} 張門票`).join('')}</div>
-                    <div style="font-size:11px; color:#6b8a6b; margin-top:2px;">${cap ? '跟門票試算同一套估算（最近幾場的每刀均傷 × 每輪刀數）' : '戰力資料載入中，先用預設值'}</div>
+                    <div style="font-weight:800; font-size:14px; margin-bottom:4px;">預估第 ${finR} 輪打完（不用門票）</div>
+                    <table style="width:100%; border-collapse:collapse; color:#2e5d32;">
+                        <tr style="font-weight:800; font-size:11.5px; color:#6b8a6b;"><td style="padding:2px 3px;">目標</td><td style="padding:2px 3px; text-align:right;">門票</td></tr>
+                        ${[finR - 2, finR - 1, finR].filter(k => k >= 2).map(k => { const tk = ticketsFor(k); return `<tr><td style="padding:4px 3px; border-top:1px solid #cfe3cf;">${k} 輪</td><td style="padding:4px 3px; border-top:1px solid #cfe3cf; text-align:right; font-weight:800; color:${tk ? '#8b263e' : '#2e7d32'};">${tk ? `${tk.toLocaleString()} 張` : '不用'}</td></tr>`; }).join('')}
+                    </table>
                 </div>
-                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">幾輪打完（第 2 輪起多鏡子力 4.4%）</div>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標（第 2 輪起多鏡子力 4.4%）</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">預估</td><td style="${th}">預估累計</td></tr>

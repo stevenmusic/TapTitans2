@@ -8211,7 +8211,7 @@
         function quizSceneHtml(scene) {
             const cell = (k) => {
                 const s = scene[k], rgb = QUIZ_SCENE_RGB[s];
-                const label = s === 'skeleton' ? '🦴 骨架' : QUIZ_SCENE_LABEL[s];
+                const label = s === 'skeleton' ? '🦴 骨架' : s === 'banned' ? '&nbsp;' : QUIZ_SCENE_LABEL[s];   // 禁打已經有紅框＋紅叉＋底色，不再寫字
                 return `<div class="raid-part-cell ${s === 'banned' ? 'is-banned' : (s === 'skeleton' ? 'is-destroyed' : '')}" style="background:rgba(${rgb},0.22); border-color:rgb(${rgb}); box-shadow:0 0 6px rgba(${rgb},0.4);"><div class="raid-part-name">${escapeHtml(raidPartLabel(k))}</div><div class="raid-part-hp" style="color:rgb(${rgb});">${label}</div></div>`;
             };
             return `<div class="raid-parts-grid" style="margin-top:6px;">${RAID_LOG_PART_LAYOUT.map(row => `<div class="raid-parts-row">${row.map(cell).join('')}</div>`).join('')}</div>`;
@@ -10031,7 +10031,7 @@
             el.querySelector('.sim-imp-skelpart').checked = st === 'skeleton';
             el.classList.toggle('is-banned', st === 'banned');
             el.classList.toggle('is-destroyed', st === 'skeleton');
-            el.querySelector('.si-part-st').textContent = st === 'ok' ? '可打' : '不能打';
+            el.querySelector('.si-part-st').textContent = st === 'ok' ? '可打' : st === 'banned' ? '\u00a0' : '不能打';   // 禁打已經有紅框＋紅叉＋底色，不再寫字
             simImportCheckSum();
         }
         // 點一下切換 可打 ↔ 不能打（禁打和骨架都算不能打；凱旋行軍要的骨架數量看當下王的狀態，不用在這裡分）

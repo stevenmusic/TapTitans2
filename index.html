@@ -13308,7 +13308,11 @@
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const used = cycles.length ? cycles[cycles.length - 1] : 0;
             const n = bossHpRounds || Math.min(6, Math.max(2, used));
-            const per = total / n;
+            // 每輪目標：第 2 輪起鏡子力 +35%，照這場第 1 輪鏡子力佔傷害的比例加權（同即時的打王進度）
+            let mD = 0, r1D = 0;
+            attacks.forEach(a => { if (a.cycle === 1) { r1D += Number(a.totalDamage) || 0; mD += Number((a.cardDamage || {}).MirrorForce) || 0; } });
+            const pastW = (c) => c === 1 ? 1 : 1 + 0.35 * (r1D > 0 ? mD / r1D : 0.125);
+            const pastTarget = (c) => { let tw = 0; for (let i = 1; i <= n; i++) tw += pastW(i); return total * pastW(c) / tw; };
             const td = 'padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; white-space:nowrap;';
             const th = 'padding:4px 3px; text-align:right;';
             const diffHtml = (d) => d >= 0 ? `<span style="color:#2e7d32; font-weight:800;">+${formatNum(d)}</span>` : `<span style="color:#c0392b; font-weight:800;">−${formatNum(-d)}</span>`;
@@ -13316,8 +13320,8 @@
             const rows = Array.from({ length: Math.max(n, used) }, (_, i) => {
                 const c = i + 1, got = byCycle.get(c);
                 let res = '';
-                if (got != null && c <= n) { progress += got - per; res = diffHtml(got - per); }
-                return `<tr><td style="${td} text-align:left;">第 ${c} 輪</td><td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td><td style="${td}">${cntCycle.get(c) || '—'}</td><td style="${td}">${res}</td></tr>`;
+                if (got != null && c <= n) { progress += got - pastTarget(c); res = diffHtml(got - pastTarget(c)); }
+                return `<tr><td style="${td} text-align:left;">第 ${c} 輪</td><td style="${td}">${c <= n ? formatNum(pastTarget(c)) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td><td style="${td}">${cntCycle.get(c) || '—'}</td><td style="${td}">${res}</td></tr>`;
             }).join('');
             const cleared = bossTotal && maxOrd >= bossTotal;
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">
@@ -13393,11 +13397,21 @@
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
             // 選幾輪打完：每一輪的目標跟實際傷害並排，下面一列是總目標跟總傷害，直接看有沒有達標
-            const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k) p += got - sumFull / k; }); return p; };
+            // 每輪目標不平均：第 2 輪起鏡子力傷害 +35%（29 場實測中位數 +36%），所以第 2 輪起每輪能打的多一點。
+            // 權重：第 1 輪 1、第 2 輪起 1＋35%×鏡子力佔傷害的比例（照這場第 1 輪實際算，還沒資料用 12.5%）
+            let mirrorDmg = 0, r1Dmg = 0;
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
+                if ((rsa && a.raidStartedAt && a.raidStartedAt !== rsa) || a.cycle !== 1) return;
+                r1Dmg += Number(a.totalDamage) || 0; mirrorDmg += Number((a.cardDamage || {}).MirrorForce) || 0;
+            });
+            const mirrorShare = r1Dmg > 0 && (serverAttackLogCache || []).filter(a => a.cycle === 1).length >= 30 ? mirrorDmg / r1Dmg : 0.125;
+            const roundW = (c) => c === 1 ? 1 : 1 + 0.35 * mirrorShare;
+            const targetOf = (c, k) => { let tw = 0; for (let i = 1; i <= k; i++) tw += roundW(i); return sumFull * roundW(c) / tw; };
+            const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k) p += got - targetOf(c, k); }); return p; };
             let autoN = 6;
             for (let k = 5; k >= 2; k--) { if (byCycle.size && progressAt(k) >= 0) autoN = k; else break; }
             const n = bossHpRounds || autoN;
-            const per = sumFull / n;
+            const per = sumFull / n;   // 平均（其他地方顯示用）
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
             // 結果：每一輪只看「這一輪自己」比目標多或少多少（綠＋、紅－；進行中還沒到目標用紫－）；
             // 最後一行合計＝全部目標、目前總傷、進度（各輪加減的總和）
@@ -13408,9 +13422,9 @@
                 const c = i + 1, got = byCycle.get(c), live = c === lastCycle;
                 if (got != null) dealtSum += got;
                 let res = '';
-                if (got != null && c <= n) { progress += got - per; res = diffHtml(got - per, live); }
+                if (got != null && c <= n) { progress += got - targetOf(c, n); res = diffHtml(got - targetOf(c, n), live); }
                 return `<tr style="${live ? 'background:#f3ebfa; font-weight:800;' : ''}"><td style="${td} text-align:left; white-space:normal;">第 ${c} 輪${live ? ' <small style="color:#6a3d9a; white-space:nowrap;">進行中</small>' : ''}</td>
-                    <td style="${td}">${c <= n ? formatNum(per) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>
+                    <td style="${td}">${c <= n ? formatNum(targetOf(c, n)) : '—'}</td><td style="${td}">${got != null ? formatNum(got) : '—'}</td>
                     <td style="${td}">${cntCycle.get(c) || '—'}</td><td style="${td}">${res}</td></tr>`;
             }).join('');
             box.innerHTML = `<div style="display:flex; gap:8px; margin-bottom:8px;">

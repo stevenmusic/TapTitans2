@@ -13288,10 +13288,11 @@
             const el = document.getElementById('bosshp-session');
             if (!el) return;
             const ss = (serverSessionsSummary || []).slice(0, 30);
-            if (ss.length < 2) { el.innerHTML = ''; return; }
-            el.innerHTML = `<select onchange="setBossHpSession(this.value)" style="width:100%; font:inherit; font-size:13px; font-weight:700; padding:7px 8px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee; color:#4a3728;">${ss.map((x, i) => {
-                const v = i === 0 ? '' : x.startedAt;
-                return `<option value="${escapeHtml(v)}" ${(bossHpSession || '') === v ? 'selected' : ''}>${escapeHtml(formatSessionLabelShort(x))}${i === 0 ? '（最新一場）' : ''}</option>`;
+            const next = bossHpNextRaid();   // 這場打完、下一場還沒開打：最上面多一個「下一場」（照 seed），原本的場次都保留
+            if (ss.length < 2 && !next) { el.innerHTML = ''; return; }
+            el.innerHTML = `<select onchange="setBossHpSession(this.value)" style="width:100%; font:inherit; font-size:13px; font-weight:700; padding:7px 8px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee; color:#4a3728;">${next ? `<option value="" ${!bossHpSession ? 'selected' : ''}>${formatRaidLevel(next.lv)}（下一場，照 seed）</option>` : ''}${ss.map((x, i) => {
+                const v = i === 0 && !next ? '' : x.startedAt;
+                return `<option value="${escapeHtml(v)}" ${(bossHpSession || '') === v ? 'selected' : ''}>${escapeHtml(formatSessionLabelShort(x))}${i === 0 && !next ? '（最新一場）' : ''}</option>`;
             }).join('')}</select>`;
         }
         // 已完成的場次：整場總傷害＝這場實際要打的量，依輪次比較每一輪的傷害跟「平均分到幾輪」的目標
@@ -13358,11 +13359,63 @@
                     ${[...bosses.entries()].sort((x, y) => x[0] - y[0]).map(([o, b]) => `<tr><td style="${td} text-align:left;">${o}</td><td style="${td} text-align:left;">${escapeHtml(b.name)}</td><td style="${td} font-weight:800;">${formatNum(b.dmg)}</td><td style="${td}">${b.c1 === Infinity ? '—' : (b.c1 === b.c2 ? `第 ${b.c1} 輪` : `第 ${b.c1}～${b.c2} 輪`)}</td><td style="${td}">${b.n}</td></tr>`).join('')}
                 </table>`;
         }
+        // 下一場（這場打完、下一場還沒開打）：照最新一份 seed 的同一關，列出每隻王要打的量和每輪目標
+        let bossHpNextSeed;   // undefined＝還沒抓
+        function bossHpNextRaid() {
+            const s0 = (serverSessionsSummary || [])[0];
+            if (!s0 || !s0.levelTier) return null;
+            const ended = raidPreview || (raidLiveInfo && raidLiveInfo.ended && raidLiveInfo.startedAt === s0.startedAt);
+            if (!ended) return null;
+            if (bossHpNextSeed === undefined) { bossHpNextSeed = null; ticketSeedFetch().then(sd => { bossHpNextSeed = sd || null; refreshBossHpIfOpen(); }).catch(() => {}); return null; }
+            const lv = (raidPreview && Number(raidPreview.level)) || s0.levelTier + 1;
+            const raid = bossHpNextSeed && bossHpNextSeed.raids.find(r => r.t === 9999 && r.l === lv);
+            return raid ? { lv, raid } : null;
+        }
+        function renderBossHpNext(box, next) {
+            const { lv, raid } = next;
+            const sh = ticketSharesOf(raid);
+            const zh = (loc) => ({ Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' })[loc] || loc;
+            const pv = raidPreview && raidPreview.bansByName, manual = (ticketCalc.bansByLv || {})[lv];
+            let total = 0, eff = 0;
+            const bosses = raid.seq.map((name, i) => {
+                const t = raid.titans.find(x => x.n === name);
+                if (!t) return { no: i + 1, name, bans: [], armor: 0, kill: 0, src: '' };
+                const src = pv && pv[name] ? '已設定' : manual && manual[name] ? '門票試算' : '最佳';
+                const bans = pv && pv[name] ? pv[name] : manual && manual[name] ? manual[name] : ticketBestBans(t, sh);
+                const armor = Object.entries(t.p).reduce((x, [loc, e]) => x + (bans.includes(loc) ? 0 : e[1]), 0);
+                total += armor + t.k; eff += ticketEffHp(t, bans, sh).eff;
+                return { no: i + 1, name, bans, armor, kill: t.k, src };
+            });
+            const n = bossHpRounds || 6;
+            const w = (c) => c === 1 ? 1 : 1 + 0.35 * 0.125;   // 第 2 輪起鏡子力 +35%（鏡子力約佔 12.5%）
+            let tw = 0; for (let i = 1; i <= n; i++) tw += w(i);
+            const td = 'padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; white-space:nowrap;';
+            const th = 'padding:4px 3px; text-align:right;';
+            box.innerHTML = `<div style="font-size:12px; color:#8a7a6a; margin-bottom:6px;">下一場還沒開打，先照 seed 列出 ${formatRaidLevel(lv)}（${(bossHpNextSeed.valid_from || '').slice(5, 10).replace('-', '/')} 那一週的 seed）。開打後會換成即時的打王進度。</div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <div style="flex:1; background:#f0e6d2; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#8a7a6a; font-weight:700;">整場要打</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(total)}</div></div>
+                    <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:11px; color:#6a3d9a; font-weight:700;">扛詛咒換算</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(eff)}</div></div>
+                </div>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">幾輪打完（第 2 輪起多鏡子力 4.4%）</div>
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td></tr>
+                    ${Array.from({ length: n }, (_, i) => `<tr><td style="${td} text-align:left;">第 ${i + 1} 輪</td><td style="${td}">${formatNum(total * w(i + 1) / tw)}</td></tr>`).join('')}
+                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(total)}</td></tr>
+                </table>
+                <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
+                <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">#</td><td style="padding:4px 3px;">王</td><td style="padding:4px 3px;">禁打</td><td style="${th}">盔甲</td><td style="${th}">斬殺線</td><td style="${th}">合計</td></tr>
+                    ${bosses.map(b => `<tr><td style="${td} text-align:left;">${b.no}</td><td style="${td} text-align:left;">${escapeHtml(b.name)}</td><td style="${td} text-align:left; white-space:normal;">${b.bans.length ? b.bans.map(zh).join('、') : '不禁'}<span style="color:#8a7a6a; font-size:10px;">（${b.src}）</span></td><td style="${td}">${formatNum(b.armor)}</td><td style="${td}">${formatNum(b.kill)}</td><td style="${td} font-weight:800;">${formatNum(b.armor + b.kill)}</td></tr>`).join('')}
+                </table>`;
+        }
         function renderBossHpPanel() {
             const box = document.getElementById('bosshp-body');
             if (!box) return;
             renderBossHpSessionSelect();
             if (bossHpSession) return renderBossHpPast(box);
+            const next = bossHpNextRaid();
+            if (next) return renderBossHpNext(box, next);
             if (raidPreview) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">下一場還沒開打，開打後就會列出每一隻王。</div>'; return; }
             rememberBossArmor();
             let seq = apiSpawnSequence || [], titansAll = apiRaidTitans, targets = apiTitanTarget;

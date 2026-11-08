@@ -12793,9 +12793,10 @@
         try { Object.assign(ticketCalc, JSON.parse(localStorage.getItem(TC_KEY)) || {}); ticketCalc.seed = null; ticketCalc.loading = false; } catch (e) {}
         if (!ticketCalc.bansByLv) ticketCalc.bansByLv = {};
         if (ticketCalc.v !== 2 && ticketCalc.v !== 3) { ticketCalc.margin = 0; }
-        if (![3, 4, 5, 6].includes(ticketCalc.v)) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }
-        if (ticketCalc.v === 6) {} else if (ticketCalc.v !== 5) { ticketCalc.margin = 0; ticketCalc.v = 5; }   // 改成「最可能＋保守（出刀能力 −5%）」兩個數字，保險預設 0%   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
-        if (ticketCalc.v !== 6) { ticketCalc.bansByLv = {}; ticketCalc.v = 6; }   // 爆裂／苦痛佔比改成看每一關的加成：最佳禁打全部重算
+        if (![3, 4, 5, 6, 7].includes(ticketCalc.v)) { ticketCalc.bansByLv = {}; ticketCalc.v = 3; }
+        if (ticketCalc.v === 6 || ticketCalc.v === 7) {} else if (ticketCalc.v !== 5) { ticketCalc.margin = 0; ticketCalc.v = 5; }   // 改成「最可能＋保守（出刀能力 −5%）」兩個數字，保險預設 0%   // 禁打規則改成「詛咒影響換算有效血量」：所有關卡重算   // 保險預設改成 0%（刀數已經取 PR30，不再重複保守）   // 禁打每一關分開存（同名的王在不同關卡血量不同）
+        if (ticketCalc.v !== 6 && ticketCalc.v !== 7) { ticketCalc.bansByLv = {}; ticketCalc.v = 6; }
+        if (ticketCalc.v !== 7) { ticketCalc.bansByLv = {}; ticketCalc.v = 7; }   // 最佳禁打改成盡量連在一起：全部重算   // 爆裂／苦痛佔比改成看每一關的加成：最佳禁打全部重算
         delete ticketCalc.bans;
         function ticketCalcSave() { try { const { seed, loading, cap, ...keep } = ticketCalc; localStorage.setItem(TC_KEY, JSON.stringify(keep)); } catch (e) {} }
         // 把 GameHive 的原始 seed（4～5MB）整理成精簡版：每關｛等級、出場順序、加成、王：斬殺線＋各部位［盔甲上限, 盔甲出場, 肉體, 詛咒甲］｝
@@ -13085,18 +13086,28 @@
             const carryExtra = carried ? (restArmor / mult(carried) - restArmor) + (t.k / bodyMult - t.k) : 0;
             return { eff, raw, carried, carryExtra };
         }
+        const TICKET_BAN_ADJ = { Head: ['ArmUpperRight', 'ArmUpperLeft', 'ChestUpper'], ArmUpperRight: ['Head', 'HandRight'], ArmUpperLeft: ['Head', 'HandLeft'], ChestUpper: ['Head', 'HandRight', 'HandLeft', 'LegUpperRight', 'LegUpperLeft'],
+            HandRight: ['ArmUpperRight', 'ChestUpper'], HandLeft: ['ArmUpperLeft', 'ChestUpper'], LegUpperRight: ['ChestUpper', 'LegUpperLeft'], LegUpperLeft: ['ChestUpper', 'LegUpperRight'] };
+        function ticketBansLinked(list) {   // 禁打的部位是不是連成一塊
+            if (list.length <= 1) return true;
+            const set = new Set(list), seen = new Set([list[0]]), st = [list[0]];
+            while (st.length) (TICKET_BAN_ADJ[st.pop()] || []).forEach(n => { if (set.has(n) && !seen.has(n)) { seen.add(n); st.push(n); } });
+            return seen.size === list.length;
+        }
         function ticketBestBans(t, sh) {
             const locs = Object.keys(t.p);
             const bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0);
             sh = sh || TICKET_SHARE_AVG;
-            let best = { v: Infinity, list: [] };
+            let best = { v: Infinity, list: [] }, bestLink = { v: Infinity, list: [] };
             for (let m = 0; m < (1 << locs.length); m++) {
                 const list = locs.filter((l, i) => m >> i & 1);
                 if (bodyAll - list.reduce((x, l) => x + t.p[l][2], 0) < t.k) continue;   // 剩下的肉體要打得到斬殺線
                 const v = ticketEffHp(t, list, sh).eff;
                 if (v < best.v - 1e8 || (Math.abs(v - best.v) <= 1e8 && list.length < best.list.length)) best = { v, list };
+                if (ticketBansLinked(list) && (v < bestLink.v - 1e8 || (Math.abs(v - bestLink.v) <= 1e8 && list.length < bestLink.list.length))) bestLink = { v, list };
             }
-            return best.list;
+            // 禁打盡量連在一起（頭－肩－手、頭－肚、肚－手、肚－腳、兩腳）：連在一起的禁法只多打 1% 以內就用連在一起的
+            return bestLink.v <= best.v * 1.01 ? bestLink.list : best.list;
         }
         // 所有 Master 關卡、每隻王的最佳禁打（點開才算，算過記住）
         let ticketAllBansCache = null;

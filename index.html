@@ -7616,8 +7616,7 @@
              ① 死靈熊研究（官方 raid_research_tree）：每一刀打到的每個部位，傷害 ÷ (1＋盔甲或肉體)(1＋頭／肚／四肢)(1＋這刀打的那隻王)
                 ——死靈熊不是每一級都加突襲傷害，研究點到突襲項目才會跳一階，所以用實際點到的加成，而且照實際打到的部位算
              ② 忠誠度（RaidLoyaltyInfo，×1.0～×1.34）：再 ÷ 忠誠度倍率
-             ③ 剩下的用 ln(均傷) ＝ K＋b×ln(突襲等級)＋c×卡片平均等級＋d×ln(點擊傷害) 擬合（每場重算）；
-                點擊次數大家都差不多，點擊傷害＝帳號基礎強度（寵物、裝備…官方資料沒有的），6 場回測誤差 6.05%→5.98%、平均 8.02%→7.81%
+             ③ 剩下的用 ln(均傷) ＝ K＋b×ln(突襲等級)＋c×卡片平均等級 擬合（每場重算）
              期望 ＝ ③ 的預測 × 忠誠度 × 這個人實際打到的部位的死靈熊倍率
            比較（同測法）：死靈熊等級＋突襲等級 8.3%、突襲等級×死靈熊平均倍率 9.0%、只用突襲等級 15.5%；交叉項沒有幫助。
            拿不到官方資料的人（已離開公會、資料還沒載入）：用原始傷害擬合突襲等級＋卡片平均等級 */
@@ -7638,12 +7637,8 @@
                     const neuAvg = real.reduce((p, a) => p + ((a.parts || []).length ? a.parts.reduce((q, pt) => q + (Number(pt.damage) || 0) / cd.partMult(pt.part, pt.layer, a.boss), 0) : a.totalDamage), 0) / real.length;
                     if (neuAvg > 0) off = Math.log(rawAvg / neuAvg * cd.loy);
                 }
-                const tapAvg = real.reduce((p, a) => p + (Number(a.tapDamage) || 0), 0) / real.length;   // 點擊傷害：大家每刀點擊次數差不多（約 600 下），所以反映帳號本身的基礎強度（含寵物、裝備等看不到的）
-                base.push({ id, code, n: real.length, y: Math.log(rawAvg), off, tap: tapAvg > 0 ? Math.log(tapAvg) : null, x: [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length] });
+                base.push({ id, code, n: real.length, y: Math.log(rawAvg), off, x: [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length] });
             });
-            // 點擊傷害缺的人（手動補登的刀）用公會中位數
-            const taps = base.map(r => r.tap).filter(v => v != null).sort((a, b) => a - b), tapMed = taps.length ? taps[Math.floor(taps.length / 2)] : 0;
-            base.forEach(r => r.x.push(r.tap != null ? r.tap : tapMed));
             const rowsOff = base.filter(r => r.n >= 3 && r.off != null), rowsAll = base.filter(r => r.n >= 3);
             const coefOff = rowsOff.length >= 10 ? raidLsq(rowsOff.map(r => r.x), rowsOff.map(r => r.y - r.off)) : null;
             const coefRaw = rowsAll.length >= 10 ? raidLsq(rowsAll.map(r => r.x), rowsAll.map(r => r.y)) : null;

@@ -12769,7 +12769,7 @@
            選關卡、點禁打部位，算整場要打多少血，再用公會最近的出刀能力算 4～7 輪各要多少門票。
            門票 → 增傷：增傷 ≈ 30% ＋ 每 1,000 張 0.665%（之前幾場的士氣資料算出來的）
            ══════════════════════════════════════════════════════════ */
-        const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665;
+        const TICKET_BASE_BONUS = 0.30, TICKET_PER = 0.00000665, TICKET_MAX = 30000;   // 一場最多只能下 3 萬張門票
         // 突襲加成對每刀傷害的影響（攻擊紀錄實測：爆裂場約 +5%、支援場約 −2.3%、時間增益約 −2.5%；苦痛場還沒有足夠資料，當 0）
         const TICKET_BUFF_ADJ = { burstChance: 0.05, burstDamage: 0.05, support: -0.023, timeBoost: -0.025 };
         const TICKET_BUFF_ZH = { burstChance: '爆裂機率', burstDamage: '爆裂傷害', support: '支援', timeBoost: '時間增益', afflictionChance: '苦痛機率', afflictionDamage: '苦痛傷害', allDamage: '全突襲傷害' };
@@ -13213,7 +13213,9 @@
                         const bonusC = perR / (base * consFactor) - 1;
                         const ticketsC = bonusC <= TICKET_BASE_BONUS ? 0 : Math.ceil((bonusC - TICKET_BASE_BONUS) / TICKET_PER / 100) * 100;
                         const spare = base * (1 + TICKET_BASE_BONUS) / perR - 1;   // 不用門票時，30% 增傷打得出的比要打的多幾 %（5% 以下標橘色）
-                        return `<tr><td style="padding:6px 3px; border-top:1px solid #eadfcb;">${n} 輪</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${fmt(perR)}</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${(Math.max(bonus, TICKET_BASE_BONUS) * 100).toFixed(1)}%</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; font-weight:800; color:${tickets ? '#8b263e' : spare < 0.05 ? '#d35400' : '#2e7d32'};">${tickets ? tickets.toLocaleString() + ' 張' : `<span style="white-space:nowrap;">不用 <small style="font-weight:700;">(+${(spare * 100).toFixed(1)}%)</small></span>`}<div style="font-size:10.5px; font-weight:700; color:#8a7a6a;">保守 ${ticketsC ? ticketsC.toLocaleString() + ' 張' : '不用'}</div></td></tr>`;
+                        const spareMax = base * (1 + TICKET_BASE_BONUS + TICKET_MAX * TICKET_PER) / perR - 1;   // 買滿 3 萬張時多幾 %
+                        if (tickets > TICKET_MAX) return `<tr><td style="padding:6px 3px; border-top:1px solid #eadfcb;">${n} 輪</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${fmt(perR)}</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${(bonus * 100).toFixed(1)}%</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; font-weight:800; color:#8a7a6a;">做不到<div style="font-size:10.5px; font-weight:700;">買滿 3 萬張還少 ${(-spareMax * 100).toFixed(1)}%</div></td></tr>`;
+                        return `<tr><td style="padding:6px 3px; border-top:1px solid #eadfcb;">${n} 輪</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${fmt(perR)}</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right;">${(Math.max(bonus, TICKET_BASE_BONUS) * 100).toFixed(1)}%</td><td style="padding:6px 3px; border-top:1px solid #eadfcb; text-align:right; font-weight:800; color:${tickets ? '#8b263e' : spare < 0.05 ? '#d35400' : '#2e7d32'};">${tickets ? tickets.toLocaleString() + ' 張' : `<span style="white-space:nowrap;">不用 <small style="font-weight:700;">(+${(spare * 100).toFixed(1)}%)</small></span>`}<div style="font-size:10.5px; font-weight:700; color:#8a7a6a;">${ticketsC > TICKET_MAX ? `買滿 3 萬張多 ${(spareMax * 100).toFixed(1)}%` : `保守 ${ticketsC ? ticketsC.toLocaleString() + ' 張' : '不用'}`}</div></td></tr>`;
                     }).join('');
                     const inp = (field, val, step) => `<input type="number" inputmode="decimal" step="${step}" value="${val}" onchange="ticketCalcSet('${field}', Number(this.value) || null)" style="width:100%; box-sizing:border-box; font:inherit; font-size:15px; padding:5px; border:1px solid #ddd0bb; border-radius:8px; background:#fbf6ee; text-align:center;">`;
                     body = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;"><span style="font-size:13px; font-weight:800; color:#5a3a2a;">關卡</span>
@@ -13422,7 +13424,7 @@
                 </div>
                 <div style="background:#eef7ee; border-radius:8px; padding:8px; margin-bottom:8px; font-size:12.5px; color:#2e5d32;">
                     <div style="font-weight:800; font-size:14px;">預估第 ${finR} 輪打完（不用門票）</div>
-                    ${finR - 1 >= 2 && ticketsFor(finR - 1) <= 30000 ? `<div>${finR - 1} 輪打完要 ${ticketsFor(finR - 1).toLocaleString()} 張門票（增傷 ${((need / (finR - 1) / capEff - 1) * 100).toFixed(1)}%）</div>` : ''}
+                    ${finR - 1 >= 2 && ticketsFor(finR - 1) <= TICKET_MAX ? `<div>${finR - 1} 輪打完要 ${ticketsFor(finR - 1).toLocaleString()} 張門票（增傷 ${((need / (finR - 1) / capEff - 1) * 100).toFixed(1)}%）</div>` : ''}
                 </div>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>

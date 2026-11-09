@@ -12342,12 +12342,36 @@
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+FinisherAttack+MirrorForce', 'BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
         const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 天體靜態、宇宙激光不推薦
         // 這個人的模擬參數：卡片等級（含賽季加成：取原本等級和加成等級較高的）、死靈熊研究、每下點擊基礎傷害
-        // 攻擊紀錄裡的等級才是突襲時實際用的（比帳號資料高，例如帳號鏡子力 52、攻擊紀錄 72），兩者取較高的
-        function raidSimPlayer(v, morale, logLv) {
+        /* 賽季加成卡：官方資料沒有這個欄位，從這一場的攻擊紀錄自動偵測——
+           某張卡在大家身上「攻擊紀錄等級 − 帳號等級（含加成卡）」都是同一個正數（例如 M-44：鏡子力 +20、防空高砲 +20、先祖加護 +10）。
+           搭配「放大」的攻擊會被分享等級，不拿來算 */
+        function raidSimSeasonBonus() {
+            if (!raidClanData) return {};
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const diffs = {};
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
+                if ((latest && a.raidStartedAt && a.raidStartedAt !== latest) || !a.cards || a.cards.some(c => c.name === 'MagicPotion')) return;
+                const v = raidClanData.byCode.get(a.playerCode); if (!v) return;
+                a.cards.forEach(c => { const e = raidSimBaseLevel(v.raw, c.name); if (e > 0) (diffs[c.name] = diffs[c.name] || []).push((Number(c.level) || 0) - e); });
+            });
+            const out = {};
+            Object.entries(diffs).forEach(([c, d]) => {
+                if (d.length < 5) return;
+                const cnt = {}; d.forEach(x => { cnt[x] = (cnt[x] || 0) + 1; });
+                const [top, n] = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+                if (+top > 0 && n >= d.length * 0.8) out[c] = +top;
+            });
+            return out;
+        }
+        // 帳號資料的卡片等級（加成卡取原本等級和加成等級較高的）
+        function raidSimBaseLevel(p, id) {
+            const c = (p.cards || []).find(x => x.skill_name === id); if (!c) return 0;
+            const b = (p.boosted_cards || []).find(x => x.skill_name === id);
+            return Math.max(Number(c.level) || 0, b ? Number(b.boost_level) || 0 : 0);
+        }
+        function raidSimPlayer(v, morale, season) {
             const p = v.raw, lv = {};
-            (p.cards || []).forEach(c => { lv[c.skill_name] = Number(c.level) || 0; });
-            (p.boosted_cards || []).forEach(c => { if (lv[c.skill_name]) lv[c.skill_name] = Math.max(lv[c.skill_name], Number(c.boost_level) || 0); });
-            Object.entries(logLv || {}).forEach(([c, l]) => { if (lv[c]) lv[c] = Math.max(lv[c], Number(l) || 0); });
+            (p.cards || []).forEach(c => { const l = raidSimBaseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + ((season || {})[c.skill_name] || 0); });
             const t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;
             const ei = raidState && RAID_ENEMY_INDEX[raidState.bossName];
             const enemy = ei ? g('RaidEnemy' + ei + 'Damage') : [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
@@ -12368,8 +12392,8 @@
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
             const morale = snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;
-            const allLv = await loadAllCardLevels();
-            const me = raidSimPlayer(v, morale, allLv && allLv[name]);
+            const season = raidSimSeasonBonus();
+            const me = raidSimPlayer(v, morale, season);
             // 部位狀態、禁打、詛咒、場次加成
             const board = {};
             RAID_PARTS.forEach(({ key }) => {
@@ -12422,7 +12446,7 @@
             const used = new Set(), pick = [];
             out.forEach(o => { if (pick.length < 6 && o.cards.every(c => !used.has(c))) { pick.push(o); o.cards.forEach(c => used.add(c)); } });
             const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
-            box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
+            box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}${Object.keys(season).length ? `｜賽季加成 ${Object.entries(season).map(([c, n]) => `${escapeHtml(raidCardLabel(c))} +${n}`).join('、')}` : ''}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
                     <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}
                     <div style="flex:1; min-width:0; font-size:11.5px; color:#4a3728;">${o.cards.map(c => `${escapeHtml(raidCardLabel(c))} ${me.lv[c]}`).join('＋')}<div style="color:#8a7a6a;">${escapeHtml(o.plan)}${RAID_SIM_LOW_DATA.has(o.cards.slice().sort().join('+')) ? '<span style="color:#d35400;">｜資料不足</span>' : ''}</div></div>
                     <div style="text-align:right; white-space:nowrap;"><b style="font-size:13px;">${formatNumAlwaysM(o.avg)}</b><div style="font-size:10px; color:#8a7a6a;">${formatNumAlwaysM(o.lo)}～${formatNumAlwaysM(o.hi)}</div></div></div>`).join('')

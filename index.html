@@ -12437,7 +12437,7 @@
             // ⓪ 帳號資料（官方 clan_data，每 12 小時更新）
             const acct = raidAccountInfo(name);
             if (acct) body.insertAdjacentHTML('beforeend', sec('帳號資料', raidAccountHtml(acct, icon)));
-            if (acct) body.insertAdjacentHTML('beforeend', sec('推薦牌組（模擬）', `<div id="cardlv-simreco"><div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">用這個人的突襲等級、卡片等級、死靈熊研究，在目前王的部位狀態跑模擬，列出最好的 6 組（卡片不重複）和應打出的傷害（平均；括號是 P10～P90：10 刀裡約 8 刀落在這個範圍）。</div><button class="tt-btn2" onclick="raidSimRecoRun(${escapeHtml(JSON.stringify(name)).replace(/"/g, '&quot;')})" style="font-size:13px; padding:7px 12px;">計算推薦牌組</button></div>`));
+            if (acct) body.insertAdjacentHTML('beforeend', sec('推薦牌組（模擬）', `<div id="cardlv-simreco"><div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">用這個人的突襲等級、卡片等級、死靈熊研究，在目前王的部位狀態跑模擬，列出最好的 6 組（卡片不重複）和應打出的傷害（平均；括號是 P25～P75：10 刀裡約 5 刀落在這個範圍）。</div><button class="tt-btn2" onclick="raidSimRecoRun(${escapeHtml(JSON.stringify(name)).replace(/"/g, '&quot;')})" style="font-size:13px; padding:7px 12px;">計算推薦牌組</button></div>`));
             // ① 建議先升級：常用（公會使用比例）× 升 1 級多的效果 × 比公會中位數低越多越優先
             const cand = myAllCardIds().filter(id => lv[id] > 0 && lv[id] < 150 && !CARD_UPGRADE_EXCLUDE.has(id) && (use[id] || 0) > 0.01)
                 .map(id => ({ id, score: (use[id] || 0) * cardUpgradeGain(id, lv[id]) * (1 + Math.max(0, (med[id] || lv[id]) - lv[id]) / 10) }))
@@ -12627,7 +12627,7 @@
             const mirror = cyc >= 2 ? 0.35 : 0;
             return { board, curse, buff, extraSec, morale, season, open, plans, mirror };
         }
-        // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P10～P90（final）
+        // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
         const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 200;
         function raidSimBase(env, me, cards) {
             const deck = cards.map(c => [c, me.lv[c]]);
@@ -12648,7 +12648,7 @@
             const runs = [];
             for (let k = 0; k < RAID_SIM_FINAL_RUNS; k++) runs.push(RaidSim.simAttack({ ...base, targets: o.tg, seed: 1000 + k }, P).total);
             runs.sort((x, y) => x - y);
-            return { ...o, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: runs[Math.floor(runs.length * 0.1)], hi: runs[Math.floor(runs.length * 0.9)], final: true };
+            return { ...o, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: runs[Math.floor(runs.length * 0.25)], hi: runs[Math.floor(runs.length * 0.75)], final: true };
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合

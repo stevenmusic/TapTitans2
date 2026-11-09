@@ -7776,7 +7776,7 @@
             return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
         }
         // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
-        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v4';
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v5';
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         function raidSimPickSave() {
@@ -7844,14 +7844,14 @@
                     const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
                     const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null };
-                    const list = raidSimDeckList.filter(d => d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c))).slice(0, 120).map(d => ({ cards: d.cards, plans }));
+                    const list = raidSimDeckList.filter(d => d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c))).slice(0, 120).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) }));
                     const mirror = a.cycle >= 2 ? 0.35 : 0;
                     // 快速篩（每種打法 1 次），前 5 組各跑 40 次取最高
                     const quick = [];
                     for (const d of list) {
                         const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
                         const base = { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro };
-                        let b0 = null; plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
+                        let b0 = null; d.plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
                         if (b0) quick.push(b0);
                         if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
                     }
@@ -9500,7 +9500,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim2';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12261,7 +12261,7 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v1';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v2';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
@@ -12302,7 +12302,7 @@
             cands.forEach((d, i) => {
                 const hp = hitParts(d.cards);
                 const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                if (plans.length) (i < 40 ? list : extra).push({ cards: d.cards, plans });
+                const pl2 = raidSimPlansFor(d.cards, plans); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2 });
             });
             const pick = await raidSimRank(P, env, me, list, n, progress, extra);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
@@ -12600,7 +12600,10 @@
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+FinisherAttack+MirrorForce', 'BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
-        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 天體靜態、宇宙激光不推薦
+        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);
+        // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
+        const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
+        const raidSimPlansFor = (cards, plans) => cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans;   // 天體靜態、宇宙激光不推薦
         // 這個人的模擬參數：卡片等級（含賽季加成：取原本等級和加成等級較高的）、死靈熊研究、每下點擊基礎傷害
         /* 賽季加成卡：官方資料沒有這個欄位，從這一場的攻擊紀錄自動偵測——
            某張卡在大家身上「攻擊紀錄等級 − 帳號等級（含加成卡）」都是同一個正數（例如 M-44：鏡子力 +20、防空高砲 +20、先祖加護 +10）。
@@ -12786,7 +12789,7 @@
                 .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
-            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans })));
+            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })));
             const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
             box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}${Object.keys(season).length ? `｜賽季加成 ${Object.entries(season).map(([c, n]) => `${escapeHtml(raidCardLabel(c))} +${n}`).join('、')}` : ''}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
                     <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}

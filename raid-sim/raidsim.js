@@ -9,7 +9,7 @@ const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft',
 function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
-const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, k: {} };
+const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, burstJitter: 0.9, k: {} };
 
 /* opt:
    deck: [[id, lv]]
@@ -100,6 +100,7 @@ function simAttack(opt, P = P0) {
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));
   let affChanceMult = (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1) * (1 + (buff.affChance || 0));
   let burstCount = 0, haymaker = 0, charge = 0, tapCount = 0;
+  const acc = {}, thr = {};
   const hitHistory = [];
   const addStack = (loc, id, t) => {
     const s = SK[id];
@@ -138,6 +139,11 @@ function simAttack(opt, P = P0) {
       if (id === 'Haymaker') { if (!bonus || P.haymakerBonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
       else if (id === 'CelestialStatic') { if (isLimb(loc)) charge = Math.min(100, charge + 1); else if (charge >= 8) { charge -= 8; fire = true; } }
       else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : P.whipOpen ? Math.max(afflictedParts(t), LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton').length) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
+      else if (P.burstJitter != null && !bonus) {   // 觸發比較平均（類似保底）：累積機率，超過門檻才觸發，門檻在 1±jitter 之間隨機
+        acc[id] = (acc[id] || 0) + s.ch * burstChanceMult;
+        if (thr[id] == null) thr[id] = 1 + P.burstJitter * (2 * R() - 1) - R();   // 第一次的門檻：起點隨機
+        if (acc[id] >= thr[id]) { acc[id] -= thr[id]; thr[id] = 1 + P.burstJitter * (2 * R() - 1); fire = true; }
+      }
       else fire = R() < s.ch * burstChanceMult * chMul;
       if (!fire) continue;
       burstCount++;

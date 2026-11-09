@@ -9499,8 +9499,8 @@
         const BY_PART_RECO_RATIO = 0.005;   // 比例門檻（佔這個部位數量狀態總打數）
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
-        let byPartRecoSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        let byPartRecoSig = '', byPartRecoShownSig = '';
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -11374,39 +11374,36 @@
                 + '|' + (raidSimActive ? simBuffKey() : currentSessionBuff()) + '|' + (raidCurseInfo || []).map(d => d.type).join(',');
             // 上次在同一個狀態算好的推薦牌組記在這台裝置上：重新打開網頁、狀態沒變就先直接顯示，不用等資料載入
             if (!box.innerHTML || box.querySelector('.tt-skel')) {
-                try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.sig === sig && last.html) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; } } catch (e) {}
+                try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.sig === sig && last.html) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; byPartRecoShownSig = sig; } } catch (e) {}
                 if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
             }
-            // 開網頁前 10 秒：模擬器情境還沒從伺服器確認、或還不知道這場的加成時先等（畫面維持上次的結果或載入中），
-            // 不要先排出攻擊紀錄統計的推薦，幾秒後又換成模擬器的；超過 10 秒還沒好就照現有資料排
-            if ((!byPartScenReady || !(raidSimActive ? simBuffKey() : currentSessionBuff())) && Date.now() - byPartRecoBootAt < 10000) { setTimeout(byPartRecoRefresh, 700); return; }
-            const sigFull = sig + '|' + (attackCacheState.ready ? 'local' : 'server');   // 網頁端統計載好後要再算一次
-            if (sigFull === byPartRecoSig) return;
-            byPartRecoSig = sigFull;
+            // 還不知道這場的加成時先等一下（最多 10 秒），標題的加成標籤才會對
+            if (!(raidSimActive ? simBuffKey() : currentSessionBuff()) && Date.now() - byPartRecoBootAt < 10000) { setTimeout(byPartRecoRefresh, 700); return; }
+            if (sig === byPartRecoSig) return;
+            byPartRecoSig = sig;
             const token = ++byPartRecoToken;
-            const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));   // 場次類型相同的場次才算（偵測不到的場次不算）
+            // 候選牌組清單（公會打過的牌組），推薦本身只看模擬（標準玩家），不用攻擊紀錄統計或匯入的模擬器截圖
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
             if (token !== byPartRecoToken) return;
             if (!data) { box.style.display = 'none'; byPartRecoSig = ''; return; }
-            let rows = byPartRecoCompute(data);
-            // 模擬器（標準玩家）算得出來就用模擬的 6 組；還在算時先顯示統計的，旁邊標進度，算完再換
-            let simRows = null, simBusy = false;
-            if (!raidSimActive) {
-                const p = raidSimHomeRows(data, (t) => { const el = document.getElementById('by-part-reco-simpct'); if (el) el.textContent = '模擬' + t; });
-                simRows = await Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 1500))]);
-                if (simRows === undefined) { simBusy = true; p.then(() => { if (token === byPartRecoToken) { byPartRecoSig = ''; byPartRecoRefresh(); } }); simRows = null; }
-            }
+            const p = raidSimHomeRows(data, (t) => { const el = document.getElementById('by-part-reco-simpct'); if (el) el.textContent = '模擬' + t; });
+            let rows = await Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 1500))]);
             if (token !== byPartRecoToken) return;
-            if (simRows && simRows.length) rows = simRows;
-            if (rows.length === 0) { box.style.display = 'none'; return; }
             box.style.display = 'block';
+            if (rows === undefined) {
+                // 這個狀態還沒算過：顯示載入格子＋進度，算完再畫
+                if (byPartRecoShownSig !== sig) { box.innerHTML = `<div id="by-part-reco-simpct" style="font-size:11px; color:#8a7a6a; text-align:right;">模擬計算中</div>` + ttSkelGrid(6); byPartRecoHtmlLast = ''; }
+                p.then(() => { if (token === byPartRecoToken) { byPartRecoSig = ''; byPartRecoRefresh(); } });
+                return;
+            }
+            if (!rows || !rows.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">模擬資料還沒載入（公會帳號資料或模擬器），請稍後重新整理。</div>'; byPartRecoHtmlLast = ''; byPartRecoSig = ''; return; }
             byPartRecoTitle = true;
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
-            let html = byPartRecoGridHtml(rows, 'home');   // 模擬算完的推薦也會記下來（重開網頁同狀態直接顯示）
-            if (simBusy) html = `<div id="by-part-reco-simpct" style="font-size:11px; color:#8a7a6a; text-align:right; margin-bottom:-4px;">模擬計算中</div>` + html;
+            const html = byPartRecoGridHtml(rows, 'home');
             if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
-            if (!simBusy && attackCacheState.ready && byPartScenReady) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 只記模擬器情境確認過之後的結果
+            byPartRecoShownSig = sig;
+            if (!raidSimActive) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 重開網頁、狀態沒變就先直接顯示
         }
-
         function byPartOnRaidStatusChanged() {
             byPartRecoRefresh();
             // 浮動視窗開著：首頁格子剛重畫過，把發亮補回去；狀態真的變了才重畫視窗
@@ -12267,7 +12264,7 @@
         const RAID_SIM_HOME_KEY = 'tt2_home_sim_v1';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
-            if (raidSimActive || !raidState || !raidState.parts) return null;
+            if (!raidState || !raidState.parts) return null;
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
@@ -12670,6 +12667,14 @@
                 else if (b.bonus_type === 'SupportEffect') buff.supportEffect = a;
                 else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
             });
+            // 首頁模擬畫面：加成用模擬板選的那一種
+            if (raidSimActive) {
+                Object.keys(buff).forEach(k => delete buff[k]); extraSec = 0;
+                const k = simBuffKey();
+                if (k === 'burstChance') buff.burstChance = 0.3; else if (k === 'afflictionChance') buff.affChance = 0.3;
+                else if (k === 'burstDamage') buff.burstDamage = 0.3; else if (k === 'afflictionDamage') buff.affDamage = 0.3;
+                else if (k === 'allDamage') buff.all = 0.15; else if (k === 'support') buff.supportEffect = 0.15; else if (k === 'timeBoost') extraSec = 3;
+            }
             // 打法：每個能打的部位單打、頭肚、四肢、全部輪流
             const open = RAID_PARTS.map(x => x.key).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
             const plans = [];

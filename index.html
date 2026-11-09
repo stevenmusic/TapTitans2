@@ -7808,11 +7808,12 @@
                         if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
                     }
                     quick.sort((x, y) => y.x - x.x);
-                    best = 0;
-                    for (const q of quick.slice(0, 5)) { const m = RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total; if (m > best) best = m; await new Promise(rs => setTimeout(rs, 0)); }
+                    best = { v: 0 };
+                    for (const q of quick.slice(0, 5)) { const m = RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total; if (m > best.v) best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; await new Promise(rs => setTimeout(rs, 0)); }
                     cache.set(key, best);
                 }
-                if (best > 0) { sa += a.totalDamage; sb += best; }
+                a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
+                if (best.v > 0) { sa += a.totalDamage; sb += best.v; }
             }
             raidSimPickByPlayer.set(identity, sb > 0 ? { ratio: sa / sb } : { busy: '沒有可比的刀' });
             rerender();
@@ -12480,7 +12481,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=2'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=3'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=2').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };

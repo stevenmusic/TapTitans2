@@ -7764,7 +7764,7 @@
         const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }
         let raidSimDeckList = null;
         // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
-        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v3';
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v4';
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         function raidSimPickSave() {
@@ -7819,7 +7819,9 @@
                 const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
                 const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                 a.cards.forEach(c => { if (me.lv[c.name]) me.lv[c.name] = Math.max(me.lv[c.name], Number(c.level) || 0); });
-                const key = a.simB + '|' + JSON.stringify(a.simC) + '|' + (a.cycle >= 2) + '|' + a.boss + '|' + [...used].sort().join();
+                const key = a.simB + '|' + JSON.stringify(a.simC) + '|' + JSON.stringify(a.simH) + '|' + (a.cycle >= 2) + '|' + a.boss + '|' + [...used].sort().join();
+                // 目標部位剩下的血：期望不能超過（打完部位就破了，多的打不出來）
+                const capOf = (tg) => a.simH ? tg.reduce((x, l) => x + (Number(a.simH[LOCS.indexOf(l)]) || 0) * 1e6, 0) : Infinity;
                 let best = cache.get(key);
                 if (best == null) {
                     const board = {};
@@ -7835,13 +7837,13 @@
                     for (const d of list) {
                         const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
                         const base = { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro };
-                        let b0 = null; plans.forEach(pl => { const x = RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total; if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
+                        let b0 = null; plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
                         if (b0) quick.push(b0);
                         if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
                     }
                     quick.sort((x, y) => y.x - x.x);
                     best = { v: 0 };
-                    for (const q of quick.slice(0, 5)) { const m = RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total; if (m > best.v) best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; await new Promise(rs => setTimeout(rs, 0)); }
+                    for (const q of quick.slice(0, 5)) { const m = Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; await new Promise(rs => setTimeout(rs, 0)); }
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
@@ -7905,7 +7907,7 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    a.simExp = sx && sx.exp ? sx.exp : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null;
+                    a.simExp = sx && sx.exp ? sx.exp : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;

@@ -78,11 +78,15 @@ function createSimExp(deps) {
     // 打法：實際牌組、實際等級、實際打的部位
     const deckAct = a.cards.map(c => [c.name, Number(c.level) || 0]);
     const tgAct = inferTargets(a, env.board);
-    const exp = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 40, P).total : null;
+    let exp = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 40, P).total : null;
+    // 打的部位剩下的血比期望還少：打完部位就破了，多的打不出來（期望不能超過目標部位剩下的血）
+    const hpOf = (tg) => env.hp ? tg.reduce((x, l) => x + (Number(env.hp[l]) || 0), 0) : Infinity;
+    if (exp != null && env.hp) exp = Math.min(exp, Math.max(hpOf(tgAct), a.totalDamage));
     // b：打之前的部位狀態（8 個部位各一個字母：A 盔甲、a 詛咒甲、B 肉體、S 骨架、X 禁打、x 禁打的詛咒甲），c：詛咒；網頁算「配卡」用
     const b = LOCS.map(l => { const x = env.board[l] || { layer: 'armor' }; return x.layer === 'banned' ? (x.cursed ? 'x' : 'X') : x.layer === 'armor' ? (x.cursed ? 'a' : 'A') : x.layer === 'body' ? 'B' : 'S'; }).join('');
     const c = env.curse ? [env.curse.type, env.curse.per] : null;
-    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c };   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
+    const h = env.hp ? LOCS.map(l => Math.round((Number(env.hp[l]) || 0) / 1e6)) : null;   // 每個部位剩多少血（百萬），網頁算配卡用
+    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c, h };   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
     // 配卡：他能用的牌組（這一輪之前用過的卡不能用）
     const season = seasonBonus(sessionAttacks, byCode);
     const lv = {}; (p.cards || []).forEach(c => { const l = baseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + (season[c.skill_name] || 0); });
@@ -122,7 +126,7 @@ function createSimExp(deps) {
         const job = queue.shift();
         try {
           const key = attackDedupKey(job.a);
-          if (results.has(key) && results.get(key).b) continue;
+          if (results.has(key) && results.get(key).h) continue;
           const sessionAttacks = deps.withBest ? (await getAllAttacks()).filter(x => x.raidStartedAt === job.a.raidStartedAt) : [];
           const r = await compute(job.a, job.env, sessionAttacks);
           if (!r) continue;
@@ -138,7 +142,7 @@ function createSimExp(deps) {
   function enqueue(a, env) {
     try {
       const key = attackDedupKey(a);
-      if (!env || (results.has(key) && results.get(key).b) || queued.has(key)) return;
+      if (!env || (results.has(key) && results.get(key).h) || queued.has(key)) return;
       queued.add(key); queue.push({ a, env }); setImmediate(worker);
     } catch (e) {}
   }
@@ -164,7 +168,8 @@ function createSimExp(deps) {
       const c0 = t.c && t.c[0];
       const curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
       const old = results.get(attackDedupKey(a));
-      if (!old || !old.b) { enqueue(a, { ...env0, board, curse }); n++; }
+      const hp = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, Math.max(0, v[0]) + Math.max(0, v[1])]));
+      if (!old || !old.h) { enqueue(a, { ...env0, board, curse, hp }); n++; }
       (a.parts || []).forEach(p => { if (st[p.part]) st[p.part][p.layer === 'armor' ? 0 : 1] -= Number(p.damage) || 0; });
     }
     return n;

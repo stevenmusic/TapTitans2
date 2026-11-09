@@ -12231,6 +12231,7 @@
             // ⓪ 帳號資料（官方 clan_data，每 12 小時更新）
             const acct = raidAccountInfo(name);
             if (acct) body.insertAdjacentHTML('beforeend', sec('帳號資料', raidAccountHtml(acct, icon)));
+            if (acct) body.insertAdjacentHTML('beforeend', sec('推薦牌組（模擬）', `<div id="cardlv-simreco"><div style="font-size:11.5px; color:#8a7a6a; margin-bottom:6px;">用這個人的突襲等級、卡片等級、死靈熊研究，在目前王的部位狀態跑模擬，列出最好的 6 組（卡片不重複）和應打出的傷害。</div><button class="tt-btn2" onclick="raidSimRecoRun(${escapeHtml(JSON.stringify(name)).replace(/"/g, '&quot;')})" style="font-size:13px; padding:7px 12px;">計算推薦牌組</button></div>`));
             // ① 建議先升級：常用（公會使用比例）× 升 1 級多的效果 × 比公會中位數低越多越優先
             const cand = myAllCardIds().filter(id => lv[id] > 0 && lv[id] < 150 && !CARD_UPGRADE_EXCLUDE.has(id) && (use[id] || 0) > 0.01)
                 .map(id => ({ id, score: (use[id] || 0) * cardUpgradeGain(id, lv[id]) * (1 + Math.max(0, (med[id] || lv[id]) - lv[id]) / 10) }))
@@ -12323,6 +12324,109 @@
                 <text x="${L}" y="${H - 4}" font-size="10" fill="#8a7a6a">${d(h[0])}</text>
                 <text x="${W - R}" y="${H - 4}" font-size="10" fill="#8a7a6a" text-anchor="end">${d(h[h.length - 1])}</text>
             </svg>`;
+        }
+        /* 突襲蒙地卡羅模擬（raid-sim/）：卡片說明頁機制＋CSV A 值＋攻擊紀錄校正。每個人照自己的突襲等級、卡片等級、死靈熊研究算推薦牌組和應打傷害 */
+        let raidSimReady = null;
+        function raidSimLoad() {
+            if (raidSimReady) return raidSimReady;
+            raidSimReady = (async () => {
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=1'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=1').then(r => r.json())]);
+                RaidSim.init(sk);
+                return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
+            })();
+            raidSimReady.catch(() => { raidSimReady = null; });
+            return raidSimReady;
+        }
+        // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
+        const RAID_SIM_LOW_DATA = new Set(['BurstBoost+FinisherAttack+MirrorForce', 'BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
+        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 天體靜態、宇宙激光不推薦
+        // 這個人的模擬參數：卡片等級（含賽季加成：取原本等級和加成等級較高的）、死靈熊研究、每下點擊基礎傷害
+        // 攻擊紀錄裡的等級才是突襲時實際用的（比帳號資料高，例如帳號鏡子力 52、攻擊紀錄 72），兩者取較高的
+        function raidSimPlayer(v, morale, logLv) {
+            const p = v.raw, lv = {};
+            (p.cards || []).forEach(c => { lv[c.skill_name] = Number(c.level) || 0; });
+            (p.boosted_cards || []).forEach(c => { if (lv[c.skill_name]) lv[c.skill_name] = Math.max(lv[c.skill_name], Number(c.boost_level) || 0); });
+            Object.entries(logLv || {}).forEach(([c, l]) => { if (lv[c]) lv[c] = Math.max(lv[c], Number(l) || 0); });
+            const t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;
+            const ei = raidState && RAID_ENEMY_INDEX[raidState.bossName];
+            const enemy = ei ? g('RaidEnemy' + ei + 'Damage') : [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
+            const necro = { armor: g('ArmorDamage'), body: g('BodyDamage'), head: g('HeadDamage'), chest: g('ChestDamage'), limb: g('LimbDamage'), enemy };
+            const rl = Number(p.player_raid_level) || 0;
+            // 點擊基礎傷害（攻擊紀錄擬合）：4.0 × 突襲等級^0.884 × 忠誠度（一律 12 級 ×1.34）× (1＋門票)；死靈熊研究由模擬照部位套用
+            return { lv, necro, rl, tau: 4.002 * Math.pow(rl, 0.884) * 1.34 * (1 + morale) };
+        }
+        async function raidSimRecoRun(name) {
+            const box = document.getElementById('cardlv-simreco');
+            if (!box) return;
+            const v = raidAccountInfo(name);
+            if (!v) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">找不到這個人的官方帳號資料。</div>'; return; }
+            if (!raidState || !raidState.parts) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">還沒有目前王的部位狀態（突襲頁連上即時資料後再算）。</div>'; return; }
+            box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入模擬器…</div>';
+            let P;
+            try { P = await raidSimLoad(); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">模擬器載入失敗，請重新整理再試。</div>'; return; }
+            if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
+            const snap = bossHpSnapshot || {};
+            const morale = snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;
+            const allLv = await loadAllCardLevels();
+            const me = raidSimPlayer(v, morale, allLv && allLv[name]);
+            // 部位狀態、禁打、詛咒、場次加成
+            const board = {};
+            RAID_PARTS.forEach(({ key }) => {
+                const pt = raidState.parts[key] || {};
+                const layer = raidBannedParts.includes(key) ? 'banned' : (pt.armor > 0 ? 'armor' : pt.body > 0 ? 'body' : 'skeleton');
+                board[key] = { layer, cursed: !!pt.cursed && (pt.armor > 0 || layer === 'banned') };
+            });
+            const c0 = raidCurseInfo && raidCurseInfo[0];
+            const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;
+            const buff = {}; let extraSec = 0;
+            ((snap.raid && snap.raid.area_buffs) || []).forEach(b => {
+                const a = Number(b.bonus_amount) || 0;
+                if (b.bonus_type === 'BurstChance') buff.burstChance = a - 1;
+                else if (b.bonus_type === 'AfflictedChance') buff.affChance = a - 1;
+                else if (b.bonus_type === 'BurstDamage') buff.burstDamage = a;
+                else if (b.bonus_type === 'AfflictedDamage') buff.affDamage = a;
+                else if (b.bonus_type === 'AllRaidDamage') buff.all = a;
+                else if (b.bonus_type === 'SupportEffect') buff.supportEffect = a;
+                else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
+            });
+            // 候選牌組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
+            const seen = new Set();
+            const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
+                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); }).slice(0, 40);
+            if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
+            // 打法：每個能打的部位單打、頭肚、四肢、全部輪流
+            const open = RAID_PARTS.map(x => x.key).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
+            const plans = [];
+            const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
+            open.forEach(k => addPlan([k], raidPartLabel(k)));
+            addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), '頭肚');
+            addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), '四肢');
+            addPlan(open, '輪流打');
+            const out = [];
+            for (let i = 0; i < cands.length; i++) {
+                box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">模擬中…${i + 1}／${cands.length}</div>`;
+                await new Promise(r => setTimeout(r, 0));
+                const deck = cands[i].cards.map(c => [c, me.lv[c]]);
+                const drums = deck.some(d => d[0] === 'BattleDrums');
+                const base = { deck, board, taps: (drums ? 400 : 600) + extraSec * 20, dur: (drums ? 20 : 30) + extraSec, tau: me.tau, mirror: 0.35, curse, buff, necro: me.necro };
+                let best = null;
+                plans.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 4, P).total; if (!best || r > best.r) best = { r, pl }; });
+                const runs = [];
+                for (let k = 0; k < 30; k++) runs.push(RaidSim.simAttack({ ...base, targets: best.pl.tg, seed: 1000 + k }, P).total);
+                out.push({ cards: cands[i].cards, plan: best.pl.label, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: Math.min(...runs), hi: Math.max(...runs) });
+            }
+            // 最好的 6 組，卡片不重複
+            out.sort((a, b) => b.avg - a.avg);
+            const used = new Set(), pick = [];
+            out.forEach(o => { if (pick.length < 6 && o.cards.every(c => !used.has(c))) { pick.push(o); o.cards.forEach(c => used.add(c)); } });
+            const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
+            box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
+                    <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}
+                    <div style="flex:1; min-width:0; font-size:11.5px; color:#4a3728;">${o.cards.map(c => `${escapeHtml(raidCardLabel(c))} ${me.lv[c]}`).join('＋')}<div style="color:#8a7a6a;">${escapeHtml(o.plan)}${RAID_SIM_LOW_DATA.has(o.cards.slice().sort().join('+')) ? '<span style="color:#d35400;">｜資料不足</span>' : ''}</div></div>
+                    <div style="text-align:right; white-space:nowrap;"><b style="font-size:13px;">${formatNumAlwaysM(o.avg)}</b><div style="font-size:10px; color:#8a7a6a;">${formatNumAlwaysM(o.lo)}～${formatNumAlwaysM(o.hi)}</div></div></div>`).join('')
+                + `<button class="tt-btn2" onclick="raidSimRecoRun(${escapeHtml(JSON.stringify(name)).replace(/"/g, '&quot;')})" style="font-size:12px; padding:5px 10px; margin-top:6px;">重新計算</button>`;
         }
         function raidAccountInfo(name) {
             if (!raidClanData) return null;

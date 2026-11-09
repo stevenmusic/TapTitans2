@@ -1,6 +1,6 @@
 // 校正係數：calibration.json（攻擊紀錄擬合）；卡片數值：skills.json（CSV A 值）、cardspec.json（遊戲卡片說明頁）
 // 突襲蒙地卡羅模擬 v2：遊戲卡片說明頁的機制＋CSV A 值（第二數值＝固定比例×A）
-const SK = require('./skills.json');
+let SK = typeof require === 'function' ? require('./skills.json') : null;   // 網頁：RaidSim.init(skills)
 const A = (id, lv) => { const s = SK[id]; return s ? s.a[Math.max(1, Math.min(150, Math.round(lv))) - 1] : 0; };
 const isHead = (l) => l === 'Head', isTorso = (l) => l === 'ChestUpper';
 const isLimb = (l) => !isHead(l) && !isTorso(l);
@@ -169,7 +169,7 @@ function simAttack(opt, P = P0) {
       if (R() < ch * affChanceMult * chMul) {
         addStack(loc, id, t);
         // 肆虐瘟疫擴散：同時傳到另一個隨機部位（禁打、骨架除外）
-        if (id === 'PlagueAttack' && P.plagueSpread) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t); }
+        if (id === 'PlagueAttack' && P.plagueSpread && R() < (P.plagueSpreadP ?? 1)) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t); }
       }
     }
   };
@@ -218,4 +218,5 @@ function simMean(opt, runs = 30, P) {
   }
   return acc;
 }
-module.exports = { simAttack, simMean, A, SK, P0, LOCS };
+const RaidSimApi = { simAttack, simMean, A, get SK() { return SK; }, P0, LOCS, init(skills) { SK = skills; } };
+if (typeof module !== 'undefined' && module.exports) module.exports = RaidSimApi; else window.RaidSim = RaidSimApi;

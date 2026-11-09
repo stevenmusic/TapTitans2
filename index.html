@@ -12236,7 +12236,7 @@
             const me = raidSimPlayer(v, env.morale, env.season);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName]);
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             if (!n) return [];
             const seen = new Set();
@@ -12265,7 +12265,7 @@
             let P; try { P = await raidSimLoad(); } catch (e) { return; }
             const env = await raidSimEnv();
             const me = raidSimPlayer(v, env.morale, env.season);
-            const sig = JSON.stringify([env.board, env.morale, raidState.bossName]);
+            const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             for (let i = 0; i < rows.length; i++) {
                 const el = box.querySelector(`.rl-reco-dmg[data-i="${i}"]`);
                 if (!el) continue;
@@ -12584,8 +12584,8 @@
             const enemy = ei ? g('RaidEnemy' + ei + 'Damage') : [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
             const necro = { armor: g('ArmorDamage'), body: g('BodyDamage'), head: g('HeadDamage'), chest: g('ChestDamage'), limb: g('LimbDamage'), enemy };
             const rl = Number(p.player_raid_level) || 0;
-            // 點擊基礎傷害（攻擊紀錄擬合）：4.0 × 突襲等級^0.884 × 忠誠度（一律 12 級 ×1.34）× (1＋門票)；死靈熊研究由模擬照部位套用
-            const loy = opt.realLoyalty ? RAID_LOYALTY_MULT[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))] : 1.34;   // 跟實際傷害比時用實際忠誠度
+            // 點擊基礎傷害（攻擊紀錄擬合）：4.0 × 突襲等級^0.884 × 忠誠度（實際等級）× (1＋門票)；死靈熊研究由模擬照部位套用
+            const loy = RAID_LOYALTY_MULT[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))] || 1.34;   // 一律用這個人實際的忠誠度
             return { lv, necro, rl, tau: 4.002 * Math.pow(Number(opt.rl) || rl, 0.884) * loy * (1 + morale) };
         }
         // 模擬環境：目前王的部位狀態、禁打、詛咒、場次加成、門票、賽季加成、可選的打法
@@ -12621,14 +12621,18 @@
             addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), '頭肚');
             addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), '四肢');
             addPlan(open, '輪流打');
-            return { board, curse, buff, extraSec, morale, season, open, plans };
+            // 鏡子力的 +35% 只有第 2 輪起才有：照這場目前進行到第幾輪
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const cyc = Math.max(raidLiveRoundNow(latest) || 0, ...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !latest || a.raidStartedAt === latest).map(a => Number(a.cycle) || 0));
+            const mirror = cyc >= 2 ? 0.35 : 0;
+            return { board, curse, buff, extraSec, morale, season, open, plans, mirror };
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P10～P90（final）
         const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 200;
         function raidSimBase(env, me, cards) {
             const deck = cards.map(c => [c, me.lv[c]]);
             const drums = deck.some(d => d[0] === 'BattleDrums');
-            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: 0.35, curse: env.curse, buff: env.buff, necro: me.necro };
+            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: env.mirror || 0, curse: env.curse, buff: env.buff, necro: me.necro };
         }
         function raidSimScreen(P, env, me, cards, plans) {
             const base = raidSimBase(env, me, cards);

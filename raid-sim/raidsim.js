@@ -9,7 +9,7 @@ const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft',
 function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
-const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, whipOpen: true, k: {} };
+const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, k: {} };
 
 /* opt:
    deck: [[id, lv]]
@@ -19,6 +19,9 @@ const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShar
 */
 function simAttack(opt, P = P0) {
   const R = rng(opt.seed || 1);
+  // 圖騰之力：精靈隨機出現，每一刀出現幾隻不固定（卜瓦松分布，平均 P.totemLambda 隻）
+  let totemLuck = 1;
+  if (P.totemLambda && opt.deck.some(d => d[0] === 'TotemFairySkill')) { const L = Math.exp(-P.totemLambda); let k = 0, p = 1; do { k++; p *= R(); } while (p > L); totemLuck = (k - 1) / P.totemLambda; }
   let deck = opt.deck.filter(([id]) => SK[id]);
   const has = new Set(deck.map(d => d[0]));
   const lvl = Object.fromEntries(deck);
@@ -76,7 +79,7 @@ function simAttack(opt, P = P0) {
     if (has.has('RuneAttack')) { const n = liveCount(loc, 'RuneAttack', t) - (self === 'RuneAttack' && !P.runeSelf ? 1 : 0); if (n > 0) addB(3.421 * A('RuneAttack', effLv('RuneAttack', t, loc)) * n); }
     const totemA = has.has('TotemFairySkill') ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
     const totemX = has.has('TotemFairySkill') && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
-    if (has.has('TotemFairySkill') && P.totemExtra && P.totemMode === 'add') parts.push((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1));
+    if (has.has('TotemFairySkill') && P.totemExtra && P.totemMode === 'add') parts.push(((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
     let m = totemX * (P.additive ? 1 + parts.reduce((a, b) => a + b, 0) : parts.reduce((a, b) => a * (1 + b), 1)) * boost;
     // 場次加成
     if (kind === 'burst' && buff.burstDamage) m *= 1 + buff.burstDamage;
@@ -191,7 +194,7 @@ function simAttack(opt, P = P0) {
         if (id === 'Shadow') m = Math.pow(1.2, live.length);
         if (id === 'RuinousRust' && board[l] && board[l].cursed && board[l].layer === 'armor') m = 1.5;
         if (id === 'PlagueAttack') {
-          let n = ap;
+          let n = P.plagueOpen ? Math.max(ap, LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length) : ap;
           if (P.plagueMode === 'stacks') n = Object.keys(stacks[l]).reduce((x, c) => x + liveCount(l, c, t), 0);
           if (P.plagueMode === 'otherStacks') n = Object.keys(stacks[l]).filter(c => c !== 'PlagueAttack').reduce((x, c) => x + liveCount(l, c, t), 0) + ap;
           m = 1 + 0.1467 * Math.min(P.plagueCap || 6, n);

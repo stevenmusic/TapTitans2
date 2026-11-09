@@ -7743,7 +7743,82 @@
             if (ss[1] && !sessionAttacksCache.has(ss[1].startedAt) && !raidExpectedByCode().size) await ensureSessionAttacksLoaded(ss[1].startedAt);
         }
 
+        /* 期望傷害（模擬）：
+           打法＝伺服器模擬「他實際用的牌組、實際打的部位、打之前的部位狀態」應打多少（/attack-sim，每刀背景算好）；
+           配卡＝同樣的部位狀態下，他能用的最好牌組應打多少（太花 CPU，展開玩家按「計算」才在網頁算）。% ＝ 實際 ÷ 期望 */
+        const raidSimExpMap = new Map();
+        let raidSimExpAt = 0, raidSimExpLoading = false;
+        const raidSimExpKey = (a) => `${a.attackDatetime || a.ts}_${a.player}`;
+        async function raidSimExpLoad() {
+            if (raidSimExpLoading || raidLogDemoActive || Date.now() - raidSimExpAt < 60 * 1000) return;
+            raidSimExpLoading = true;
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const j = await (await fetch(`${relayUrl}/attack-sim`)).json();
+                const before = raidSimExpMap.size;
+                Object.entries((j && j.sim) || {}).forEach(([k, v]) => raidSimExpMap.set(k, v));
+                raidSimExpAt = Date.now();
+                if (raidSimExpMap.size !== before && typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+            } catch (e) {} finally { raidSimExpLoading = false; }
+        }
+        const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }
+        let raidSimDeckList = null;
+        async function raidSimPickRun(identity) {
+            const r = (raidLogLastRanked || []).find(x => x.identity === identity);
+            if (!r) return;
+            const v = (raidClanData && raidClanData.byCode.get(identity)) || raidAccountInfo(r.player);
+            const rerender = () => { if (typeof renderRaidLogQueryResult === 'function') renderRaidLogQueryResult(); };
+            if (!v) { raidSimPickByPlayer.set(identity, { busy: '沒有帳號資料' }); rerender(); return; }
+            raidSimPickByPlayer.set(identity, { busy: '載入中…' }); rerender();
+            let P;
+            try {
+                P = await raidSimLoad();
+                if (!raidSimDeckList) { const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, ''); raidSimDeckList = ((await (await fetch(`${relayUrl}/deck-list`)).json()).decks) || []; }
+            } catch (e) { raidSimPickByPlayer.set(identity, { busy: '載入失敗' }); rerender(); return; }
+            const env0 = await raidSimEnv();
+            const atks = r.attacks.filter(a => !a.placeholder && a.simB && a.cards && a.cards.length);
+            const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+            const cache = new Map();
+            let sa = 0, sb = 0;
+            for (let i = 0; i < atks.length; i++) {
+                const a = atks[i];
+                raidSimPickByPlayer.set(identity, { busy: `計算中 ${i + 1}／${atks.length}` }); rerender();
+                // 這一輪他之前用過的卡不能用
+                const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
+                const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
+                a.cards.forEach(c => { if (me.lv[c.name]) me.lv[c.name] = Math.max(me.lv[c.name], Number(c.level) || 0); });
+                const key = a.simB + '|' + JSON.stringify(a.simC) + '|' + (a.cycle >= 2) + '|' + a.boss + '|' + [...used].sort().join();
+                let best = cache.get(key);
+                if (best == null) {
+                    const board = {};
+                    LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
+                    const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
+                    open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
+                    const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null };
+                    const list = raidSimDeckList.filter(d => d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c))).slice(0, 120).map(d => ({ cards: d.cards, plans }));
+                    const mirror = a.cycle >= 2 ? 0.35 : 0;
+                    // 快速篩（每種打法 1 次），前 5 組各跑 40 次取最高
+                    const quick = [];
+                    for (const d of list) {
+                        const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
+                        const base = { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro };
+                        let b0 = null; plans.forEach(pl => { const x = RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total; if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
+                        if (b0) quick.push(b0);
+                        if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
+                    }
+                    quick.sort((x, y) => y.x - x.x);
+                    best = 0;
+                    for (const q of quick.slice(0, 5)) { const m = RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total; if (m > best) best = m; await new Promise(rs => setTimeout(rs, 0)); }
+                    cache.set(key, best);
+                }
+                if (best > 0) { sa += a.totalDamage; sb += best; }
+            }
+            raidSimPickByPlayer.set(identity, sb > 0 ? { ratio: sa / sb } : { busy: '沒有可比的刀' });
+            rerender();
+        }
         function buildRaidLogRanking(keyword) {
+            raidSimExpLoad();
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
             // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
@@ -7790,10 +7865,18 @@
                 //   70% 標 3.3%（每人每場約 0.8 刀），剛好在最弱牌組正常的下限以下，被標紅就是真的打得差
                 const expectedAvg = expectedById ? expectedById.get(identity) || 0 : 0;
                 const baseDmg = expectedAvg > 0 ? expectedAvg : avgOwnDamage;   // 單刀跟期望均傷比（算不出期望才跟自己的均傷比）
+                // 打法：伺服器模擬「他實際用的牌組、實際打的部位」應打多少（/attack-sim）；有的話單刀改跟它比
+                let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
-                    a.expectedRatio = baseDmg > 0 ? a.totalDamage / baseDmg : null;
-                    a.isLowDamage = baseDmg > 0 && a.totalDamage < baseDmg * RAID_LOG_LOW_RATIO;
+                    const sx = raidSimExpMap.get(raidSimExpKey(a));
+                    a.simExp = sx && sx.exp ? sx.exp : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null;
+                    if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
+                    const base = a.simExp || baseDmg;
+                    a.expectedRatio = base > 0 ? a.totalDamage / base : null;
+                    a.isLowDamage = base > 0 && a.totalDamage < base * RAID_LOG_LOW_RATIO;
                 });
+                const playRatio = simN >= Math.max(1, attacks.length * 0.5) ? simAct / simExp : null;   // 打法 %（實際 ÷ 打法期望）
+                const pickInfo = raidSimPickByPlayer.get(identity) || null;   // 配卡 %（展開時才算）
                 // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；
                 // 9 場回測每場約 4～10 人
                 const lowCount = attacks.filter(a => a.isLowDamage).length;
@@ -7803,9 +7886,9 @@
                 const missed = raidLogMissedPlaceholders(attacks);
                 const shown = missed.length ? attacks.concat(missed).sort((a, b) => b.ts - a.ts) : attacks;
                 // 整體偏低：這場均傷低於同條件（突襲等級、卡片等級、突襲研究樹）應有的 80%，而且出刀 6 次以上——抓「每刀都打不好」的人
-                const overallRatio = expectedAvg > 0 ? avgOwnDamage / expectedAvg : null;   // 目前的傷害水準（均傷 ÷ 期望均傷）
+                const overallRatio = playRatio != null ? playRatio : (expectedAvg > 0 ? avgOwnDamage / expectedAvg : null);   // 目前的傷害水準：有模擬用打法 %，沒有才用期望均傷
                 const overallLow = overallRatio != null && attacks.length >= 6 && overallRatio < RAID_LOG_OVERALL_LOW;   // 出刀 6 次以上才標偏低
-                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
+                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, playRatio, pickInfo, identity, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             return ranked;
@@ -11859,7 +11942,7 @@
                     <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
-                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.expectedAvg > 0 ? `・期望均傷 ${escapeHtml(formatNumAlwaysM(r.expectedAvg))}${r.overallRatio != null ? `・目前 <b style="color:${r.overallLow ? '#d35400' : r.overallRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.overallRatio * 100)}%</b>` : ''}` : ''}</span>
+                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.playRatio != null ? `・打法 <b style="color:${r.overallLow ? '#d35400' : r.playRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.playRatio * 100)}%</b>・配卡 ${r.pickInfo && r.pickInfo.ratio != null ? `<b style="color:${r.pickInfo.ratio >= 0.9 ? '#2e7d32' : r.pickInfo.ratio >= 0.8 ? '#6b5a4a' : '#d35400'};">${Math.round(r.pickInfo.ratio * 100)}%</b>` : r.pickInfo && r.pickInfo.busy ? `<span style="color:#8a7a6a;">${escapeHtml(r.pickInfo.busy)}</span>` : `<a onclick="event.stopPropagation(); raidSimPickRun(${escapeHtml(JSON.stringify(r.identity)).replace(/"/g, '&quot;')})" style="color:#6a3d9a; text-decoration:underline; cursor:pointer;">計算</a>`}` : r.expectedAvg > 0 ? `・期望均傷 ${escapeHtml(formatNumAlwaysM(r.expectedAvg))}${r.overallRatio != null ? `・目前 <b style="color:${r.overallLow ? '#d35400' : r.overallRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.overallRatio * 100)}%</b>` : ''}` : ''}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
@@ -12436,16 +12519,18 @@
             const b = (p.boosted_cards || []).find(x => x.skill_name === id);
             return Math.max(Number(c.level) || 0, b ? Number(b.boost_level) || 0 : 0);
         }
-        function raidSimPlayer(v, morale, season) {
+        function raidSimPlayer(v, morale, season, opt) {
+            opt = opt || {};
             const p = v.raw, lv = {};
             (p.cards || []).forEach(c => { const l = raidSimBaseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + ((season || {})[c.skill_name] || 0); });
             const t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;
-            const ei = raidState && RAID_ENEMY_INDEX[raidState.bossName];
+            const ei = RAID_ENEMY_INDEX[opt.boss || (raidState && raidState.bossName)];
             const enemy = ei ? g('RaidEnemy' + ei + 'Damage') : [1, 2, 3, 4, 5, 6, 7, 8].reduce((x, i) => x + g('RaidEnemy' + i + 'Damage'), 0) / 8;
             const necro = { armor: g('ArmorDamage'), body: g('BodyDamage'), head: g('HeadDamage'), chest: g('ChestDamage'), limb: g('LimbDamage'), enemy };
             const rl = Number(p.player_raid_level) || 0;
             // 點擊基礎傷害（攻擊紀錄擬合）：4.0 × 突襲等級^0.884 × 忠誠度（一律 12 級 ×1.34）× (1＋門票)；死靈熊研究由模擬照部位套用
-            return { lv, necro, rl, tau: 4.002 * Math.pow(rl, 0.884) * 1.34 * (1 + morale) };
+            const loy = opt.realLoyalty ? RAID_LOYALTY_MULT[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))] : 1.34;   // 跟實際傷害比時用實際忠誠度
+            return { lv, necro, rl, tau: 4.002 * Math.pow(Number(opt.rl) || rl, 0.884) * loy * (1 + morale) };
         }
         // 模擬環境：目前王的部位狀態、禁打、詛咒、場次加成、門票、賽季加成、可選的打法
         async function raidSimEnv() {
@@ -12544,7 +12629,7 @@
             const env = await raidSimEnv();
             const { board, curse, buff, extraSec, morale, season, plans } = env;
             const me = raidSimPlayer(v, morale, season);
-            // 候選牌組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
+            // 候配卡組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
             const seen = new Set();
             const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))

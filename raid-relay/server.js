@@ -1897,7 +1897,7 @@ function watcherHandleAttack(payload) {
   };
   insertAttack(attackEntry);
   saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
-  try { simExp.enqueue(attackEntry, simEnvLive(attackCtx)); } catch (e) {}   // 期望傷害（打法／選牌）背景模擬，不影響攻擊紀錄
+  try { simExp.enqueue(attackEntry, simEnvLive(attackCtx)); } catch (e) {}   // 期望傷害（打法／配卡）背景模擬，不影響攻擊紀錄
 }
 
 // 模擬用的場次環境：場次加成、門票
@@ -2845,7 +2845,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal server error' });
 });
 
-/* ══ 期望傷害（打法／選牌）：突襲蒙地卡羅模擬（simexp.js），結果存 attack_sim，不動攻擊紀錄 ══ */
+/* ══ 期望傷害（打法／配卡）：突襲蒙地卡羅模擬（simexp.js），結果存 attack_sim，不動攻擊紀錄 ══ */
 const { createSimExp } = require('./simexp');
 const simExp = createSimExp({ db, dbReady, getAllAttacks, getClanData: () => clanDataLatest, attackDedupKey });
 app.get('/attack-sim', (req, res) => { res.json({ sim: simExp.since(Number(req.query.since) || 0), status: simExp.status() }); });

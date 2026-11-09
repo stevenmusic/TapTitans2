@@ -1,6 +1,6 @@
 /* 每一刀的「期望傷害」（突襲蒙地卡羅模擬，sim/ 是 raid-sim/ 的複本）：
    - exp（打法）：他實際用的牌組、實際等級，照他實際打的部位，模擬應打多少
-   - best（選牌）：當下他能用的最好牌組應打多少（候選＝全部紀錄用過 10 次以上的牌組，他有、這一輪還沒用過的卡）
+   - best（配卡）：當下他能用的最好牌組應打多少（候選＝全部紀錄用過 10 次以上的牌組，他有、這一輪還沒用過的卡）
    結果存在獨立的 attack_sim 表，完全不動攻擊紀錄本身；模擬放在背景佇列慢慢算，算的時候會讓出事件迴圈 */
 const RaidSim = require('./sim/raidsim');
 const CAL = require('./sim/calibration.json');
@@ -79,11 +79,11 @@ function createSimExp(deps) {
     const deckAct = a.cards.map(c => [c.name, Number(c.level) || 0]);
     const tgAct = inferTargets(a, env.board);
     const exp = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 40, P).total : null;
-    // b：打之前的部位狀態（8 個部位各一個字母：A 盔甲、a 詛咒甲、B 肉體、S 骨架、X 禁打、x 禁打的詛咒甲），c：詛咒；網頁算「選牌」用
+    // b：打之前的部位狀態（8 個部位各一個字母：A 盔甲、a 詛咒甲、B 肉體、S 骨架、X 禁打、x 禁打的詛咒甲），c：詛咒；網頁算「配卡」用
     const b = LOCS.map(l => { const x = env.board[l] || { layer: 'armor' }; return x.layer === 'banned' ? (x.cursed ? 'x' : 'X') : x.layer === 'armor' ? (x.cursed ? 'a' : 'A') : x.layer === 'body' ? 'B' : 'S'; }).join('');
     const c = env.curse ? [env.curse.type, env.curse.per] : null;
-    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c };   // 選牌太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；選牌在網頁展開玩家時才算
-    // 選牌：他能用的牌組（這一輪之前用過的卡不能用）
+    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c };   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
+    // 配卡：他能用的牌組（這一輪之前用過的卡不能用）
     const season = seasonBonus(sessionAttacks, byCode);
     const lv = {}; (p.cards || []).forEach(c => { const l = baseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + (season[c.skill_name] || 0); });
     a.cards.forEach(c => { if (lv[c.name]) lv[c.name] = Math.max(lv[c.name], Number(c.level) || 0); });   // 這一刀用的卡以攻擊紀錄等級為準

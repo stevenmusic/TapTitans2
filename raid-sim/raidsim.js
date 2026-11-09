@@ -89,6 +89,9 @@ function simAttack(opt, P = P0) {
       if (cu.type === 'Afflicted' && kind === 'aff') m *= Math.max(0.05, 1 - cu.per * n);
       if (cu.type === 'Body' && layer === 'body') m *= Math.max(0.05, 1 - cu.per * n);
     }
+    // 死靈熊研究：照這一下打到的部位、層別、這隻王（每個人實際點到的研究）
+    const nc = opt.necro;
+    if (nc) m *= (1 + (layer === 'armor' ? nc.armor : nc.body)) * (1 + (isHead(loc) ? nc.head : isTorso(loc) ? nc.chest : nc.limb)) * (1 + nc.enemy);
     return m;
   };
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));

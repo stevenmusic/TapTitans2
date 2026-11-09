@@ -11952,7 +11952,7 @@
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
                     const later = i >= RAID_ATTACKS_PER_CYCLE;
-                    return `<div style="padding:2px; border-radius:7px; background:${later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 組${later ? '・之後' : ''}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}</div>`;
+                    return `<div style="padding:2px; border-radius:7px; background:${later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}"><div style="font-size:10.5px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 組${later ? '・之後' : ''}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:11px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -12069,13 +12069,42 @@
                     byPartLabelTargets(fresh, pInfo, attackable, scene);
                     left -= best.length;
                     html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');   // 只列排得出來的牌組，不另外說明少幾組
+                    raidLogRecoRows.set(r.player, all);
                 }
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
             if (!raidLogRecoOpen.has(r.player)) return;
             raidLogRecoHtml.set(r.player, html);
             box = raidLogRecoBox(r.player);
-            if (box) { box.style.display = 'block'; box.innerHTML = html; }
+            if (box) { box.style.display = 'block'; box.innerHTML = html; raidSimFillRecoDamage(r.player, box); }
+        }
+        // 玩家推薦的每一組下面補「應打」傷害（模擬：這個人的突襲等級、卡片等級、死靈熊研究，照推薦標的部位打）
+        const raidLogRecoRows = new Map();
+        const raidSimDmgCache = new Map();
+        async function raidSimFillRecoDamage(name, box) {
+            const rows = raidLogRecoRows.get(name);
+            const v = raidAccountInfo(name);
+            if (!rows || !rows.length || !v || !raidState || !raidState.parts) return;
+            let P; try { P = await raidSimLoad(); } catch (e) { return; }
+            const env = await raidSimEnv();
+            const me = raidSimPlayer(v, env.morale, env.season);
+            const sig = JSON.stringify([env.board, env.morale, raidState.bossName]);
+            for (let i = 0; i < rows.length; i++) {
+                const el = box.querySelector(`.rl-reco-dmg[data-i="${i}"]`);
+                if (!el) continue;
+                const cards = rows[i].rawCards || rows[i].cards || [];
+                if (cards.length !== 3 || cards.some(c => !me.lv[c])) { el.textContent = ''; continue; }
+                const tg = (rows[i].targets || []).map(t => t.part).filter(k => env.open.includes(k));
+                const key = name + '|' + cards.slice().sort().join('+') + '|' + tg.join() + '|' + sig;
+                let res = raidSimDmgCache.get(key);
+                if (!res) {
+                    el.textContent = '應打 計算中…';
+                    await new Promise(rs => setTimeout(rs, 0));
+                    res = raidSimDeck(P, env, me, cards, tg.length ? [{ tg, label: '' }] : env.plans, 20);
+                    raidSimDmgCache.set(key, res);
+                }
+                el.innerHTML = `應打 ${formatNumAlwaysM(res.avg)}<span style="font-weight:600; color:#8a7a6a; font-size:10px;">（${formatNumAlwaysM(res.lo)}～${formatNumAlwaysM(res.hi)}）</span>`;
+            }
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄
@@ -12380,21 +12409,12 @@
             // 點擊基礎傷害（攻擊紀錄擬合）：4.0 × 突襲等級^0.884 × 忠誠度（一律 12 級 ×1.34）× (1＋門票)；死靈熊研究由模擬照部位套用
             return { lv, necro, rl, tau: 4.002 * Math.pow(rl, 0.884) * 1.34 * (1 + morale) };
         }
-        async function raidSimRecoRun(name) {
-            const box = document.getElementById('cardlv-simreco');
-            if (!box) return;
-            const v = raidAccountInfo(name);
-            if (!v) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">找不到這個人的官方帳號資料。</div>'; return; }
-            if (!raidState || !raidState.parts) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">還沒有目前王的部位狀態（突襲頁連上即時資料後再算）。</div>'; return; }
-            box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入模擬器…</div>';
-            let P;
-            try { P = await raidSimLoad(); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">模擬器載入失敗，請重新整理再試。</div>'; return; }
+        // 模擬環境：目前王的部位狀態、禁打、詛咒、場次加成、門票、賽季加成、可選的打法
+        async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
             const morale = snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;
             const season = raidSimSeasonBonus();
-            const me = raidSimPlayer(v, morale, season);
-            // 部位狀態、禁打、詛咒、場次加成
             const board = {};
             RAID_PARTS.forEach(({ key }) => {
                 const pt = raidState.parts[key] || {};
@@ -12414,12 +12434,6 @@
                 else if (b.bonus_type === 'SupportEffect') buff.supportEffect = a;
                 else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
             });
-            // 候選牌組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
-            const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
-            const seen = new Set();
-            const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
-                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); }).slice(0, 40);
-            if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 打法：每個能打的部位單打、頭肚、四肢、全部輪流
             const open = RAID_PARTS.map(x => x.key).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
             const plans = [];
@@ -12428,18 +12442,42 @@
             addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), '頭肚');
             addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), '四肢');
             addPlan(open, '輪流打');
+            return { board, curse, buff, extraSec, morale, season, open, plans };
+        }
+        // 一組牌：從可選的打法裡挑傷害最高的，再跑 n 次取平均和上下限
+        function raidSimDeck(P, env, me, cards, plans, n) {
+            const deck = cards.map(c => [c, me.lv[c]]);
+            const drums = deck.some(d => d[0] === 'BattleDrums');
+            const base = { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: 0.35, curse: env.curse, buff: env.buff, necro: me.necro };
+            let best = plans[0];
+            if (plans.length > 1) { let br = -1; plans.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 4, P).total; if (r > br) { br = r; best = pl; } }); }
+            const runs = [];
+            for (let k = 0; k < n; k++) runs.push(RaidSim.simAttack({ ...base, targets: best.tg, seed: 1000 + k }, P).total);
+            return { plan: best.label, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: Math.min(...runs), hi: Math.max(...runs) };
+        }
+        async function raidSimRecoRun(name) {
+            const box = document.getElementById('cardlv-simreco');
+            if (!box) return;
+            const v = raidAccountInfo(name);
+            if (!v) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">找不到這個人的官方帳號資料。</div>'; return; }
+            if (!raidState || !raidState.parts) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">還沒有目前王的部位狀態（突襲頁連上即時資料後再算）。</div>'; return; }
+            box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入模擬器…</div>';
+            let P;
+            try { P = await raidSimLoad(); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">模擬器載入失敗，請重新整理再試。</div>'; return; }
+            const env = await raidSimEnv();
+            const { board, curse, buff, extraSec, morale, season, plans } = env;
+            const me = raidSimPlayer(v, morale, season);
+            // 候選牌組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
+            const seen = new Set();
+            const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
+                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); }).slice(0, 40);
+            if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             const out = [];
             for (let i = 0; i < cands.length; i++) {
                 box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">模擬中…${i + 1}／${cands.length}</div>`;
                 await new Promise(r => setTimeout(r, 0));
-                const deck = cands[i].cards.map(c => [c, me.lv[c]]);
-                const drums = deck.some(d => d[0] === 'BattleDrums');
-                const base = { deck, board, taps: (drums ? 400 : 600) + extraSec * 20, dur: (drums ? 20 : 30) + extraSec, tau: me.tau, mirror: 0.35, curse, buff, necro: me.necro };
-                let best = null;
-                plans.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 4, P).total; if (!best || r > best.r) best = { r, pl }; });
-                const runs = [];
-                for (let k = 0; k < 30; k++) runs.push(RaidSim.simAttack({ ...base, targets: best.pl.tg, seed: 1000 + k }, P).total);
-                out.push({ cards: cands[i].cards, plan: best.pl.label, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: Math.min(...runs), hi: Math.max(...runs) });
+                out.push({ cards: cands[i].cards, ...raidSimDeck(P, env, me, cands[i].cards, plans, 30) });
             }
             // 最好的 6 組，卡片不重複
             out.sort((a, b) => b.avg - a.avg);

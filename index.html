@@ -7763,13 +7763,43 @@
         }
         const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }
         let raidSimDeckList = null;
-        async function raidSimPickRun(identity) {
+        // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v3';
+        let raidSimPickStore = {};
+        try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
+        function raidSimPickSave() {
+            try {
+                const keys = Object.keys(raidSimPickStore);
+                if (keys.length > 3000) keys.sort((a, b) => (raidSimPickStore[a].t || 0) - (raidSimPickStore[b].t || 0)).slice(0, keys.length - 3000).forEach(k => delete raidSimPickStore[k]);
+                localStorage.setItem(RAID_SIM_PICK_KEY, JSON.stringify(raidSimPickStore));
+            } catch (e) {}
+        }
+        // 打開攻擊紀錄時自動在背景算：照排行由上往下，一次算一個人，算好就更新畫面
+        let raidSimPickAutoBusy = false;
+        async function raidSimPickAuto() {
+            if (raidSimPickAutoBusy || raidLogDemoActive) return;
+            raidSimPickAutoBusy = true;
+            try {
+                await new Promise(r => setTimeout(r, 1500));
+                for (const r of (raidLogLastRanked || []).slice()) {
+                    const box = document.getElementById('raid-log-query-result');
+                    if (!box || box.style.display === 'none') break;   // 攻擊紀錄關掉就停
+                    if (r.playRatio == null || !r.identity) continue;
+                    const info = raidSimPickByPlayer.get(r.identity);
+                    const pending = r.attacks.some(a => !a.placeholder && a.simB && !raidSimPickStore[raidSimExpKey(a)]);
+                    if (info && info.ratio != null && !pending) continue;
+                    await raidSimPickRun(r.identity, true);
+                }
+            } finally { raidSimPickAutoBusy = false; }
+        }
+        async function raidSimPickRun(identity, auto) {
             const r = (raidLogLastRanked || []).find(x => x.identity === identity);
             if (!r) return;
             const v = (raidClanData && raidClanData.byCode.get(identity)) || raidAccountInfo(r.player);
             const rerender = () => { if (typeof renderRaidLogQueryResult === 'function') renderRaidLogQueryResult(); };
-            if (!v) { raidSimPickByPlayer.set(identity, { busy: '沒有帳號資料' }); rerender(); return; }
-            raidSimPickByPlayer.set(identity, { busy: '載入中…' }); rerender();
+            const progress = auto ? () => {} : rerender;
+            if (!v) { raidSimPickByPlayer.set(identity, { busy: '沒有帳號資料' }); if (!auto) rerender(); return; }
+            if (!auto) { raidSimPickByPlayer.set(identity, { busy: '載入中…' }); rerender(); }
             let P;
             try {
                 P = await raidSimLoad();
@@ -7782,7 +7812,9 @@
             let sa = 0, sb = 0;
             for (let i = 0; i < atks.length; i++) {
                 const a = atks[i];
-                raidSimPickByPlayer.set(identity, { busy: `計算中 ${i + 1}／${atks.length}` }); rerender();
+                const stored = raidSimPickStore[raidSimExpKey(a)];
+                if (stored && stored.v > 0) { a.simBest = stored.v; a.simBestCards = stored.c; a.simBestTg = stored.g; sa += a.totalDamage; sb += stored.v; continue; }
+                if (!auto) { raidSimPickByPlayer.set(identity, { busy: `計算中 ${i + 1}／${atks.length}` }); progress(); }
                 // 這一輪他之前用過的卡不能用
                 const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
                 const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
@@ -7813,13 +7845,16 @@
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
+                if (best.v > 0) raidSimPickStore[raidSimExpKey(a)] = { v: Math.round(best.v), c: best.cards, g: best.tg, t: Date.now() };
                 if (best.v > 0) { sa += a.totalDamage; sb += best.v; }
             }
             raidSimPickByPlayer.set(identity, sb > 0 ? { ratio: sa / sb } : { busy: '沒有可比的刀' });
+            raidSimPickSave();
             rerender();
         }
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
+            setTimeout(raidSimPickAuto, 0);
             const fullLog = raidLogDemoActive ? raidLogDemoData.slice() : serverAttackLogCache;
             // 用場次篩選時，直接沿用 buildRaidSessions() 算好的那份攻擊清單（已經把沒有場次標記的
             // 舊資料，依時間回溯歸類進正確的場次），不要再用 raidStartedAt 欄位重新篩一次，
@@ -7877,7 +7912,12 @@
                     a.isLowDamage = base > 0 && a.totalDamage < base * RAID_LOG_LOW_RATIO;
                 });
                 const playRatio = simN >= Math.max(1, attacks.length * 0.5) ? simAct / simExp : null;   // 打法 %（實際 ÷ 打法期望）
-                const pickInfo = raidSimPickByPlayer.get(identity) || null;   // 配卡 %（展開時才算）
+                let pickInfo = raidSimPickByPlayer.get(identity) || null;   // 配卡 %（背景自動算，算過的存在手機上）
+                if (!pickInfo || pickInfo.ratio == null) {
+                    let pa = 0, pb = 0, pn = 0, pt = 0;
+                    attacks.forEach(a => { if (!a.simB) return; pt++; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0) { pa += a.totalDamage; pb += st.v; pn++; } });
+                    if (pt && pn === pt) pickInfo = { ratio: pa / pb };
+                }
                 // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；
                 // 9 場回測每場約 4～10 人
                 const lowCount = attacks.filter(a => a.isLowDamage).length;

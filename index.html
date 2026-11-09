@@ -7789,6 +7789,7 @@
                     const info = raidSimPickByPlayer.get(r.identity);
                     const pending = r.attacks.some(a => !a.placeholder && a.simB && !raidSimPickStore[raidSimExpKey(a)]);
                     if (info && info.ratio != null && !pending) continue;
+                    while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));   // 有人按「推薦」在算：背景配卡先等它算完
                     await raidSimPickRun(r.identity, true);
                 }
             } finally { raidSimPickAutoBusy = false; }
@@ -12631,8 +12632,11 @@
         }
         function raidSimScreen(P, env, me, cards, plans) {
             const base = raidSimBase(env, me, cards);
+            // 兩段：每種打法先跑 2 次，留最好的 2 種再跑滿 8 次（打法多的時候省很多時間）
+            let rough = plans.map(pl => ({ plan: pl.label, tg: pl.tg, avg: RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 2, P).total }));
+            if (rough.length > 2) rough = rough.sort((a, b) => b.avg - a.avg).slice(0, 2);
             let best = null;
-            plans.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, RAID_SIM_SCREEN_RUNS, P).total; if (!best || r > best.avg) best = { plan: pl.label, tg: pl.tg, avg: r }; });
+            rough.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, RAID_SIM_SCREEN_RUNS, P).total; if (!best || r > best.avg) best = { ...pl, avg: r }; });
             return { cards, ...best };
         }
         function raidSimFinal(P, env, me, o) {
@@ -12644,7 +12648,12 @@
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
+        let raidSimRankBusy = 0;
         async function raidSimRank(P, env, me, list, n, progress, extra) {
+            raidSimRankBusy++;
+            try { return await raidSimRankInner(P, env, me, list, n, progress, extra); } finally { raidSimRankBusy--; }
+        }
+        async function raidSimRankInner(P, env, me, list, n, progress, extra) {
             const all = list.concat(extra || []);
             const quick = [];
             for (let i = 0; i < all.length; i++) {
@@ -12676,12 +12685,19 @@
                     cur.pop(); o.cards.forEach(c => used.delete(c));
                 }
             };
-            dfs(0, 0);
-            const pick = [];
-            for (const o of best) {
-                await new Promise(r => setTimeout(r, 0));
-                pick.push(o.final ? o : raidSimFinal(P, env, me, o));
+            // 挑中的組如果只快速篩過（8 次，可能剛好偏高）：補跑 200 次再重新搜尋，直到挑中的都是精算過的
+            for (let round = 0; round < 6; round++) {
+                best = []; bestSum = -1; steps = 0;
+                pool.sort((a, b) => b.avg - a.avg);
+                dfs(0, 0);
+                const rough = best.filter(o => !o.final);
+                if (!rough.length) break;
+                for (const o of rough) {
+                    await new Promise(r => setTimeout(r, 0));
+                    const k = pool.indexOf(o); pool[k] = raidSimFinal(P, env, me, o);
+                }
             }
+            const pick = best.slice();
             pick.sort((a, b) => b.avg - a.avg);
             return pick;
         }

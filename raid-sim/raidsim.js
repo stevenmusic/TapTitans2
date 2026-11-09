@@ -9,7 +9,7 @@ const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft',
 function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
-const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, k: {} };
+const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, k: {} };
 
 /* opt:
    deck: [[id, lv]]
@@ -129,9 +129,9 @@ function simAttack(opt, P = P0) {
       const s = SK[id];
       if (s.cat !== 'Burst') continue;
       let fire = false;
-      if (id === 'Haymaker') { if (!bonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
+      if (id === 'Haymaker') { if (!bonus || P.haymakerBonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
       else if (id === 'CelestialStatic') { if (isLimb(loc)) charge = Math.min(100, charge + 1); else if (charge >= 8) { charge -= 8; fire = true; } }
-      else if (id === 'WhipOfLightning') fire = R() < (0.02 + Math.min(0.10, 0.02 * afflictedParts(t))) * burstChanceMult * chMul;
+      else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
       else fire = R() < s.ch * burstChanceMult * chMul;
       if (!fire) continue;
       burstCount++;
@@ -141,6 +141,7 @@ function simAttack(opt, P = P0) {
       if (id === 'SkullBash' && (isHead(loc) || isLeg(loc))) m = 1.5;
       if (id === 'RazorWind' && layer === 'body') m = 1.5;
       if (id === 'LimbBurst' && isLimb(loc)) m = 1.5;
+      if (id === 'FlakShot' && P.flakArmor && layer === 'armor') m = P.flakArmor;
       if (id === 'Fragmentize' && layer === 'armor') m = board[loc].cursed ? 1.5 * 1.25 : 1.5;
       if (id === 'BarbedMorningstar') m = layer === 'armor' ? 1 + 0.15 * Math.min(5, nBody) : 1 + 0.15 * Math.min(5, nArmor);
       if (id === 'MirrorForce') m = 1 + (opt.mirror || 0);
@@ -148,9 +149,9 @@ function simAttack(opt, P = P0) {
       if (id === 'ChainLightning') { const n = Math.min(6, new Set(hitHistory).size || 1); m = Math.pow(1.027, n - 1); }
       if (id === 'Purify') { let n = 0; for (const c in stacks[loc]) { n += liveCount(loc, c, t); stacks[loc][c] = []; } m = 1 + n; }
       const d0 = P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * m * mult('burst', loc, t, id);
-      out.by[id] += d0;
+      if (!(id === 'FlakShot' && P.flakRedirect && layer === 'armor')) out.by[id] += d0;
       // 防空高砲：打到盔甲時再彈射一次（×1）到隨機部位
-      if (id === 'FlakShot' && layer === 'armor') { const o = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); const rl = o[Math.floor(R() * o.length)] || loc; out.by[id] += P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id); }
+      if (id === 'FlakShot' && layer === 'armor' && P.flakRicochet !== false) { const o = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); const rl = o[Math.floor(R() * o.length)] || loc; out.by[id] += P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id); }
       if (id === 'Weaken') weakenEnd[loc] = t + P.weakenDur;
     }
     // 苦痛：加層
@@ -159,7 +160,11 @@ function simAttack(opt, P = P0) {
       if (s.cat !== 'Affliction') continue;
       let ch = s.ch;
       if (id === 'BurningAttack') ch += 0.02 * Math.min(6, LOCS.filter(l => liveCount(l, 'BurningAttack', t)).length);
-      if (R() < ch * affChanceMult * chMul) addStack(loc, id, t);
+      if (R() < ch * affChanceMult * chMul) {
+        addStack(loc, id, t);
+        // 肆虐瘟疫擴散：同時傳到另一個隨機部位（禁打、骨架除外）
+        if (id === 'PlagueAttack' && P.plagueSpread) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t); }
+      }
     }
   };
   for (let i = 0; i < opt.taps; i++) {
@@ -182,7 +187,12 @@ function simAttack(opt, P = P0) {
         let m = 1;
         if (id === 'Shadow') m = Math.pow(1.2, live.length);
         if (id === 'RuinousRust' && board[l] && board[l].cursed && board[l].layer === 'armor') m = 1.5;
-        if (id === 'PlagueAttack') m = 1 + 0.1467 * Math.min(6, ap);
+        if (id === 'PlagueAttack') {
+          let n = ap;
+          if (P.plagueMode === 'stacks') n = Object.keys(stacks[l]).reduce((x, c) => x + liveCount(l, c, t), 0);
+          if (P.plagueMode === 'otherStacks') n = Object.keys(stacks[l]).filter(c => c !== 'PlagueAttack').reduce((x, c) => x + liveCount(l, c, t), 0) + ap;
+          m = 1 + 0.1467 * Math.min(P.plagueCap || 6, n);
+        }
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
         if (id === 'Disease') dmg = live.length * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = live.length;

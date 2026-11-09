@@ -11996,6 +11996,13 @@
                     // 首頁算法挑出的最佳 6 組（品質最好），只當作「優先選」，不先鎖死——
                     // 再跟所有場次前 15 名打過的牌組（跟「依部位」分頁一樣、現在打得到的）一起找：組數最多優先（用到最多張卡），
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
+                    // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
+                    const simPick = await raidSimPlayerPick(r.player, info, data, playable, hitParts);
+                    if (simPick) {
+                        simPick.forEach(x => all.push(x));
+                        html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
+                        raidLogRecoRows.set(r.player, all);
+                    } else {
                     const top = recoWith(info.used, Math.min(left, RAID_ATTACKS_PER_CYCLE));
                     const topSigs = new Map(top.map((r, i) => [sigOf(r.rawCards || r.cards), i]));
                     const dataAll = (await loadByPartStats(byPartTop)) || data;
@@ -12070,6 +12077,7 @@
                     left -= best.length;
                     html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');   // 只列排得出來的牌組，不另外說明少幾組
                     raidLogRecoRows.set(r.player, all);
+                    }
                 }
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
@@ -12077,6 +12085,39 @@
             raidLogRecoHtml.set(r.player, html);
             box = raidLogRecoBox(r.player);
             if (box) { box.style.display = 'block'; box.innerHTML = html; raidSimFillRecoDamage(r.player, box); }
+        }
+        /* 攻擊紀錄的玩家推薦：用模擬挑牌組。候選＝公會前 15 名打過的牌組，這個人三張卡都有、這一波還沒用過、現在打得到；
+           每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
+        const raidSimPickCache = new Map();
+        async function raidSimPlayerPick(name, info, data, playable, hitParts) {
+            const v = raidAccountInfo(name);
+            if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
+            let P; try { P = await raidSimLoad(); } catch (e) { return null; }
+            const env = await raidSimEnv();
+            const me = raidSimPlayer(v, env.morale, env.season);
+            const used = new Set(info.used || []);
+            const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName]);
+            if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
+            if (!n) return [];
+            const seen = new Set();
+            const cands = data.decks.filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0)).filter(d => {
+                const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k);
+                return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
+            }).slice(0, 40);
+            const out = [];
+            for (const d of cands) {
+                await new Promise(rs => setTimeout(rs, 0));
+                const hp = hitParts(d.cards);
+                const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
+                if (plans.length) out.push({ cards: d.cards, ...raidSimDeck(P, env, me, d.cards, plans, 20) });
+            }
+            out.sort((a, b) => b.avg - a.avg);
+            const pick = [], usedC = new Set();
+            out.forEach(o => { if (pick.length < n && o.cards.every(c => !usedC.has(c))) { pick.push(o); o.cards.forEach(c => usedC.add(c)); } });
+            const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
+            raidSimPickCache.set(key, rows);
+            return rows;
         }
         // 玩家推薦的每一組下面補「應打」傷害（模擬：這個人的突襲等級、卡片等級、死靈熊研究，照推薦標的部位打）
         const raidLogRecoRows = new Map();
@@ -12096,7 +12137,7 @@
                 if (cards.length !== 3 || cards.some(c => !me.lv[c])) { el.textContent = ''; continue; }
                 const tg = (rows[i].targets || []).map(t => t.part).filter(k => env.open.includes(k));
                 const key = name + '|' + cards.slice().sort().join('+') + '|' + tg.join() + '|' + sig;
-                let res = raidSimDmgCache.get(key);
+                let res = rows[i].simDmg || raidSimDmgCache.get(key);
                 if (!res) {
                     el.textContent = '應打 計算中…';
                     await new Promise(rs => setTimeout(rs, 0));
@@ -12453,7 +12494,7 @@
             if (plans.length > 1) { let br = -1; plans.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 4, P).total; if (r > br) { br = r; best = pl; } }); }
             const runs = [];
             for (let k = 0; k < n; k++) runs.push(RaidSim.simAttack({ ...base, targets: best.tg, seed: 1000 + k }, P).total);
-            return { plan: best.label, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: Math.min(...runs), hi: Math.max(...runs) };
+            return { plan: best.label, tg: best.tg, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: Math.min(...runs), hi: Math.max(...runs) };
         }
         async function raidSimRecoRun(name) {
             const box = document.getElementById('cardlv-simreco');

@@ -1010,7 +1010,8 @@ recoverOrphanedMultiTenantData();
 const savedBossState = readJsonSafe(CURRENT_BOSS_STATE_PATH, null);
 let watcherBossTotal = (savedBossState && savedBossState.bossTotal) || 0;
 let watcherCurrentEnemyId = (savedBossState && savedBossState.currentEnemyId) || null;
-let watcherTitanTarget = null;   // 這場每隻王的禁打（官方 titan_target），突襲中改禁打（target 事件）也會更新
+let watcherTitanTarget = null;
+let watcherMorale = null, watcherAreaBuffs = [];   // 這場的門票加成、場次加成（模擬期望傷害用）   // 這場每隻王的禁打（官方 titan_target），突襲中改禁打（target 事件）也會更新
 let watcherBossName = (savedBossState && savedBossState.bossName) || '—';
 let watcherBossOrdinal = (savedBossState && savedBossState.bossOrdinal) || 0;
 let watcherKillMaxHp = (savedBossState && savedBossState.killMaxHp) || 0;
@@ -1752,6 +1753,8 @@ function watcherHandleRaidSnapshot(payload, event) {
     watcherCurrentRaidLevel = payload.raid.level;
   }
   if (payload && Array.isArray(payload.titan_target)) watcherTitanTarget = payload.titan_target;
+  if (payload && payload.morale && Number(payload.morale.bonus_amount) > 0) watcherMorale = Number(payload.morale.bonus_amount);   // 門票加成（模擬期望傷害用）
+  if (payload && payload.raid && Array.isArray(payload.raid.area_buffs)) watcherAreaBuffs = payload.raid.area_buffs;
   if (watcherCurrentRaidStartedAt) upsertRaidSessionIfNew(watcherCurrentRaidStartedAt, watcherCurrentRaidLevel);
 
   const titans = payload && payload.raid && payload.raid.titans;
@@ -1894,6 +1897,38 @@ function watcherHandleAttack(payload) {
   };
   insertAttack(attackEntry);
   saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
+  try { simExp.enqueue(attackEntry, simEnvLive(attackCtx)); } catch (e) {}   // 期望傷害（打法／選牌）背景模擬，不影響攻擊紀錄
+}
+
+// 模擬用的場次環境：場次加成、門票
+function simEnvBuffs() {
+  const buff = {}; let extraSec = 0;
+  (watcherAreaBuffs || []).forEach(b => {
+    const a = Number(b.bonus_amount) || 0;
+    if (b.bonus_type === 'BurstChance') buff.burstChance = a - 1;
+    else if (b.bonus_type === 'AfflictedChance') buff.affChance = a - 1;
+    else if (b.bonus_type === 'BurstDamage') buff.burstDamage = a;
+    else if (b.bonus_type === 'AfflictedDamage') buff.affDamage = a;
+    else if (b.bonus_type === 'AllRaidDamage') buff.all = a;
+    else if (b.bonus_type === 'SupportEffect') buff.supportEffect = a;
+    else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
+  });
+  return { buff, extraSec, morale: watcherMorale || 0.3 };
+}
+// 這一刀打之前的部位狀態（attack context）＋禁打＋詛咒
+function simEnvLive(ctx) {
+  if (!ctx || !ctx.layers) return null;
+  const tt = (watcherTitanTarget || []).find(x => x.enemy_id === watcherCurrentEnemyId);
+  const bans = tt && Array.isArray(tt.state) ? tt.state.filter(x => String(x.state) === '1').map(x => x.id) : [];
+  const status = watcherPartStatus || {};
+  const board = {};
+  Object.keys(ctx.layers).forEach(l => {
+    const cursed = (ctx.cursedParts || []).includes(l) || !!(status[l] && status[l].cursed && status[l].armor > 0);
+    board[l] = bans.includes(l) ? { layer: 'banned', cursed } : { layer: ctx.layers[l], cursed };
+  });
+  const c0 = ctx.curse && ctx.curse[0];
+  const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;
+  return { ...simEnvBuffs(), board, curse };
 }
 
 function handleWatcherRaidEnd(reason) {
@@ -2809,3 +2844,26 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   res.status(500).json({ error: 'internal server error' });
 });
+
+/* ══ 期望傷害（打法／選牌）：突襲蒙地卡羅模擬（simexp.js），結果存 attack_sim，不動攻擊紀錄 ══ */
+const { createSimExp } = require('./simexp');
+const simExp = createSimExp({ db, dbReady, getAllAttacks, getClanData: () => clanDataLatest, attackDedupKey });
+app.get('/attack-sim', (req, res) => { res.json({ sim: simExp.since(Number(req.query.since) || 0), status: simExp.status() }); });
+app.get('/deck-list', async (req, res) => { try { res.json({ decks: await simExp.getDeckList() }); } catch (e) { res.status(500).json({ error: '讀取失敗' }); } });
+// 補算這一場：等開場快照（門票、加成、禁打）和官方帳號資料都到了，用 seed＋攻擊順序還原部位狀態
+async function simExpBackfill() {
+  try {
+    await dbReady;
+    if (!watcherCurrentRaidStartedAt || !watcherCurrentRaidLevel || !clanDataLatest || !watcherMorale) { setTimeout(simExpBackfill, 60 * 1000); return; }
+    const at = watcherCurrentRaidStartedAt.replace('Z', '').slice(0, 19);
+    const r = await db.execute({ sql: 'SELECT data FROM raid_seed WHERE valid_from <= ? AND (expire_at IS NULL OR expire_at >= ?) ORDER BY id DESC LIMIT 1', args: [at, at] });
+    const seed = r.rows.length ? JSON.parse(r.rows[0].data) : null;
+    const raid = seed && (seed.raids || []).find(x => x.t === 9999 && x.l === watcherCurrentRaidLevel);
+    const names = Object.fromEntries((watcherRaidTitans || []).map(t => [t.enemy_id, t.enemy_name]));
+    const bansByName = {};
+    (watcherTitanTarget || []).forEach(t => { const n = names[t.enemy_id]; if (n && Array.isArray(t.state)) bansByName[n] = t.state.filter(x => String(x.state) === '1').map(x => x.id); });
+    const n = await simExp.backfill(watcherCurrentRaidStartedAt, raid, bansByName, simEnvBuffs());
+    console.log(`[simexp] 補算這一場 ${n} 刀（背景排隊）`);
+  } catch (e) { console.error('[simexp] 補算失敗:', e && e.message ? e.message : e); }
+}
+setTimeout(simExpBackfill, 90 * 1000);

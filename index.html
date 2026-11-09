@@ -7828,7 +7828,7 @@
                 const a = atks[i];
                 const stored = raidSimPickStore[raidSimExpKey(a)];
                 if (stored && stored.v > 0) { a.simBest = stored.v; a.simBestCards = stored.c; a.simBestTg = stored.g; sa += a.totalDamage; sb += stored.v; continue; }
-                if (!auto) { raidSimPickByPlayer.set(identity, { busy: `計算中 ${i + 1}／${atks.length}` }); progress(); }
+                if (!auto) { raidSimPickByPlayer.set(identity, { busy: `計算中 ${Math.round(i / atks.length * 100)}%` }); progress(); }
                 // 這一輪他之前用過的卡不能用
                 const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
                 const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
@@ -12148,7 +12148,7 @@
                     // 再跟所有場次前 15 名打過的牌組（跟「依部位」分頁一樣、現在打得到的）一起找：組數最多優先（用到最多張卡），
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
-                    const simPick = await raidSimPlayerPick(r.player, info, data, playable, hitParts);
+                    const simPick = await raidSimPlayerPick(r.player, info, data, playable, hitParts, (t) => { const bx = raidLogRecoBox(r.player); if (bx && !raidLogRecoHtml.get(r.player)) bx.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; });
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
@@ -12240,7 +12240,7 @@
         /* 攻擊紀錄的玩家推薦：用模擬挑牌組。候選＝公會前 15 名打過的牌組，這個人三張卡都有、這一波還沒用過、現在打得到；
            每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
         const raidSimPickCache = new Map();
-        async function raidSimPlayerPick(name, info, data, playable, hitParts) {
+        async function raidSimPlayerPick(name, info, data, playable, hitParts, progress) {
             const v = raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
@@ -12262,7 +12262,7 @@
                 const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                 if (plans.length) (i < 40 ? list : extra).push({ cards: d.cards, plans });
             });
-            const pick = await raidSimRank(P, env, me, list, n, null, extra);
+            const pick = await raidSimRank(P, env, me, list, n, progress, extra);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             return rows;
@@ -12673,14 +12673,14 @@
             const all = list.concat(extra || []);
             const quick = [];
             for (let i = 0; i < all.length; i++) {
-                if (progress) progress(`模擬中…${i + 1}／${all.length}`);
+                if (progress) progress(`計算中 ${Math.round(i / all.length * 60)}%`);   // 快速篩約占 6 成時間
                 await new Promise(r => setTimeout(r, 0));
                 quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
             }
             quick.sort((a, b) => b.avg - a.avg);
             const nTop = Math.min(quick.length, Math.max(24, n * 4));
             for (let i = 0; i < nTop; i++) {
-                if (progress) progress(`精算前 ${nTop} 組…${i + 1}／${nTop}`);
+                if (progress) progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`);
                 await new Promise(r => setTimeout(r, 0));
                 quick[i] = raidSimFinal(P, env, me, quick[i]);
             }

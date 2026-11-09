@@ -1010,6 +1010,7 @@ recoverOrphanedMultiTenantData();
 const savedBossState = readJsonSafe(CURRENT_BOSS_STATE_PATH, null);
 let watcherBossTotal = (savedBossState && savedBossState.bossTotal) || 0;
 let watcherCurrentEnemyId = (savedBossState && savedBossState.currentEnemyId) || null;
+let watcherTitanTarget = null;   // 這場每隻王的禁打（官方 titan_target），突襲中改禁打（target 事件）也會更新
 let watcherBossName = (savedBossState && savedBossState.bossName) || '—';
 let watcherBossOrdinal = (savedBossState && savedBossState.bossOrdinal) || 0;
 let watcherKillMaxHp = (savedBossState && savedBossState.killMaxHp) || 0;
@@ -1743,12 +1744,14 @@ function watcherHandleRaidSnapshot(payload, event) {
       watcherPartStatus = {};
       watcherBossOrdinal = 0;            // 新場次還沒打到任何一隻王
       watcherHasReceivedAttack = false;
+      watcherTitanTarget = null;
     }
     watcherCurrentRaidStartedAt = payload.raid_started_at;
   }
   if (payload && payload.raid && typeof payload.raid.level === 'number') {
     watcherCurrentRaidLevel = payload.raid.level;
   }
+  if (payload && Array.isArray(payload.titan_target)) watcherTitanTarget = payload.titan_target;
   if (watcherCurrentRaidStartedAt) upsertRaidSessionIfNew(watcherCurrentRaidStartedAt, watcherCurrentRaidLevel);
 
   const titans = payload && payload.raid && payload.raid.titans;
@@ -1958,7 +1961,12 @@ function startWatcher() {
   // 公會改禁打（target 事件，帶 raid_id、enemy_id、state）：是下一場預告的王，就更新預告的禁打
   watcherSocket.on('target', (payload) => {
     try {
-      if (!watcherPreview || !payload || !Array.isArray(payload.state)) return;
+      if (!payload || !Array.isArray(payload.state)) return;
+      // 突襲進行中改禁打：更新這場的 titan_target（網頁剛打開時從 /current-boss-status 拿）
+      if (!watcherPreview) {
+        if (payload.enemy_id) watcherTitanTarget = [...(watcherTitanTarget || []).filter(t => t.enemy_id !== payload.enemy_id), { enemy_id: payload.enemy_id, state: payload.state }];
+        return;
+      }
       if (watcherPreview.raidId && payload.raid_id && payload.raid_id !== watcherPreview.raidId) return;
       const name = (watcherPreview.enemyNames || {})[payload.enemy_id];
       if (!name) return;
@@ -2006,7 +2014,8 @@ function buildCurrentBossPayload() {
     enemyId: watcherCurrentEnemyId, parts: watcherPartStatus, killMaxHp: watcherKillMaxHp,
     bossCurrentHp: watcherBossCurrentHp, hasReceivedAttack: watcherHasReceivedAttack,
     // 這場的開始時間、是否已結束：新的一輪還沒人出刀時，網頁靠這個知道已經進到下一輪（缺打名單照時間推進）
-    raidStartedAt: watcherCurrentRaidStartedAt, raidEnded: !!watcherRaidEndedFor && watcherRaidEndedFor === watcherCurrentRaidStartedAt
+    raidStartedAt: watcherCurrentRaidStartedAt, raidEnded: !!watcherRaidEndedFor && watcherRaidEndedFor === watcherCurrentRaidStartedAt,
+    titanTarget: watcherTitanTarget   // 每隻王的禁打
   };
 }
 

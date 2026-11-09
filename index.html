@@ -6267,7 +6267,26 @@
         function saveBannedPartsCache() {
             try { localStorage.setItem(RAID_BANNED_CACHE_KEY, JSON.stringify({ enemyId: apiCurrentEnemyId, parts: raidBannedParts })); } catch (e) {}
         }
+        // 從官方 titan_target（每隻王各自的禁打）套用目前這隻王的禁打；有資料就回傳 true
+        function raidBannedFromTarget() {
+            const entry = apiCurrentEnemyId && (apiTitanTarget || []).find(tt => tt.enemy_id === apiCurrentEnemyId);
+            if (!entry || !Array.isArray(entry.state)) return false;
+            raidBannedParts = entry.state.filter(s => String(s.state) === '1').map(s => s.id);
+            saveBannedPartsCache();
+            return true;
+        }
+        // 公會在突襲中改禁打（target 事件：raid_id、enemy_id、state）：馬上更新，不用等下一輪
+        function handleApiTarget(p) {
+            if (!p || !p.enemy_id || !Array.isArray(p.state)) return;
+            if (raidPreview) return;   // 預告期間的禁打由伺服器預告資料處理
+            const list = (apiTitanTarget || []).filter(tt => tt.enemy_id !== p.enemy_id);
+            list.push({ enemy_id: p.enemy_id, state: p.state });
+            apiTitanTarget = list;
+            if (p.enemy_id === apiCurrentEnemyId) { raidBannedFromTarget(); renderRaidStatus(); }
+            refreshBossHpIfOpen();
+        }
         function restoreBannedPartsCache() {
+            if (!raidBannedParts.length && raidBannedFromTarget()) return;   // 換王時：這場的 titan_target 已經有新王的禁打
             if (raidBannedParts.length > 0 || !apiCurrentEnemyId) return;
             try {
                 const saved = JSON.parse(localStorage.getItem(RAID_BANNED_CACHE_KEY) || 'null');
@@ -6799,7 +6818,9 @@
                 raidCurseInfo = Array.isArray(cb.curse) ? cb.curse : [];
             } else {
                 if (raidPreview) { raidPreview = null; raidBannedParts = []; raidCurseInfo = []; }
-                restoreBannedPartsCache();
+                // 伺服器記著這場每隻王的禁打（titan_target）：剛打開網頁、還沒收到即時事件也能直接套用
+                if (Array.isArray(cb.titanTarget) && cb.titanTarget.length) apiTitanTarget = cb.titanTarget;
+                if (!raidBannedFromTarget()) restoreBannedPartsCache();
                 updateCurseInfo();
             }
             raidState = {
@@ -14275,6 +14296,7 @@
             raidSocket.on('raid:sub_cycle', (p) => { captureRaidDebugPayload('sub_cycle', p); handleApiRaidStart(p); });
             raidSocket.on('raid:cycle_reset', (p) => { captureRaidDebugPayload('cycle_reset', p); handleApiRaidStart(p); });
             raidSocket.on('raid:attack', (p) => { captureRaidDebugPayload('attack', p); handleApiAttack(p); });
+            raidSocket.on('raid:target', (p) => { captureRaidDebugPayload('target', p); handleApiTarget(p); });
             raidSocket.on('raid:end', () => setRaidConnectStatus('本次突襲已結束', 'ok'));
             raidSocket.on('raid:retire', () => setRaidConnectStatus('突襲已提前結束', 'ok'));
             raidSocket.on('raid:unsub_clan', () => setRaidConnectStatus('訂閱已被取消（Player Token 可能已失效）', ''));

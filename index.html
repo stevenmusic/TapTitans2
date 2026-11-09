@@ -11387,14 +11387,24 @@
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));   // 場次類型相同的場次才算（偵測不到的場次不算）
             if (token !== byPartRecoToken) return;
             if (!data) { box.style.display = 'none'; byPartRecoSig = ''; return; }
-            const rows = byPartRecoCompute(data);
+            let rows = byPartRecoCompute(data);
+            // 模擬器（標準玩家）算得出來就用模擬的 6 組；還在算時先顯示統計的，旁邊標進度，算完再換
+            let simRows = null, simBusy = false;
+            if (!raidSimActive) {
+                const p = raidSimHomeRows(data, (t) => { const el = document.getElementById('by-part-reco-simpct'); if (el) el.textContent = '模擬' + t; });
+                simRows = await Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 1500))]);
+                if (simRows === undefined) { simBusy = true; p.then(() => { if (token === byPartRecoToken) { byPartRecoSig = ''; byPartRecoRefresh(); } }); simRows = null; }
+            }
+            if (token !== byPartRecoToken) return;
+            if (simRows && simRows.length) rows = simRows;
             if (rows.length === 0) { box.style.display = 'none'; return; }
             box.style.display = 'block';
             byPartRecoTitle = true;
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
-            const html = byPartRecoGridHtml(rows, 'home');
+            let html = byPartRecoGridHtml(rows, 'home');   // 模擬算完的推薦也會記下來（重開網頁同狀態直接顯示）
+            if (simBusy) html = `<div id="by-part-reco-simpct" style="font-size:11px; color:#8a7a6a; text-align:right; margin-bottom:-4px;">模擬計算中</div>` + html;
             if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
-            if (attackCacheState.ready && byPartScenReady) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 只記模擬器情境確認過之後的結果
+            if (!simBusy && attackCacheState.ready && byPartScenReady) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 只記模擬器情境確認過之後的結果
         }
 
         function byPartOnRaidStatusChanged() {
@@ -12240,8 +12250,43 @@
         /* 攻擊紀錄的玩家推薦：用模擬挑牌組。候選＝公會前 15 名打過的牌組，這個人三張卡都有、這一波還沒用過、現在打得到；
            每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
         const raidSimPickCache = new Map();
-        async function raidSimPlayerPick(name, info, data, playable, hitParts, progress) {
-            const v = raidAccountInfo(name);
+        // 首頁推薦用的「標準玩家」：卡片等級、死靈熊研究、突襲等級都取全公會中位數（卡片只算有這張卡的人，一半以上的人有才算），忠誠度 12 級
+        function raidSimStandardAccount() {
+            if (!raidClanData) return null;
+            const ps = [...raidClanData.byCode.values()].map(v => v.raw).filter(Boolean);
+            if (ps.length < 5) return null;
+            const med = (a) => { a = a.filter(x => x > 0).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : 0; };
+            const ids = new Set(); ps.forEach(p => (p.cards || []).forEach(c => ids.add(c.skill_name)));
+            const cards = [];
+            ids.forEach(id => { const l = ps.map(p => raidSimBaseLevel(p, id)); if (l.filter(x => x > 0).length >= ps.length / 2) cards.push({ skill_name: id, level: med(l) }); });
+            const keys = new Set(); ps.forEach(p => Object.keys(p.raid_research_tree || {}).forEach(k => keys.add(k)));
+            const tree = {}; keys.forEach(k => { tree[k] = med(ps.map(p => Number((p.raid_research_tree || {})[k]) || 0)); });
+            return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
+        }
+        // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v1';
+        let raidSimHomeMem = null;
+        async function raidSimHomeRows(data, progress) {
+            if (raidSimActive || !raidState || !raidState.parts) return null;
+            if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
+            const v = raidSimStandardAccount(); if (!v) return null;
+            const env = await raidSimEnv();
+            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName]);
+            if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
+            if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
+            const scene = byPartPartsToScene(raidState.parts, raidBannedParts);
+            const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
+            const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
+            const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+            const rows = await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, progress, v);
+            if (!rows || !rows.length) return null;
+            raidSimHomeMem = { sig, rows };
+            try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
+            return rows;
+        }
+        async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride) {
+            const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
             const env = await raidSimEnv();

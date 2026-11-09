@@ -12242,14 +12242,14 @@
             const cands = data.decks.filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0)).filter(d => {
                 const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k);
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
-            }).slice(0, 40);
-            const list = [];
-            cands.forEach(d => {
+            });
+            const list = [], extra = [];
+            cands.forEach((d, i) => {
                 const hp = hitParts(d.cards);
                 const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                if (plans.length) list.push({ cards: d.cards, plans });
+                if (plans.length) (i < 40 ? list : extra).push({ cards: d.cards, plans });
             });
-            const pick = await raidSimRank(P, env, me, list, n);
+            const pick = await raidSimRank(P, env, me, list, n, null, extra);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             return rows;
@@ -12643,31 +12643,44 @@
             return { ...o, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: runs[Math.floor(runs.length * 0.1)], hi: runs[Math.floor(runs.length * 0.9)], final: true };
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
-        // 挑出最好的 n 組（卡片不重複）：先全部快速篩一次，前 12 組再跑 200 次重新排序
-        async function raidSimRank(P, env, me, list, n, progress) {
+        // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
+        async function raidSimRank(P, env, me, list, n, progress, extra) {
+            const all = list.concat(extra || []);
             const quick = [];
-            for (let i = 0; i < list.length; i++) {
-                if (progress) progress(`模擬中…${i + 1}／${list.length}`);
+            for (let i = 0; i < all.length; i++) {
+                if (progress) progress(`模擬中…${i + 1}／${all.length}`);
                 await new Promise(r => setTimeout(r, 0));
-                quick.push(raidSimScreen(P, env, me, list[i].cards, list[i].plans));
+                quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
             }
             quick.sort((a, b) => b.avg - a.avg);
-            const fin = [];
-            const top = quick.slice(0, Math.max(12, n * 2));
-            for (let i = 0; i < top.length; i++) {
-                if (progress) progress(`精算前 ${top.length} 組…${i + 1}／${top.length}`);
+            const nTop = Math.min(quick.length, Math.max(24, n * 4));
+            for (let i = 0; i < nTop; i++) {
+                if (progress) progress(`精算前 ${nTop} 組…${i + 1}／${nTop}`);
                 await new Promise(r => setTimeout(r, 0));
-                fin.push(raidSimFinal(P, env, me, top[i]));
+                quick[i] = raidSimFinal(P, env, me, quick[i]);
             }
-            fin.sort((a, b) => b.avg - a.avg);
-            const used = new Set(), pick = [];
-            fin.forEach(o => { if (pick.length < n && o.cards.every(c => !used.has(c))) { pick.push(o); o.cards.forEach(c => used.add(c)); } });
-            // 精算的組卡片重複太多、湊不滿：從剩下的組（快速篩的順序）繼續往下補，補進來的也跑 200 次
-            for (const o of quick.slice(top.length)) {
-                if (pick.length >= n) break;
-                if (o.cards.some(c => used.has(c))) continue;
+            const pool = quick.slice().sort((a, b) => b.avg - a.avg);
+            // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
+            let best = [], bestSum = -1, steps = 0;
+            const used = new Set(), cur = [];
+            const dfs = (i, sum) => {
+                if (++steps > 2e6) return;
+                if (cur.length > best.length || (cur.length === best.length && sum > bestSum)) { best = cur.slice(); bestSum = sum; }
+                if (cur.length >= n) return;
+                for (let j = i; j < pool.length; j++) {
+                    const o = pool[j];
+                    if (best.length === n && sum + (n - cur.length) * o.avg <= bestSum) return;
+                    if (o.cards.some(c => used.has(c))) continue;
+                    o.cards.forEach(c => used.add(c)); cur.push(o);
+                    dfs(j + 1, sum + o.avg);
+                    cur.pop(); o.cards.forEach(c => used.delete(c));
+                }
+            };
+            dfs(0, 0);
+            const pick = [];
+            for (const o of best) {
                 await new Promise(r => setTimeout(r, 0));
-                const f = raidSimFinal(P, env, me, o); pick.push(f); f.cards.forEach(c => used.add(c));
+                pick.push(o.final ? o : raidSimFinal(P, env, me, o));
             }
             pick.sort((a, b) => b.avg - a.avg);
             return pick;
@@ -12688,10 +12701,10 @@
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
             const seen = new Set();
             const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
-                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); }).slice(0, 40);
+                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
-            const pick = await raidSimRank(P, env, me, cands.map(d => ({ cards: d.cards, plans })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; });
+            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans })));
             const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
             box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}${Object.keys(season).length ? `｜賽季加成 ${Object.entries(season).map(([c, n]) => `${escapeHtml(raidCardLabel(c))} +${n}`).join('、')}` : ''}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
                     <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}

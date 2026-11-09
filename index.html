@@ -7764,6 +7764,17 @@
         }
         const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }
         let raidSimDeckList = null;
+        // 公會攻擊紀錄裡打過 10 次以上的牌組（伺服器 /deck-list）
+        async function raidSimLoadDeckList() {
+            if (raidSimDeckList) return raidSimDeckList;
+            try { const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, ''); raidSimDeckList = ((await (await fetch(`${relayUrl}/deck-list`)).json()).decks) || null; } catch (e) {}
+            return raidSimDeckList;
+        }
+        const RAID_SIM_PROVEN_USES = 30;   // 推薦只用公會打過 30 次以上的牌組（次數少的模擬沒驗證過，常常高估）
+        async function raidSimProvenSet() {
+            const l = await raidSimLoadDeckList();
+            return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
+        }
         // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v4';
         let raidSimPickStore = {};
@@ -7805,7 +7816,8 @@
             let P;
             try {
                 P = await raidSimLoad();
-                if (!raidSimDeckList) { const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, ''); raidSimDeckList = ((await (await fetch(`${relayUrl}/deck-list`)).json()).decks) || []; }
+                await raidSimLoadDeckList();
+                if (!raidSimDeckList) throw new Error('deck-list');
             } catch (e) { raidSimPickByPlayer.set(identity, { busy: '載入失敗' }); rerender(); return; }
             const env0 = await raidSimEnv();
             const atks = r.attacks.filter(a => !a.placeholder && a.simB && a.cards && a.cards.length);
@@ -12239,9 +12251,9 @@
             const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             if (!n) return [];
-            const seen = new Set();
+            const seen = new Set(), proven = await raidSimProvenSet();
             const cands = data.decks.filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0)).filter(d => {
-                const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k);
+                const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k);
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
@@ -12719,9 +12731,9 @@
             const me = raidSimPlayer(v, morale, season);
             // 候配卡組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
-            const seen = new Set();
+            const seen = new Set(), proven = await raidSimProvenSet();
             const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
-                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
+                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
             const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans })));

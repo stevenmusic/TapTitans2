@@ -9,7 +9,7 @@ const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft',
 function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
-const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, k: {} };
+const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, plagueSpread: true, haymakerBonus: true, whipOpen: true, k: {} };
 
 /* opt:
    deck: [[id, lv]]
@@ -131,7 +131,7 @@ function simAttack(opt, P = P0) {
       let fire = false;
       if (id === 'Haymaker') { if (!bonus || P.haymakerBonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
       else if (id === 'CelestialStatic') { if (isLimb(loc)) charge = Math.min(100, charge + 1); else if (charge >= 8) { charge -= 8; fire = true; } }
-      else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
+      else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : P.whipOpen ? Math.max(afflictedParts(t), LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton').length) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
       else fire = R() < s.ch * burstChanceMult * chMul;
       if (!fire) continue;
       burstCount++;

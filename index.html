@@ -7641,8 +7641,53 @@
              期望 ＝ ③ 的預測 × 忠誠度 × 這個人實際打到的部位的死靈熊倍率
            比較（同測法）：死靈熊等級＋突襲等級 8.3%、突襲等級×死靈熊平均倍率 9.0%、只用突襲等級 15.5%；交叉項沒有幫助。
            拿不到官方資料的人（已離開公會、資料還沒載入）：用原始傷害擬合突襲等級＋卡片平均等級 */
+        /* 詛咒：每一刀打的時候，那隻王還有幾個詛咒甲（禁打的詛咒甲拆不掉、一直算）。
+           用那一場的 seed（出場盔甲、哪些是詛咒甲、詛咒類型）＋整場攻擊依時間扣盔甲還原。
+           這一刀被詛咒扣掉的比例：爆裂／苦痛詛咒＝每個詛咒甲 × 公會這種傷害的佔比（看場次加成）；肉體詛咒＝只扣打在肉體的部分 */
+        const raidCurseSeeds = new Map();   // 場次開始時間 → { seed } | null | 'loading'
+        let RAID_CURSE_ADJ = true;
+        function raidCurseFactorMap(allAttacks) {
+            const out = new Map(), bySess = new Map();
+            if (!RAID_CURSE_ADJ) return out;
+            allAttacks.forEach(a => { if (a && a.raidStartedAt && a.bossOrdinal && !a.placeholder) { if (!bySess.has(a.raidStartedAt)) bySess.set(a.raidStartedAt, []); bySess.get(a.raidStartedAt).push(a); } });
+            bySess.forEach((list, sa) => {
+                if (!raidCurseSeeds.has(sa)) {
+                    raidCurseSeeds.set(sa, 'loading');
+                    ticketSeedFetch(sa).then(sd => { raidCurseSeeds.set(sa, sd ? { seed: sd } : null); raidExpectedRerender(); }).catch(() => raidCurseSeeds.set(sa, null));
+                    return;
+                }
+                const c = raidCurseSeeds.get(sa);
+                if (!c || c === 'loading') return;
+                const se = (serverSessionsSummary || []).find(x => x.startedAt === sa) || {};
+                const lv = list[0].raidLevelTier || se.levelTier;
+                const raid = c.seed.raids.find(r => r.t === 9999 && r.l === lv);
+                if (!raid) return;
+                const sh = TICKET_SHARE_BY_BUFF[se.buffType] || TICKET_SHARE_AVG;
+                const state = {};
+                list.slice().sort((x, y) => x.ts - y.ts).forEach(a => {
+                    const t = raid.titans.find(x => x.n === (raid.seq[a.bossOrdinal - 1] || a.boss));
+                    if (!t) return;
+                    const st = state[a.bossOrdinal] || (state[a.bossOrdinal] = Object.fromEntries(Object.entries(t.p).map(([l, e]) => [l, e[1]])));
+                    const n = Object.entries(t.p).filter(([l, e]) => e[3] && st[l] > 0).length;
+                    const c0 = t.c && t.c[0];
+                    if (c0 && n) {
+                        const amt = Math.abs(c0[1]);
+                        const body = (a.parts || []).filter(p => p.layer === 'body').reduce((x, p) => x + (Number(p.damage) || 0), 0);
+                        const f = c0[0].startsWith('Burst') ? 1 - amt * n * sh.burst : c0[0].startsWith('Afflict') ? 1 - amt * n * sh.aff : 1 - amt * n * (a.totalDamage ? body / a.totalDamage : 0);
+                        out.set(a, Math.max(0.3, f));
+                    }
+                    (a.parts || []).forEach(p => { if (p.layer === 'armor' && p.part in st) st[p.part] -= Number(p.damage) || 0; });
+                });
+            });
+            return out;
+        }
+        function raidExpectedRerender() {
+            if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+            if (document.getElementById('cardlv-guild') && document.getElementById('cardlv-guild').style.display !== 'none') cardLevelsGuild();
+        }
         function raidExpectedModel(attacksByIdentity) {
             if (!raidClanData) raidLoadClanData();   // 官方資料在背景載入，好了會重畫
+            const curseF = raidCurseFactorMap([...attacksByIdentity.values()].flat());   // 每一刀被詛咒扣剩的比例
             const base = [];
             attacksByIdentity.forEach((list, id) => {
                 const real = list.filter(a => !a.placeholder && a.totalDamage > 0);
@@ -7655,7 +7700,7 @@
                 const rawAvg = real.reduce((p, a) => p + a.totalDamage, 0) / real.length;
                 let off = null;
                 if (cd) {   // 去掉死靈熊研究（照每刀打到的部位）和忠誠度
-                    const neuAvg = real.reduce((p, a) => p + ((a.parts || []).length ? a.parts.reduce((q, pt) => q + (Number(pt.damage) || 0) / cd.partMult(pt.part, pt.layer, a.boss), 0) : a.totalDamage), 0) / real.length;
+                    const neuAvg = real.reduce((p, a) => p + ((a.parts || []).length ? a.parts.reduce((q, pt) => q + (Number(pt.damage) || 0) / cd.partMult(pt.part, pt.layer, a.boss), 0) : a.totalDamage) / (curseF.get(a) || 1), 0) / real.length;   // 也還原詛咒
                     if (neuAvg > 0) off = Math.log(rawAvg / neuAvg * cd.loy);
                 }
                 base.push({ id, code, n: real.length, y: Math.log(rawAvg), off, x: [1, Math.log(Number(rlA.raidLevel)), lvs.reduce((p, v) => p + v, 0) / lvs.length] });

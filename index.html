@@ -12662,20 +12662,20 @@
             const sumHp = open.reduce((t, k) => t + env.hp[k], 0) || 1;
             const total = pick.reduce((t, o) => t + (o.raw || o.avg || 0), 0);
             const left = {}; open.forEach(k => { left[k] = Math.min(env.hp[k], total * env.hp[k] / sumHp * 1.3); });
-            const hpOf = (tg) => tg.reduce((t, k) => t + (left[k] || 0), 0);
+            const effOf = (tg, est) => { const per = est / tg.length; return tg.reduce((t, k) => t + Math.min(per, left[k] || 0), 0); };   // 輪流打：每個部位平均分到傷害，超過份額的部分不算
             pick.forEach(o => {
                 const raw0 = o.raw || o.avg;
                 const alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
                 let best = null;
-                alts.forEach(a => { const est = a.raw * scale, eff = Math.min(est, hpOf(a.tg)); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
+                alts.forEach(a => { const est = a.raw * scale, eff = effOf(a.tg, est); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
                 if (!best || !(best.eff > 0)) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
                 if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; }
                 const c = best.a.tg.reduce((t, k) => t + (env.hp[k] || 0), 0); o.cap = c;   // 顯示：算到部位真正剩下的血為止（份額只用來分配）
                 o.avg = Math.min(best.est, c); if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
-                const tot = hpOf(o.tg) || 1; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - best.eff * (left[k] || 0) / tot); });
+                const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); });
             });
             pick.sort((a, b) => b.avg - a.avg);
         }
@@ -13247,7 +13247,24 @@
         }
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
         async function raidSimPickPool(P, env, me, pool, n) {
-            const val = (o) => o.avg * raidSimDeckFactor(o.cards);   // 少見牌組打九折後再比
+            // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
+            // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位
+            let bud = null;
+            if (env && env.hp && n > 0) {
+                const open = (env.open || Object.keys(env.hp)).filter(k => env.hp[k] > 0);
+                const sumHp = open.reduce((t, k) => t + env.hp[k], 0);
+                const T = pool.map(o => o.raw || o.avg || 0).sort((a, b) => b - a).slice(0, n).reduce((t, x) => t + x, 0);
+                if (sumHp > 0 && T > 0) { bud = {}; open.forEach(k => { bud[k] = Math.min(env.hp[k], T * env.hp[k] / sumHp * 1.3); }); }
+            }
+            const budVal = (o) => {
+                if (!bud) return o.avg;
+                const raw0 = o.raw || o.avg;
+                const alts = o.alts && o.alts.length ? o.alts : [{ tg: o.tg, raw: raw0 }];
+                const cur = alts.find(a => a.tg.join() === o.tg.join());
+                const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;
+                return Math.max(...alts.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0), 0); }));   // 輪流打：每個部位平均分到傷害
+            };
+            const val = (o) => budVal(o) * raidSimDeckFactor(o.cards);
             pool.sort((a, b) => val(b) - val(a));
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;

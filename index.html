@@ -7775,10 +7775,18 @@
             const l = await raidSimLoadDeckList();
             return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
         }
-        // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
-        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v8';
+        // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
+        // 舊版本（tt2_sim_pick_v1～v8）算過的也搬過來，新的版本優先；搬完刪掉舊的
+        try {
+            const olds = Object.keys(localStorage).filter(k => /^tt2_sim_pick_v\d+$/.test(k)).sort((a, b) => Number(b.slice(14)) - Number(a.slice(14)));
+            if (olds.length) {
+                olds.forEach(k => { try { const o = JSON.parse(localStorage.getItem(k) || '{}') || {}; Object.keys(o).forEach(x => { if (!raidSimPickStore[x] && o[x] && o[x].v > 0) raidSimPickStore[x] = o[x]; }); } catch (e) {} localStorage.removeItem(k); });
+                localStorage.setItem(RAID_SIM_PICK_KEY, JSON.stringify(raidSimPickStore));
+            }
+        } catch (e) {}
         function raidSimPickSave() {
             try {
                 const keys = Object.keys(raidSimPickStore);

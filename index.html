@@ -7790,6 +7790,7 @@
         const RAID_SIM_PROVEN_USES = 30;   // 推薦只用公會打過 30 次以上的牌組（次數少的模擬沒驗證過，常常高估）
         // 少見牌組（公會打過不到 30 次）不擋掉，模擬傷害打九折保守估計（實際紀錄驗證過：少用的組合常比模擬低一成）
         const RAID_SIM_RARE_FACTOR = 0.9;
+        const RAID_SIM_SCEN_MIN = 3;   // 少見牌組：外部模擬器至少在幾個情境推過才放進候選
         let raidSimUsesMap = null;
         function raidSimDeckFactor(cards) {
             if (!raidSimDeckList) return 1;
@@ -7802,9 +7803,12 @@
             const uses = new Map((list || []).map(d => [d.cards.slice().sort().join('+'), d.uses]));
             const seen = new Set(), out = [];
             const add = (cards) => { if (!Array.isArray(cards) || cards.length !== 3) return; const k = cards.slice().sort().join('+'); if (seen.has(k)) return; seen.add(k); out.push({ cards, uses: uses.get(k) || 0 }); };
+            // 組數控制在約 200：公會打過 30 次以上的全部；少見牌組只收外部模擬器在 3 個以上情境推過的（只在單一情境出現的、只有前 15 名打過的都不收）
             (list || []).filter(d => d.uses >= RAID_SIM_PROVEN_USES).forEach(d => add(d.cards));
-            ((data && data.decks) || []).forEach(d => add(d.cards));
-            (BY_PART_GAME_SCENARIOS || []).forEach(sc => (sc.decks || []).forEach(d => add(d.cards)));
+            ((data && data.decks) || []).forEach(d => { const k = Array.isArray(d.cards) ? d.cards.slice().sort().join('+') : ''; if ((uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(d.cards); });
+            const scenCnt = new Map(), scenCards = new Map();
+            (BY_PART_GAME_SCENARIOS || []).forEach(sc => new Set((sc.decks || []).filter(d => Array.isArray(d.cards) && d.cards.length === 3).map(d => { const k = d.cards.slice().sort().join('+'); scenCards.set(k, d.cards); return k; })).forEach(k => scenCnt.set(k, (scenCnt.get(k) || 0) + 1)));
+            scenCnt.forEach((n, k) => { if (n >= RAID_SIM_SCEN_MIN || (uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(scenCards.get(k)); });
             out.sort((x, y) => y.uses - x.uses);
             return out;
         }
@@ -9652,7 +9656,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim13';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim14';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12453,7 +12457,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v13';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v14';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12465,7 +12469,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v3');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v4');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12487,7 +12491,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v3', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v4', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）

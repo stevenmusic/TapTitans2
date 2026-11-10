@@ -2706,6 +2706,7 @@
         .raid-recent-cardtxt { width: 31px; height: 31px; border-radius: 6px; background: #ece3e0; color: #5a4036; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; }
         .raid-recent-cards img { width: 31px; height: 31px; border-radius: 6px; object-fit: cover; display: block; }
         .raid-recent-dmg { flex-shrink: 0; width: 64px; text-align: right; font-weight: 700; color: #c62828; white-space: nowrap; }
+        .raid-recent-mark { flex-shrink: 0; width: 16px; display: inline-flex; justify-content: center; }   /* 有沒有照推薦打（✓／✗），固定寬度讓每一列的卡片對齊 */
         .raid-recent-empty { text-align: center; color: #d9bcbc; font-size: 10.5px; padding: 10px 0; }
 
         /* ══════════════════════════════════════════════════════════
@@ -7842,14 +7843,21 @@
             renderRaidRecentAttacks.last = null; renderRaidRecentAttacks();
         }
         // 當時推薦裡跟他實際用的牌組最接近的一組（共用卡片最多；一樣多取推薦順序較前、傷害較高的）
-        function raidRecentRecoLine(used, sigs) {
+        function raidRecentRecoLine(used, sigs, partHtml, dmgText) {
             const u = new Set(used);
             let best = null, bestN = -1;
             sigs.forEach(sg => { const cs = sg.split('+'); const n = cs.filter(c => u.has(c)).length; if (n > bestN) { best = cs; bestN = n; } });
             if (!best) return '';
-            const ic = (c) => raidCardImage(c) ? `<img src="${raidCardImage(c)}" alt="" title="${escapeHtml(raidCardLabel(c))}" style="width:22px; height:22px; border-radius:4px; vertical-align:middle;${u.has(c) ? '' : ' outline:2px solid #2e7d32; outline-offset:-1px;'}">` : `<span style="font-size:11px;">${escapeHtml(raidCardLabel(c))}</span>`;
-            return `<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding:2px 10px 5px 10px; font-size:11px; color:#6b5a4a; background:#fff8f2;">最接近的推薦：${best.map(ic).join('')}<span style="color:#8a7a6a;">${best.filter(c => !u.has(c)).map(raidCardLabel).join('、') ? `（換成 ${escapeHtml(best.filter(c => !u.has(c)).map(raidCardLabel).join('、'))}）` : ''}${sigs.length > 1 ? `　當時共推薦 ${sigs.length} 組` : ''}</span></div>`;
+            const ic = (c) => raidCardImage(c) ? `<img src="${raidCardImage(c)}" alt="" title="${escapeHtml(raidCardLabel(c))}" style="${u.has(c) ? 'opacity:0.45;' : 'outline:2px solid #2e7d32; outline-offset:-2px;'}">` : `<span class="raid-recent-cardtxt">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`;
+            // 跟上面那一刀同樣的欄位排列，建議的三張卡剛好對齊在原本三張卡正下方（不用換的卡淡一點，要換的卡綠框）
+            return `<div class="raid-recent-item" style="background:#f6fbf6; border-color:#cfe5cf; margin-top:-2px;">
+                <span class="raid-recent-player" style="align-items:flex-end; justify-content:center; color:#2e7d32; font-size:11px;">建議</span>
+                <span style="visibility:hidden;">${partHtml}</span>
+                <span class="raid-recent-cards">${best.map(ic).join('')}</span>
+                <span class="raid-recent-mark"></span>
+                <span class="raid-recent-dmg" style="visibility:hidden;">${escapeHtml(dmgText)}</span></div>`;
         }
+        const raidRecoAtPools = new Map();   // 玩家＋出刀前部位狀態 → 他所有牌組的傷害表（同一人同狀態連打好幾刀只模擬一次）
         async function raidSimRecoSetAt(r, a, v, P, env0, data, proven) {
             const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
             const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
@@ -7863,15 +7871,22 @@
             const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
             const { hitParts, playable } = raidSimPartFns(scene);
             const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
-            const seen = new Set(), list = [], extra = [];
-            data.decks.filter(d => d.cards && d.cards.length === 3).sort((x, y) => (y.attacks || 0) - (x.attacks || 0)).forEach(d => {
-                const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return; seen.add(k);
-                if (!d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) || !playable(d.cards)) return;
-                const hp = hitParts(d.cards);
-                const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
-                if (pl.length) (list.length < 40 ? list : extra).push({ cards: d.cards, plans: pl });
-            });
-            const pick = await raidSimRank(P, env, me, list, n, null, extra);
+            const pkey = [r.identity, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
+            let pool = raidRecoAtPools.get(pkey);
+            if (!pool) {
+                const seen = new Set(), all = [];
+                data.decks.filter(d => d.cards && d.cards.length === 3).sort((x, y) => (y.attacks || 0) - (x.attacks || 0)).forEach(d => {
+                    const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return; seen.add(k);
+                    if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) || !playable(d.cards)) return;   // 這裡不扣用過的卡，挑的時候再扣
+                    const hp = hitParts(d.cards);
+                    const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
+                    if (pl.length) all.push({ cards: d.cards, plans: pl });
+                });
+                raidSimRankBusy++;
+                try { pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE); } finally { raidSimRankBusy--; }
+                raidRecoAtPools.set(pkey, pool);
+            }
+            const pick = await raidSimPickPool(P, env, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);
             return pick.map(o => o.cards.slice().sort().join('+'));
         }
         async function raidSimPickRecent() {
@@ -7892,9 +7907,9 @@
                     while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));
                     const sigs = await raidSimRecoSetAt(r, a, v, P, env0, data, proven);
                     raidRecoAtStore[ra.dedupKey] = { s: sigs, t: Date.now() };
-                    try { const ks = Object.keys(raidRecoAtStore); if (ks.length > 500) ks.sort((x, y) => raidRecoAtStore[x].t - raidRecoAtStore[y].t).slice(0, ks.length - 500).forEach(k => delete raidRecoAtStore[k]); localStorage.setItem(RAID_RECO_AT_KEY, JSON.stringify(raidRecoAtStore)); } catch (e) {}
-                    renderRaidRecentAttacks.last = null; renderRaidRecentAttacks();
                 }
+                try { const ks = Object.keys(raidRecoAtStore); if (ks.length > 500) ks.sort((x, y) => raidRecoAtStore[x].t - raidRecoAtStore[y].t).slice(0, ks.length - 500).forEach(k => delete raidRecoAtStore[k]); localStorage.setItem(RAID_RECO_AT_KEY, JSON.stringify(raidRecoAtStore)); } catch (e) {}
+                renderRaidRecentAttacks.last = null; renderRaidRecentAttacks();   // 全部算完才一次更新畫面，不會一個一個跳
             } catch (e) {} finally { raidRecoAtBusy = false; }
         }
         async function raidSimPickRun(identity, auto) {
@@ -12903,7 +12918,11 @@
             } catch (e) { raidSimPool = false; return null; }
         }
         async function raidSimRankInner(P, env, me, list, n, progress, extra) {
-            const all = list.concat(extra || []);
+            const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress);
+            return raidSimPickPool(P, env, me, pool, n);
+        }
+        // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
+        async function raidSimEvalPool(P, env, me, all, n, progress) {
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
             let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => { if (progress) progress(`計算中 ${Math.round(f * 60)}%`); });
             if (!quick) {
@@ -12923,7 +12942,11 @@
                 await new Promise(r => setTimeout(r, 0));
                 quick[i] = raidSimFinal(P, env, me, quick[i]);
             }
-            const pool = quick.slice().sort((a, b) => b.avg - a.avg);
+            return quick;
+        }
+        // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
+        async function raidSimPickPool(P, env, me, pool, n) {
+            pool.sort((a, b) => b.avg - a.avg);
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;
             const used = new Set(), cur = [];
@@ -15206,19 +15229,20 @@
                 const shortLabel = raidPartShortCombined(parts);
                 const fiveGroups = ['頭', '肚', '肩', '手', '腳'].every(ch => shortLabel.includes(ch));
                 const partLabel = hitAll8 || fiveGroups || (attackableNow.length > 1 && attackableNow.every(k => hitSet.has(k) || hitAny.has(k))) ? (currentLang === 'en' ? 'All' : '全部位') : shortLabel;
+                const partHtml = `<span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>`;
                 const d = new Date(a.ts);
                 const pad = n => String(n).padStart(2, '0');
                 const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 return `
                     <div class="raid-recent-item${a.dedupKey && renderRaidRecentAttacks.seen && !renderRaidRecentAttacks.seen.has(a.dedupKey) ? ' is-new' : ''}">
                         <span class="raid-recent-player"><span class="raid-recent-time">${timeStr}</span><span class="raid-recent-name">${escapeHtml(a.player)}</span></span>
-                        <span class="raid-recent-part">${escapeHtml(partLabel)}<span class="raid-layer-badge ${layerCls}">${layerLabel}</span></span>
+                        ${partHtml}
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
                             : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
-                        ${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="flex-shrink:0; cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}
+                        <span class="raid-recent-mark">${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}</span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
-                    </div>${recoMatch === false && raidRecentRecoOpen.has(a.dedupKey) ? raidRecentRecoLine(aCards, pk.s) : ''}`;
+                    </div>${recoMatch === false && raidRecentRecoOpen.has(a.dedupKey) ? raidRecentRecoLine(aCards, pk.s, partHtml, `-${formatNum(a.dmg)}`) : ''}`;
             }).join('');
             // 內容沒變就不重畫（以前每次定期同步都整個重畫，淡入動畫一直重播，看起來一直閃）；只有新的那一刀才淡入
             renderRaidRecentAttacks.seen = new Set(raidRecentAttacks.map(a => a.dedupKey).filter(Boolean));

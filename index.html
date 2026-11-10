@@ -7788,13 +7788,33 @@
             return raidSimDeckList;
         }
         const RAID_SIM_PROVEN_USES = 30;   // 推薦只用公會打過 30 次以上的牌組（次數少的模擬沒驗證過，常常高估）
+        // 少見牌組（公會打過不到 30 次）不擋掉，模擬傷害打九折保守估計（實際紀錄驗證過：少用的組合常比模擬低一成）
+        const RAID_SIM_RARE_FACTOR = 0.9;
+        let raidSimUsesMap = null;
+        function raidSimDeckFactor(cards) {
+            if (!raidSimDeckList) return 1;
+            if (!raidSimUsesMap) raidSimUsesMap = new Map(raidSimDeckList.map(d => [d.cards.slice().sort().join('+'), d.uses]));
+            return (raidSimUsesMap.get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_PROVEN_USES ? 1 : RAID_SIM_RARE_FACTOR;
+        }
+        // 推薦的候選牌組：公會打過 30 次以上的、前 15 名打過的（data.decks）、外部模擬器情境推過的（包含公會沒人打過的組合）
+        async function raidSimCandidateDecks(data) {
+            const list = await raidSimLoadDeckList();
+            const uses = new Map((list || []).map(d => [d.cards.slice().sort().join('+'), d.uses]));
+            const seen = new Set(), out = [];
+            const add = (cards) => { if (!Array.isArray(cards) || cards.length !== 3) return; const k = cards.slice().sort().join('+'); if (seen.has(k)) return; seen.add(k); out.push({ cards, uses: uses.get(k) || 0 }); };
+            (list || []).filter(d => d.uses >= RAID_SIM_PROVEN_USES).forEach(d => add(d.cards));
+            ((data && data.decks) || []).forEach(d => add(d.cards));
+            (BY_PART_GAME_SCENARIOS || []).forEach(sc => (sc.decks || []).forEach(d => add(d.cards)));
+            out.sort((x, y) => y.uses - x.uses);
+            return out;
+        }
         async function raidSimProvenSet() {
             const l = await raidSimLoadDeckList();
             return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 3;   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
+        const RAID_SIM_PICK_VER = 4;   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         // 舊版本（tt2_sim_pick_v1～v8）算過的也搬過來，新的版本優先；搬完刪掉舊的
@@ -7813,7 +7833,8 @@
             } catch (e) {}
         }
         // 打開攻擊紀錄時自動在背景算：照排行由上往下，一次算一個人，算好就更新畫面
-        const raidPickPools = new Map();   // 配卡用的傷害表（玩家＋部位狀態）
+        const raidPickPools = new Map();
+        let raidPickCands = null;   // 配卡的候選牌組（跟推薦同一份）   // 配卡用的傷害表（玩家＋部位狀態）
         let raidSimPickAutoBusy = false, raidSimPickRerenderTimer = null, raidSimPickRerenderAt = 0;
         async function raidSimPickAuto() {
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
@@ -7881,7 +7902,7 @@
             if (!pool) {
                 const seen = new Set(), all = [];
                 data.decks.filter(d => d.cards && d.cards.length === 3).sort((x, y) => (y.attacks || 0) - (x.attacks || 0)).forEach(d => {
-                    const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return; seen.add(k);
+                    const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return; seen.add(k);
                     if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) || !playable(d.cards)) return;   // 這裡不扣用過的卡，挑的時候再扣
                     const hp = hitParts(d.cards);
                     const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
@@ -7972,7 +7993,8 @@
                     if (!pool) {
                         const { hitParts } = raidSimPartFns(scene);
                         const all = [];
-                        raidSimDeckList.filter(d => d.uses >= RAID_SIM_PROVEN_USES && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c))).forEach(d => {
+                        if (!raidPickCands) raidPickCands = await raidSimCandidateDecks(await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff())));
+                        raidPickCands.filter(d => d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c))).forEach(d => {
                             const hp = hitParts(d.cards); if (!hp.length) return;
                             const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
                             if (pl.length) all.push({ cards: d.cards, plans: pl });
@@ -8058,7 +8080,7 @@
                 let pickInfo = raidSimPickByPlayer.get(identity) || null;
                 {
                     let pa = 0, pb = 0, pn = 0, old = 0;
-                    attacks.forEach(a => { if (!a.simB) return; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0) { pa += a.totalDamage; pb += st.v; pn++; if (st.ver !== RAID_SIM_PICK_VER) old++; } });
+                    attacks.forEach(a => { if (!a.simB) return; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0) { pa += a.totalDamage; pb += st.v; pn++; if (!(st.ver >= 3)) old++; } });
                     if (pn > 0) pickInfo = { ratio: pa / pb, old: old * 2 > pn };   // 大多還是舊算法的結果：標紅用舊門檻，免得還沒重算完就一堆人變紅
                 }
                 // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；
@@ -9629,7 +9651,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim11';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim12';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12417,7 +12439,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v11';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v12';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
@@ -12428,7 +12450,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco');
+            const remote = await kvGet('home_reco_v2');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12440,7 +12462,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v2', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12461,9 +12483,7 @@
             const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             if (!n) return [];
-            const seen = new Set(), proven = await raidSimProvenSet();
-            const cands = data.decks.filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0)).filter(d => {
-                const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k);
+            const cands = (await raidSimCandidateDecks(data)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
@@ -12976,7 +12996,7 @@
                     quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
                 }
             }
-            quick.sort((a, b) => b.avg - a.avg);
+            quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
             const nTop = Math.min(quick.length, topN || Math.max(24, n * 4));   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => { if (progress) progress(`計算中 ${60 + Math.round(f * 40)}%`); });
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
@@ -12989,7 +13009,8 @@
         }
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
         async function raidSimPickPool(P, env, me, pool, n) {
-            pool.sort((a, b) => b.avg - a.avg);
+            const val = (o) => o.avg * raidSimDeckFactor(o.cards);   // 少見牌組打九折後再比
+            pool.sort((a, b) => val(b) - val(a));
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;
             const used = new Set(), cur = [];
@@ -12999,17 +13020,17 @@
                 if (cur.length >= n) return;
                 for (let j = i; j < pool.length; j++) {
                     const o = pool[j];
-                    if (best.length === n && sum + (n - cur.length) * o.avg <= bestSum) return;
+                    if (best.length === n && sum + (n - cur.length) * val(o) <= bestSum) return;
                     if (o.cards.some(c => used.has(c))) continue;
                     o.cards.forEach(c => used.add(c)); cur.push(o);
-                    dfs(j + 1, sum + o.avg);
+                    dfs(j + 1, sum + val(o));
                     cur.pop(); o.cards.forEach(c => used.delete(c));
                 }
             };
             // 挑中的組如果只快速篩過（8 次，可能剛好偏高）：補跑 200 次再重新搜尋，直到挑中的都是精算過的
             for (let round = 0; round < 6; round++) {
                 best = []; bestSum = -1; steps = 0;
-                pool.sort((a, b) => b.avg - a.avg);
+                pool.sort((a, b) => val(b) - val(a));
                 dfs(0, 0);
                 const rough = best.filter(o => !o.final);
                 if (!rough.length) break;
@@ -13020,7 +13041,8 @@
                     if (fr) pool[k] = fr[i]; else { await new Promise(r => setTimeout(r, 0)); pool[k] = raidSimFinal(P, env, me, rough[i]); }
                 }
             }
-            const pick = best.slice();
+            // 回傳的應打也打折（少見牌組沒有實際紀錄驗證，保守估計）
+            const pick = best.map(o => { const f = raidSimDeckFactor(o.cards); return f < 1 ? { ...o, avg: o.avg * f, lo: o.lo != null ? o.lo * f : o.lo, hi: o.hi != null ? o.hi * f : o.hi, rare: true } : o; });
             pick.sort((a, b) => b.avg - a.avg);
             return pick;
         }
@@ -13038,9 +13060,7 @@
             const me = raidSimPlayer(v, morale, season);
             // 候配卡組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
-            const seen = new Set(), proven = await raidSimProvenSet();
-            const cands = ((data && data.decks) || []).filter(d => d.cards && d.cards.length === 3).sort((a, b) => (b.attacks || 0) - (a.attacks || 0))
-                .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
+            const cands = (await raidSimCandidateDecks(data)).filter(d => d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)));
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
             const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })));

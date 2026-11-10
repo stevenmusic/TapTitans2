@@ -7970,6 +7970,7 @@
                 const stored = raidSimPickStore[raidSimExpKey(a)];
                 if (stored && stored.v > 0 && stored.ver === RAID_SIM_PICK_VER) { a.simBest = stored.v; a.simBestCards = stored.c; a.simBestTg = stored.g; sa += a.totalDamage; sb += stored.v; continue; }
                 if (!auto && !keepOld()) { raidSimPickByPlayer.set(identity, { busy: `計算中 ${Math.round(i / atks.length * 100)}%` }); progress(); }
+                while (auto && (raidSimRankBusy > 0 || raidSimHomeInflight)) await new Promise(res => setTimeout(res, 300));   // 首頁推薦或有人按推薦在算：背景配卡讓它先算
                 // 這一輪他之前用過的卡不能用
                 const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
                 const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
@@ -12441,6 +12442,7 @@
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
         const RAID_SIM_HOME_KEY = 'tt2_home_sim_v13';
         let raidSimHomeMem = null;
+        let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
@@ -12456,9 +12458,19 @@
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
                 return remote.rows;
             }
+            // 同一個狀態已經在算：等它就好，不要再開一份（血量一變就會觸發檢查，以前會疊好幾份同時算，結果一份都算不完）
+            if (raidSimHomeInflight && raidSimHomeInflight.sig === sig) { raidSimHomeInflight.progress = progress; return raidSimHomeInflight.promise; }
+            const gen = ++raidSimHomeGen;   // 狀態變了：舊的那份在下一批工作時自己停掉
+            const fl = { sig, progress };
             const { hitParts, playable } = raidSimPartFns(byPartPartsToScene(raidState.parts, raidBannedParts));
-            const rows = await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, progress, v);
-            if (!rows || !rows.length) return null;
+            fl.promise = (async () => {
+                try { return await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, (t) => { if (gen !== raidSimHomeGen) return 'stop'; if (fl.progress) fl.progress(t); }, v); }
+                catch (e) { return null; }
+                finally { if (raidSimHomeInflight === fl) raidSimHomeInflight = null; }
+            })();
+            raidSimHomeInflight = fl;
+            const rows = await fl.promise;
+            if (!rows || !rows.length || gen !== raidSimHomeGen) return null;
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
@@ -12966,19 +12978,20 @@
             if (!pool || !jobs.length) return pool ? [] : null;
             const CH = 3, chunks = [];
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
-            const out = new Array(jobs.length); let next = 0, done = 0;
+            const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
                 await Promise.all(pool.ws.map(async (w) => {
-                    while (next < chunks.length) {
+                    while (next < chunks.length && !stopped) {
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
                         const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part }); });
                         res.forEach((r, k) => { out[start + k] = r; });
-                        done += part.length; if (onProgress) onProgress(done / jobs.length);
+                        done += part.length;
+                        if (onProgress && onProgress(done / jobs.length) === 'stop') { stopped = true; throw new Error('cancelled'); }   // 呼叫的地方說不用算了（狀態已經變了）
                     }
                 }));
                 return out;
-            } catch (e) { raidSimPool = false; return null; }
+            } catch (e) { if (e && e.message === 'cancelled') throw e; raidSimPool = false; return null; }
         }
         async function raidSimRankInner(P, env, me, list, n, progress, extra) {
             const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress);
@@ -12987,21 +13000,21 @@
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
         async function raidSimEvalPool(P, env, me, all, n, progress, topN) {
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
-            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => { if (progress) progress(`計算中 ${Math.round(f * 60)}%`); });
+            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => progress ? progress(`計算中 ${Math.round(f * 60)}%`) : undefined);
             if (!quick) {
                 quick = [];
                 for (let i = 0; i < all.length; i++) {
-                    if (progress) progress(`計算中 ${Math.round(i / all.length * 60)}%`);   // 快速篩約占 6 成時間
+                    if (progress && progress(`計算中 ${Math.round(i / all.length * 60)}%`) === 'stop') throw new Error('cancelled');   // 快速篩約占 6 成時間
                     await new Promise(r => setTimeout(r, 0));
                     quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
                 }
             }
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
             const nTop = Math.min(quick.length, topN || Math.max(24, n * 4));   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
-            const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => { if (progress) progress(`計算中 ${60 + Math.round(f * 40)}%`); });
+            const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {
-                if (progress) progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`);
+                if (progress && progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`) === 'stop') throw new Error('cancelled');
                 await new Promise(r => setTimeout(r, 0));
                 quick[i] = raidSimFinal(P, env, me, quick[i]);
             }

@@ -12625,7 +12625,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=4'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=5'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=3').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
@@ -12768,17 +12768,61 @@
             raidSimRankBusy++;
             try { return await raidSimRankInner(P, env, me, list, n, progress, extra); } finally { raidSimRankBusy--; }
         }
+        // Web Worker 池：手機有幾核就開幾個（最多 6 個），把模擬工作分批丟給它們同時算
+        let raidSimPool = null;
+        function raidSimPoolGet() {
+            if (raidSimPool !== null) return raidSimPool;
+            try {
+                if (typeof Worker === 'undefined') throw new Error('no worker');
+                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
+                const pool = { ws: [], wait: new Map(), seq: 0 };
+                for (let i = 0; i < n; i++) {
+                    const w = new Worker('raid-sim/simworker.js?v=1');
+                    w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
+                    w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
+                    pool.ws.push(w);
+                }
+                raidSimPool = pool;
+            } catch (e) { raidSimPool = false; }
+            return raidSimPool;
+        }
+        // 平行算一批工作（順序跟輸入一樣）；失敗回傳 null，呼叫的地方改回主畫面算
+        async function raidSimParallel(P, jobs, onProgress) {
+            const pool = raidSimPoolGet();
+            if (!pool || !jobs.length) return pool ? [] : null;
+            const CH = 3, chunks = [];
+            for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
+            const out = new Array(jobs.length); let next = 0, done = 0;
+            try {
+                await Promise.all(pool.ws.map(async (w) => {
+                    while (next < chunks.length) {
+                        const [start, part] = chunks[next++];
+                        const id = ++pool.seq;
+                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part }); });
+                        res.forEach((r, k) => { out[start + k] = r; });
+                        done += part.length; if (onProgress) onProgress(done / jobs.length);
+                    }
+                }));
+                return out;
+            } catch (e) { raidSimPool = false; return null; }
+        }
         async function raidSimRankInner(P, env, me, list, n, progress, extra) {
             const all = list.concat(extra || []);
-            const quick = [];
-            for (let i = 0; i < all.length; i++) {
-                if (progress) progress(`計算中 ${Math.round(i / all.length * 60)}%`);   // 快速篩約占 6 成時間
-                await new Promise(r => setTimeout(r, 0));
-                quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
+            // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
+            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => { if (progress) progress(`計算中 ${Math.round(f * 60)}%`); });
+            if (!quick) {
+                quick = [];
+                for (let i = 0; i < all.length; i++) {
+                    if (progress) progress(`計算中 ${Math.round(i / all.length * 60)}%`);   // 快速篩約占 6 成時間
+                    await new Promise(r => setTimeout(r, 0));
+                    quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
+                }
             }
             quick.sort((a, b) => b.avg - a.avg);
             const nTop = Math.min(quick.length, Math.max(24, n * 4));
-            for (let i = 0; i < nTop; i++) {
+            const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => { if (progress) progress(`計算中 ${60 + Math.round(f * 40)}%`); });
+            if (fin) fin.forEach((o, i) => { quick[i] = o; });
+            else for (let i = 0; i < nTop; i++) {
                 if (progress) progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`);
                 await new Promise(r => setTimeout(r, 0));
                 quick[i] = raidSimFinal(P, env, me, quick[i]);

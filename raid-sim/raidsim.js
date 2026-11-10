@@ -231,4 +231,4 @@ function simMean(opt, runs = 30, P) {
   return acc;
 }
 const RaidSimApi = { simAttack, simMean, A, get SK() { return SK; }, P0, LOCS, init(skills) { SK = skills; } };
-if (typeof module !== 'undefined' && module.exports) module.exports = RaidSimApi; else window.RaidSim = RaidSimApi;
+if (typeof module !== 'undefined' && module.exports) module.exports = RaidSimApi; else (typeof window !== 'undefined' ? window : self).RaidSim = RaidSimApi;   // 網頁或 Web Worker 都能用

@@ -586,16 +586,22 @@ async function insertAttack(entry) {
   // 這樣「最近攻擊」跑馬燈跟 /recent-attacks 才不會比即時推播晚一拍才看到這筆。
   // 如果等一下 Turso 真的寫失敗（或判定是重複），再把這筆從快取撤銷。
   const addedToCache = cacheAddAttack(entry);
-  try {
-    await dbReady;
-    const result = await db.execute({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(entry) });
-    if (result.rowsAffected === 0 && addedToCache) attacksByDedupKey.delete(attackDedupKey(entry));
-    return result.rowsAffected > 0;
-  } catch (e) {
-    if (addedToCache) attacksByDedupKey.delete(attackDedupKey(entry));
-    console.error('[turso] 寫入攻擊紀錄失敗:', e && e.message ? e.message : e);
-    return false;
+  // Turso 偶爾連不上：寫失敗不要把這筆丟掉（以前會從快取撤銷，攻擊就永遠漏了），留在快取、每 30 秒重寫，最多試 2 小時
+  for (let i = 0; i < 240; i++) {
+    try {
+      await dbReady;
+      const result = await db.execute({ sql: INSERT_ATTACK_SQL, args: attackInsertArgs(entry) });
+      if (result.rowsAffected === 0 && addedToCache && i === 0) attacksByDedupKey.delete(attackDedupKey(entry));
+      if (i > 0) watcherDebug.attackWriteRetried = (watcherDebug.attackWriteRetried || 0) + 1;
+      return result.rowsAffected > 0;
+    } catch (e) {
+      watcherDebug.attackWriteFailures = (watcherDebug.attackWriteFailures || 0) + 1;
+      watcherDebug.lastAttackWriteError = { at: new Date().toISOString(), player: entry.player, message: String(e && e.message ? e.message : e).slice(0, 200) };
+      console.error(`[turso] 寫入攻擊紀錄失敗（第 ${i + 1} 次，30 秒後重試）:`, e && e.message ? e.message : e);
+      await new Promise(r => setTimeout(r, 30000));
+    }
   }
+  return false;
 }
 
 // 匯入功能用：一次多筆用 batch 一口氣送出，比一筆一筆等網路來回快很多
@@ -1827,7 +1833,8 @@ function watcherHandleAttack(payload) {
     watcherBossOrdinal = ordinal;
   }
 
-  const attackCtx = buildAttackContext();   // 打之前的狀態（下面就要用這一刀的結果更新部位血量了）
+  let attackCtx = null;
+  try { attackCtx = buildAttackContext(); } catch (e) { console.error('[watcher] buildAttackContext 失敗（攻擊照樣記）:', e.message); }   // 打之前的狀態（下面就要用這一刀的結果更新部位血量了）
   const curParts = (rs.current && rs.current.parts) || [];
   curParts.forEach((p) => {
     const { layer, loc } = splitPartId(p.part_id);
@@ -1841,8 +1848,7 @@ function watcherHandleAttack(payload) {
   if (rs.current && typeof rs.current.current_hp === 'number') {
     watcherBossCurrentHp = rs.current.current_hp;
   }
-  checkSkillConditionsAndNotify();
-  saveCurrentBossState();
+  try { checkSkillConditionsAndNotify(); saveCurrentBossState(); } catch (e) { console.error('[watcher] 更新王狀態失敗（攻擊照樣記）:', e.message); }   // 這裡出錯不能讓這一刀沒記到
 
   const playerName = (payload.player && payload.player.name) || '?';
   const playerCode = (payload.player && payload.player.player_code) || null;
@@ -1898,7 +1904,7 @@ function watcherHandleAttack(payload) {
     totalDamage
   };
   insertAttack(attackEntry);
-  saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
+  if (attackCtx) saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
   try { simExp.enqueue(attackEntry, simEnvLive(attackCtx)); } catch (e) {}   // 期望傷害（打法／配卡）背景模擬，不影響攻擊紀錄
 }
 

@@ -9804,7 +9804,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim18';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim19';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12607,7 +12607,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v18';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v19';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12619,7 +12619,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v8');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v9');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12641,7 +12641,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v8', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v9', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12652,6 +12652,28 @@
             return { hitParts, playable };
         }
         const raidSimPickInflight = new Map();
+        /* 推薦好幾組時照各部位剩下的血分配：傷害高的組先挑部位，打掉的血先扣掉，下一組再挑；
+           某部位剩的血不夠打，換到其他打法（血多的部位例如還有很多盔甲的頭，自然分到比較多刀）。應打算到部位剩下的血為止 */
+        function raidSimDeplete(pick, env) {
+            if (!env || !env.hp) return;
+            const left = { ...env.hp };
+            const hpOf = (tg) => tg.reduce((t, k) => t + (left[k] || 0), 0);
+            pick.forEach(o => {
+                const raw0 = o.raw || o.avg;
+                const alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
+                const cur = alts.find(a => a.tg.join() === o.tg.join());
+                const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
+                let best = null;
+                alts.forEach(a => { const est = a.raw * scale, eff = Math.min(est, hpOf(a.tg)); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
+                if (!best || !(best.eff > 0)) return;
+                const f = raw0 > 0 ? best.est / raw0 : 1;
+                if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; }
+                const c = hpOf(o.tg); o.cap = c;
+                o.avg = best.eff; if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
+                const tot = hpOf(o.tg) || 1; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - best.eff * (left[k] || 0) / tot); });
+            });
+            pick.sort((a, b) => b.avg - a.avg);
+        }
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
@@ -12675,7 +12697,7 @@
             const list = [], extra = [];
             cands.forEach((d, i) => {
                 const hp = hitParts(d.cards);
-                const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
+                const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label, cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }); });
                 const pl2 = raidSimPlansFor(d.cards, plans); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2, cplans: raidSimCursedPlans(pl2, env), aplans: raidSimArmorPlans(pl2, env) });
             });
             const pick0 = await raidSimRank(P, env, me, list, n, progress, extra, fast ? 12 : null);
@@ -12694,6 +12716,7 @@
                 }
                 pick.push(best);
             }
+            raidSimDeplete(pick, env);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             return rows;
@@ -13112,7 +13135,10 @@
             const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const cyc = Math.max(raidLiveRoundNow(latest) || 0, ...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !latest || a.raidStartedAt === latest).map(a => Number(a.cycle) || 0));
             const mirror = cyc >= 2 ? 0.35 : 0;
-            return { board, curse, buff, extraSec, morale, season, open, plans, mirror };
+            // 每個部位現在剩多少血（盔甲＋肉體）：一刀的應打不能超過目標部位剩下的血，推薦好幾組時也照這個分配
+            const hp = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hp[key] = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); });
+            plans.forEach(pl => { pl.cap = pl.tg.reduce((t, k) => t + (hp[k] || 0), 0); });
+            return { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp };
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
         const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 200;
@@ -13124,18 +13150,22 @@
         function raidSimScreen(P, env, me, cards, plans) {
             const base = raidSimBase(env, me, cards);
             // 兩段：每種打法先跑 2 次，留最好的 2 種再跑滿 8 次（打法多的時候省很多時間）
-            let rough = plans.map(pl => ({ plan: pl.label, tg: pl.tg, avg: RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 2, P).total }));
+            // 傷害超過目標部位剩下的血就算到剩下的血為止（cap）；每種打法的結果留著（alts），推薦好幾組時重新分配部位用
+            const capOf = (pl) => pl.cap > 0 ? pl.cap : Infinity;
+            let rough = plans.map(pl => { const raw = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, 2, P).total; return { plan: pl.label, tg: pl.tg, cap: pl.cap, raw, avg: Math.min(raw, capOf(pl)) }; });
+            const alts = rough.map(x => ({ plan: x.plan, tg: x.tg, raw: x.raw }));
             if (rough.length > 2) rough = rough.sort((a, b) => b.avg - a.avg).slice(0, 2);
             let best = null;
-            rough.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, RAID_SIM_SCREEN_RUNS, P).total; if (!best || r > best.avg) best = { ...pl, avg: r }; });
-            return { cards, ...best };
+            rough.forEach(pl => { const r = RaidSim.simMean({ ...base, targets: pl.tg, seed: 7 }, RAID_SIM_SCREEN_RUNS, P).total; const v = Math.min(r, capOf(pl)); if (!best || v > best.avg) best = { ...pl, raw: r, avg: v }; });
+            return { cards, ...best, alts };
         }
         function raidSimFinal(P, env, me, o) {
             const base = raidSimBase(env, me, o.cards);
             const runs = [];
             for (let k = 0; k < RAID_SIM_FINAL_RUNS; k++) runs.push(RaidSim.simAttack({ ...base, targets: o.tg, seed: 1000 + k }, P).total);
             runs.sort((x, y) => x - y);
-            return { ...o, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: runs[Math.floor(runs.length * 0.25)], hi: runs[Math.floor(runs.length * 0.75)], final: true };
+            const c = o.cap > 0 ? o.cap : Infinity, raw = runs.reduce((x, y) => x + y, 0) / runs.length;
+            return { ...o, raw, avg: Math.min(raw, c), lo: Math.min(runs[Math.floor(runs.length * 0.25)], c), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c), final: true };
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
@@ -13153,7 +13183,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=4');
+                    const w = new Worker('raid-sim/simworker.js?v=5');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

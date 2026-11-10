@@ -9502,7 +9502,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim6';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim9';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12264,7 +12264,7 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v6';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v9';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
@@ -12308,9 +12308,17 @@
             cands.forEach((d, i) => {
                 const hp = hitParts(d.cards);
                 const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                const pl2 = raidSimPlansFor(d.cards, plans, env); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2 });
+                const pl2 = raidSimPlansFor(d.cards, plans); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2, cplans: raidSimCursedPlans(pl2, env) });
             });
-            const pick = await raidSimRank(P, env, me, list, n, progress, extra);
+            const pick0 = await raidSimRank(P, env, me, list, n, progress, extra);
+            const items = list.concat(extra);
+            const pick = [];
+            for (const o of pick0) {
+                const it = items.find(x => x.cards === o.cards || x.cards.join() === o.cards.join());
+                const cp = it && it.cplans || [];
+                if (cp.length && !cp.some(pl => pl.tg.join() === o.tg.join())) { await new Promise(r => setTimeout(r, 0)); const c2 = raidSimFinal(P, env, me, raidSimScreen(P, env, me, o.cards, cp)); pick.push(c2.avg >= o.avg * RAID_SIM_CURSE_KEEP ? c2 : o); }   // 改打詛咒甲傷害不變才改
+                else pick.push(o);
+            }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             return rows;
@@ -12609,16 +12617,14 @@
         const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
-        // 爆裂詛咒、苦痛詛咒：詛咒甲會拖累全公會的傷害，打得到詛咒甲的牌組只考慮打詛咒甲（打不到的才照原本挑）
-        function raidSimPlansFor(cards, plans, env) {
-            let out = cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans;
+        function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
+        // 爆裂詛咒、苦痛詛咒：詛咒甲會拖累全公會的傷害。牌組照最高傷害挑，挑好之後打得到詛咒甲的就改打詛咒甲
+        const RAID_SIM_CURSE_KEEP = 0.98;   // 改打詛咒甲傷害不變（差 2% 以內）才改，不犧牲傷害
+        function raidSimCursedPlans(plans, env) {
             const cur = env && env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted');
-            if (cur) {
-                const isC = (k) => env.board[k] && env.board[k].layer === 'armor' && env.board[k].cursed;
-                const onC = out.filter(p => p.tg.every(isC));
-                if (onC.length) out = onC;
-            }
-            return out;
+            if (!cur) return [];
+            const isC = (k) => env.board[k] && env.board[k].layer === 'armor' && env.board[k].cursed;
+            return plans.filter(p => p.tg.every(isC));
         }   // 天體靜態、宇宙激光不推薦
         // 這個人的模擬參數：卡片等級（含賽季加成：取原本等級和加成等級較高的）、死靈熊研究、每下點擊基礎傷害
         /* 賽季加成卡：官方資料沒有這個欄位，從這一場的攻擊紀錄自動偵測——
@@ -12806,7 +12812,7 @@
                 .filter(d => { const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return false; seen.add(k); return d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)); });
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
-            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans, env) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans, env) })));
+            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })));
             const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
             box.innerHTML = `<div style="font-size:11px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}${Object.keys(season).length ? `｜賽季加成 ${Object.entries(season).map(([c, n]) => `${escapeHtml(raidCardLabel(c))} +${n}`).join('、')}` : ''}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
                     <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}

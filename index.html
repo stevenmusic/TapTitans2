@@ -8111,7 +8111,7 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    a.simExp = sx && sx.exp ? sx.exp : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    a.simExp = sx && sx.exp ? sx.exp : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;
@@ -12230,6 +12230,7 @@
             `;
             }).join('');
             raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
+            setTimeout(raidAtkRangeFill, 300);   // 展開的玩家：補算單刀應打的範圍
         }
 
         /* ── 玩家專屬推薦牌組：這一輪（cycle）還沒用過的卡，組出最適合現在王狀態的牌組 ──
@@ -13234,6 +13235,7 @@
                 else raidLogExpandedPlayers.delete(r.player);
             }
             raidLogUiSave();
+            if (isHidden) setTimeout(raidAtkRangeFill, 100);
         }
 
         // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，
@@ -13263,6 +13265,45 @@
             if (k) { if (isHidden) raidLogOpenDetails.add(k); else raidLogOpenDetails.delete(k); raidLogUiSave(); }
         }
 
+        // 單刀「應打」的範圍（P25～P75）：伺服器只存平均，展開的玩家才在 Worker 補算（跟推薦一樣跑 200 次），存成相對平均的比例
+        const RAID_ATK_RANGE_KEY = 'tt2_atk_range';
+        let raidAtkRange = {};
+        try { raidAtkRange = JSON.parse(localStorage.getItem(RAID_ATK_RANGE_KEY) || '{}') || {}; } catch (e) {}
+        let raidAtkRangeBusy = false;
+        async function raidAtkRangeFill() {
+            if (raidAtkRangeBusy) return;
+            const els = [...document.querySelectorAll('.rl-expbox')].filter(el => el.offsetParent !== null && !raidAtkRange[el.dataset.k]);
+            if (!els.length) return;
+            raidAtkRangeBusy = true;
+            try {
+                const P = await raidSimLoad(); const env0 = await raidSimEnv();
+                const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+                const jobs = [], keys = [];
+                for (const el of els.slice(0, 30)) {
+                    const k = el.dataset.k;
+                    let a = null, r = null;
+                    for (const rr of (raidLogLastRanked || [])) { const x = rr.attacks.find(y => `${y.attackDatetime || y.ts}_${y.player}` === k); if (x) { a = x; r = rr; break; } }
+                    if (!a || !a.simB || !a.simTg || !a.cards || a.cards.length !== 3) continue;
+                    const v = (raidClanData && raidClanData.byCode.get(r.identity)) || raidAccountInfo(r.player); if (!v) continue;
+                    const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
+                    a.cards.forEach(c => { me.lv[c.name] = Math.max(me.lv[c.name] || 0, Number(c.level) || 0); });
+                    const board = {}; LOCS.forEach((l, i) => { const ch = a.simB[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    const env = { ...env0, board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const cards = a.cards.map(c => c.name);
+                    jobs.push({ kind: 'f', base: raidSimBase(env, me, cards), o: { cards, tg: a.simTg } }); keys.push(k);
+                }
+                const out = jobs.length ? await raidSimParallel(P, jobs) : [];
+                (out || []).forEach((o, i) => { if (o && o.avg > 0) raidAtkRange[keys[i]] = [o.lo / o.avg, o.hi / o.avg]; });
+                try { const ks = Object.keys(raidAtkRange); if (ks.length > 2000) ks.slice(0, ks.length - 2000).forEach(k => delete raidAtkRange[k]); localStorage.setItem(RAID_ATK_RANGE_KEY, JSON.stringify(raidAtkRange)); } catch (e) {}
+                // 直接填進畫面（不整張重畫）
+                document.querySelectorAll('.rl-expbox').forEach(el => {
+                    const rg = raidAtkRange[el.dataset.k]; const sp = el.querySelector('.rl-exprange'); if (!rg || !sp || sp.textContent) return;
+                    const m = /應打\s*([\d.]+)([MBK]?)/.exec(el.textContent); if (!m) return;
+                    const mul = { K: 1e3, M: 1e6, B: 1e9 }[m[2]] || 1, mean = parseFloat(m[1]) * mul;
+                    sp.textContent = `（${formatNumAlwaysM(mean * rg[0])}～${formatNumAlwaysM(mean * rg[1])}）`;
+                });
+            } catch (e) {} finally { raidAtkRangeBusy = false; }
+        }
         function renderRaidLogAttackCard(a, rIdx, aIdx, expandByDefault) {
             if (a.placeholder) {
                 const when = a.afterTs ? `${raidLogRelativeDate(a.afterTs)}～${raidLogRelativeDate(a.beforeTs).split(' ').pop()} 之間` : `${raidLogRelativeDate(a.beforeTs)} 之前`;
@@ -13277,8 +13318,8 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:grid; grid-template-columns: 56px repeat(${(a.cards || []).length}, 26px 58px); column-gap:5px; row-gap:2px; align-items:center;">
-                    <div style="grid-column: span 1; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
+                <div style="display:flex; flex-wrap:wrap; column-gap:5px; row-gap:2px; align-items:center;">
+                    <div style="flex:none; width:56px; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
                         <span>${t('raidLogTapDamage')}</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
@@ -13291,7 +13332,7 @@
                             : '<span style="font-size:17px; line-height:26px; display:block; text-align:center;">🃏</span>';
                         // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="grid-column: span 2; display:grid; grid-template-columns: 26px 58px; column-gap:5px; align-items:center;">
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="flex:none; width:89px; display:grid; grid-template-columns: 26px 58px; column-gap:5px; align-items:center;">
                                 ${icon}
                                 <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
@@ -13300,6 +13341,11 @@
                             </div>
                         `;
                     }).join('')}
+                    ${!a.placeholder && a.simExp > 0 ? (() => {
+                        // 應打：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均；括號是 P25～P75（10 刀約 5 刀落在這裡，展開時才補算）
+                        const rg = raidAtkRange[aKey];
+                        return `<div class="rl-expbox" data-k="${escapeHtml(aKey)}" style="margin-left:auto; text-align:center; background:#fbf2e2; border-radius:6px; padding:2px 7px; line-height:1.2; white-space:nowrap;"><div style="font-size:12.5px; font-weight:800; color:#2e5d32;">應打 ${escapeHtml(formatNumAlwaysM(a.simExp))}</div><div class="rl-exprange" style="font-size:10.5px; font-weight:600; color:#8a7a6a;">${rg ? `（${escapeHtml(formatNumAlwaysM(a.simExp * rg[0]))}～${escapeHtml(formatNumAlwaysM(a.simExp * rg[1]))}）` : ''}</div></div>`;
+                    })() : ''}
                 </div>
             `;
 
@@ -13343,18 +13389,10 @@
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->
                     <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:0 8px 6px;">
-                        <div style="border-top:1px dashed #e5dcd2; margin:0 0 2px; padding-top:3px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
+                        <div style="position:relative; border-top:1px dashed #e5dcd2; margin:0 0 2px; padding-top:3px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
                             ${bossStr}
+                            ${!a.placeholder && a.simExp > 0 ? (() => { const r = a.totalDamage / a.simExp; return `<span style="position:absolute; right:2px; top:3px; font-size:12px; font-weight:800; color:${r < RAID_SIM_PICK_LOW ? '#c0392b' : r >= 1 ? '#2e7d32' : '#8a7a6a'};">傷害${Math.round(r * 100)}%</span>`; })() : ''}
                         </div>
-                        ${(() => {
-                            // 預估傷害：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均（打法 % 用的數字）；配卡算過的話附上「照推薦打」的應打
-                            if (a.placeholder || !(a.simExp > 0)) return '';
-                            const r = a.totalDamage / a.simExp;
-                            const col = r < RAID_SIM_PICK_LOW ? '#c0392b' : r >= 1 ? '#2e7d32' : '#6b5a4a';
-                            const pk = raidSimPickStore[raidSimExpKey(a)];
-                            const reco = pk && pk.v > 0 && pk.ver >= 3 ? `<span style="color:#8a7a6a;">丨照推薦打 <b style="color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(pk.v))}</b></span>` : '';
-                            return `<div style="display:flex; justify-content:flex-end; align-items:baseline; gap:6px; flex-wrap:wrap; font-size:11.5px; color:#8a7a6a; margin:0 0 3px;">預估傷害 <b style="color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(a.simExp))}</b><span>實際 <b style="color:${col};">${Math.round(r * 100)}%</b></span>${reco}</div>`;
-                        })()}
                         ${partsGrid}
                     </div>
                 </div>

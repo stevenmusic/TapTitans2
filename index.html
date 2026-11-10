@@ -12652,11 +12652,16 @@
             return { hitParts, playable };
         }
         const raidSimPickInflight = new Map();
-        /* 推薦好幾組時照各部位剩下的血分配：傷害高的組先挑部位，打掉的血先扣掉，下一組再挑；
-           某部位剩的血不夠打，換到其他打法（血多的部位例如還有很多盔甲的頭，自然分到比較多刀）。應打算到部位剩下的血為止 */
+        /* 推薦好幾組時照各部位剩下的血的比例分配：傷害高的組先挑部位，用掉那個部位的份額，下一組再挑；
+           某部位的份額用完就換到其他打法（血多的部位例如還有很多盔甲的頭，分到比較多刀）。顯示的應打算到部位剩下的血為止 */
         function raidSimDeplete(pick, env) {
             if (!env || !env.hp) return;
-            const left = { ...env.hp };
+            // 每個部位分到的份額：照「能打的部位」剩下血量的比例分這個人這幾刀的傷害（多 3 成彈性），不超過部位本身剩的血。
+            // 每個人都照比例打，全公會打下來各部位差不多同時打完，不會大家都去打小部位、最後只剩頭
+            const open = (env.open || Object.keys(env.hp)).filter(k => env.hp[k] > 0);
+            const sumHp = open.reduce((t, k) => t + env.hp[k], 0) || 1;
+            const total = pick.reduce((t, o) => t + (o.raw || o.avg || 0), 0);
+            const left = {}; open.forEach(k => { left[k] = Math.min(env.hp[k], total * env.hp[k] / sumHp * 1.3); });
             const hpOf = (tg) => tg.reduce((t, k) => t + (left[k] || 0), 0);
             pick.forEach(o => {
                 const raw0 = o.raw || o.avg;
@@ -12668,8 +12673,8 @@
                 if (!best || !(best.eff > 0)) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
                 if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; }
-                const c = hpOf(o.tg); o.cap = c;
-                o.avg = best.eff; if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
+                const c = best.a.tg.reduce((t, k) => t + (env.hp[k] || 0), 0); o.cap = c;   // 顯示：算到部位真正剩下的血為止（份額只用來分配）
+                o.avg = Math.min(best.est, c); if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
                 const tot = hpOf(o.tg) || 1; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - best.eff * (left[k] || 0) / tot); });
             });
             pick.sort((a, b) => b.avg - a.avg);

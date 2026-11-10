@@ -6632,6 +6632,40 @@
         // 最新場次（serverSessionsSummary[0]）時才會補上，這樣才知道要把它算進哪一場。
         // 全新一場開打、我們還不知道場次資訊的極短暫空窗期就先跳過，不強行猜測，
         // 下次重新載入/重新打開面板時會透過正常的伺服器查詢自然補齊，不會漏記。
+        // 自動補漏：網頁經由中繼伺服器收到的即時攻擊，2 分鐘後跟伺服器資料庫比對，伺服器沒存到（監聽斷線、部署重啟）就用這筆補登。
+        // 伺服器用 dedup key 擋重複，好幾個人同時補也只會存一筆。伺服器暫時連不上就 1 分鐘後再試，最多試 30 分鐘
+        const raidLiveVerify = [];
+        let raidLiveVerifyTimer = null;
+        function raidLiveVerifyQueue(entry) {
+            if (!entry || !entry.attackDatetime || !entry.player || raidLogDemoActive || window.TT2_DEV_ENV) return;
+            raidLiveVerify.push({ entry: JSON.parse(JSON.stringify(entry)), at: Date.now() });
+            if (!raidLiveVerifyTimer) raidLiveVerifyTimer = setTimeout(raidLiveVerifyRun, 120000);
+        }
+        async function raidLiveVerifyRun() {
+            raidLiveVerifyTimer = null;
+            const now = Date.now();
+            const due = raidLiveVerify.filter(x => now - x.at >= 110000);
+            if (!due.length) { if (raidLiveVerify.length) raidLiveVerifyTimer = setTimeout(raidLiveVerifyRun, 30000); return; }
+            const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+            try {
+                const since = Math.min(...due.map(x => x.at)) - 10 * 60000;
+                const r = await fetch(`${relayUrl}/attacks-since?ts=${since}`, { cache: 'no-store' });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const have = new Set(((await r.json()).attacks || []).map(a => `${a.attackDatetime || a.ts}_${a.player}`));
+                const missing = due.filter(x => !have.has(`${x.entry.attackDatetime}_${x.entry.player}`)).map(x => x.entry);
+                if (missing.length) {
+                    await fetch(`${relayUrl}/full-attack-log/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attacks: missing }) });
+                    console.log('[補漏] 伺服器沒收到的即時攻擊已補登', missing.map(e => e.player + ' ' + e.attackDatetime));
+                }
+                due.forEach(x => raidLiveVerify.splice(raidLiveVerify.indexOf(x), 1));
+            } catch (e) {
+                // 伺服器暫時連不上（例如正在部署）：超過 30 分鐘的就放棄，其他的等一下再試
+                for (let i = raidLiveVerify.length - 1; i >= 0; i--) if (now - raidLiveVerify[i].at > 30 * 60000) raidLiveVerify.splice(i, 1);
+                if (raidLiveVerify.length) raidLiveVerifyTimer = setTimeout(raidLiveVerifyRun, 60000);
+                return;
+            }
+            if (raidLiveVerify.length) raidLiveVerifyTimer = setTimeout(raidLiveVerifyRun, 30000);
+        }
         function appendLiveAttackToRankingCache(a) {
             if (raidLogDemoActive) return;
             const latestSession = serverSessionsSummary[0];
@@ -6662,6 +6696,7 @@
             };
 
             raidFixCycles([entry]);
+            raidLiveVerifyQueue(entry);   // 2 分鐘後確認伺服器資料庫有沒有這一刀，沒有就補回去
             serverAttackLogCache = [...serverAttackLogCache, entry];
             sessionAttacksCache.set(latestSession.startedAt, serverAttackLogCache);
             latestSession.attackCount = (latestSession.attackCount || 0) + 1;

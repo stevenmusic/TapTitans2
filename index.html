@@ -13325,8 +13325,8 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:grid; grid-template-columns: clamp(38px, 11vw, 56px) repeat(${(a.cards || []).length}, clamp(54px, 16.5vw, 86px)) 1fr; column-gap:clamp(2px, 0.8vw, 8px); align-items:center;">
-                    <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(9.5px, 2.75vw, 11.5px); color:#5a4a3a; white-space:nowrap;">
+                <div style="container-type:inline-size;"><div style="display:grid; grid-template-columns: clamp(38px, 13cqw, 60px) repeat(${(a.cards || []).length}, clamp(54px, 20cqw, 104px)) 1fr; column-gap:clamp(2px, 1cqw, 8px); align-items:center;">
+                    <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(9.5px, 3.3cqw, 13px); color:#5a4a3a; white-space:nowrap;">
                         <span>${t('raidLogTapDamage')}</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
@@ -13335,13 +13335,13 @@
                         const dmg = cardDamage[c.name];
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:100%; max-width:26px; aspect-ratio:1; height:auto; border-radius:5px; object-fit:cover; display:block;">`
-                            : '<span style="font-size:17px; line-height:26px; display:block; text-align:center;">🃏</span>';
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:100%; max-width:34px; aspect-ratio:1; height:auto; border-radius:5px; object-fit:cover; display:block;">`
+                            : '<span style="font-size:17px; line-height:30px; display:block; text-align:center;">🃏</span>';
                         // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="min-width:0; display:grid; grid-template-columns: clamp(18px, 5.2vw, 26px) minmax(0, 1fr); column-gap:clamp(2px, 0.6vw, 5px); align-items:center;">
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="min-width:0; display:grid; grid-template-columns: clamp(18px, 6.2cqw, 32px) minmax(0, 1fr); column-gap:clamp(2px, 0.6cqw, 5px); align-items:center;">
                                 ${icon}
-                                <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(9.5px, 2.75vw, 11.5px); color:#5a4a3a; white-space:nowrap;">
+                                <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(9.5px, 3.3cqw, 13px); color:#5a4a3a; white-space:nowrap;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
                                     <span style="font-weight:600;">${dmgLabel}</span>
                                 </div>
@@ -13350,9 +13350,9 @@
                     }).join('')}
                     ${!a.placeholder && a.simExp > 0 ? (() => {
                         // 應打：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均
-                        return `<div class="rl-expbox" data-k="${escapeHtml(aKey)}" style="justify-self:end; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1vw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 2.75vw, 11.5px); font-weight:600; color:#5a6a4a;">應打 ${escapeHtml(formatNumAlwaysM(a.simExp))}</div>`;
+                        return `<div class="rl-expbox" data-k="${escapeHtml(aKey)}" style="justify-self:end; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1cqw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 3.3cqw, 13px); font-weight:600; color:#5a6a4a;">應打 ${escapeHtml(formatNumAlwaysM(a.simExp))}</div>`;
                     })() : ''}
-                </div>
+                </div></div>
             `;
 
             const partsGrid = RAID_LOG_PART_LAYOUT.map(row => `

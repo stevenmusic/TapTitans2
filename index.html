@@ -12388,6 +12388,7 @@
             if (!box) return;
             box.style.display = 'block';
             box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
+            if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
             const nextRound = info0.remaining <= 0;
@@ -12662,7 +12663,15 @@
         // 玩家推薦的每一組下面補「應打」傷害（模擬：這個人的突襲等級、卡片等級、死靈熊研究，照推薦標的部位打）
         const raidLogRecoRows = new Map();
         const raidSimDmgCache = new Map();
+        const raidSimFillBusy = new Map();   // 名字 -> 補完要不要再補一次
         async function raidSimFillRecoDamage(name, box) {
+            if (raidSimFillBusy.has(name)) { raidSimFillBusy.set(name, true); return; }   // 正在補：補完再補一次（推薦換了或畫面重畫過）
+            raidSimFillBusy.set(name, false);
+            try {
+                do { raidSimFillBusy.set(name, false); await raidSimFillRecoDamageInner(name, box); } while (raidSimFillBusy.get(name));
+            } finally { raidSimFillBusy.delete(name); }
+        }
+        async function raidSimFillRecoDamageInner(name, box) {
             const rows = raidLogRecoRows.get(name);
             const v = raidAccountInfo(name);
             if (!rows || !rows.length || !v || !raidState || !raidState.parts) return;
@@ -12671,6 +12680,8 @@
             const me = raidSimPlayer(v, env.morale, env.season);
             const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             for (let i = 0; i < rows.length; i++) {
+                if (raidLogRecoRows.get(name) !== rows) return;   // 推薦換了：外面會再補一次新的
+                box = raidLogRecoBox(name) || box;   // 算的途中畫面可能重畫過（框換了一個新的），每次都抓目前畫面上的
                 const el = box.querySelector(`.rl-reco-dmg[data-i="${i}"]`);
                 if (!el) continue;
                 const cards = rows[i].rawCards || rows[i].cards || [];
@@ -12686,6 +12697,9 @@
                 }
                 el.innerHTML = `應打 ${formatNumAlwaysM(res.avg)}<span style="display:block; font-weight:600; color:#8a7a6a; font-size:10px; white-space:nowrap;">（${formatNumAlwaysM(res.lo)}～${formatNumAlwaysM(res.hi)}）</span>`;
             }
+            // 補好應打後再存一次畫面：之前存的是還沒補應打的版本，重畫或重開網頁時應打就不見了
+            box = raidLogRecoBox(name) || box;
+            if (box.querySelector('.rl-reco-dmg') && ![...box.querySelectorAll('.rl-reco-dmg')].some(e => /計算中/.test(e.textContent))) { raidLogRecoHtml.set(name, box.innerHTML); try { raidLogUiSave(); } catch (e) {} }
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄

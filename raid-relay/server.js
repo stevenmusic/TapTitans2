@@ -184,7 +184,7 @@ server.listen(PORT, () => {
 const WATCHER_APP_TOKEN = sanitizeToken(process.env.WATCHER_APP_TOKEN);
 const WATCHER_PLAYER_TOKEN = sanitizeToken(process.env.WATCHER_PLAYER_TOKEN);
 const WATCHER_RECONNECT_DELAY_MS = 8000;
-const WATCHER_MAX_BACKOFF_MS = 5 * 60 * 1000;
+const WATCHER_MAX_BACKOFF_MS = 60 * 1000;   // 最長 1 分鐘重連一次：遊戲維修結束後要盡快連回去，不然開頭幾分鐘的攻擊會漏抓
 let watcherConsecutiveFailures = 0;
 
 function watcherNextBackoffMs() {

@@ -2848,6 +2848,8 @@ app.use((err, req, res, next) => {
 });
 
 /* ══ 期望傷害（打法／配卡）：突襲蒙地卡羅模擬（simexp.js），結果存 attack_sim，不動攻擊紀錄 ══ */
+// 通用暫存（網頁存什麼由網頁決定，例如首頁推薦牌組）：見 kvstore.js
+require('./kvstore').createKvStore({ app, db, dbReady });
 const { createSimExp } = require('./simexp');
 const simExp = createSimExp({ db, dbReady, getAllAttacks, getClanData: () => clanDataLatest, attackDedupKey });
 app.get('/attack-sim', (req, res) => { res.json({ sim: simExp.since(Number(req.query.since) || 0), status: simExp.status() }); });

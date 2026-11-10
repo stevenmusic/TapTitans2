@@ -12648,6 +12648,7 @@
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
+        const raidSimPickInflight = new Map();
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
@@ -12658,6 +12659,12 @@
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
+            // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
+            const inf = raidSimPickInflight.get(key);
+            if (inf) { inf.progress = progress; return inf.p; }
+            const entry = { progress };
+            const prog = (t) => entry.progress ? entry.progress(t) : undefined;
+            entry.p = (async (progress) => {
             if (!n) return [];
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
@@ -12687,6 +12694,9 @@
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             return rows;
+            })(prog);
+            raidSimPickInflight.set(key, entry);
+            try { return await entry.p; } finally { if (raidSimPickInflight.get(key) === entry) raidSimPickInflight.delete(key); }
         }
         // 玩家推薦的每一組下面補「應打」傷害（模擬：這個人的突襲等級、卡片等級、死靈熊研究，照推薦標的部位打）
         const raidLogRecoRows = new Map();

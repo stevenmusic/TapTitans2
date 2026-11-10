@@ -7836,6 +7836,20 @@
         let raidRecoAtStore = {};
         try { raidRecoAtStore = JSON.parse(localStorage.getItem(RAID_RECO_AT_KEY) || '{}') || {}; } catch (e) {}
         let raidRecoAtBusy = false;
+        const raidRecentRecoOpen = new Set();   // 最近攻擊點開「最接近的推薦」的刀
+        function raidRecentToggleReco(key) {
+            if (raidRecentRecoOpen.has(key)) raidRecentRecoOpen.delete(key); else raidRecentRecoOpen.add(key);
+            renderRaidRecentAttacks.last = null; renderRaidRecentAttacks();
+        }
+        // 當時推薦裡跟他實際用的牌組最接近的一組（共用卡片最多；一樣多取推薦順序較前、傷害較高的）
+        function raidRecentRecoLine(used, sigs) {
+            const u = new Set(used);
+            let best = null, bestN = -1;
+            sigs.forEach(sg => { const cs = sg.split('+'); const n = cs.filter(c => u.has(c)).length; if (n > bestN) { best = cs; bestN = n; } });
+            if (!best) return '';
+            const ic = (c) => raidCardImage(c) ? `<img src="${raidCardImage(c)}" alt="" title="${escapeHtml(raidCardLabel(c))}" style="width:22px; height:22px; border-radius:4px; vertical-align:middle;${u.has(c) ? '' : ' outline:2px solid #2e7d32; outline-offset:-1px;'}">` : `<span style="font-size:11px;">${escapeHtml(raidCardLabel(c))}</span>`;
+            return `<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding:2px 10px 5px 10px; font-size:11px; color:#6b5a4a; background:#fff8f2;">最接近的推薦：${best.map(ic).join('')}<span style="color:#8a7a6a;">${best.filter(c => !u.has(c)).map(raidCardLabel).join('、') ? `（換成 ${escapeHtml(best.filter(c => !u.has(c)).map(raidCardLabel).join('、'))}）` : ''}${sigs.length > 1 ? `　當時共推薦 ${sigs.length} 組` : ''}</span></div>`;
+        }
         async function raidSimRecoSetAt(r, a, v, P, env0, data, proven) {
             const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
             const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
@@ -15202,9 +15216,9 @@
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
                             : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
-                        ${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span title="沒照推薦打（當時推薦：${escapeHtml(pk.s.map(x => x.split('+').map(raidCardLabel).join('＋')).join('／'))}）" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#a89a88; border:1px solid #d8c8b8; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}
+                        ${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="flex-shrink:0; cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
-                    </div>`;
+                    </div>${recoMatch === false && raidRecentRecoOpen.has(a.dedupKey) ? raidRecentRecoLine(aCards, pk.s) : ''}`;
             }).join('');
             // 內容沒變就不重畫（以前每次定期同步都整個重畫，淡入動畫一直重播，看起來一直閃）；只有新的那一刀才淡入
             renderRaidRecentAttacks.seen = new Set(raidRecentAttacks.map(a => a.dedupKey).filter(Boolean));

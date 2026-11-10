@@ -2687,7 +2687,7 @@
         .is-spinning { animation: spin360 0.7s linear infinite; }
         .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
         .raid-recent-time { font-size: 9.5px; font-weight: 600; color: #9a7f78; line-height: 1.1; }
-        .raid-recent-name { line-height: 1.15; overflow-wrap: anywhere; }
+        .raid-recent-name { line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
         .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
@@ -13470,7 +13470,7 @@
                     ${!a.placeholder && a.simExp > 0 ? (() => {
                         // 傷害 %：實際 ÷ 應打（這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均）；應打和高低範圍展開才看
                         const r = a.totalDamage / a.simExp;
-                        return `<div style="justify-self:end; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1cqw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 3.3cqw, 13px); font-weight:700; color:${r < 0.8 ? '#c0392b' : r >= 1.2 ? '#2e7d32' : '#5a4a3a'};">${Math.round(r * 100)}%</div>`;
+                        return `<div style="justify-self:end; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1cqw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 3.3cqw, 13px); font-weight:700; color:${r < 0.8 ? '#c0392b' : r >= 1.2 ? '#2e7d32' : '#5a4a3a'};">${(() => { const d = Math.round((r - 1) * 100); return d > 0 ? '+' + d + '%' : d < 0 ? '−' + (-d) + '%' : '±0%'; })()}</div>`;
                     })() : ''}
                 </div></div>
             `;

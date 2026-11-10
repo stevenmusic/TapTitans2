@@ -7793,7 +7793,7 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 2;   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
+        const RAID_SIM_PICK_VER = 3;   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         // 舊版本（tt2_sim_pick_v1～v8）算過的也搬過來，新的版本優先；搬完刪掉舊的
@@ -7812,6 +7812,7 @@
             } catch (e) {}
         }
         // 打開攻擊紀錄時自動在背景算：照排行由上往下，一次算一個人，算好就更新畫面
+        const raidPickPools = new Map();   // 配卡用的傷害表（玩家＋部位狀態）
         let raidSimPickAutoBusy = false, raidSimPickRerenderTimer = null, raidSimPickRerenderAt = 0;
         async function raidSimPickAuto() {
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
@@ -7956,38 +7957,31 @@
                 const capOf = (tg) => a.simH ? tg.reduce((x, l) => x + (Number(a.simH[LOCS.indexOf(l)]) || 0) * 1e6, 0) : Infinity;
                 let best = cache.get(key);
                 if (best == null) {
-                    const board = {};
-                    LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    // 分母＝「照推薦打能打多少」：重現他出這刀之前按推薦會看到的那幾組（出刀前部位狀態、這輪還沒用的卡、剩下刀數、他的等級），
+                    // 取這幾組模擬平均傷害的平均。完全照推薦打就會接近 100%（以前是跟「每刀當下最好的一組」比，一輪卡片不能重複用，誰都到不了 100%）
+                    const board = {}, scene = {};
+                    LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
                     const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                     const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
-                    const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null };
-                    const list = raidSimDeckList.filter(d => d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c))).slice(0, 120).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) }));
-                    const mirror = a.cycle >= 2 ? 0.35 : 0;
-                    // 快速篩（每種打法 1 次），前 5 組各跑 40 次取最高
-                    // 快速篩（每種打法 1 次）、前 5 組各跑 40 次取最高、挑中的再用新亂數跑 60 次：都丟給 Web Worker 平行算，不佔畫面
-                    const mk = (d) => { const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
-                        return { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro }; };
-                    let quick = null;
-                    const qr = await raidSimParallel(P, list.map(d => ({ kind: 'q', base: mk(d), plans: d.plans.map(pl => pl.tg), caps: d.plans.map(pl => capOf(pl.tg)) })));
-                    if (qr) quick = qr.map((x, i) => x && { x: x.x, base: mk(list[i]), tg: x.tg }).filter(Boolean);
-                    else {
-                        quick = [];
-                        for (const d of list) {
-                            const base = mk(d);
-                            let b0 = null; d.plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
-                            if (b0) quick.push(b0);
-                            if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
-                        }
+                    const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    // 同一人、同一個部位狀態：他所有牌組的傷害表只算一次，連續幾刀共用
+                    const pkey = [identity, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
+                    let pool = raidPickPools.get(pkey);
+                    if (!pool) {
+                        const { hitParts } = raidSimPartFns(scene);
+                        const all = [];
+                        raidSimDeckList.filter(d => d.uses >= RAID_SIM_PROVEN_USES && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c))).forEach(d => {
+                            const hp = hitParts(d.cards); if (!hp.length) return;
+                            const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
+                            if (pl.length) all.push({ cards: d.cards, plans: pl });
+                        });
+                        pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE, null, 10);
+                        raidPickPools.set(pkey, pool);
                     }
-                    quick.sort((x, y) => y.x - x.x);
-                    best = { v: 0 };
-                    let bq = null;
-                    const top5 = quick.slice(0, 5);
-                    const mr = await raidSimParallel(P, top5.map(q => ({ kind: 'm', base: q.base, tg: q.tg, seed: 17, runs: 40, cap: capOf(q.tg) })));
-                    top5.forEach((q, i) => { const m = mr ? mr[i] : Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) { best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; bq = q; } });
-                    // 挑中的那組用新的亂數重跑一次取平均（挑的時候容易挑到剛好運氣好的，分母會偏高）
-                    if (bq) { const r2 = await raidSimParallel(P, [{ kind: 'm', base: bq.base, tg: bq.tg, seed: 91, runs: 60, cap: capOf(bq.tg) }]); best.v = r2 ? r2[0] : Math.min(RaidSim.simMean({ ...bq.base, targets: bq.tg, seed: 91 }, 60, P).total, capOf(bq.tg)); }
+                    const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
+                    const pick = await raidSimPickPool(P, env, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);
+                    best = pick.length ? { v: pick.reduce((t, o) => t + o.avg, 0) / pick.length, cards: pick[0].cards, tg: pick[0].tg } : { v: 0 };
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
@@ -12144,7 +12138,7 @@
                         <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; color:#a89a88; font-weight:700;">${rIdx + 1}</span>${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; border-radius:6px; padding:2px 8px; min-width:5.2em; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}
-                            <span style="display:flex; flex-direction:column; align-items:flex-end; min-width:6.8em; line-height:1.15;"><span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="系統算他每刀用當下最好牌組應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:12.5px; font-weight:700; white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < RAID_SIM_PICK_LOW : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次`}</span>${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 當下最好牌組應打的傷害" style="font-size:10px; font-weight:800; white-space:nowrap;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:#8a7a6a;">丨</span><span style="color:${r.pickInfo.ratio < RAID_SIM_PICK_LOW ? '#c0392b' : r.pickInfo.ratio >= 0.85 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : ''}</span>
+                            <span style="display:flex; flex-direction:column; align-items:flex-end; min-width:6.8em; line-height:1.15;"><span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:12.5px; font-weight:700; white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < RAID_SIM_PICK_LOW : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次`}</span>${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="font-size:10px; font-weight:800; white-space:nowrap;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:#8a7a6a;">丨</span><span style="color:${r.pickInfo.ratio < RAID_SIM_PICK_LOW ? '#c0392b' : r.pickInfo.ratio >= 0.85 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : ''}</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
@@ -12970,7 +12964,7 @@
             return raidSimPickPool(P, env, me, pool, n);
         }
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
-        async function raidSimEvalPool(P, env, me, all, n, progress) {
+        async function raidSimEvalPool(P, env, me, all, n, progress, topN) {
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
             let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => { if (progress) progress(`計算中 ${Math.round(f * 60)}%`); });
             if (!quick) {
@@ -12982,7 +12976,7 @@
                 }
             }
             quick.sort((a, b) => b.avg - a.avg);
-            const nTop = Math.min(quick.length, Math.max(24, n * 4));
+            const nTop = Math.min(quick.length, topN || Math.max(24, n * 4));   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => { if (progress) progress(`計算中 ${60 + Math.round(f * 40)}%`); });
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {
@@ -13018,9 +13012,11 @@
                 dfs(0, 0);
                 const rough = best.filter(o => !o.final);
                 if (!rough.length) break;
-                for (const o of rough) {
-                    await new Promise(r => setTimeout(r, 0));
-                    const k = pool.indexOf(o); pool[k] = raidSimFinal(P, env, me, o);
+                // 補精算：丟給 Web Worker 平行算（不佔畫面）；不支援才在主畫面算
+                const fr = await raidSimParallel(P, rough.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })));
+                for (let i = 0; i < rough.length; i++) {
+                    const k = pool.indexOf(rough[i]);
+                    if (fr) pool[k] = fr[i]; else { await new Promise(r => setTimeout(r, 0)); pool[k] = raidSimFinal(P, env, me, rough[i]); }
                 }
             }
             const pick = best.slice();

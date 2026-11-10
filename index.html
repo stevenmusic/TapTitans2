@@ -7828,11 +7828,13 @@
         let raidSimExpAt = 0, raidSimExpLoading = false;
         // 伺服器的模擬沒有「瘟疫＋瘋狂無效」「電擊＋時間之沙」的修正，顯示前照網頁模擬同一套係數補上（不用重新部署伺服器）
         const RAID_EXP_PCK = [1.1, 1.1, 1.1, 1.1, 1.1, 1.07, 0.91];
-        const RAID_EXP_CBSK = { MentalFocus: [0.83, 0.96], InnerTruth: [0.93, 1], BattleDrums: [1.08, 1.03] };
+        const RAID_EXP_CBSK = { MentalFocus: [0.83, 0.96], InnerTruth: [0.93, 1], BattleDrums: [1.2, 0.95] };
+        const RAID_EXP_DECKK = { 'BarbedMorningstar+BattleDrums+MirrorForce': 0.89, 'BarbedMorningstar+BattleDrums+FlakShot': 0.91, 'CosmicBarb+MentalFocus+TotemFairySkill': 1.08 };   // 跟 calibration.json 的 deckK 一樣
         function raidSimExpFix(a, sx) {
             const names = (a.cards || []).map(c => c.name); let f = 1;
             if (names.includes('PlagueAttack') && names.includes('CrushingVoid')) f *= RAID_EXP_PCK[Math.min(6, String(sx.b || '').split('B').length - 1)] || 1;
             if (names.includes('CosmicBarb') && names.includes('SandsOfTime')) { const k = RAID_EXP_CBSK[names.find(c => c !== 'CosmicBarb' && c !== 'SandsOfTime')]; if (k) f *= (sx.tg || []).length === 1 ? k[0] : k[1]; }
+            f *= RAID_EXP_DECKK[names.slice().sort().join('+')] || 1;
             return sx.exp * f;
         }
         const raidSimExpKey = (a) => `${a.attackDatetime || a.ts}_${a.player}`;
@@ -9801,7 +9803,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim16';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim17';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12604,7 +12606,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v16';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v17';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12616,7 +12618,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v6');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v7');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12638,7 +12640,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v6', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v7', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12998,8 +13000,8 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=6'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=5').then(r => r.json())]);
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=7'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=6').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
             })();
@@ -13150,7 +13152,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=3');
+                    const w = new Worker('raid-sim/simworker.js?v=4');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

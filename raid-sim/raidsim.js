@@ -213,7 +213,7 @@ function simAttack(opt, P = P0) {
     }
   }
   out.total = out.tap + Object.values(out.by).reduce((a, b) => a + b, 0);
-  // 電擊＋時間之沙：整體準，但照第三張卡有固定偏差（攻擊紀錄：配變質氣體單打實際約 0.83 倍、配戰鼓約 1.07 倍），照第三張卡和單打／多部位修正
+  // 電擊＋時間之沙：整體準，但照第三張卡有固定偏差（攻擊紀錄：配變質氣體單打實際約 0.83 倍、配戰鼓單打約 1.2 倍），照第三張卡和單打／多部位修正
   if (P.cbsK && has.has('CosmicBarb') && has.has('SandsOfTime')) {
     const third = opt.deck.map(d => d[0]).find(c => c !== 'CosmicBarb' && c !== 'SandsOfTime');
     const k = P.cbsK[third]; const f = k ? (targets.length === 1 ? k[0] : k[1]) : 1;
@@ -224,6 +224,11 @@ function simAttack(opt, P = P0) {
     const nb = Math.min(6, LOCS.filter(x => board[x] && board[x].layer === 'body').length);
     const f = P.pcK[nb] || 1;
     out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f;
+  }
+  // 整組修正：攻擊紀錄驗證過固定偏高／偏低的組合（至少 2 人、4 刀，偏差 7% 以上）
+  if (P.deckK) {
+    const f = P.deckK[opt.deck.map(d => d[0]).slice().sort().join('+')];
+    if (f && f !== 1) { out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f; }
   }
   return out;
 }

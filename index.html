@@ -7862,8 +7862,8 @@
             return raidSimDeckList;
         }
         const RAID_SIM_PROVEN_USES = 30;   // 推薦只用公會打過 30 次以上的牌組（次數少的模擬沒驗證過，常常高估）
-        // 少見牌組（公會打過不到 30 次）不擋掉，模擬傷害打九折保守估計（實際紀錄驗證過：少用的組合常比模擬低一成）
-        const RAID_SIM_RARE_FACTOR = 0.9;
+        // 少見牌組（公會打過不到 30 次）：以前打九折保守估計；11/11 驗證這一場 900 刀，少見牌組實際 ÷ 應打 0.99～1.00、跟常用的一樣準，不再打折（打折會讓推薦偏向常用牌組）
+        const RAID_SIM_RARE_FACTOR = 1;
         const RAID_SIM_SCEN_MIN = 3;   // 少見牌組：外部模擬器至少在幾個情境推過才放進候選
         let raidSimUsesMap = null;
         // 模擬器已經用攻擊紀錄驗證過準的卡：含這些卡的牌組，公會打得少也收進候選、不打九折
@@ -9804,7 +9804,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim17';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim18';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12607,7 +12607,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v17';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v18';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12619,7 +12619,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v7');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v8');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12641,7 +12641,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v7', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v8', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -13244,9 +13244,9 @@
                     if (fr) pool[k] = fr[i]; else { await new Promise(r => setTimeout(r, 0)); pool[k] = raidSimFinal(P, env, me, rough[i]); }
                 }
             }
-            // 回傳的應打也打折（少見牌組沒有實際紀錄驗證，保守估計）
-            const pick = best.map(o => { const f = raidSimDeckFactor(o.cards); return f < 1 ? { ...o, avg: o.avg * f, lo: o.lo != null ? o.lo * f : o.lo, hi: o.hi != null ? o.hi * f : o.hi, rare: true } : o; });
-            pick.sort((a, b) => b.avg - a.avg);
+            // 顯示的應打不打折（跟攻擊紀錄的應打同一個算法，兩邊數字一致）；少見牌組只在排順序時打折
+            const pick = best.map(o => { const f = raidSimDeckFactor(o.cards); return { ...o, rare: f < 1, score: o.avg * f }; });
+            pick.sort((a, b) => b.score - a.score);
             return pick;
         }
         async function raidSimRecoRun(name) {

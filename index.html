@@ -7798,7 +7798,9 @@
             return (raidSimUsesMap.get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_PROVEN_USES ? 1 : RAID_SIM_RARE_FACTOR;
         }
         // 推薦的候選牌組：公會打過 30 次以上的、前 15 名打過的（data.decks）、外部模擬器情境推過的（包含公會沒人打過的組合）
-        async function raidSimCandidateDecks(data) {
+        // fast：首頁推薦用，只取公會最常打的 RAID_SIM_FAST_N 組（快）；玩家的推薦用完整候選（詳細）
+        const RAID_SIM_FAST_N = 100;
+        async function raidSimCandidateDecks(data, fast) {
             const list = await raidSimLoadDeckList();
             const uses = new Map((list || []).map(d => [d.cards.slice().sort().join('+'), d.uses]));
             const seen = new Set(), out = [];
@@ -7810,7 +7812,7 @@
             (BY_PART_GAME_SCENARIOS || []).forEach(sc => new Set((sc.decks || []).filter(d => Array.isArray(d.cards) && d.cards.length === 3).map(d => { const k = d.cards.slice().sort().join('+'); scenCards.set(k, d.cards); return k; })).forEach(k => scenCnt.set(k, (scenCnt.get(k) || 0) + 1)));
             scenCnt.forEach((n, k) => { if (n >= RAID_SIM_SCEN_MIN || (uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(scenCards.get(k)); });
             out.sort((x, y) => y.uses - x.uses);
-            return out;
+            return fast ? out.filter(d => d.uses >= RAID_SIM_PROVEN_USES).slice(0, RAID_SIM_FAST_N) : out;
         }
         async function raidSimProvenSet() {
             const l = await raidSimLoadDeckList();
@@ -9656,7 +9658,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim14';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim15';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12457,7 +12459,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v14';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v15';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12469,7 +12471,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v4');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v5');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12481,7 +12483,7 @@
             const fl = { sig, progress };
             const { hitParts, playable } = raidSimPartFns(byPartPartsToScene(raidState.parts, raidBannedParts));
             fl.promise = (async () => {
-                try { return await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, (t) => { if (gen !== raidSimHomeGen) return 'stop'; if (fl.progress) fl.progress(t); }, v); }
+                try { return await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, (t) => { if (gen !== raidSimHomeGen) return 'stop'; if (fl.progress) fl.progress(t); }, v, true); }   // 首頁：快速模式
                 catch (e) { return null; }
                 finally { if (raidSimHomeInflight === fl) raidSimHomeInflight = null; }
             })();
@@ -12491,7 +12493,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v4', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v5', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12501,7 +12503,7 @@
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
-        async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride) {
+        async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
@@ -12509,10 +12511,10 @@
             const me = raidSimPlayer(v, env.morale, env.season);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             if (!n) return [];
-            const cands = (await raidSimCandidateDecks(data)).filter(d => {
+            const cands = (await raidSimCandidateDecks(data, fast)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
@@ -12521,7 +12523,7 @@
                 const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                 const pl2 = raidSimPlansFor(d.cards, plans); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2, cplans: raidSimCursedPlans(pl2, env), aplans: raidSimArmorPlans(pl2, env) });
             });
-            const pick0 = await raidSimRank(P, env, me, list, n, progress, extra);
+            const pick0 = await raidSimRank(P, env, me, list, n, progress, extra, fast ? 12 : null);
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {
@@ -12967,9 +12969,9 @@
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
         let raidSimRankBusy = 0;
-        async function raidSimRank(P, env, me, list, n, progress, extra) {
+        async function raidSimRank(P, env, me, list, n, progress, extra, topN) {
             raidSimRankBusy++;
-            try { return await raidSimRankInner(P, env, me, list, n, progress, extra); } finally { raidSimRankBusy--; }
+            try { return await raidSimRankInner(P, env, me, list, n, progress, extra, topN); } finally { raidSimRankBusy--; }
         }
         // Web Worker 池：手機有幾核就開幾個（最多 6 個），把模擬工作分批丟給它們同時算
         let raidSimPool = null;
@@ -13010,8 +13012,8 @@
                 return out;
             } catch (e) { if (e && e.message === 'cancelled') throw e; raidSimPool = false; return null; }
         }
-        async function raidSimRankInner(P, env, me, list, n, progress, extra) {
-            const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress);
+        async function raidSimRankInner(P, env, me, list, n, progress, extra, topN) {
+            const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress, topN);
             return raidSimPickPool(P, env, me, pool, n);
         }
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）

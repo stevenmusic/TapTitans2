@@ -8298,7 +8298,7 @@
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
         // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
-        function quizCardUsable(card, scene, onlyPart) {
+        function quizCardUsable(card, scene, onlyPart, ignoreParts) {
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]) && (!onlyPart || k === onlyPart));
@@ -8311,7 +8311,7 @@
             // 允許的狀態（卡片資料）：詛咒甲／盔甲／肉體
             const layers = quizLayerSet(card);
             const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
-            const parts = quizPartGroups(card);
+            const parts = ignoreParts ? null : quizPartGroups(card);   // ignoreParts：模擬器推薦用，部位加成交給模擬器算，不當成限制
             let onlyLayerName = null;
             if (card === 'BarbedMorningstar') {
                 const l = CARD_ONLY_WHEN.BarbedMorningstar({ armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton });
@@ -9502,7 +9502,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim5';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim6';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12157,7 +12157,8 @@
                     // 再跟所有場次前 15 名打過的牌組（跟「依部位」分頁一樣、現在打得到的）一起找：組數最多優先（用到最多張卡），
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
-                    const simPick = await raidSimPlayerPick(r.player, info, data, playable, hitParts, (t) => { const bx = raidLogRecoBox(r.player); if (bx && !raidLogRecoHtml.get(r.player)) bx.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; });
+                    const simFns = raidSimPartFns(scene);
+                    const simPick = await raidSimPlayerPick(r.player, info, data, simFns.playable, simFns.hitParts, (t) => { const bx = raidLogRecoBox(r.player); if (bx && !raidLogRecoHtml.get(r.player)) bx.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; });
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         html = head + (all.length ? deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
@@ -12263,7 +12264,7 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v5';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v6';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
@@ -12273,16 +12274,19 @@
             const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName]);
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
-            const scene = byPartPartsToScene(raidState.parts, raidBannedParts);
-            const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
-            const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
-            const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
-            const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+            const { hitParts, playable } = raidSimPartFns(byPartPartsToScene(raidState.parts, raidBannedParts));
             const rows = await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, progress, v);
             if (!rows || !rows.length) return null;
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             return rows;
+        }
+        // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
+        function raidSimPartFns(scene) {
+            const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, true).ok));
+            const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
+            return { hitParts, playable };
         }
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride) {
             const v = vOverride || raidAccountInfo(name);

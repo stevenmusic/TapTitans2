@@ -7776,7 +7776,7 @@
             return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
         }
         // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
-        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v6';
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v7';
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         function raidSimPickSave() {
@@ -8225,7 +8225,7 @@
         // 需要整隻王的部位數量才有效的卡（工作台沒有這個欄位，依遊戲效果與公會實測整理）
         // 瘋狂無效：每個露出肉體的部位加一次，6 個達到最大（官方 RaidSkillInfo：ExposedBodyBoostSupportMaxParts＝6）
         // 時間之沙不需要（單部位也可以）；肆虐瘟疫是部位越多越高（官方上限 6 個），不是硬性條件，都交給模擬器算
-        const QUIZ_STATE_COND = { CrushingVoid: '肉體部位達6個', FinisherAttack: '骨架部位達6個' };
+        const QUIZ_STATE_COND = { FinisherAttack: '骨架部位達6個' };   // 瘋狂無效也不硬擋：少於 6 個肉體每少一個約少一成傷害，交給模擬器判斷
         let quizType = 'parts', quizCat = 'all', quizQ = null, quizScore = { right: 0, total: 0 };
 
         // 這張卡的正確答案（選項字串的集合）；沒有資料回傳 null
@@ -9502,7 +9502,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim3';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim4';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12263,7 +12263,7 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v3';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v4';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;

@@ -7606,7 +7606,8 @@
         /* 官方 clan_data（帳號資料）：死靈熊等級、突襲等級、卡片、死靈熊研究、忠誠度…；期望突襲均傷的公式見 raidExpectedModel */
         const RAID_ENEMY_INDEX = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };   // 官方王編號（RaidEnemyInfo.csv）
         const RAID_LOYALTY_MULT = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
-        const RAID_LOG_LOW_RATIO = 0.7;        // 單刀：低於自己這場均傷的 70% 標紅（約 3% 的刀）
+        const RAID_LOG_LOW_RATIO = 0.7;        // 單刀：低於自己這場均傷的 70% 標紅（約 3% 的刀；伺服器還沒算出應打時才用這個）
+        const RAID_LOG_LOW_SIM = 0.85;         // 單刀：低於伺服器模擬的應打（他實際牌組、出刀前部位狀態、他的等級）85% 標紅（約 3% 的刀，模擬每刀本來就有 ±7% 起伏）
         const RAID_SIM_PLAY_LOW = 0.9, RAID_SIM_PICK_LOW = 0.73;   // 標紅：打法低於 90%（最近 4 場每場約 1～2 人）、配卡低於 73%（M-44 約 8 人）
         const RAID_LOG_OVERALL_LOW = 0.9;      // 同級水準偏低：這場均傷低於同條件應有的 90%（最近 7 場每場 4～8 人，平均 6 人）
         let raidClanData = null, raidClanDataLoading = false;   // 官方 clan_data：playerCode → { tree（研究樹換算值）, raw }
@@ -7773,6 +7774,7 @@
                 const before = raidSimExpMap.size;
                 Object.entries((j && j.sim) || {}).forEach(([k, v]) => raidSimExpMap.set(k, v));
                 raidSimExpAt = Date.now();
+                if (raidSimExpMap.size !== before) { try { renderRaidRecentAttacks.last = null; renderRaidRecentAttacks(); } catch (e) {} }   // 最近攻擊的「打太低」標記跟著更新
                 if (raidSimExpMap.size !== before && typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
             } catch (e) {} finally { raidSimExpLoading = false; }
         }
@@ -8038,7 +8040,7 @@
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;
-                    a.isLowDamage = base > 0 && a.totalDamage < base * RAID_LOG_LOW_RATIO;
+                    a.isLowDamage = base > 0 && a.totalDamage < base * (a.simExp ? RAID_LOG_LOW_SIM : RAID_LOG_LOW_RATIO);
                 });
                 const playRatio = simN >= Math.max(1, attacks.length * 0.5) ? simAct / simExp : null;   // 打法 %（實際 ÷ 打法期望）
                 // 配卡 %：用手機上存的每一刀結果算（新舊版都先用，舊的背景會換成新算法；只算了部分刀也先顯示，不會突然不見）
@@ -15242,7 +15244,8 @@
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
                             : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
                         <span class="raid-recent-mark"${RAID_RECENT_RECO_ON ? '' : ' style="display:none;"'}>${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}</span>
-                        <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
+                        ${(() => { const sx = a.dedupKey && raidSimExpMap.get(a.dedupKey); const low = sx && sx.exp > 0 && a.dmg > 0 && a.dmg < sx.exp * RAID_LOG_LOW_SIM;
+                            return low ? `<span class="raid-recent-dmg" title="應打 ${escapeHtml(formatNum(sx.exp))}，只打了 ${Math.round(a.dmg / sx.exp * 100)}%"><span style="background:#c62828; color:#fff; border-radius:4px; padding:0 3px;">-${formatNum(a.dmg)}</span><span style="display:block; font-size:9.5px; font-weight:700; color:#c62828; line-height:1.1;">應打 ${escapeHtml(formatNum(sx.exp))}</span></span>` : `<span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>`; })()}
                     </div>${recoMatch === false && raidRecentRecoOpen.has(a.dedupKey) ? raidRecentRecoLine(aCards, pk.s, partHtml, `-${formatNum(a.dmg)}`) : ''}`;
             }).join('');
             // 內容沒變就不重畫（以前每次定期同步都整個重畫，淡入動畫一直重播，看起來一直閃）；只有新的那一刀才淡入

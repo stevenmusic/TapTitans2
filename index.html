@@ -9651,7 +9651,7 @@
         const BY_PART_RECO_RATIO = 0.005;   // 比例門檻（佔這個部位數量狀態總打數）
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
-        let byPartRecoSig = '', byPartRecoShownSig = '';
+        let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
         const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim13';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
@@ -11526,7 +11526,7 @@
                 + '|' + (raidSimActive ? simBuffKey() : currentSessionBuff()) + '|' + (raidCurseInfo || []).map(d => d.type).join(',');
             // 上次在同一個狀態算好的推薦牌組記在這台裝置上：重新打開網頁、狀態沒變就先直接顯示，不用等資料載入
             if (!box.innerHTML || box.querySelector('.tt-skel')) {
-                try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.sig === sig && last.html) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; byPartRecoShownSig = sig; } } catch (e) {}
+                try { const last = JSON.parse(localStorage.getItem(BY_PART_RECO_LAST_KEY) || 'null'); if (last && last.html && (last.sig === sig || last.boss === raidState.bossName)) { box.style.display = 'block'; box.innerHTML = last.html; byPartRecoHtmlLast = last.html; byPartRecoShownSig = last.sig; byPartRecoShownBoss = last.boss; } } catch (e) {}
                 if (!box.innerHTML) { box.style.display = 'block'; box.innerHTML = ttSkelGrid(6); byPartRecoHtmlLast = ''; }
             }
             // 還不知道這場的加成時先等一下（最多 10 秒），標題的加成標籤才會對
@@ -11538,13 +11538,21 @@
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
             if (token !== byPartRecoToken) return;
             if (!data) { box.style.display = 'none'; byPartRecoSig = ''; return; }
-            const p = raidSimHomeRows(data, (t) => { const el = document.getElementById('by-part-reco-simpct'); if (el) el.textContent = '模擬' + t; });
+            const p = raidSimHomeRows(data, (t) => { const el = document.getElementById('by-part-reco-simpct'); if (el) el.textContent = (box.style.opacity ? '部位狀態改變，重新' : '模擬') + t; });
             let rows = await Promise.race([p, new Promise(r => setTimeout(() => r(undefined), 1500))]);
             if (token !== byPartRecoToken) return;
             box.style.display = 'block';
             if (rows === undefined) {
                 // 這個狀態還沒算過：顯示載入格子＋進度，算完再畫
-                if (byPartRecoShownSig !== sig) { box.innerHTML = `<div id="by-part-reco-simpct" style="font-size:11px; color:#8a7a6a; text-align:right;">模擬計算中</div>` + ttSkelGrid(6); byPartRecoHtmlLast = ''; }
+                if (byPartRecoShownSig !== sig) {
+                    // 部位狀態變了：先留著上一次的推薦（同一隻王才留），上面標「重新計算中」，算完再換；第一次打開才顯示空白格子
+                    const keep = byPartRecoHtmlLast && byPartRecoShownBoss === raidState.bossName && box.innerHTML && !box.querySelector('.tt-skel');
+                    if (keep) {
+                        let el = document.getElementById('by-part-reco-simpct');
+                        if (!el) { box.insertAdjacentHTML('afterbegin', '<div id="by-part-reco-simpct" style="font-size:11px; font-weight:700; color:#b07a2a; text-align:right; margin-bottom:-2px;">部位狀態改變，重新計算中</div>'); }
+                        box.style.opacity = '0.75';
+                    } else { box.style.opacity = ''; box.innerHTML = `<div id="by-part-reco-simpct" style="font-size:11px; color:#8a7a6a; text-align:right;">模擬計算中</div>` + ttSkelGrid(6); byPartRecoHtmlLast = ''; }
+                }
                 p.then(() => { if (token === byPartRecoToken) { byPartRecoSig = ''; byPartRecoRefresh(); } });
                 return;
             }
@@ -11552,9 +11560,10 @@
             byPartRecoTitle = true;
             byPartRecoBuffNow = raidSimActive ? simBuffKey() : currentSessionBuff();
             const html = byPartRecoGridHtml(rows, 'home');
-            if (html !== byPartRecoHtmlLast || !box.innerHTML) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
-            byPartRecoShownSig = sig;
-            if (!raidSimActive) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html })); } catch (e) {} }   // 重開網頁、狀態沒變就先直接顯示
+            if (html !== byPartRecoHtmlLast || !box.innerHTML || document.getElementById('by-part-reco-simpct')) { box.innerHTML = html; byPartRecoHtmlLast = html; }   // 內容一樣就不重畫，不會閃
+            box.style.opacity = '';
+            byPartRecoShownSig = sig; byPartRecoShownBoss = raidState.bossName;
+            if (!raidSimActive) { try { localStorage.setItem(BY_PART_RECO_LAST_KEY, JSON.stringify({ sig, html, boss: raidState.bossName })); } catch (e) {} }   // 重開網頁、狀態沒變就先直接顯示
         }
         function byPartOnRaidStatusChanged() {
             byPartRecoRefresh();

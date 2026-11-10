@@ -1620,11 +1620,11 @@ async function clanDataLoadFromDb() {
     await dbReady;
     const r = await db.execute('SELECT captured_at, data FROM clan_data_snapshots ORDER BY captured_at DESC LIMIT 1');
     if (r.rows.length) clanDataLatest = { at: Number(r.rows[0].captured_at), data: JSON.parse(r.rows[0].data) };
-    // 之前已經存的 clan_data 也整理進每日紀錄（只做一次，已經有的會被同一天的蓋掉）
-    const all = await db.execute('SELECT captured_at, data FROM clan_data_snapshots ORDER BY captured_at ASC');
-    for (const row of all.rows) { try { await clanDataSaveDaily(Number(row.captured_at), JSON.parse(row.data)); } catch (e) {} }
+    // （每日紀錄每次抓到新的 clan_data 時就會寫，開機不再把全部舊快照重寫一遍，開機比較快、少很多次資料庫寫入）
   } catch (e) { console.error('[clan_data] 讀取資料庫失敗:', e.message); }
 }
+// 開機就先從資料庫載入上一份公會資料：重啟後（尤其遊戲維修連不上時）網頁的推薦、應打範圍不用等連上遊戲才有資料
+const clanDataLoaded = clanDataLoadFromDb();
 async function clanDataFetch() {
   clearTimeout(clanDataTimer);
   if (!WATCHER_APP_TOKEN || !WATCHER_PLAYER_TOKEN) return;
@@ -1662,7 +1662,7 @@ let clanDataStarted = false;
 function clanDataStart() {   // 背景側錄連上 /raid 之後才查（官方要求先登入 /raid）
   if (clanDataStarted) return;
   clanDataStarted = true;
-  clanDataLoadFromDb().then(() => setTimeout(clanDataFetch, 10000));
+  clanDataLoaded.then(() => setTimeout(clanDataFetch, 10000));
 }
 
 function watcherSubscribe() {

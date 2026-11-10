@@ -7865,7 +7865,10 @@
                     }
                     quick.sort((x, y) => y.x - x.x);
                     best = { v: 0 };
-                    for (const q of quick.slice(0, 5)) { const m = Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; await new Promise(rs => setTimeout(rs, 0)); }
+                    let bq = null;
+                    for (const q of quick.slice(0, 5)) { const m = Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) { best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; bq = q; } await new Promise(rs => setTimeout(rs, 0)); }
+                    // 挑中的那組用新的亂數重跑一次取平均（挑的時候容易挑到剛好運氣好的，分母會偏高）
+                    if (bq) { best.v = Math.min(RaidSim.simMean({ ...bq.base, targets: bq.tg, seed: 91 }, 60, P).total, capOf(bq.tg)); await new Promise(rs => setTimeout(rs, 0)); }
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;

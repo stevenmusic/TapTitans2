@@ -7630,7 +7630,7 @@
                         m.set(p.player_code, { partMult, loy, necroMult, raw: p });
                     });
                     raidClanData = { at: j.at, byCode: m };
-                    if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+                    if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
                 }
             } catch (e) {} finally { raidClanDataLoading = false; }
             return raidClanData;
@@ -7697,7 +7697,7 @@
             return out;
         }
         function raidExpectedRerender() {
-            if (typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+            if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
             if (document.getElementById('cardlv-guild') && document.getElementById('cardlv-guild').style.display !== 'none') cardLevelsGuild();
         }
         function raidExpectedModel(attacksByIdentity) {
@@ -7773,9 +7773,11 @@
                 const before = raidSimExpMap.size;
                 Object.entries((j && j.sim) || {}).forEach(([k, v]) => raidSimExpMap.set(k, v));
                 raidSimExpAt = Date.now();
-                if (raidSimExpMap.size !== before && typeof renderRaidLogQueryResult === 'function' && document.getElementById('raid-log-query-result') && document.getElementById('raid-log-query-result').style.display !== 'none') renderRaidLogQueryResult();
+                if (raidSimExpMap.size !== before && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
             } catch (e) {} finally { raidSimExpLoading = false; }
         }
+        // 攻擊紀錄面板真的出現在畫面上才重畫（停在首頁時不在背景一直重畫排行榜，打開面板時會重畫最新的）
+        function raidLogPanelShown() { const el = document.getElementById('raid-log-query-result'); return !!(el && el.style.display !== 'none' && el.offsetParent !== null); }
         const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }
         let raidSimDeckList = null;
         // 公會攻擊紀錄裡打過 10 次以上的牌組（伺服器 /deck-list）
@@ -7810,7 +7812,7 @@
             } catch (e) {}
         }
         // 打開攻擊紀錄時自動在背景算：照排行由上往下，一次算一個人，算好就更新畫面
-        let raidSimPickAutoBusy = false;
+        let raidSimPickAutoBusy = false, raidSimPickRerenderTimer = null, raidSimPickRerenderAt = 0;
         async function raidSimPickAuto() {
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
             raidSimPickAutoBusy = true;
@@ -7821,7 +7823,7 @@
                 const order = (raidLogLastRanked || []).slice().sort((a, b) => (recentNames.has(b.player) ? 1 : 0) - (recentNames.has(a.player) ? 1 : 0));
                 for (const r of order) {
                     const box = document.getElementById('raid-log-query-result');
-                    if (!box || box.style.display === 'none') break;   // 攻擊紀錄關掉就停
+                    if (!box || box.style.display === 'none' || box.offsetParent === null || document.visibilityState !== 'visible') break;   // 攻擊紀錄沒出現在畫面上（停在首頁、切到背景）就停，不在背景一直算
                     if (r.playRatio == null || !r.identity) continue;
                     const info = raidSimPickByPlayer.get(r.identity);
                     const pending = r.attacks.some(a => { if (a.placeholder || !a.simB) return false; const st = raidSimPickStore[raidSimExpKey(a)]; return !st || st.ver !== RAID_SIM_PICK_VER; });
@@ -7917,7 +7919,14 @@
             const r = (raidLogLastRanked || []).find(x => x.identity === identity);
             if (!r) return;
             const v = (raidClanData && raidClanData.byCode.get(identity)) || raidAccountInfo(r.player);
-            const rerender = () => { if (typeof renderRaidLogQueryResult === 'function') renderRaidLogQueryResult(); };
+            // 背景自動算的：最多每 5 秒重畫一次排行榜（47 人整張重畫一次要 0.3～1 秒，每算完一人就重畫會一直卡）
+            const rerender = () => {
+                if (typeof renderRaidLogQueryResult !== 'function') return;
+                if (!auto) { renderRaidLogQueryResult(); return; }
+                if (raidSimPickRerenderTimer) return;
+                const wait = Math.max(0, 5000 - (Date.now() - raidSimPickRerenderAt));
+                raidSimPickRerenderTimer = setTimeout(() => { raidSimPickRerenderTimer = null; raidSimPickRerenderAt = Date.now(); if (raidLogPanelShown()) renderRaidLogQueryResult(); }, wait);
+            };
             const progress = auto ? () => {} : rerender;
             const keepOld = () => raidSimPickByPlayer.get(identity) && raidSimPickByPlayer.get(identity).ratio != null;   // 已經有 % 就不要用狀態文字蓋掉
             if (!v) { if (!keepOld()) raidSimPickByPlayer.set(identity, { busy: '沒有帳號資料' }); if (!auto) rerender(); return; }
@@ -7956,20 +7965,29 @@
                     const list = raidSimDeckList.filter(d => d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c))).slice(0, 120).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) }));
                     const mirror = a.cycle >= 2 ? 0.35 : 0;
                     // 快速篩（每種打法 1 次），前 5 組各跑 40 次取最高
-                    const quick = [];
-                    for (const d of list) {
-                        const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
-                        const base = { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro };
-                        let b0 = null; d.plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
-                        if (b0) quick.push(b0);
-                        if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
+                    // 快速篩（每種打法 1 次）、前 5 組各跑 40 次取最高、挑中的再用新亂數跑 60 次：都丟給 Web Worker 平行算，不佔畫面
+                    const mk = (d) => { const deck = d.cards.map(c => [c, me.lv[c]]); const drums = deck.some(x => x[0] === 'BattleDrums');
+                        return { deck, board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror, curse: env.curse, buff: env.buff, necro: me.necro }; };
+                    let quick = null;
+                    const qr = await raidSimParallel(P, list.map(d => ({ kind: 'q', base: mk(d), plans: d.plans.map(pl => pl.tg), caps: d.plans.map(pl => capOf(pl.tg)) })));
+                    if (qr) quick = qr.map((x, i) => x && { x: x.x, base: mk(list[i]), tg: x.tg }).filter(Boolean);
+                    else {
+                        quick = [];
+                        for (const d of list) {
+                            const base = mk(d);
+                            let b0 = null; d.plans.forEach(pl => { const x = Math.min(RaidSim.simAttack({ ...base, targets: pl.tg, seed: 3 }, P).total, capOf(pl.tg)); if (!b0 || x > b0.x) b0 = { x, base, tg: pl.tg }; });
+                            if (b0) quick.push(b0);
+                            if (quick.length % 20 === 0) await new Promise(rs => setTimeout(rs, 0));
+                        }
                     }
                     quick.sort((x, y) => y.x - x.x);
                     best = { v: 0 };
                     let bq = null;
-                    for (const q of quick.slice(0, 5)) { const m = Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) { best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; bq = q; } await new Promise(rs => setTimeout(rs, 0)); }
+                    const top5 = quick.slice(0, 5);
+                    const mr = await raidSimParallel(P, top5.map(q => ({ kind: 'm', base: q.base, tg: q.tg, seed: 17, runs: 40, cap: capOf(q.tg) })));
+                    top5.forEach((q, i) => { const m = mr ? mr[i] : Math.min(RaidSim.simMean({ ...q.base, targets: q.tg, seed: 17 }, 40, P).total, capOf(q.tg)); if (m > best.v) { best = { v: m, cards: q.base.deck.map(d => d[0]), tg: q.tg }; bq = q; } });
                     // 挑中的那組用新的亂數重跑一次取平均（挑的時候容易挑到剛好運氣好的，分母會偏高）
-                    if (bq) { best.v = Math.min(RaidSim.simMean({ ...bq.base, targets: bq.tg, seed: 91 }, 60, P).total, capOf(bq.tg)); await new Promise(rs => setTimeout(rs, 0)); }
+                    if (bq) { const r2 = await raidSimParallel(P, [{ kind: 'm', base: bq.base, tg: bq.tg, seed: 91, runs: 60, cap: capOf(bq.tg) }]); best.v = r2 ? r2[0] : Math.min(RaidSim.simMean({ ...bq.base, targets: bq.tg, seed: 91 }, 60, P).total, capOf(bq.tg)); }
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
@@ -12889,7 +12907,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=1');
+                    const w = new Worker('raid-sim/simworker.js?v=2');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

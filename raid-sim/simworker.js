@@ -16,10 +16,17 @@ function final(P, base, o) {
   runs.sort((x, y) => x - y);
   return { ...o, avg: runs.reduce((x, y) => x + y, 0) / runs.length, lo: runs[Math.floor(runs.length * 0.25)], hi: runs[Math.floor(runs.length * 0.75)], final: true };
 }
+// 配卡用：每種打法各跑 1 次挑最好的（不超過部位剩下的血）
+function quickPick(P, base, plans, caps) {
+  let b = null;
+  plans.forEach((tg, i) => { const x = Math.min(RaidSim.simAttack({ ...base, targets: tg, seed: 3 }, P).total, caps[i] == null ? Infinity : caps[i]); if (!b || x > b.x) b = { x, tg }; });
+  return b;
+}
+function meanOf(P, j) { return Math.min(RaidSim.simMean({ ...j.base, targets: j.tg, seed: j.seed }, j.runs, P).total, j.cap == null ? Infinity : j.cap); }
 onmessage = async (e) => {
   const { id, P, jobs } = e.data;
   try {
     await ready;
-    postMessage({ id, out: jobs.map(j => j.kind === 's' ? screen(P, j.base, j.cards, j.plans) : final(P, j.base, j.o)) });
+    postMessage({ id, out: jobs.map(j => j.kind === 's' ? screen(P, j.base, j.cards, j.plans) : j.kind === 'q' ? quickPick(P, j.base, j.plans, j.caps) : j.kind === 'm' ? meanOf(P, j) : final(P, j.base, j.o)) });
   } catch (err) { postMessage({ id, error: String(err && err.message || err) }); }
 };

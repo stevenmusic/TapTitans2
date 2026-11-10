@@ -7776,7 +7776,7 @@
             return l && l.length ? new Set(l.filter(d => d.uses >= RAID_SIM_PROVEN_USES).map(d => d.cards.slice().sort().join('+'))) : null;
         }
         // 每一刀的配卡結果存在手機上（模型改版就換 key），下次打開直接用、只補算新的刀
-        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v7';
+        const RAID_SIM_PICK_KEY = 'tt2_sim_pick_v8';
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         function raidSimPickSave() {
@@ -9502,7 +9502,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim9';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim10';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12264,7 +12264,7 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v9';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v10';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
             if (!raidState || !raidState.parts) return null;
@@ -12604,8 +12604,8 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=3'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=2').then(r => r.json())]);
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=4'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=3').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
             })();

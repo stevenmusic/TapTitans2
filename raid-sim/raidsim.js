@@ -213,6 +213,12 @@ function simAttack(opt, P = P0) {
     }
   }
   out.total = out.tap + Object.values(out.by).reduce((a, b) => a + b, 0);
+  // 肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.93 倍、5 個 1.07 倍、4 個以下 1.1 倍）
+  if (P.pcK && has.has('PlagueAttack') && has.has('CrushingVoid')) {
+    const nb = Math.min(6, LOCS.filter(x => board[x] && board[x].layer === 'body').length);
+    const f = P.pcK[nb] || 1;
+    out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f;
+  }
   return out;
 }
 function simMean(opt, runs = 30, P) {

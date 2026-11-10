@@ -7799,6 +7799,15 @@
            配卡＝同樣的部位狀態下，他能用的最好牌組應打多少（太花 CPU，展開玩家按「計算」才在網頁算）。% ＝ 實際 ÷ 期望 */
         const raidSimExpMap = new Map();
         let raidSimExpAt = 0, raidSimExpLoading = false;
+        // 伺服器的模擬沒有「瘟疫＋瘋狂無效」「電擊＋時間之沙」的修正，顯示前照網頁模擬同一套係數補上（不用重新部署伺服器）
+        const RAID_EXP_PCK = [1.1, 1.1, 1.1, 1.1, 1.1, 1.07, 0.91];
+        const RAID_EXP_CBSK = { MentalFocus: [0.83, 0.96], InnerTruth: [0.93, 1], BattleDrums: [1.08, 1.03] };
+        function raidSimExpFix(a, sx) {
+            const names = (a.cards || []).map(c => c.name); let f = 1;
+            if (names.includes('PlagueAttack') && names.includes('CrushingVoid')) f *= RAID_EXP_PCK[Math.min(6, String(sx.b || '').split('B').length - 1)] || 1;
+            if (names.includes('CosmicBarb') && names.includes('SandsOfTime')) { const k = RAID_EXP_CBSK[names.find(c => c !== 'CosmicBarb' && c !== 'SandsOfTime')]; if (k) f *= (sx.tg || []).length === 1 ? k[0] : k[1]; }
+            return sx.exp * f;
+        }
         const raidSimExpKey = (a) => `${a.attackDatetime || a.ts}_${a.player}`;
         async function raidSimExpLoad() {
             if (raidSimExpLoading || raidLogDemoActive || Date.now() - raidSimExpAt < 60 * 1000) return;
@@ -8111,7 +8120,7 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    a.simExp = sx && sx.exp ? sx.exp : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    a.simExp = sx && sx.exp ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;
@@ -12866,7 +12875,7 @@
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
                 if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=6'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=4').then(r => r.json())]);
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=5').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
             })();

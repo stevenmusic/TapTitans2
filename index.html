@@ -7298,6 +7298,19 @@
         // 背景自動更新重畫排行榜時名次可能會變動，用名字才能正確對回同一個人，
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
+        // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
+        const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
+        const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
+        const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
+        let raidLogUiLoaded = null;
+        try { raidLogUiLoaded = JSON.parse(localStorage.getItem(RAID_LOG_UI_KEY) || 'null'); } catch (e) {}
+        if (raidLogUiLoaded) { (raidLogUiLoaded.expanded || []).forEach(x => raidLogExpandedPlayers.add(x)); (raidLogUiLoaded.details || []).forEach(x => raidLogOpenDetails.add(x)); }
+        function raidLogUiSave() {
+            try {
+                const html = {}; (typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : []).forEach(n => { const h = raidLogRecoHtml.get(n); if (h && h.length < 60000) html[n] = h; });
+                localStorage.setItem(RAID_LOG_UI_KEY, JSON.stringify({ expanded: [...raidLogExpandedPlayers], details: [...raidLogOpenDetails].slice(-300), recos: typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : [], html }));
+            } catch (e) {}
+        }
         // 載入中的灰色骨架：推薦牌組（6 格）、清單（n 列）
         function ttSkelGrid(n) { return `<div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; margin:28px 0 8px;">${Array.from({ length: n || 6 }, () => '<div class="tt-skel" style="height:72px;"></div>').join('')}</div>`; }
         function ttSkelRows(n) { return `<div style="display:flex; flex-direction:column; gap:5px; margin:4px 0;">${Array.from({ length: n || 4 }, () => '<div class="tt-skel" style="height:44px;"></div>').join('')}</div>`; }
@@ -7537,7 +7550,7 @@
             const session = sessions[idx];
             if (!session) return;
             raidSessionFilter = session;
-            raidLogExpandedPlayers.clear(); // 手動切換場次是換一批不同的資料，展開狀態重新開始
+            raidLogExpandedPlayers.clear(); raidLogUiSave(); // 手動切換場次是換一批不同的資料，展開狀態重新開始
             document.getElementById('raid-session-active-bar').style.display = 'flex';
             document.getElementById('raid-session-active-label').textContent = `目前顯示：${formatSessionLabel(session)}`;
             renderRaidSessionMenu();
@@ -12083,8 +12096,8 @@
             return { cycle, used, remaining, owned, attackedThisCycle: inCycle.length, waveNo: Math.floor(inCycle.length / RAID_ATTACKS_PER_CYCLE) + 1, waveDone: wave.length };
         }
         // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）
-        const raidLogRecoOpen = new Set();
-        const raidLogRecoHtml = new Map();   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白
+        const raidLogRecoOpen = new Set((raidLogUiLoaded && raidLogUiLoaded.recos) || []);
+        const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
@@ -12101,9 +12114,11 @@
             if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 再按一次收起來
                 raidLogRecoOpen.delete(r.player);
                 box.style.display = 'none';
+                raidLogUiSave();
                 return;
             }
             raidLogRecoOpen.add(r.player);
+            raidLogUiSave();
             return raidLogRenderPlayerReco(r);
         }
         // 排行榜重畫後（有人出刀、切換場次），把打開中的玩家推薦補回去並重新計算
@@ -12261,6 +12276,7 @@
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
             if (!raidLogRecoOpen.has(r.player)) return;
             raidLogRecoHtml.set(r.player, html);
+            raidLogUiSave();
             box = raidLogRecoBox(r.player);
             if (box) { box.style.display = 'block'; box.innerHTML = html; raidSimFillRecoDamage(r.player, box); }
         }
@@ -12985,6 +13001,7 @@
                 if (isHidden) raidLogExpandedPlayers.add(r.player);
                 else raidLogExpandedPlayers.delete(r.player);
             }
+            raidLogUiSave();
         }
 
         // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，
@@ -12996,7 +13013,8 @@
             const chevrons = group.querySelectorAll('.raid-log-chevron');
             const allExpanded = details.length > 0 && [...details].every(d => d.style.display !== 'none');
             const shouldExpand = !allExpanded;
-            details.forEach(d => { d.style.display = shouldExpand ? 'block' : 'none'; });
+            details.forEach(d => { d.style.display = shouldExpand ? 'block' : 'none'; const k = raidLogUidKey.get(d.id); if (k) { if (shouldExpand) raidLogOpenDetails.add(k); else raidLogOpenDetails.delete(k); } });
+            raidLogUiSave();
             chevrons.forEach(c => { c.textContent = shouldExpand ? '▴' : '▾'; });
             const btn = document.getElementById(`raidlog-toggle-all-${rIdx}`);
             if (btn) btn.textContent = shouldExpand ? t('raidLogCollapseAll') : t('raidLogExpandAll');
@@ -13009,6 +13027,8 @@
             const isHidden = detail.style.display === 'none';
             detail.style.display = isHidden ? 'block' : 'none';
             if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
+            const k = raidLogUidKey.get(uid);
+            if (k) { if (isHidden) raidLogOpenDetails.add(k); else raidLogOpenDetails.delete(k); raidLogUiSave(); }
         }
 
         function renderRaidLogAttackCard(a, rIdx, aIdx, expandByDefault) {
@@ -13018,6 +13038,9 @@
                     <b style="color:#6b5a4a;">漏記 ${a.missedCount} 刀</b>（第 ${a.cycle} 輪，${escapeHtml(when)}）：伺服器沒收到這${a.missedCount > 1 ? '幾' : ''}筆，卡片與傷害不明</div>`;
             }
             const uid = `raidlog-detail-${rIdx}-${aIdx}`;
+            const aKey = `${a.attackDatetime || a.ts}_${a.player}`;
+            raidLogUidKey.set(uid, aKey);
+            if (raidLogOpenDetails.has(aKey)) expandByDefault = true;   // 之前展開過的單刀照樣展開
             const cardDamage = a.cardDamage || {};
             const tapDamage = a.tapDamage || 0;
 

@@ -12500,6 +12500,9 @@
             await Promise.all([loadAllCardLevels(), cardCsvLoad()]);
             const sel = document.getElementById('cardlv-sel');
             if (sel) sel.innerHTML = '<option value="">選擇玩家</option>' + Object.keys(allCardLevels || {}).sort((a, b) => a.localeCompare(b, 'zh-Hant')).map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+            // 上次選的玩家（存在瀏覽器 localStorage，網頁更新版本也不會清掉）：打開就直接顯示
+            let lastMe = null; try { lastMe = localStorage.getItem(CARDLV_ME_KEY); } catch (e) {}
+            if (lastMe && allCardLevels && allCardLevels[lastMe]) { if (sel) sel.value = lastMe; cardLevelsShow(lastMe); }
         }
         function cardLevelsSuggest(q) {
             const box = document.getElementById('cardlv-sug');
@@ -12529,7 +12532,10 @@
             const a0 = c.a[L - 1], a1 = c.a[L];
             return c.cat === 'Support' ? (1 + a1) / (1 + a0) - 1 : (a0 > 0 ? a1 / a0 - 1 : 0);
         }
+        const CARDLV_ME_KEY = 'tt2_cardlv_me';
         async function cardLevelsShow(name) {
+            try { localStorage.setItem(CARDLV_ME_KEY, name); } catch (e) {}
+            { const sel = document.getElementById('cardlv-sel'); if (sel && sel.value !== name) sel.value = name; }
             const lv = (allCardLevels && allCardLevels[name]) || {};
             const med = guildCardMedians();
             document.getElementById('cardlv-name').textContent = name;

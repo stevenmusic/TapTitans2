@@ -12418,6 +12418,10 @@
             return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: Math.round(agg(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
+        // 伺服器上的通用暫存（/kv）：存什麼由網頁決定，推薦牌組是其中一項；之後要存別的資料只要換個名稱，不用改伺服器
+        function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
+        async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
+        async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
         const RAID_SIM_HOME_KEY = 'tt2_home_sim_v11';
         let raidSimHomeMem = null;
         async function raidSimHomeRows(data, progress) {
@@ -12428,11 +12432,20 @@
             const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, v.raw.player_raid_level, v.raw.cards.map(c => c.skill_name + c.level).join()]);   // 標準玩家的等級變了也重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
+            // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
+            const remote = await kvGet('home_reco');
+            if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
+                raidSimHomeMem = { sig, rows: remote.rows };
+                try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
+                return remote.rows;
+            }
             const { hitParts, playable } = raidSimPartFns(byPartPartsToScene(raidState.parts, raidBannedParts));
             const rows = await raidSimPlayerPick('標準玩家', { used: [], remaining: 6 }, data, playable, hitParts, progress, v);
             if (!rows || !rows.length) return null;
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
+            // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）

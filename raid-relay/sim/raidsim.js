@@ -213,6 +213,23 @@ function simAttack(opt, P = P0) {
     }
   }
   out.total = out.tap + Object.values(out.by).reduce((a, b) => a + b, 0);
+  // 電擊＋時間之沙：整體準，但照第三張卡有固定偏差（攻擊紀錄：配變質氣體單打實際約 0.83 倍、配戰鼓單打約 1.2 倍），照第三張卡和單打／多部位修正
+  if (P.cbsK && has.has('CosmicBarb') && has.has('SandsOfTime')) {
+    const third = opt.deck.map(d => d[0]).find(c => c !== 'CosmicBarb' && c !== 'SandsOfTime');
+    const k = P.cbsK[third]; const f = k ? (targets.length === 1 ? k[0] : k[1]) : 1;
+    if (f && f !== 1) { out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f; }
+  }
+  // 肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.91 倍、5 個 1.07 倍、4 個以下 1.1 倍）
+  if (P.pcK && has.has('PlagueAttack') && has.has('CrushingVoid')) {
+    const nb = Math.min(6, LOCS.filter(x => board[x] && board[x].layer === 'body').length);
+    const f = P.pcK[nb] || 1;
+    out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f;
+  }
+  // 整組修正：攻擊紀錄驗證過固定偏高／偏低的組合（至少 2 人、4 刀，偏差 7% 以上）
+  if (P.deckK) {
+    const f = P.deckK[opt.deck.map(d => d[0]).slice().sort().join('+')];
+    if (f && f !== 1) { out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f; }
+  }
   return out;
 }
 function simMean(opt, runs = 30, P) {
@@ -225,4 +242,4 @@ function simMean(opt, runs = 30, P) {
   return acc;
 }
 const RaidSimApi = { simAttack, simMean, A, get SK() { return SK; }, P0, LOCS, init(skills) { SK = skills; } };
-if (typeof module !== 'undefined' && module.exports) module.exports = RaidSimApi; else window.RaidSim = RaidSimApi;
+if (typeof module !== 'undefined' && module.exports) module.exports = RaidSimApi; else (typeof window !== 'undefined' ? window : self).RaidSim = RaidSimApi;   // 網頁或 Web Worker 都能用

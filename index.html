@@ -7831,6 +7831,7 @@
         const RAID_EXP_CBSK = { MentalFocus: [0.83, 0.96], InnerTruth: [0.93, 1], BattleDrums: [1.2, 0.95] };
         const RAID_EXP_DECKK = { 'BarbedMorningstar+BattleDrums+MirrorForce': 0.89, 'BarbedMorningstar+BattleDrums+FlakShot': 0.91, 'CosmicBarb+MentalFocus+TotemFairySkill': 1.08 };   // 跟 calibration.json 的 deckK 一樣
         function raidSimExpFix(a, sx) {
+            if (sx.v >= 2) return sx.exp;   // 伺服器新版模擬已經含這些修正
             const names = (a.cards || []).map(c => c.name); let f = 1;
             if (names.includes('PlagueAttack') && names.includes('CrushingVoid')) f *= RAID_EXP_PCK[Math.min(6, String(sx.b || '').split('B').length - 1)] || 1;
             if (names.includes('CosmicBarb') && names.includes('SandsOfTime')) { const k = RAID_EXP_CBSK[names.find(c => c !== 'CosmicBarb' && c !== 'SandsOfTime')]; if (k) f *= (sx.tg || []).length === 1 ? k[0] : k[1]; }

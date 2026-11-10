@@ -86,7 +86,7 @@ function createSimExp(deps) {
     const b = LOCS.map(l => { const x = env.board[l] || { layer: 'armor' }; return x.layer === 'banned' ? (x.cursed ? 'x' : 'X') : x.layer === 'armor' ? (x.cursed ? 'a' : 'A') : x.layer === 'body' ? 'B' : 'S'; }).join('');
     const c = env.curse ? [env.curse.type, env.curse.per] : null;
     const h = env.hp ? LOCS.map(l => Math.round((Number(env.hp[l]) || 0) / 1e6)) : null;   // 每個部位剩多少血（百萬），網頁算配卡用
-    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c, h };   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
+    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c, h, v: 2 };   // v2：模擬器含瘟疫＋無效、電擊＋沙、整組修正（網頁看到 v2 就不再補修正）   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
     // 配卡：他能用的牌組（這一輪之前用過的卡不能用）
     const season = seasonBonus(sessionAttacks, byCode);
     const lv = {}; (p.cards || []).forEach(c => { const l = baseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + (season[c.skill_name] || 0); });

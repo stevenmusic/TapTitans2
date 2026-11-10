@@ -12119,8 +12119,11 @@
             if (!box) return;
             box.style.display = 'block';
             box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
-            const info = raidPlayerCycleInfo(r.player, r.attacks);
-            const head = '';   // 按「推薦」打開的，上面不用再寫「推薦牌組」
+            // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
+            const info0 = raidPlayerCycleInfo(r.player, r.attacks);
+            const nextRound = info0.remaining <= 0;
+            const info = nextRound ? { ...info0, used: new Set(), remaining: RAID_ATTACKS_PER_CYCLE } : info0;
+            const head = nextRound ? '<div style="font-size:11.5px; font-weight:700; color:#8a7a6a; margin:2px 0 4px;">這輪次數已用完，以下是照目前狀態推薦的下一輪牌組</div>' : '';   // 按「推薦」打開的，平常上面不寫字
             const deckGrid = (rows) => { byPartBadgeBanned = raidBannedParts || []; try { return deckGridInner(rows); } finally { byPartBadgeBanned = null; } };
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => {

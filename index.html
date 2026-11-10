@@ -8082,6 +8082,7 @@
             const attacksByIdentity = new Map(); // identity -> attacks[]
             const latestByIdentity = new Map(); // identity -> { ts, name }
             const identityOfAttack = makePlayerIdentityResolver(log);
+            const raidMissAll = raidMissEstimates(log);
             log.forEach((a) => {
                 const identity = identityOfAttack(a);
                 if (!attacksByIdentity.has(identity)) attacksByIdentity.set(identity, []);
@@ -8140,12 +8141,13 @@
                 const hasLowAttack = lowCount >= 2 && lowCount >= attacks.length * 0.1;
                 // 伺服器漏收的刀：遊戲每一刀都會回報剩餘次數（每輪多 6 刀、沒打完會累積），前後兩刀的剩餘次數跳號就是中間有刀沒收到。
                 // 卡片、傷害拿不回來，只補一筆「漏記」的佔位，讓攻擊次數對得上（不算進傷害、均傷、低傷判斷）
-                const missed = raidLogMissedPlaceholders(attacks);
+                const missed = raidMissAll.get(identity) || raidLogMissedPlaceholders(attacks);
+                const missEst = missed.reduce((t, m) => t + (m.estDamage || 0), 0);   // 漏記的刀依王血量估的傷害，算進總傷害
                 const shown = missed.length ? attacks.concat(missed).sort((a, b) => b.ts - a.ts) : attacks;
                 // 整體偏低：這場均傷低於同條件（突襲等級、卡片等級、突襲研究樹）應有的 80%，而且出刀 6 次以上——抓「每刀都打不好」的人
                 const overallRatio = playRatio != null ? playRatio : (expectedAvg > 0 ? avgOwnDamage / expectedAvg : null);   // 目前的傷害水準：有模擬用打法 %，沒有才用期望均傷
                 const overallLow = overallRatio != null && attacks.length >= 6 && overallRatio < RAID_LOG_OVERALL_LOW;   // 出刀 6 次以上才標偏低
-                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, playRatio, pickInfo, identity, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
+                return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage: totalDamage + missEst, missEst, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, playRatio, pickInfo, identity, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             // 還沒出刀的成員（官方公會名單）：排在最後，按「推薦」看該用什麼牌、應打多少（只在看最新一場時列）
@@ -8173,6 +8175,64 @@
                 if (c > a.cycle && c - a.cycle === 1) a.cycle = c;
             });
             return list;
+        }
+        /* 漏記的刀用王的血量反推傷害：
+           這隻王已經打掉：斬殺線（seed 的 k）－ 收到的肉體傷害 ＋ 已破部位沒對上的盔甲；
+           正在打的王：每個部位 出場的血（seed）－ 收到的傷害 － 目前剩的血。
+           同一隻王漏好幾刀時照每個人這場的均傷分；單刀最多算到他這場最高一刀的 1.3 倍（多出來的可能是別人整輪沒收到，不算在他頭上） */
+        const raidMissSeed = new Map();   // 場次開始時間 -> seed（'loading'＝抓取中）
+        function raidMissSeedGet(sa) {
+            const v = raidMissSeed.get(sa);
+            if (v === undefined) {
+                raidMissSeed.set(sa, 'loading');
+                ticketSeedFetch(sa).then(seed => { raidMissSeed.set(sa, seed || null); raidMissCache = null; if (seed && raidLogPanelShown()) renderRaidLogQueryResult(); }).catch(() => raidMissSeed.set(sa, null));
+                return null;
+            }
+            return v === 'loading' ? null : v;
+        }
+        let raidMissCache = null;
+        function raidMissEstimates(log) {
+            log = (Array.isArray(log) ? log : []).filter(a => a && !a.placeholder);
+            const sig = `${log.length}|${log.length ? log[log.length - 1].ts : 0}|${raidState && raidState.updatedAt}`;
+            if (raidMissCache && raidMissCache.log === log.length && raidMissCache.sig === sig) return raidMissCache.byId;
+            const resolve = makePlayerIdentityResolver(log);
+            const byId = new Map();
+            log.forEach(a => { const id = resolve(a); if (!byId.has(id)) byId.set(id, []); byId.get(id).push(a); });
+            const missById = new Map(), groups = new Map();
+            byId.forEach((atks, id) => {
+                const ms = raidLogMissedPlaceholders(atks); missById.set(id, ms);
+                ms.forEach(m => { if (!m.raidStartedAt || !m.bossOrdinal) return; const k = `${m.raidStartedAt}|${m.bossOrdinal}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push({ m, atks }); });
+            });
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            groups.forEach((arr, k) => {
+                const sa = k.slice(0, k.lastIndexOf('|')), o = Number(k.slice(k.lastIndexOf('|') + 1));
+                const sess = log.filter(a => a.raidStartedAt === sa && a.bossOrdinal);
+                const on = sess.filter(a => a.bossOrdinal === o); if (!on.length) return;
+                const recA = {}, recB = {};
+                on.forEach(a => (a.parts || []).forEach(p => { const d = Number(p.damage) || 0; if (p.layer === 'armor') recA[p.part] = (recA[p.part] || 0) + d; else if (p.layer === 'body') recB[p.part] = (recB[p.part] || 0) + d; }));
+                let est = null;
+                const seed = raidMissSeedGet(sa); if (!seed) return;
+                const names = {}; sess.forEach(a => { names[a.bossOrdinal] = a.boss; });
+                const raid = (seed.raids || []).find(r => r.l === on[0].raidLevelTier && Object.entries(names).every(([i, n]) => r.seq[i - 1] === n));
+                const t = raid && (raid.titans || []).find(x => x.n === on[0].boss); if (!t || !t.k) return;
+                if (sess.some(a => a.bossOrdinal > o)) {
+                    est = t.k - Object.values(recB).reduce((x, y) => x + y, 0);
+                    Object.entries(t.p || {}).forEach(([l, e]) => { if ((recB[l] || 0) > 0) est += Math.max(0, (Number(e[1]) || 0) - (recA[l] || 0)); });
+                } else if (sa === latest && raidState && raidState.bossOrdinal === o && raidState.bossName === on[0].boss && raidState.parts) {
+                    est = 0;
+                    Object.entries(t.p || {}).forEach(([l, e]) => { const p = raidState.parts[l]; if (!p) return; est += (Number(e[1]) || 0) - (recA[l] || 0) - (Number(p.armor) || 0) + (Number(e[2]) || 0) - (recB[l] || 0) - (Number(p.body) || 0); });   // 出場盔甲（seed）不一定是滿的
+                }
+                if (!(est > 20e6)) return;
+                const info = arr.map(({ m, atks }) => {
+                    const own = atks.filter(a => a.raidStartedAt === sa && a.totalDamage > 0);
+                    const avg = own.length ? own.reduce((t, a) => t + a.totalDamage, 0) / own.length : 0;
+                    return { m, w: avg * m.missedCount, cap: own.reduce((t, a) => Math.max(t, a.totalDamage), 0) * 1.3 * m.missedCount };
+                });
+                const W = info.reduce((t, x) => t + x.w, 0); if (!(W > 0)) return;
+                info.forEach(x => { const share = est * x.w / W; x.m.estDamage = Math.round(Math.min(share, x.cap)); x.m.estCapped = share > x.cap; x.m.estBoss = Math.round(est); x.m.estShared = info.length > 1; });
+            });
+            raidMissCache = { log: log.length, sig, byId: missById };
+            return missById;
         }
         function raidLogMissedPlaceholders(attacks) {
             const asc = attacks.filter(a => !a.placeholder && typeof a.cycle === 'number' && typeof a.attacksRemaining === 'number').sort((a, b) => a.ts - b.ts);
@@ -12221,14 +12281,14 @@
                         <span class="rl-name" style="font-size:13px; font-weight:700; color:#4a3a2a; overflow:hidden; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; color:#a89a88; font-weight:700;">${rIdx + 1}</span>${escapeHtml(r.player)}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; border-radius:6px; padding:2px 8px; min-width:5.2em; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}
-                            <span style="display:flex; flex-direction:column; align-items:flex-end; min-width:6.8em; line-height:1.15;"><span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:12.5px; font-weight:700; white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount - (r.missedCount || 0)}次${r.missedCount ? `<span style="color:#c0392b;">・漏${r.missedCount}</span>` : ''}`}</span>${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="font-size:10px; font-weight:800; white-space:nowrap;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:#8a7a6a;">丨</span><span style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : ''}</span>
+                            <span style="display:flex; flex-direction:column; align-items:flex-end; min-width:6.8em; line-height:1.15;"><span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:12.5px; font-weight:700; white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次${r.missedCount ? `<span style="color:#c0392b;">・漏${r.missedCount}</span>` : ''}`}</span>${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="font-size:10px; font-weight:800; white-space:nowrap;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:#8a7a6a;">丨</span><span style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : ''}</span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
                     <div id="raidlog-player-reco-${rIdx}" data-reco-player="${escapeHtml(r.player)}" style="display:none; padding:10px; border-top:1px solid #e5dcd2; background:#fff;"></div>
                     <div id="raidlog-player-group-${rIdx}" style="display:${isExpanded ? 'block' : 'none'}; padding:5px 6px 6px; border-top:1px solid #e5dcd2; background:#fff;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:8px;">
-                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount - (r.missedCount || 0)).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.missedCount ? `<b style="color:#c0392b;">・漏抓 ${r.missedCount} 次</b>` : ''}${r.playRatio != null ? `・打法 <b style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.playRatio * 100)}%</b>丨配卡 ${r.pickInfo && r.pickInfo.ratio != null ? `<b style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.pickInfo.ratio * 100)}%</b>` : r.pickInfo && r.pickInfo.busy ? `<span style="color:#8a7a6a;">${escapeHtml(r.pickInfo.busy)}</span>` : `<a onclick="event.stopPropagation(); raidSimPickRun(${escapeHtml(JSON.stringify(r.identity)).replace(/"/g, '&quot;')})" style="color:#6a3d9a; text-decoration:underline; cursor:pointer;">計算</a>`}` : r.expectedAvg > 0 ? `・期望均傷 ${escapeHtml(formatNumAlwaysM(r.expectedAvg))}${r.overallRatio != null ? `・目前 <b style="color:${r.overallLow ? '#d35400' : r.overallRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.overallRatio * 100)}%</b>` : ''}` : ''}</span>
+                            <span style="font-size:12px; color:#6b5a4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${t('raidLogAttackCountLabel').replace('{n}', r.attackCount).replace('{dmg}', escapeHtml(formatNum(r.totalDamage)))}${r.missedCount ? `<b style="color:#c0392b;">・漏抓 ${r.missedCount} 次</b>` : ''}${r.playRatio != null ? `・打法 <b style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.playRatio * 100)}%</b>丨配卡 ${r.pickInfo && r.pickInfo.ratio != null ? `<b style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.pickInfo.ratio * 100)}%</b>` : r.pickInfo && r.pickInfo.busy ? `<span style="color:#8a7a6a;">${escapeHtml(r.pickInfo.busy)}</span>` : `<a onclick="event.stopPropagation(); raidSimPickRun(${escapeHtml(JSON.stringify(r.identity)).replace(/"/g, '&quot;')})" style="color:#6a3d9a; text-decoration:underline; cursor:pointer;">計算</a>`}` : r.expectedAvg > 0 ? `・期望均傷 ${escapeHtml(formatNumAlwaysM(r.expectedAvg))}${r.overallRatio != null ? `・目前 <b style="color:${r.overallLow ? '#d35400' : r.overallRatio >= 1 ? '#2e7d32' : '#6b5a4a'};">${Math.round(r.overallRatio * 100)}%</b>` : ''}` : ''}</span>
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
@@ -13315,7 +13375,7 @@
             if (a.placeholder) {
                 const when = a.afterTs ? `${raidLogRelativeDate(a.afterTs)}～${raidLogRelativeDate(a.beforeTs).split(' ').pop()} 之間` : `${raidLogRelativeDate(a.beforeTs)} 之前`;
                 return `<div style="border:1px dashed #e0a49b; border-radius:8px; padding:8px 10px; background:#fbe6e3; color:#8a7a6a; font-size:12px;">
-                    <b style="color:#c0392b;">漏記 ${a.missedCount} 刀</b>（第 ${a.cycle} 輪，${escapeHtml(when)}）：伺服器沒收到這${a.missedCount > 1 ? '幾' : ''}筆，卡片與傷害不明</div>`;
+                    <b style="color:#c0392b;">漏記 ${a.missedCount} 刀</b>（第 ${a.cycle} 輪，${escapeHtml(when)}）：伺服器沒收到這${a.missedCount > 1 ? '幾' : ''}筆，卡片不明${a.estDamage ? `。<b style="color:#6b5a4a;">依王血量估約 ${escapeHtml(formatNumAlwaysM(a.estDamage))}</b>（已算進總傷害${a.estCapped ? `；這隻王對不上 ${escapeHtml(formatNumAlwaysM(a.estBoss))}，比他平常高很多，可能還有別人的刀沒收到` : a.estShared ? `；這隻王漏的刀合計約 ${escapeHtml(formatNumAlwaysM(a.estBoss))}，照各人均傷分` : ''}）` : '，傷害不明'}</div>`;
             }
             const uid = `raidlog-detail-${rIdx}-${aIdx}`;
             const aKey = `${a.attackDatetime || a.ts}_${a.player}`;
@@ -14424,6 +14484,10 @@
                 byCycle.set(a.cycle, (byCycle.get(a.cycle) || 0) + (Number(a.totalDamage) || 0));
                 cntCycle.set(a.cycle, (cntCycle.get(a.cycle) || 0) + 1);
             });
+            raidMissEstimates(serverAttackLogCache).forEach(ms => ms.forEach(m => {   // 漏記的刀：依王血量估的傷害也算進那一輪
+                if (!m.estDamage || (rsa && m.raidStartedAt && m.raidStartedAt !== rsa) || typeof m.cycle !== 'number') return;
+                byCycle.set(m.cycle, (byCycle.get(m.cycle) || 0) + m.estDamage);
+            }));
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const lastCycle = cycles.length ? cycles[cycles.length - 1] : null;
             // 選幾輪打完：每一輪的目標跟實際傷害並排，下面一列是總目標跟總傷害，直接看有沒有達標

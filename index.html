@@ -12415,7 +12415,11 @@
             const vs = [...raidClanData.byCode.entries()].filter(([, v]) => v && v.raw);
             if (vs.length < 5) return null;
             const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : [];
-            const starts = [...new Set(log.map(a => a.raidStartedAt).filter(Boolean))].sort().slice(-3);
+            // 只用已經打完的場次（打王期間權重不會一直變，推薦才不會因為等級跳一級就重算）；還沒有打完的場次時才用這場
+            const cur = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const all = [...new Set(log.map(a => a.raidStartedAt).filter(Boolean))].sort();
+            const done = all.filter(x => x !== cur);
+            const starts = (done.length ? done : all).slice(-3);
             const sum = new Map(), cnt = new Map();
             log.forEach(a => { if (!starts.includes(a.raidStartedAt) || !a.playerCode || !(a.totalDamage > 0)) return; sum.set(a.playerCode, (sum.get(a.playerCode) || 0) + a.totalDamage); cnt.set(a.playerCode, (cnt.get(a.playerCode) || 0) + 1); });
             let ws = vs.map(([code, v]) => ({ p: v.raw, w: cnt.get(code) ? sum.get(code) / cnt.get(code) / 1e6 : 0 })).filter(x => x.w > 0);
@@ -12448,7 +12452,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, v.raw.player_raid_level, v.raw.cards.map(c => c.skill_name + c.level).join()]);   // 標準玩家的等級變了也重算
+            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算

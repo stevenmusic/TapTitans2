@@ -13346,6 +13346,15 @@
                         <div style="border-top:1px dashed #e5dcd2; margin:0 0 2px; padding-top:3px; font-size:12px; font-weight:700; color:#4a3a2a; text-align:center;">
                             ${bossStr}
                         </div>
+                        ${(() => {
+                            // 預估傷害：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均（打法 % 用的數字）；配卡算過的話附上「照推薦打」的應打
+                            if (a.placeholder || !(a.simExp > 0)) return '';
+                            const r = a.totalDamage / a.simExp;
+                            const col = r < RAID_SIM_PICK_LOW ? '#c0392b' : r >= 1 ? '#2e7d32' : '#6b5a4a';
+                            const pk = raidSimPickStore[raidSimExpKey(a)];
+                            const reco = pk && pk.v > 0 && pk.ver >= 3 ? `<span style="color:#8a7a6a;">丨照推薦打 <b style="color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(pk.v))}</b></span>` : '';
+                            return `<div style="display:flex; justify-content:flex-end; align-items:baseline; gap:6px; flex-wrap:wrap; font-size:11.5px; color:#8a7a6a; margin:0 0 3px;">預估傷害 <b style="color:#4a3a2a;">${escapeHtml(formatNumAlwaysM(a.simExp))}</b><span>實際 <b style="color:${col};">${Math.round(r * 100)}%</b></span>${reco}</div>`;
+                        })()}
                         ${partsGrid}
                     </div>
                 </div>

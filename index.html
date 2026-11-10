@@ -12230,7 +12230,6 @@
             `;
             }).join('');
             raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
-            setTimeout(raidAtkRangeFill, 300);   // 展開的玩家：補算單刀應打的範圍
         }
 
         /* ── 玩家專屬推薦牌組：這一輪（cycle）還沒用過的卡，組出最適合現在王狀態的牌組 ──
@@ -13235,7 +13234,6 @@
                 else raidLogExpandedPlayers.delete(r.player);
             }
             raidLogUiSave();
-            if (isHidden) setTimeout(raidAtkRangeFill, 100);
         }
 
         // 「全部展開／全部收合」：同一位玩家的所有攻擊紀錄一次全部切換，
@@ -13318,8 +13316,8 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="display:flex; flex-wrap:wrap; column-gap:5px; row-gap:2px; align-items:center;">
-                    <div style="flex:none; width:56px; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
+                <div style="display:grid; grid-template-columns: minmax(40px, max-content) repeat(${(a.cards || []).length}, minmax(0, max-content)) auto; justify-content:start; column-gap:clamp(4px, 1.5vw, 8px); align-items:center;">
+                    <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(10px, 2.9vw, 11.5px); color:#5a4a3a; white-space:nowrap;">
                         <span>${t('raidLogTapDamage')}</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
                     </div>
@@ -13328,13 +13326,13 @@
                         const dmg = cardDamage[c.name];
                         const dmgLabel = (dmg && dmg > 0) ? escapeHtml(formatNumAlwaysM(dmg)) : t('raidLogSupport');
                         const icon = img
-                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:26px; height:26px; border-radius:5px; object-fit:cover; display:block;">`
+                            ? `<img src="${img}" alt="${escapeHtml(raidCardLabel(c.name))}" style="width:100%; max-width:26px; aspect-ratio:1; height:auto; border-radius:5px; object-fit:cover; display:block;">`
                             : '<span style="font-size:17px; line-height:26px; display:block; text-align:center;">🃏</span>';
                         // 點卡片圖示＋等級傷害文字這一整塊，看這位玩家這場用這張卡的所有紀錄
                         return `
-                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="flex:none; width:89px; display:grid; grid-template-columns: 26px 58px; column-gap:5px; align-items:center;">
+                            <div class="raid-log-card-tap" onclick="openCardUsageDetail('${c.name}')" style="min-width:0; display:grid; grid-template-columns: clamp(20px, 6vw, 26px) minmax(0, 1fr); column-gap:clamp(2px, 1vw, 5px); align-items:center;">
                                 ${icon}
-                                <div style="display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:11.5px; color:#5a4a3a;">
+                                <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(10px, 2.9vw, 11.5px); color:#5a4a3a; white-space:nowrap;">
                                     <span>Lv.${escapeHtml(String(c.level))}</span>
                                     <span style="font-weight:600;">${dmgLabel}</span>
                                 </div>
@@ -13342,9 +13340,8 @@
                         `;
                     }).join('')}
                     ${!a.placeholder && a.simExp > 0 ? (() => {
-                        // 應打：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均；括號是 P25～P75（10 刀約 5 刀落在這裡，展開時才補算）
-                        const rg = raidAtkRange[aKey];
-                        return `<div class="rl-expbox" data-k="${escapeHtml(aKey)}" style="margin-left:auto; text-align:center; background:#fbf2e2; border-radius:6px; padding:2px 7px; line-height:1.2; white-space:nowrap;"><div style="font-size:12.5px; font-weight:800; color:#2e5d32;">應打 ${escapeHtml(formatNumAlwaysM(a.simExp))}</div><div class="rl-exprange" style="font-size:10.5px; font-weight:600; color:#8a7a6a;">${rg ? `（${escapeHtml(formatNumAlwaysM(a.simExp * rg[0]))}～${escapeHtml(formatNumAlwaysM(a.simExp * rg[1]))}）` : ''}</div></div>`;
+                        // 應打：這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均
+                        return `<div class="rl-expbox" data-k="${escapeHtml(aKey)}" style="text-align:center; background:#fbf2e2; border-radius:6px; padding:2px clamp(3px, 1vw, 7px); line-height:1.2; white-space:nowrap; font-size:clamp(10.5px, 3vw, 12.5px); font-weight:800; color:#2e5d32;">應打 ${escapeHtml(formatNumAlwaysM(a.simExp))}</div>`;
                     })() : ''}
                 </div>
             `;

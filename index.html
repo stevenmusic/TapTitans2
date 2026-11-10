@@ -7833,6 +7833,7 @@
         }
         // 首頁「最近攻擊」有沒有照自己的推薦打：重現「他出這一刀之前按推薦會看到的那幾組」
         //（出刀前的部位狀態、他這輪還沒用的卡、剩下的刀數、他自己的等級），這一刀的牌組在裡面就算照推薦打。算過的存在手機上
+        const RAID_RECENT_RECO_ON = false;   // 最近攻擊「有沒有照推薦打」：先關掉（不計算、不顯示），要用改成 true
         const RAID_RECO_AT_KEY = 'tt2_reco_at';
         let raidRecoAtStore = {};
         try { raidRecoAtStore = JSON.parse(localStorage.getItem(RAID_RECO_AT_KEY) || '{}') || {}; } catch (e) {}
@@ -7890,7 +7891,7 @@
             return pick.map(o => o.cards.slice().sort().join('+'));
         }
         async function raidSimPickRecent() {
-            if (raidRecoAtBusy || raidLogDemoActive || raidSimActive) return;
+            if (!RAID_RECENT_RECO_ON || raidRecoAtBusy || raidLogDemoActive || raidSimActive) return;
             const todo = raidRecentAttacks.filter(a => a.dedupKey && !raidRecoAtStore[a.dedupKey]);
             if (!todo.length) return;
             raidRecoAtBusy = true;
@@ -15199,7 +15200,7 @@
                 const allParts = Array.isArray(a.parts) ? a.parts : [];
                 // 有沒有照他自己的推薦打：出這刀之前按推薦會看到的那幾組（raidSimPickRecent 背景算好、存在手機上），牌組在裡面就打勾
                 const aCards = (a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean);
-                const pk = a.dedupKey && raidRecoAtStore[a.dedupKey];
+                const pk = RAID_RECENT_RECO_ON && a.dedupKey && raidRecoAtStore[a.dedupKey];
                 const recoMatch = pk && Array.isArray(pk.s) && pk.s.length && aCards.length === 3 ? pk.s.includes(aCards.slice().sort().join('+')) : null;
                 // 傷害低於這一刀 5% 的部位不列出（濺射的零星傷害）
                 const dmgOf = p => Number(p.damage) || 0;
@@ -15240,7 +15241,7 @@
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
                             : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
-                        <span class="raid-recent-mark">${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}</span>
+                        <span class="raid-recent-mark"${RAID_RECENT_RECO_ON ? '' : ' style="display:none;"'}>${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span onclick="event.stopPropagation(); raidRecentToggleReco(${JSON.stringify(a.dedupKey).replace(/"/g, '&quot;')})" title="沒照推薦打，點一下看最接近的推薦" style="cursor:pointer; font-size:10.5px; font-weight:800; color:#a8552a; border:1px solid #e0b89a; background:#fff4ec; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}</span>
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>${recoMatch === false && raidRecentRecoOpen.has(a.dedupKey) ? raidRecentRecoLine(aCards, pk.s, partHtml, `-${formatNum(a.dmg)}`) : ''}`;
             }).join('');

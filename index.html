@@ -4603,7 +4603,7 @@
             if (location.protocol === 'file:' || Date.now() - lastUpdateCheckAt < 60000) return;
             lastUpdateCheckAt = Date.now();
             try {
-                const resp = await fetch(location.pathname, { cache: 'reload' });
+                const resp = await fetch(location.pathname, { cache: 'no-cache' });   // 帶快取標記問伺服器：沒改版只回「沒變」（304），不用每次重抓整份網頁
                 if (!resp.ok) return;
                 const fresh = new DOMParser().parseFromString(await resp.text(), 'text/html');
                 const freshScript = getMainInlineScriptText(fresh);
@@ -13444,7 +13444,7 @@
             const tapDamage = a.tapDamage || 0;
 
             const cardRows = `
-                <div style="container-type:inline-size;"><div style="display:grid; font-size:clamp(8.5px, 3.1cqw, 12.5px); grid-template-columns: 3.5em repeat(${(a.cards || []).length}, calc(clamp(20px, 8.4cqw, 30px) + 1px + 4.15em)) clamp(64px, 22cqw, 90px); justify-content:space-between; column-gap:2px; align-items:center;">
+                <div style="container-type:inline-size;"><div style="display:grid; font-size:clamp(8.5px, 3.1cqw, 12.5px); grid-template-columns: 4.3em repeat(${(a.cards || []).length}, calc(clamp(20px, 8.4cqw, 30px) + 1px + 4.15em)) 3.9em; justify-content:space-between; column-gap:2px; align-items:center;">
                     <div style="min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.15; font-size:clamp(9.5px, 3.3cqw, 13px); color:#5a4a3a; white-space:nowrap;">
                         <span>點擊</span>
                         <span style="font-weight:600;">${escapeHtml(formatNumAlwaysM(tapDamage))}</span>
@@ -13470,7 +13470,7 @@
                     ${!a.placeholder && a.simExp > 0 ? (() => {
                         // 傷害 %：實際 ÷ 應打（這一刀用的牌組、出刀前的部位狀態、他的等級模擬的平均）；應打和高低範圍展開才看
                         const r = a.totalDamage / a.simExp;
-                        return `<div style="box-sizing:border-box; width:100%; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1cqw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 3.3cqw, 13px); font-weight:700; color:${r < 0.8 ? '#c0392b' : r >= 1.2 ? '#2e7d32' : '#5a4a3a'};">${Math.round(r * 100)}%</div>`;
+                        return `<div style="justify-self:end; text-align:center; background:#fbf2e2; border-radius:6px; padding:1px clamp(3px, 1cqw, 6px); line-height:1.2; white-space:nowrap; font-size:clamp(9.5px, 3.3cqw, 13px); font-weight:700; color:${r < 0.8 ? '#c0392b' : r >= 1.2 ? '#2e7d32' : '#5a4a3a'};">${Math.round(r * 100)}%</div>`;
                     })() : ''}
                 </div></div>
             `;
@@ -13515,7 +13515,7 @@
                     </div>
                     <!-- 只有八部位傷害圖表會收合（點上方標題列切換） -->
                     <div id="${uid}" class="raid-log-detail" style="display:${expandByDefault ? 'block' : 'none'}; padding:0 8px 6px;">
-                        <div style="display:flex; justify-content:flex-end; align-items:baseline; gap:6px; border-top:1px dashed #e5dcd2; margin:0 0 4px; padding:3px 2px 0; min-height:4px; font-size:12px; font-weight:700; color:#4a3a2a; white-space:nowrap;">
+                        <div style="display:flex; justify-content:center; align-items:baseline; gap:6px; border-top:1px dashed #e5dcd2; margin:0 0 4px; padding:3px 2px 0; min-height:4px; font-size:12px; font-weight:700; color:#4a3a2a; white-space:nowrap;">
                             ${!a.placeholder && a.simExp > 0 ? (() => { const rg = raidAtkRange[aKey]; return `<span class="rl-expbox" data-k="${escapeHtml(aKey)}" data-mean="${a.simExp}" style="font-size:11.5px; font-weight:600; color:#8a7a6a;">${raidAtkRangeHtml(a.simExp, rg)}</span>`; })() : ''}
                         </div>
                         ${partsGrid}

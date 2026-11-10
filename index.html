@@ -7815,7 +7815,10 @@
             raidSimPickAutoBusy = true;
             try {
                 await new Promise(r => setTimeout(r, 1500));
-                for (const r of (raidLogLastRanked || []).slice()) {
+                // 先算首頁「最近攻擊」裡的玩家（才能盡快標有沒有照推薦打），其他照排行榜順序
+                const recentNames = new Set((raidRecentAttacks || []).map(a => a.player));
+                const order = (raidLogLastRanked || []).slice().sort((a, b) => (recentNames.has(b.player) ? 1 : 0) - (recentNames.has(a.player) ? 1 : 0));
+                for (const r of order) {
                     const box = document.getElementById('raid-log-query-result');
                     if (!box || box.style.display === 'none') break;   // 攻擊紀錄關掉就停
                     if (r.playRatio == null || !r.identity) continue;
@@ -7826,6 +7829,59 @@
                     await raidSimPickRun(r.identity, true);
                 }
             } finally { raidSimPickAutoBusy = false; }
+        }
+        // 首頁「最近攻擊」有沒有照自己的推薦打：重現「他出這一刀之前按推薦會看到的那幾組」
+        //（出刀前的部位狀態、他這輪還沒用的卡、剩下的刀數、他自己的等級），這一刀的牌組在裡面就算照推薦打。算過的存在手機上
+        const RAID_RECO_AT_KEY = 'tt2_reco_at';
+        let raidRecoAtStore = {};
+        try { raidRecoAtStore = JSON.parse(localStorage.getItem(RAID_RECO_AT_KEY) || '{}') || {}; } catch (e) {}
+        let raidRecoAtBusy = false;
+        async function raidSimRecoSetAt(r, a, v, P, env0, data, proven) {
+            const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+            const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
+            const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
+            a.cards.forEach(c => { if (me.lv[c.name]) me.lv[c.name] = Math.max(me.lv[c.name], Number(c.level) || 0); });
+            const board = {}, scene = {};
+            LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
+            const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
+            const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
+            open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
+            const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+            const { hitParts, playable } = raidSimPartFns(scene);
+            const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
+            const seen = new Set(), list = [], extra = [];
+            data.decks.filter(d => d.cards && d.cards.length === 3).sort((x, y) => (y.attacks || 0) - (x.attacks || 0)).forEach(d => {
+                const k = d.cards.slice().sort().join('+'); if (seen.has(k) || (proven && !proven.has(k))) return; seen.add(k);
+                if (!d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) || !playable(d.cards)) return;
+                const hp = hitParts(d.cards);
+                const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
+                if (pl.length) (list.length < 40 ? list : extra).push({ cards: d.cards, plans: pl });
+            });
+            const pick = await raidSimRank(P, env, me, list, n, null, extra);
+            return pick.map(o => o.cards.slice().sort().join('+'));
+        }
+        async function raidSimPickRecent() {
+            if (raidRecoAtBusy || raidLogDemoActive || raidSimActive) return;
+            const todo = raidRecentAttacks.filter(a => a.dedupKey && !raidRecoAtStore[a.dedupKey]);
+            if (!todo.length) return;
+            raidRecoAtBusy = true;
+            try {
+                const P = await raidSimLoad(); const env0 = await raidSimEnv(); const proven = await raidSimProvenSet();
+                const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
+                if (!data) return;
+                for (const ra of todo) {
+                    const r = (raidLogLastRanked || []).find(x => x.player === ra.player);
+                    const a = r && r.attacks.find(x => raidSimExpKey(x) === ra.dedupKey);
+                    if (!a || !a.simB || !a.cards || a.cards.length !== 3) continue;
+                    const v = (raidClanData && raidClanData.byCode.get(r.identity)) || raidAccountInfo(r.player);
+                    if (!v) continue;
+                    while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));
+                    const sigs = await raidSimRecoSetAt(r, a, v, P, env0, data, proven);
+                    raidRecoAtStore[ra.dedupKey] = { s: sigs, t: Date.now() };
+                    try { const ks = Object.keys(raidRecoAtStore); if (ks.length > 500) ks.sort((x, y) => raidRecoAtStore[x].t - raidRecoAtStore[y].t).slice(0, ks.length - 500).forEach(k => delete raidRecoAtStore[k]); localStorage.setItem(RAID_RECO_AT_KEY, JSON.stringify(raidRecoAtStore)); } catch (e) {}
+                    renderRaidRecentAttacks.last = null; renderRaidRecentAttacks();
+                }
+            } catch (e) {} finally { raidRecoAtBusy = false; }
         }
         async function raidSimPickRun(identity, auto) {
             const r = (raidLogLastRanked || []).find(x => x.identity === identity);
@@ -7893,6 +7949,7 @@
             if (sb > 0) raidSimPickByPlayer.set(identity, { ratio: sa / sb }); else if (!keepOld()) raidSimPickByPlayer.set(identity, { busy: '沒有可比的刀' });
             raidSimPickSave();
             rerender();
+            try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
@@ -15103,6 +15160,10 @@
             }
             const html = raidRecentAttacks.map(a => {
                 const allParts = Array.isArray(a.parts) ? a.parts : [];
+                // 有沒有照他自己的推薦打：出這刀之前按推薦會看到的那幾組（raidSimPickRecent 背景算好、存在手機上），牌組在裡面就打勾
+                const aCards = (a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean);
+                const pk = a.dedupKey && raidRecoAtStore[a.dedupKey];
+                const recoMatch = pk && Array.isArray(pk.s) && pk.s.length && aCards.length === 3 ? pk.s.includes(aCards.slice().sort().join('+')) : null;
                 // 傷害低於這一刀 5% 的部位不列出（濺射的零星傷害）
                 const dmgOf = p => Number(p.damage) || 0;
                 const partTotal = {};
@@ -15141,11 +15202,13 @@
                         <span class="raid-recent-cards">${(a.cards || []).map(c => (c && typeof c === 'object') ? (c.name || c.id) : c).filter(Boolean).slice(0, 3).map(c => raidCardImage(c)
                             ? `<img src="${raidCardImage(c)}" alt="${escapeHtml(raidCardLabel(c))}" title="${escapeHtml(raidCardLabel(c))}" onerror="this.outerHTML='<span class=&quot;raid-recent-cardtxt&quot;>'+this.alt.slice(0,2)+'</span>'">`
                             : `<span class="raid-recent-cardtxt" title="${escapeHtml(raidCardLabel(c))}">${escapeHtml(raidCardLabel(c).slice(0, 2))}</span>`).join('')}</span>
+                        ${recoMatch == null ? '' : recoMatch ? '<span title="照他自己的推薦牌組打" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#fff; background:#2e7d32; border-radius:4px; padding:0 3px; line-height:1.5;">✓</span>' : `<span title="沒照推薦打（當時推薦：${escapeHtml(pk.s.map(x => x.split('+').map(raidCardLabel).join('＋')).join('／'))}）" style="flex-shrink:0; font-size:10.5px; font-weight:800; color:#a89a88; border:1px solid #d8c8b8; border-radius:4px; padding:0 3px; line-height:1.4;">✗</span>`}
                         <span class="raid-recent-dmg">-${formatNum(a.dmg)}</span>
                     </div>`;
             }).join('');
             // 內容沒變就不重畫（以前每次定期同步都整個重畫，淡入動畫一直重播，看起來一直閃）；只有新的那一刀才淡入
             renderRaidRecentAttacks.seen = new Set(raidRecentAttacks.map(a => a.dedupKey).filter(Boolean));
+            setTimeout(() => { try { raidSimPickRecent(); } catch (e) {} }, 2000);
             if (html === renderRaidRecentAttacks.last && listEl.innerHTML) return;
             renderRaidRecentAttacks.last = html;
             listEl.innerHTML = html;

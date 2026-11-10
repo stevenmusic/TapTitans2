@@ -6666,6 +6666,33 @@
             }
             if (raidLiveVerify.length) raidLiveVerifyTimer = setTimeout(raidLiveVerifyRun, 30000);
         }
+        /* 攻擊紀錄面板開著時補抓新攻擊（只讀伺服器、不寫）：手機在背景時收不到即時攻擊，回到畫面後排行、玩家推薦會停在舊的。
+           回到畫面時、還有每 60 秒，跟伺服器要「最後一筆之後」的攻擊，有新的就加進來重畫（打開中的玩家推薦會跟著重算） */
+        let raidLogCatchUpBusy = false, raidLogCatchUpAt = 0;
+        async function raidLogCatchUp(force) {
+            if (raidLogCatchUpBusy || raidLogDemoActive || document.visibilityState !== 'visible' || !raidLogPanelShown()) return;
+            if (!force && Date.now() - raidLogCatchUpAt < 50000) return;
+            const latestSession = serverSessionsSummary && serverSessionsSummary[0];
+            if (!latestSession || !Array.isArray(serverAttackLogCache) || !serverAttackLogCache.length) return;
+            raidLogCatchUpBusy = true; raidLogCatchUpAt = Date.now();
+            try {
+                const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                const since = Math.max(...serverAttackLogCache.map(a => Number(a.ts) || 0)) - 10 * 60000;
+                const r = await fetch(`${relayUrl}/attacks-since?ts=${since}`, { cache: 'no-store' });
+                if (!r.ok) return;
+                const have = new Set(serverAttackLogCache.map(e => `${e.attackDatetime || e.ts}_${e.player}`));
+                const fresh = ((await r.json()).attacks || []).filter(a => a && a.raidStartedAt === latestSession.startedAt && !have.has(`${a.attackDatetime || a.ts}_${a.player}`));
+                if (!fresh.length) return;
+                raidFixCycles(fresh);
+                serverAttackLogCache = [...serverAttackLogCache, ...fresh];
+                sessionAttacksCache.set(latestSession.startedAt, serverAttackLogCache);
+                latestSession.attackCount = (latestSession.attackCount || 0) + fresh.length;
+                if (raidSessionFilter && raidSessionFilter.startedAt === latestSession.startedAt) raidSessionFilter = { ...latestSession, attacks: serverAttackLogCache };
+                renderRaidLogQueryResult();
+            } catch (e) {} finally { raidLogCatchUpBusy = false; }
+        }
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') raidLogCatchUp(true); });
+        setInterval(() => raidLogCatchUp(false), 60000);
         function appendLiveAttackToRankingCache(a) {
             if (raidLogDemoActive) return;
             const latestSession = serverSessionsSummary[0];

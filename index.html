@@ -12389,17 +12389,33 @@
            每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
         const raidSimPickCache = new Map();
         // 首頁推薦用的「標準玩家」：卡片等級、死靈熊研究、突襲等級都取全公會中位數（卡片只算有這張卡的人，一半以上的人有才算），忠誠度 12 級
+        // 首頁推薦用的「標準玩家」（虛擬玩家）：卡片等級、死靈熊研究、突襲等級都用「突襲均傷加權平均」——
+        // 每個人的權重＝最近 3 場的平均每刀傷害（500M 的人權重 500、10M 的人權重 10），結果比較接近主力；
+        // 卡片只算有這張卡的人，而且有這張卡的人權重加起來要過一半才算；忠誠度 12 級。還沒有攻擊紀錄時退回中位數
         function raidSimStandardAccount() {
             if (!raidClanData) return null;
-            const ps = [...raidClanData.byCode.values()].map(v => v.raw).filter(Boolean);
-            if (ps.length < 5) return null;
-            const med = (a) => { a = a.filter(x => x > 0).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : 0; };
-            const ids = new Set(); ps.forEach(p => (p.cards || []).forEach(c => ids.add(c.skill_name)));
+            const vs = [...raidClanData.byCode.entries()].filter(([, v]) => v && v.raw);
+            if (vs.length < 5) return null;
+            const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : [];
+            const starts = [...new Set(log.map(a => a.raidStartedAt).filter(Boolean))].sort().slice(-3);
+            const sum = new Map(), cnt = new Map();
+            log.forEach(a => { if (!starts.includes(a.raidStartedAt) || !a.playerCode || !(a.totalDamage > 0)) return; sum.set(a.playerCode, (sum.get(a.playerCode) || 0) + a.totalDamage); cnt.set(a.playerCode, (cnt.get(a.playerCode) || 0) + 1); });
+            let ws = vs.map(([code, v]) => ({ p: v.raw, w: cnt.get(code) ? sum.get(code) / cnt.get(code) / 1e6 : 0 })).filter(x => x.w > 0);
+            const weighted = ws.length >= 5;
+            if (!weighted) ws = vs.map(([, v]) => ({ p: v.raw, w: 1 }));
+            const avg = (pairs) => { let a = 0, b = 0; pairs.forEach(([x, w]) => { if (x > 0) { a += x * w; b += w; } }); return b > 0 ? a / b : 0; };
+            const med = (arr) => { arr = arr.filter(x => x > 0).sort((x, y) => x - y); return arr.length ? arr[Math.floor((arr.length - 1) / 2)] : 0; };
+            const agg = (fn) => weighted ? avg(ws.map(x => [fn(x.p), x.w])) : med(ws.map(x => fn(x.p)));
+            const W = ws.reduce((t, x) => t + x.w, 0);
+            const ids = new Set(); ws.forEach(x => (x.p.cards || []).forEach(c => ids.add(c.skill_name)));
             const cards = [];
-            ids.forEach(id => { const l = ps.map(p => raidSimBaseLevel(p, id)); if (l.filter(x => x > 0).length >= ps.length / 2) cards.push({ skill_name: id, level: med(l) }); });
-            const keys = new Set(); ps.forEach(p => Object.keys(p.raid_research_tree || {}).forEach(k => keys.add(k)));
-            const tree = {}; keys.forEach(k => { tree[k] = med(ps.map(p => Number((p.raid_research_tree || {})[k]) || 0)); });
-            return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: med(ps.map(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
+            ids.forEach(id => {
+                const own = ws.filter(x => raidSimBaseLevel(x.p, id) > 0).reduce((t, x) => t + x.w, 0);
+                if (own >= W / 2) cards.push({ skill_name: id, level: Math.round(agg(p => raidSimBaseLevel(p, id))) });
+            });
+            const keys = new Set(); ws.forEach(x => Object.keys(x.p.raid_research_tree || {}).forEach(k => keys.add(k)));
+            const tree = {}; keys.forEach(k => { tree[k] = Math.round(agg(p => Number((p.raid_research_tree || {})[k]) || 0) * 1000) / 1000; });
+            return { raw: { name: '標準玩家', cards, boosted_cards: [], raid_research_tree: tree, player_raid_level: Math.round(agg(p => Number(p.player_raid_level) || 0)), loyalty_level: 12 } };
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
         const RAID_SIM_HOME_KEY = 'tt2_home_sim_v11';
@@ -12409,7 +12425,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName]);
+            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, v.raw.player_raid_level, v.raw.cards.map(c => c.skill_name + c.level).join()]);   // 標準玩家的等級變了也重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             const { hitParts, playable } = raidSimPartFns(byPartPartsToScene(raidState.parts, raidBannedParts));

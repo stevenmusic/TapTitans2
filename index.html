@@ -14194,9 +14194,9 @@
                             if (!loc) return;
                             const e = p[loc] || (p[loc] = [0, 0, 0, 0]);
                             if (layer === 'armor') { e[0] = Math.round(pp.total_hp); e[1] = Math.round(pp.current_hp); if (pp.cursed) e[3] = 1; }
-                            else if (layer === 'body') e[2] = Math.round(pp.total_hp);
+                            else if (layer === 'body') e[2] = Math.round(pp.current_hp != null ? pp.current_hp : pp.total_hp);
                         });
-                        return { n: t.enemy_name, k: Math.round(t.total_hp), d: (t.area_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), c: (t.cursed_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), p };
+                        return { n: t.enemy_name, k: Math.round(t.current_hp != null ? t.current_hp : t.total_hp), d: (t.area_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), c: (t.cursed_debuffs || []).map(b => [b.bonus_type, b.bonus_amount]), p };
                     })
                 }))
             };

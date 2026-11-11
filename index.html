@@ -12754,6 +12754,25 @@
             renderCrystalReco();
         }
         // 下一場每隻王的禁打：禁打頁設定的（自己試算），沒有就用最佳禁打
+        // 突襲水晶用的禁打：先把這一關每隻王的「傷害效率」算好（或從伺服器讀），沒手動改過就用刀數最少的禁法
+        const crystalBanReady = {};
+        function crystalEnsureBans(lvl) {
+            if (crystalBanReady[lvl]) return crystalBanReady[lvl];
+            return crystalBanReady[lvl] = (async () => {
+                if (!ticketCalc.seed) ticketCalc.seed = await ticketSeedFetch().catch(() => null);
+                const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === lvl); if (!raid) return;
+                const manual = ((ticketCalc.bansByLv || {})[lvl]) || {};
+                for (const n of [...new Set(raid.seq)]) {
+                    if (manual[n]) continue;
+                    const key = `${ticketCalc.seed.valid_from}|${lvl}|${n}`;
+                    crystalBanBusy = `依傷害效率確認 ${n} 的禁打…`; renderCrystalReco();
+                    for (let i = 0; i < 600 && ticketBanEvalRes[key] && ticketBanEvalRes[key].busy && !/失敗/.test(ticketBanEvalRes[key].busy); i++) await new Promise(r => setTimeout(r, 500));   // 禁打頁正在算同一隻就等它
+                    if (!(ticketBanEvalRes[key] && ticketBanEvalRes[key].rows)) await ticketBanEval(n, lvl);
+                }
+                crystalBanBusy = '';
+            })();
+        }
+        let crystalBanBusy = '';
         function crystalBansOf(raid, t) { return (((ticketCalc && ticketCalc.bansByLv) || {})[raid.l] || {})[t.n] || ticketBestBansAuto(t, raid); }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
@@ -12782,7 +12801,7 @@
             if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level) || null;
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
-            if (crystalLevel && !up) setTimeout(() => crystalUpcoming(p, crystalLevel, own), 0);
+            if (crystalLevel && !up) setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, own); }, 0);
             const upUses = up && up.uses ? up.uses : null;
             const boosted = p.boosted_cards || [];
             const sections = Object.keys(CRYSTAL_CAT).map(cat => {
@@ -12808,7 +12827,7 @@
             let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);
             const lvSel = `<div style="display:flex; align-items:center; gap:6px; margin:6px 0 2px; font-size:12.5px; font-weight:700; color:#4a3728;">下一場<select onchange="crystalLevel = Number(this.value) || null; renderCrystalReco();" style="font:inherit; font-size:13px; padding:3px 6px; border:1px solid #e2d7c5; border-radius:7px; background:#fff;"><option value="">不看下一場（只看過去用的卡）</option>${seedLvls.map(l => `<option value="${l}" ${l === crystalLevel ? 'selected' : ''}>M-${l}</option>`).join('')}</select></div>`
-                + (up ? (up.uses ? `<div style="font-size:11px; color:#6b5a4a;">M-${crystalLevel}：${(up.seq || []).join('、')}｜禁打 ${upRaid ? [...new Set(upRaid.seq)].map(n => { const t = upRaid.titans.find(x => x.n === n); const b = t ? crystalBansOf(upRaid, t) : []; const zh = { Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' }; return n + (b.length ? b.map(x => zh[x] || x).join('') : '不禁'); }).join('、') : ''}｜加成 ${(up.buffs || []).map(b => ({ BurstDamage: '爆裂傷害', BurstChance: '爆裂機率', AfflictedDamage: '苦痛傷害', AfflictedChance: '苦痛機率', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' })[b[0]] || b[0]).join('、') || '無'}（照禁打頁的禁打、各王詛咒模擬他的推薦牌組）</div>` : `<div style="font-size:11px; color:#8a7a6a;">${escapeHtml(up.busy || '')}</div>`) : '');
+                + (up ? (up.uses ? `<div style="font-size:11px; color:#6b5a4a;">M-${crystalLevel}：${(up.seq || []).join('、')}｜禁打 ${upRaid ? [...new Set(upRaid.seq)].map(n => { const t = upRaid.titans.find(x => x.n === n); const b = t ? crystalBansOf(upRaid, t) : []; const zh = { Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' }; return n + (b.length ? b.map(x => zh[x] || x).join('') : '不禁'); }).join('、') : ''}｜加成 ${(up.buffs || []).map(b => ({ BurstDamage: '爆裂傷害', BurstChance: '爆裂機率', AfflictedDamage: '苦痛傷害', AfflictedChance: '苦痛機率', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' })[b[0]] || b[0]).join('、') || '無'}（照禁打頁的禁打、各王詛咒模擬他的推薦牌組）</div>` : `<div style="font-size:11px; color:#8a7a6a;">${escapeHtml(up.busy || '')}</div>`) : (crystalLevel && crystalBanBusy ? `<div style="font-size:11px; color:#8a7a6a;">${escapeHtml(crystalBanBusy)}</div>` : ''));
             box.innerHTML = `<div style="font-size:13.5px; font-weight:800; color:#1565c0; margin-bottom:4px;">水晶推薦（依卡片等級和${upUses ? '下一場會用的卡' : '攻擊時用的卡'}）</div>${sel}${lvSel}${sections}
                 <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">綠框＝建議新放進去的卡。${upUses ? '分數＝能提升幾級 ×（下一場預計用幾次＋過去兩場用的次數 × 0.4）。' : '分數＝能提升幾級 × 這場和前一場攻擊用過幾次（自己沒用的參考全公會常用的）。'}</div>`;
         }
@@ -14577,8 +14596,8 @@
             }
             return out.reduce((a, b) => a + b, 0) / out.length;
         }
-        async function ticketBanEval(n) {
-            const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
+        async function ticketBanEval(n, lv) {
+            const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === (lv || ticketCalc.level));
             const t = raid && raid.titans.find(x => x.n === n); if (!t) return;
             const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
             if (ticketBanEvalRes[key] && (ticketBanEvalRes[key].busy || ticketBanEvalRes[key].rows)) return;

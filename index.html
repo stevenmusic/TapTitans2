@@ -12769,7 +12769,7 @@
                 if (!ticketCalc.seed) ticketCalc.seed = await ticketSeedFetch().catch(() => null);
                 const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === lvl); if (!raid) return;
                 const manual = ((ticketCalc.bansByLv || {})[lvl]) || {};
-                const todo = [...new Set(raid.seq)].filter(n => !manual[n]);
+                const todo = [...new Set(raid.seq)].filter(n => !manual[n] && !crystalPvBans(lvl, n));
                 let idx = 0, key = '';
                 const tick = setInterval(() => {   // 進度％：已算完的王＋這隻算到第幾個禁法
                     const m = /(\d+)\/(\d+)/.exec((ticketBanEvalRes[key] || {}).busy || '');
@@ -12791,7 +12791,9 @@
             })();
         }
         let crystalBanBusy = '';
-        function crystalBansOf(raid, t) { return (((ticketCalc && ticketCalc.bansByLv) || {})[raid.l] || {})[t.n] || ticketBestBansAuto(t, raid); }
+        function crystalPvBans(lvl, n) { const b = raidPreview && raidPreview.bansByName && String(raidPreview.level) === String(lvl) && raidPreview.bansByName[n]; return Array.isArray(b) && b.length ? b.slice() : null; }
+        // 禁打順序：自己在禁打頁手動改的 ＞ 預告出來後公會在遊戲裡設好的 ＞ 傷害效率算出刀數最少的
+        function crystalBansOf(raid, t) { return (((ticketCalc && ticketCalc.bansByLv) || {})[raid.l] || {})[t.n] || crystalPvBans(raid.l, t.n) || ticketBestBansAuto(t, raid); }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         async function renderCrystalReco() {

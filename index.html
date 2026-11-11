@@ -15192,9 +15192,10 @@
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標</div>
                 <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
-                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">預估</td><td style="${th}">預估累計</td></tr>
-                    ${Array.from({ length: n }, (_, i) => { const p = predOf(i + 1); acc += p; return `<tr><td style="${td} text-align:left;">第 ${i + 1} 輪</td><td style="${td}">${formatNum(total * w(i + 1) / tw)}</td><td style="${td}">${formatNum(p)}</td><td style="${td} color:${acc >= total ? '#2e7d32' : '#4a3728'}; font-weight:${acc >= total ? 800 : 400};">${formatNum(acc)}</td></tr>`; }).join('')}
-                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(total)}</td><td style="${td}"></td><td style="${td}"></td></tr>
+                    <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">預估</td><td style="${th}">預估差異</td></tr>
+                    ${Array.from({ length: n }, (_, i) => { const p = Math.max(0, Math.min(predOf(i + 1), total - acc)); acc += p; const tg = total * w(i + 1) / tw, df = p - tg;   // 預估：最後一輪只剩沒打完的；差異＝預估 − 目標
+                        return `<tr><td style="${td} text-align:left;">第 ${i + 1} 輪</td><td style="${td}">${formatNum(tg)}</td><td style="${td}">${formatNum(p)}</td><td style="${td} color:${df >= 0 ? '#2e7d32' : '#c0392b'}; font-weight:700;">${df >= 0 ? '+' : '−'}${formatNum(Math.abs(df))}</td></tr>`; }).join('')}
+                    <tr style="font-weight:800; background:#f0e6d2;"><td style="${td} text-align:left;">合計</td><td style="${td}">${formatNum(total)}</td><td style="${td}">${formatNum(acc)}</td><td style="${td}"></td></tr>
                 </table>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每一隻王</div>
                 <table style="width:100%; border-collapse:collapse; font-size:11.5px; color:#4a3728;">

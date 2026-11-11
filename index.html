@@ -12680,7 +12680,7 @@
         function raidSimStrategyLine(env) {
             if (!env || !env.strategy) return '';
             const big = env.bigPart ? raidPartLabel(env.bigPart) : '';
-            const t = env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
+            const t = env.strategy === 'park' ? `其他部位剩不多，先集中打${big}，最後一起收掉再用凱旋行軍` : env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
                 : env.strategy === 'clear' ? `平均打完其他部位，最後用凱旋行軍打${big}（${big}佔 ${Math.round(env.bigShare * 100)}%）` : '照各部位血量平均打';
             return `<div style="font-size:11.5px; color:#8a7a6a; margin:0 0 4px;">策略：${t}</div>`;
         }
@@ -12690,7 +12690,9 @@
             const sumHp = open.reduce((t, k) => t + env.hp[k], 0);
             if (!(sumHp > 0) || !(T > 0)) return null;
             const b = {};
-            if (env.strategy === 'armor') {   // 先拆盔甲：還有盔甲的部位可以打到盔甲打完為止，已經是肉體的部位只分一點（不要一直打四肢）
+            if (env.strategy === 'park') {   // 小部位停著：只分一點（範圍傷害順便打到的），強的單打牌組都去打血最厚的部位
+                open.forEach(k => { b[k] = k === env.bigPart ? env.hp[k] : Math.min(env.hp[k], T * 0.03); });
+            } else if (env.strategy === 'armor') {   // 先拆盔甲：還有盔甲的部位可以打到盔甲打完為止，已經是肉體的部位只分一點（不要一直打四肢）
                 open.forEach(k => { const ar = (env.armorLeft || {})[k] || 0; b[k] = ar > 0 ? Math.min(env.hp[k], ar) : Math.min(env.hp[k], T * 0.05); });
             } else if (env.strategy === 'clear') {
                 const big = env.bigPart, small = open.filter(k => k !== big), smallHp = small.reduce((t, k) => t + env.hp[k], 0);
@@ -12709,10 +12711,14 @@
             const effOf = (tg, est) => { const per = est / tg.length; return tg.reduce((t, k) => t + Math.min(per, left[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (left[k] || 0)), 0); };   // 輪流打：每個部位平均分到傷害，超過份額的部分不算
             pick.forEach(o => {
                 const raw0 = o.raw || o.avg;
-                const alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
+                let alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
                 let best = null;
+                // 只能換到每張卡都打得到的部位（例如破碎本能只能打頭、肚子），而且應打不能掉到這組最好打法的 85% 以下
+                const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
+                const top = Math.max(...alts.map(a => a.raw * scale));
+                alts = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.85));
                 alts.forEach(a => { const est = a.raw * scale, eff = effOf(a.tg, est); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
                 if (!best || !(best.eff > 0)) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
@@ -13217,6 +13223,9 @@
             const armorOpen = open.filter(k => board[k].layer === 'armor');
             let strategy = bigShare >= 0.6 && nSkel + small.length >= 6 ? 'clear' : 'even';
             if (strategy === 'clear' && nBody < 6 && armorOpen.length) strategy = 'armor';
+            // 其他部位已經壓得很低（加起來不到能打部位的 2 成）：先停著，集中打血最厚的部位，最後再一起收掉、用凱旋行軍
+            const smallHp0 = small.reduce((t, k) => t + hp[k], 0);
+            if (strategy === 'clear' && openHp > 0 && smallHp0 / openHp <= 0.2) strategy = 'park';
             return { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, strategy, bigPart, bigShare, armorLeft, nBody };
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
@@ -13335,7 +13344,10 @@
                 const alts = o.alts && o.alts.length ? o.alts : [{ tg: o.tg, raw: raw0 }];
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;
-                return Math.max(...alts.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害
+                const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
+                const top = Math.max(...alts.map(a => a.raw * scale));
+                const ok = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.85));
+                return Math.max(...ok.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害
             };
             const valMemo = new Map();   // 同一組的價值只算一次（搜尋時會被問上百萬次）；補精算後物件換新，自然重算
             const val = (o) => { let v = valMemo.get(o); if (v === undefined) { v = budVal(o) * raidSimDeckFactor(o.cards); valMemo.set(o, v); } return v; };

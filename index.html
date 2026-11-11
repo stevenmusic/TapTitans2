@@ -12698,7 +12698,7 @@
         const CRYSTAL_SKIP = new Set(['PoisonAttack', 'SandsOfTime']);   // 不放進突襲水晶的卡（強酸侵蝕、時間之沙）
         let crystalSkills = null, crystalPlayer = null;
         // 下一場會用到哪些卡：用這個人的卡片等級（自己等級＋賽季，不含水晶），對下一場每隻王（照禁打、詛咒、場次加成）
-        // 開場全盔甲、拆完盔甲兩種狀態各挑最好的 6 組，每張卡出現的比例 × 24 刀 ＝ 下一場預計用幾次
+        // 每隻王打下來的各種部位狀態（全盔甲、拆一半、全肉體、收尾）各挑最好的 6 組，照要打的量加權，每張卡出現的比例 × 24 刀 ＝ 下一場預計用幾次
         const crystalUpRes = {};   // `${關}|${玩家}` -> { busy } | { uses, lvl }
         async function crystalUpcoming(p, lvl, own) {
             const seed = await ticketSeedFetch().catch(() => null);
@@ -12722,15 +12722,12 @@
                 for (const n of names) {
                     const t = raid.titans.find(x => x.n === n); if (!t) continue;
                     const bans = crystalBansOf(raid, t);
-                    // 兩種狀態照要打的量加權：全盔甲那段＝能打部位的盔甲，拆完那段＝斬殺線
-                    const armorAmt = Object.keys(t.p).filter(k => !bans.includes(k)).reduce((x, k) => x + (Number(t.p[k][1]) || 0), 0), killAmt = Number(t.k) || 0;
-                    const wOf = { armor: armorAmt / ((armorAmt + killAmt) || 1), body: killAmt / ((armorAmt + killAmt) || 1) };
+                    const states = raidPhaseStates(t, bans);
                     const v = raidClanData.byCode.get(p.player_code);
                     const me = raidSimPlayer(v, 0.3, {}, { boss: n }); Object.keys(own).forEach(c => { me.lv[c] = own[c]; });
-                    for (const layer of ['armor', 'body']) {
-                        crystalUpRes[key] = { busy: `計算下一場 ${++done}/${names.length * 2}` }; renderCrystalReco();
-                        const ban = new Set(bans), board = {}, scene = {};
-                        Object.keys(t.p).forEach(k => { const cur = !!t.p[k][3]; if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; } else { board[k] = { layer, cursed: layer === 'armor' && cur }; scene[k] = layer === 'armor' ? (cur ? 'cursed' : 'armor') : 'body'; } });
+                    for (const st of states) {
+                        crystalUpRes[key] = { busy: `計算下一場 ${++done}/${names.length * states.length}` }; renderCrystalReco();
+                        const { board, scene } = st;
                         const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                         const plans = []; const add = (tg) => { if (tg.length && !plans.some(q => q.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
                         open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
@@ -12741,8 +12738,8 @@
                         cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                         const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
                         const pick = await raidSimPickPool(P, env, me, pool, 6);
-                        pick.forEach(o => o.cards.forEach(c => { uses[c] = (uses[c] || 0) + cnt(n) * wOf[layer] * 2; }));
-                        steps += cnt(n) * wOf[layer] * 2;
+                        pick.forEach(o => o.cards.forEach(c => { uses[c] = (uses[c] || 0) + cnt(n) * st.w * 2; }));
+                        steps += cnt(n) * st.w * 2;
                     }
                 }
                 Object.keys(uses).forEach(c => { uses[c] = Math.round(uses[c] / Math.max(1, steps) * 24 * 10) / 10; });   // 每 6 刀出現一次 ≈ 一整場（約 24 刀）用 4 次
@@ -12815,7 +12812,7 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v2_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v3_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, upUses, logs, sessions) {
             const mine = {}, guild = {};
@@ -14689,7 +14686,7 @@
             renderTicketCalc();
         }
         /* 依傷害效率確認禁打：只看血量會叫你多禁（例如 Klonk 禁 5 個只剩 3 個部位），但部位太少瘋狂無效、瘟疫、防空高砲、凱旋行軍都用不了，每刀打得少。
-           每種候選禁法用標準玩家模擬最好的 6 組牌組（開場全盔甲、拆完盔甲兩種狀態平均），有效血量 ÷ 每刀平均 ＝ 大約幾刀，刀數最少的最好。
+           每種候選禁法用標準玩家模擬最好的 6 組牌組（全盔甲、拆一半、全肉體、收尾各狀態照要打的量加權平均），有效血量 ÷ 每刀平均 ＝ 大約幾刀，刀數最少的最好。
            候選：打得死的禁法裡有效血量最少的 6 種，加上不禁、只禁一個部位；算好的存伺服器暫存，全公會只算一次 */
         const ticketBanEvalRes = {};   // `${週}|${關}|${王}` -> { busy, rows, best }
         function ticketBanCandidates(t, sh) {
@@ -14704,11 +14701,41 @@
             all.filter(x => x.list.length <= 1).forEach(x => { if (!pick.some(y => y.list.join() === x.list.join())) pick.push(x); });
             return pick;
         }
+        /* 一隻王打下來會經過的部位狀態（不是只有全盔甲、全肉體）：
+           1 開場全盔甲（詛咒甲照 seed）2 拆了一半：盔甲少的部位先拆成肉體，大的還是盔甲 3 全部肉體
+           4 收尾：肉體少的部位先打死（變骨頭），剩大部位；凱旋行軍要肉體 6 個、有的卡要骨頭 6 個，狀態不同能用的卡就不同
+           權重＝那個狀態大約要打掉的量（盔甲各一半；斬殺線前後各一半） */
+        function raidPhaseStates(t, bans) {
+            const ban = new Set(bans || []), locs = Object.keys(t.p), open = locs.filter(k => !ban.has(k));
+            const arm = (k) => Number(t.p[k][1]) || 0, body = (k) => Number(t.p[k][2]) || 0;
+            const armorAmt = open.reduce((x, k) => x + arm(k), 0), killAmt = Number(t.k) || 0;
+            const mk = (lay) => { const board = {}, scene = {};
+                locs.forEach(k => { const cur = !!t.p[k][3];
+                    if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; return; }
+                    const L = lay(k);
+                    board[k] = { layer: L, cursed: L === 'armor' && cur };
+                    scene[k] = L === 'armor' ? (cur ? 'cursed' : 'armor') : L; });
+                return { board, scene }; };
+            const out = [];
+            const hasArmor = open.filter(k => arm(k) > 0);
+            if (armorAmt > 0) {
+                out.push({ label: '全盔甲', w: armorAmt * 0.5, ...mk(k => arm(k) > 0 ? 'armor' : 'body') });
+                const byArm = hasArmor.slice().sort((a, b) => arm(a) - arm(b)); let broke = 0; const brk = new Set();
+                for (const k of byArm) { if (broke + arm(k) > armorAmt * 0.5 && brk.size) break; broke += arm(k); brk.add(k); }
+                if (brk.size < hasArmor.length) out.push({ label: '拆一半', w: armorAmt * 0.5, ...mk(k => arm(k) > 0 && !brk.has(k) ? 'armor' : 'body') });
+                else out[0].w = armorAmt;
+            }
+            out.push({ label: '全肉體', w: killAmt * 0.5, ...mk(() => 'body') });
+            const byBody = open.slice().sort((a, b) => body(a) - body(b)); let dead = 0; const dd = new Set();
+            for (const k of byBody) { if (dd.size >= open.length - 1 || dead + body(k) > killAmt * 0.6) break; dead += body(k); dd.add(k); }
+            if (dd.size) out.push({ label: '收尾', w: killAmt * 0.5, ...mk(k => dd.has(k) ? 'skeleton' : 'body') });
+            else out[out.length - 1].w = killAmt;
+            return out;
+        }
         async function ticketBanSimAvg(t, bans, P, me, cands) {
-            const ban = new Set(bans), out = [];
-            for (const layer of ['armor', 'body']) {
-                const board = {}, scene = {};
-                Object.keys(t.p).forEach(k => { const cur = !!t.p[k][3]; if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; } else { board[k] = { layer, cursed: layer === 'armor' && cur }; scene[k] = layer === 'armor' ? (cur ? 'cursed' : 'armor') : 'body'; } });
+            const out = [];
+            for (const st of raidPhaseStates(t, bans)) {
+                const { board, scene } = st;
                 const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                 const plans = []; const add = (tg) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
                 open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
@@ -14719,16 +14746,17 @@
                 cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                 const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
                 const pick = await raidSimPickPool(P, env, me, pool, 6);
-                out.push(pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0);
+                out.push([st.w, pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0]);
             }
-            return out.reduce((a, b) => a + b, 0) / out.length;
+            const W = out.reduce((a, b) => a + b[0], 0) || 1;
+            return out.reduce((a, b) => a + b[0] * b[1], 0) / W;   // 照每個狀態要打的量加權
         }
         async function ticketBanEval(n, lv) {
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === (lv || ticketCalc.level));
             const t = raid && raid.titans.find(x => x.n === n); if (!t) return;
             const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
             if (ticketBanEvalRes[key] && (ticketBanEvalRes[key].busy || ticketBanEvalRes[key].rows)) return;
-            const kvKey = `ban_eval_v1_${String(ticketCalc.seed.valid_from).replace(/[^0-9]/g, '').slice(0, 8)}_${raid.l}_${n}`.slice(0, 64);
+            const kvKey = `ban_eval_v2_${String(ticketCalc.seed.valid_from).replace(/[^0-9]/g, '').slice(0, 8)}_${raid.l}_${n}`.slice(0, 64);
             ticketBanEvalRes[key] = { busy: '讀取中…' }; renderTicketCalc();
             const remote = await kvGet(kvKey);
             if (remote && Array.isArray(remote.rows)) { ticketBanEvalRes[key] = remote; renderTicketCalc(); return; }

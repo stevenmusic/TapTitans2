@@ -12974,6 +12974,7 @@
             // 上次選的玩家（存在瀏覽器 localStorage，網頁更新版本也不會清掉）：打開就直接顯示
             let lastMe = null; try { lastMe = localStorage.getItem(CARDLV_ME_KEY); } catch (e) {}
             if (lastMe && allCardLevels && allCardLevels[lastMe]) { if (sel) sel.value = lastMe; cardLevelsShow(lastMe); }
+            cardLevelsTab('guild');   // 預設顯示公會總覽（「我的卡片」分頁照樣記著上次選的玩家）
         }
         function cardLevelsSuggest(q) {
             const box = document.getElementById('cardlv-sug');
@@ -14390,6 +14391,88 @@
             ticketCalcSave();
             renderTicketCalc();
         }
+        /* 依傷害效率確認禁打：只看血量會叫你多禁（例如 Klonk 禁 5 個只剩 3 個部位），但部位太少瘋狂無效、瘟疫、防空高砲、凱旋行軍都用不了，每刀打得少。
+           每種候選禁法用標準玩家模擬最好的 6 組牌組（開場全盔甲、拆完盔甲兩種狀態平均），有效血量 ÷ 每刀平均 ＝ 大約幾刀，刀數最少的最好。
+           候選：打得死的禁法裡有效血量最少的 6 種，加上不禁、只禁一個部位；算好的存伺服器暫存，全公會只算一次 */
+        const ticketBanEvalRes = {};   // `${週}|${關}|${王}` -> { busy, rows, best }
+        function ticketBanCandidates(t, sh) {
+            const locs = Object.keys(t.p), bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0), all = [];
+            for (let m = 0; m < (1 << locs.length); m++) {
+                const list = locs.filter((l, i) => m >> i & 1);
+                if (bodyAll - list.reduce((x, l) => x + t.p[l][2], 0) < t.k) continue;
+                all.push({ list, eff: ticketEffHp(t, list, sh).eff });
+            }
+            all.sort((a, b) => a.eff - b.eff);
+            const pick = all.slice(0, 6);
+            all.filter(x => x.list.length <= 1).forEach(x => { if (!pick.some(y => y.list.join() === x.list.join())) pick.push(x); });
+            return pick;
+        }
+        async function ticketBanSimAvg(t, bans, P, me, cands) {
+            const ban = new Set(bans), out = [];
+            for (const layer of ['armor', 'body']) {
+                const board = {}, scene = {};
+                Object.keys(t.p).forEach(k => { const cur = !!t.p[k][3]; if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; } else { board[k] = { layer, cursed: layer === 'armor' && cur }; scene[k] = layer === 'armor' ? (cur ? 'cursed' : 'armor') : 'body'; } });
+                const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
+                const plans = []; const add = (tg) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
+                open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
+                const c0 = t.c && t.c[0];
+                const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: 0, buff: {}, extraSec: 0, morale: 0.3, season: {}, hp: null };
+                const { hitParts } = raidSimPartFns(scene);
+                const all = [];
+                cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
+                const pick = await raidSimPickPool(P, env, me, pool, 6);
+                out.push(pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0);
+            }
+            return out.reduce((a, b) => a + b, 0) / out.length;
+        }
+        async function ticketBanEval(n) {
+            const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
+            const t = raid && raid.titans.find(x => x.n === n); if (!t) return;
+            const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
+            if (ticketBanEvalRes[key] && (ticketBanEvalRes[key].busy || ticketBanEvalRes[key].rows)) return;
+            const kvKey = `ban_eval_v1_${String(ticketCalc.seed.valid_from).replace(/[^0-9]/g, '').slice(0, 8)}_${raid.l}_${n}`.slice(0, 64);
+            ticketBanEvalRes[key] = { busy: '讀取中…' }; renderTicketCalc();
+            const remote = await kvGet(kvKey);
+            if (remote && Array.isArray(remote.rows)) { ticketBanEvalRes[key] = remote; renderTicketCalc(); return; }
+            try {
+                const P = await raidSimLoad();
+                if (!raidClanData) await raidLoadClanData();
+                const v = raidSimStandardAccount(); if (!v) throw new Error('沒有公會資料');
+                const me = raidSimPlayer(v, 0.3, {}, { boss: n });
+                const cands = await raidSimCandidateDecks(null, true);
+                const sh = ticketSharesOf(raid);
+                const list = ticketBanCandidates(t, sh);
+                const rows = [];
+                for (let i = 0; i < list.length; i++) {
+                    ticketBanEvalRes[key] = { busy: `計算中 ${i + 1}/${list.length}` }; renderTicketCalc();
+                    const avg = await ticketBanSimAvg(t, list[i].list, P, me, cands);
+                    rows.push({ bans: list[i].list, eff: list[i].eff, avg, atk: avg > 0 ? list[i].eff / avg : Infinity });
+                }
+                rows.sort((a, b) => a.atk - b.atk);
+                const res = { rows, best: rows[0] ? rows[0].bans : null };
+                ticketBanEvalRes[key] = res; kvSet(kvKey, res);
+            } catch (e) { ticketBanEvalRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
+            renderTicketCalc();
+        }
+        function ticketBanApply(n, bans) {
+            if (ticketCalcActual) { ticketCalc.bansByLv[ticketCalc.level] = JSON.parse(JSON.stringify(ticketCalcActual)); ticketCalc.manualLv = ticketCalc.level; }
+            const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {});
+            lb[n] = bans.slice(); ticketCalcSave(); renderTicketCalc();
+        }
+        function ticketBanEvalHtml(n, curBans) {
+            const zh = (loc) => ({ Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' })[loc] || loc;
+            const key = `${ticketCalc.seed.valid_from}|${ticketCalc.level}|${n}`, r = ticketBanEvalRes[key];
+            const nm = escapeHtml(JSON.stringify(n)).replace(/"/g, '&quot;');
+            if (!r) return `<div style="text-align:center; margin-top:6px;"><button class="tt-btn2" onclick="ticketBanEval(${nm})" style="font-size:12px; border-radius:7px; padding:4px 12px; font-family:inherit;">依傷害效率確認禁打</button></div>`;
+            if (!r.rows) return `<div style="text-align:center; margin-top:6px; font-size:11.5px; color:#8a7a6a;">${escapeHtml(r.busy || '')}</div>`;
+            const curKey = (curBans || []).slice().sort().join();
+            const fmtB = (x) => (x / 1e9).toFixed(1) + 'B';
+            return `<div style="margin-top:6px; font-size:11.5px;">
+                <div style="font-weight:800; color:#5a3a2a; margin-bottom:2px;">依傷害效率（標準玩家每刀平均，刀數越少越好）</div>
+                <table style="width:100%; border-collapse:collapse;"><tr style="color:#8a7a6a;"><td>禁打</td><td style="text-align:right;">有效血量</td><td style="text-align:right;">每刀</td><td style="text-align:right;">約幾刀</td><td></td></tr>
+                ${r.rows.map((x, i) => `<tr style="border-top:1px solid #f0e6d4; ${i === 0 ? 'font-weight:800; color:#2e7d32;' : 'color:#4a3728;'}"><td>${x.bans.length ? x.bans.map(zh).join('、') : '不禁'}${x.bans.slice().sort().join() === curKey ? '（目前）' : ''}</td><td style="text-align:right;">${fmtB(x.eff)}</td><td style="text-align:right;">${Math.round(x.avg / 1e6)}M</td><td style="text-align:right;">${Math.round(x.atk)}</td><td style="text-align:right;">${x.bans.slice().sort().join() === curKey ? '' : `<a onclick="ticketBanApply(${nm}, ${escapeHtml(JSON.stringify(x.bans)).replace(/"/g, '&quot;')})" style="color:#6a3d9a; text-decoration:underline; cursor:pointer;">套用</a>`}</td></tr>`).join('')}</table></div>`;
+        }
         function renderTicketCalc() {
             const m = document.getElementById('ticket-calc-modal');
             if (!m) return;
@@ -14446,7 +14529,7 @@
                             ${(() => { const e = ticketEffHp(t, banOf(n), sh); return e.carried ? `<div style="font-size:11.5px; font-weight:700; color:#6a3d9a; margin-bottom:2px;">禁了 ${e.carried} 個詛咒甲：整場扛詛咒，傷害變少，相當於多打 ${fmt(e.carryExtra)}（選禁法時已比較過，比不禁還划算）</div>` : ''; })()}
                             ${(() => { const md = ticketTitanMods(t); return md.area.length || md.curse.length ? `<div style="font-size:11.5px; margin-bottom:2px;">${md.area.map(x => `<span style="color:#a0522d; font-weight:800;">${x}</span>`).join('　')}${md.area.length && md.curse.length ? '　' : ''}${md.curse.map(x => `<span style="color:#6a3d9a; font-weight:800;">${x}</span>`).join('　')}</div>` : ''; })()}
                             <div style="font-size:11.5px; font-weight:700; margin-bottom:4px; color:${dead ? '#c0392b' : '#8a7a6a'};">能打部位的肉體 ${fmt(bodyLeft)}${dead ? `，比斬殺線少 ${fmt(t.k - bodyLeft)}：<b>這樣打不死</b>，請少禁一點` : `（比斬殺線多 ${fmt(bodyLeft - t.k)}）`}</div>
-                            <div class="raid-parts-grid">${cells}</div></div>`;
+                            <div class="raid-parts-grid">${cells}</div>${dead ? '' : ticketBanEvalHtml(n, banOf(n))}</div>`;
                     }).join('');
                     // 門票
                     const cap = ticketCalc.cap;

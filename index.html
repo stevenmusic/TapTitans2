@@ -12696,6 +12696,7 @@
            放進水晶的卡，等級＝自己等級和水晶等級取高的。價值＝能提升幾級 × 他攻擊時用這張卡的次數（這場＋前一場攻擊紀錄）；
            自己用得少的，用全公會這場常用的程度補（權重低）。每一類照插槽數挑分數最高的 */
         const CRYSTAL_CAT = { Burst: '爆裂', Affliction: '苦痛', Support: '支援' };
+        const CRYSTAL_SKIP = new Set(['PoisonAttack', 'SandsOfTime']);   // 不放進突襲水晶的卡（強酸侵蝕、時間之沙）
         let crystalSkills = null, crystalPlayer = null;
         async function renderCrystalReco() {
             const box = document.getElementById('crystal-reco'); if (!box) return;
@@ -12723,7 +12724,7 @@
                 const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
                 if (!cur.length) return `<div style="margin-top:6px; font-size:12px; color:#8a7a6a;"><b>${CRYSTAL_CAT[cat]}</b>：沒有水晶插槽</div>`;
                 const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
-                const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id)).map(id => {
+                const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
                     const gain = Math.max(0, L - own[id]);
                     const use = (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 自己用的為主，全公會常用的只是補
                     return { id, gain, use, mine: mine[id] || 0, score: gain * use };

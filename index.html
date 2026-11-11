@@ -7875,7 +7875,8 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 7;   // 7：分母不扣掉這輪用過的卡（一整輪 6 組平均），跟出牌順序無關；6：少見牌組不打九折、放大補等級   // 6：少見牌組不打九折、放大補等級（舊版分母偏低，不能跟新版混著算）   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
+        const RAID_SIM_PICK_VER = 8;   // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
+        // 7：分母不扣掉這輪用過的卡（一整輪 6 組平均），跟出牌順序無關；6：少見牌組不打九折、放大補等級   // 6：少見牌組不打九折、放大補等級（舊版分母偏低，不能跟新版混著算）   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         // 舊版本（tt2_sim_pick_v1～v8）算過的也搬過來，新的版本優先；搬完刪掉舊的
@@ -8049,6 +8050,10 @@
             const atks = r.attacks.filter(a => !a.placeholder && a.simB && a.cards && a.cards.length);
             const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
             const cache = new Map();
+            // 水晶一場中途不能換：同一場裡他每張卡實際打出的等級（攻擊紀錄，含水晶＋賽季加成，不看有放大的刀）就是那一場的等級。
+            // 帳號資料是「現在」的水晶，算以前的場次要用當場紀錄的等級，不然換過水晶的人分母會算錯
+            const sessLv = new Map();
+            atks.forEach(a => { if (a.cards.some(x => x.name === 'MagicPotion')) return; const m = sessLv.get(a.raidStartedAt) || new Map(); a.cards.forEach(c => { const l = Number(c.level) || 0; if (l > (m.get(c.name) || 0)) m.set(c.name, l); }); sessLv.set(a.raidStartedAt, m); });
             let sa = 0, sb = 0;
             for (let i = 0; i < atks.length; i++) {
                 const a = atks[i];
@@ -8060,8 +8065,8 @@
                 // 以前扣掉用過的卡，先打強牌的人後面分母只剩弱牌平均，完全照推薦打整輪也會到 110% 以上（跟出牌順序有關，不公平）
                 const used = new Set();
                 const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
-                if (!a.cards.some(x => x.name === 'MagicPotion')) a.cards.forEach(c => { if (me.lv[c.name]) me.lv[c.name] = Math.max(me.lv[c.name], Number(c.level) || 0); });   // 有放大的那刀等級是加成過的，不拿來更新
-                const key = a.simB + '|' + JSON.stringify(a.simC) + '|' + JSON.stringify(a.simH) + '|' + (a.cycle >= 2) + '|' + a.boss + '|' + [...used].sort().join();
+                { const m = sessLv.get(a.raidStartedAt); if (m) m.forEach((l, c) => { if (me.lv[c]) me.lv[c] = l; }); }   // 這一場實際的等級（水晶當場就固定）   // 有放大的那刀等級是加成過的，不拿來更新
+                const key = a.raidStartedAt + '|' + a.simB + '|' + JSON.stringify(a.simC) + '|' + JSON.stringify(a.simH) + '|' + (a.cycle >= 2) + '|' + a.boss + '|' + [...used].sort().join();
                 // 目標部位剩下的血：期望不能超過（打完部位就破了，多的打不出來）
                 const capOf = (tg) => a.simH ? tg.reduce((x, l) => x + (Number(a.simH[LOCS.indexOf(l)]) || 0) * 1e6, 0) : Infinity;
                 let best = cache.get(key);
@@ -8075,7 +8080,7 @@
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
                     const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
                     // 同一人、同一個部位狀態：他所有牌組的傷害表只算一次，連續幾刀共用
-                    const pkey = [identity, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
+                    const pkey = [identity, a.raidStartedAt, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
                     let pool = raidPickPools.get(pkey);
                     if (!pool) {
                         const { hitParts } = raidSimPartFns(scene);
@@ -8090,8 +8095,10 @@
                         raidPickPools.set(pkey, pool);
                     }
                     const n = RAID_ATTACKS_PER_CYCLE;
-                    const pick = await raidSimPickPool(P, { ...env, hp: null }, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);   // 配卡：照舊算法挑（不算部位份額，省運算）
-                    best = pick.length ? { v: pick.reduce((t, o) => t + o.avg, 0) / pick.length, cards: pick[0].cards, tg: pick[0].tg } : { v: 0 };
+                    // 部位剩下的血（出刀前 simH，百萬）：挑組照部位份額，分母每組不超過它打的部位剩下的血（打完部位就破了，多的打不出來）
+                    const hpNow = a.simH ? Object.fromEntries(LOCS.map((l, k) => [l, (Number(a.simH[k]) || 0) * 1e6])) : null;
+                    const pick = await raidSimPickPool(P, { ...env, hp: hpNow }, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);
+                    best = pick.length ? { v: pick.reduce((t, o) => t + Math.min(o.avg, capOf(o.tg || [])), 0) / pick.length, cards: pick[0].cards, tg: pick[0].tg } : { v: 0 };
                     cache.set(key, best);
                 }
                 a.simBest = best.v; a.simBestCards = best.cards; a.simBestTg = best.tg;
@@ -12711,7 +12718,9 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
-        let CRYSTAL_SHORT_N = 40;   // 每個情境精算幾組候選牌組（沒放水晶、全部升級各取前幾名）
+        let CRYSTAL_SHORT_N = 30;   // 測過 30 和 40 結果幾乎一樣，30 快兩成
+        const CRYSTAL_RUNS = 32;     // 每個升級組合精算幾次（固定亂數，只差等級，32 次就夠分出差別）
+        const CRYSTAL_MIRROR = 0.35 * 5 / 6;   // 鏡子力：第 1 輪沒有，第 2 輪起 +35%（推薦牌組同規則）；一場約 6 輪，平均下來   // 每個情境精算幾組候選牌組（沒放水晶、全部升級各取前幾名）
         async function crystalUpcoming(p, lvl, simLv) {
             const seed = await ticketSeedFetch().catch(() => null);
             const raid = seed && seed.raids.find(r => r.t === 9999 && r.l === lvl);
@@ -12751,7 +12760,7 @@
                         const plans = []; const add = (tg) => { if (tg.length && !plans.some(q => q.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
                         open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
                         const c0 = t.c && t.c[0];
-                        const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: 0.35, buff, extraSec, morale: 0.3, season: {}, hp: null };
+                        const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };
                         const { hitParts } = raidSimPartFns(scene);
                         const all = [];
                         cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
@@ -12763,14 +12772,19 @@
                         // 部位份額（跟推薦牌組一樣）：這個狀態每個部位剩多少血，照血量比例分這個人 6 組的傷害；只打得到小部位（例如四肢）的牌組，
                         // 價值只算到那些部位分到的份額，超過的只算 3 成——不然會一直配打四肢的卡，實際上四肢很快就沒血了
                         const hp = {}; Object.keys(board).forEach(k => { const L = board[k].layer; hp[k] = L === 'armor' ? (Number(t.p[k][1]) || 0) : L === 'body' ? (Number(t.p[k][2]) || 0) : 0; });
-                        const T0 = s0.map(o => o.avg * raidSimDeckFactor(o.cards)).sort((a, b) => b - a).slice(0, 6).reduce((a, b) => a + b, 0);
+                        const T0 = (() => { const used = new Set(); let t2 = 0, n2 = 0; s0.slice().sort((a, b) => b.avg - a.avg).forEach(o => { if (n2 >= 6 || o.cards.some(c => used.has(c))) return; o.cards.forEach(c => used.add(c)); t2 += o.avg; n2++; }); return t2; })();   // 6 組不撞卡的傷害加總
                         const bud = raidSimBudgets({ open, hp }, T0);
-                        const budVal = (o, x) => {   // x＝這個組合（升級後）的傷害；照 o 的各種打法挑份額內最多的
-                            if (!bud) return x;
+                        // alloc：x＝這組（某個升級組合）的傷害，R＝各部位還剩多少份額；照這組的各種打法挑份額內最多的，回傳價值和用掉的份額
+                        const alloc = (o, x, R) => {
+                            if (!bud) return { v: x, take: null };
                             const scale = o.avg > 0 ? x / o.avg : 1;
                             const alts = o.alts && o.alts.length ? o.alts : [{ tg: o.tg, raw: o.raw || o.avg }];
                             const cur = alts.find(a => a.tg.join() === (o.tg || []).join()); const sc = cur && cur.raw > 0 ? (o.raw || o.avg) / cur.raw : 1;
-                            return Math.max(...alts.map(a => { const per = a.raw * sc * scale / a.tg.length; return a.tg.reduce((t2, k) => t2 + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));
+                            let best = { v: -1, take: null };
+                            alts.forEach(a => { const per = a.raw * sc * scale / a.tg.length; let v = 0; const take = {};
+                                a.tg.forEach(k => { const r = R[k] || 0, u = Math.min(per, r); v += u + RAID_SIM_OVERFLOW * Math.max(0, per - r); take[k] = u; });
+                                if (v > best.v) best = { v, take }; });
+                            return best;
                         };
                         // 每組：候選卡升／不升的所有組合都精算（固定亂數，差別只來自等級）
                         const jobs = [], decks = [];
@@ -12778,32 +12792,36 @@
                             const o = s1[i] && s1[i].tg ? s1[i] : s0[i];
                             const kc = all[i].cards.filter(c => isCand.has(c));
                             const d = { cards: all[i].cards, kc, val: {}, o }; decks.push(d);
-                            for (let mask = 0; mask < (1 << kc.length); mask++) { const ids = kc.filter((c, b) => mask >> b & 1); jobs.push({ d, ids, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(env, meWith(me, ids), all[i].cards), o, runs: 40 } }); }
+                            for (let mask = 0; mask < (1 << kc.length); mask++) { const ids = kc.filter((c, b) => mask >> b & 1); jobs.push({ d, ids, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(env, meWith(me, ids), all[i].cards), o, runs: CRYSTAL_RUNS } }); }
                         });
                         const fr = await raidSimParallel(P, jobs.map(j => j.job));
-                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, j.ids), j.job.o); j.d.val[j.k] = budVal(j.d.o, r.avg || 0) * raidSimDeckFactor(j.d.cards); });
-                        ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label });
+                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, j.ids), j.job.o); j.d.val[j.k] = (r.avg || 0) * raidSimDeckFactor(j.d.cards); });
+                        ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label, bud: bud || null, alloc });
                     }
                 }
                 // 一種放法的價值：每個情境挑 6 組卡片不重複、傷害最高的（貪心），照權重加總
                 // 跟推薦牌組一樣：一輪（12 小時）同一張卡只能用一次，6 組卡片不重複；先求湊滿 6 組，再求加總最高（搜尋＋剪枝）
+                // 跟推薦牌組一樣：一輪（12 小時）同一張卡只能用一次，6 組卡片不重複；先求湊滿 6 組，再求加總最高（搜尋＋剪枝）。
+                // 部位份額邊挑邊扣：前面的組打掉了四肢的份額，後面再打四肢的組只剩超過份額的 3 成價值（不會 6 組都算滿同一隻手）
                 const pick6 = (ctx, S) => {
-                    const sc = ctx.decks.map(d => [d, d.val[d.kc.filter(c => S.has(c)).sort().join('+')] || 0]).sort((a, b) => b[1] - a[1]);
+                    const sc = ctx.decks.map(d => { const x = d.val[d.kc.filter(c => S.has(c)).sort().join('+')] || 0; return [d, x, ctx.bud ? ctx.alloc(d.o, x, ctx.bud).v : x]; }).sort((a, b) => b[2] - a[2]);
                     let best = [], bestSum = -1, steps = 0; const used = new Set(), cur = [];
-                    const dfs = (i, sum) => {
-                        if (++steps > 60000) return;
+                    const dfs = (i, sum, R) => {
+                        if (++steps > 40000) return;
                         if (cur.length > best.length || (cur.length === best.length && sum > bestSum)) { best = cur.slice(); bestSum = sum; }
                         if (cur.length >= 6) return;
                         for (let j = i; j < sc.length; j++) {
-                            const [d, x] = sc[j];
-                            if (best.length === 6 && sum + (6 - cur.length) * x <= bestSum) return;
+                            const [d, x, ub] = sc[j];
+                            if (best.length === 6 && sum + (6 - cur.length) * ub <= bestSum) return;
                             if (d.cards.some(c => used.has(c))) continue;
-                            d.cards.forEach(c => used.add(c)); cur.push(sc[j]);
-                            dfs(j + 1, sum + x);
+                            const al = ctx.bud ? ctx.alloc(d.o, x, R) : { v: x, take: null };
+                            let R2 = R; if (al.take) { R2 = { ...R }; Object.keys(al.take).forEach(k => { R2[k] = Math.max(0, (R2[k] || 0) - al.take[k]); }); }
+                            d.cards.forEach(c => used.add(c)); cur.push([d, al.v, x]);
+                            dfs(j + 1, sum + al.v, R2);
                             cur.pop(); d.cards.forEach(c => used.delete(c));
                         }
                     };
-                    dfs(0, 0);
+                    dfs(0, 0, ctx.bud || {});
                     return best;
                 };
                 const memo = new Map();
@@ -12828,7 +12846,7 @@
                 ctxs.forEach(c => { pick6(c, S).forEach(([d]) => d.cards.forEach(x => { uses[x] = (uses[x] || 0) + c.w; })); steps += c.w * 6; });
                 Object.keys(uses).forEach(c => { uses[c] = Math.round(uses[c] / Math.max(1, steps) * 24 * 10) / 10; });
                 // 每隻王每個狀態：照建議放法挑中的 6 組（給人對照看邏輯）
-                const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, x]) => [d.cards, Math.round(x / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
+                const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, v, x]) => [d.cards, Math.round(v / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
                 const res = { uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
                 crystalUpRes[key] = res; kvSet(kvKey, res);
             } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
@@ -12898,7 +12916,7 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v8_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;

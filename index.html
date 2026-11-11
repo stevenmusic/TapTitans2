@@ -12924,7 +12924,8 @@
             const ic = (id, extra) => `<div title="${escapeHtml(raidCardLabel(id))}" style="aspect-ratio:1; border-radius:6px; overflow:hidden; background:#ddd; ${extra || ''}">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:100%; height:100%; display:block;">` : `<span style="font-size:8px;">${escapeHtml(raidCardLabel(id))}</span>`}</div>`;
             const bg = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };
             const groups = cats.map((c, i) => { const x = plan[c], m = ms[i];
-                const got = x ? x.pick.map(y => ic(y.id, x.curIds.has(y.id) ? '' : 'box-shadow:0 0 0 2px #2e7d32 inset; outline:2px solid #2e7d32; outline-offset:-2px;')) : [];
+                // 幾乎沒差（拿掉整場少不到 0.1%）：半透明，代表這格放什麼都差不多
+                const got = x ? x.pick.map(y => ic(y.id, (x.curIds.has(y.id) ? '' : 'outline:2px solid #2e7d32; outline-offset:-2px;') + (y.dmg != null && y.dmg < 0.1 ? 'opacity:.35;' : ''))) : [];
                 const cells = got.concat(Array(Math.max(0, m - got.length)).fill('<div style="aspect-ratio:1;"></div>')).join('');
                 return `<div style="display:grid; grid-template-columns:repeat(${m}, 1fr); gap:2px; padding:2px; background:${x ? bg[c] : '#f4f1ec'}; border-radius:7px;">${cells}</div>`; }).join('');
             const outs = cats.filter(c => plan[c]).flatMap(c => plan[c].pick.length ? plan[c].outs.map(b => b.skill_name) : []);
@@ -12959,7 +12960,7 @@
                     <span style="flex:1; min-width:0; font-size:14px; font-weight:800; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidShortName(p.name))}</span>
                     <span style="font-size:12.5px; font-weight:800;">${badge}</span></div>${detail}</div>`;
             }).join('');
-            box.innerHTML = head + `<div style="font-size:10.5px; color:#a89a88; margin:6px 2px;">綠框＝要換上的卡，紅字小圖＝要換掉的卡；底色：紅＝爆裂、紫＝苦痛、綠＝支援</div>
+            box.innerHTML = head + `<div style="font-size:10.5px; color:#a89a88; margin:6px 2px;">綠框＝要換上的卡，紅字小圖＝要換掉的卡，半透明＝幾乎沒差（這格放什麼都可以）；底色：紅＝爆裂、紫＝苦痛、綠＝支援</div>
                 <div style="background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">${rows || '<div style="padding:10px; font-size:12px; color:#8a7a6a;">沒有人有水晶插槽</div>'}</div>`;
         }
         async function renderCrystalReco() {
@@ -13000,7 +13001,7 @@
                     : `<span style="color:#2e7d32;">目前就是最好的</span>`;
                 const grid = (n) => `display:grid; grid-template-columns:repeat(${Math.max(n, 3)}, 1fr); gap:6px;`;
                 const curRow = cur.map(b => { const gone = !waiting && pick.length && !pickIds.has(b.skill_name); return `<div style="text-align:center; min-width:0;">${img(b.skill_name, 34, gone ? 'opacity:.45; filter:grayscale(.6);' : '')}${nm(b.skill_name, 10.5, gone ? 'color:#c0392b; text-decoration:line-through;' : '')}</div>`; }).join('');
-                const pickRow = pick.map(x => { const nw = !curIds.has(x.id); return `<div style="text-align:center; min-width:0;">${img(x.id, 52, nw ? 'outline:2.5px solid #2e7d32; outline-offset:1px;' : '')}${nm(x.id, 12, 'font-weight:700; margin-top:3px;')}<div style="font-size:10.5px; color:#6b5a4a; line-height:1.35;">Lv.${own[x.id]}→${L}<br>${x.dmg != null ? (x.dmg < 0.1 ? `<span style="color:#a89a88;">幾乎沒差</span>` : `<b style="color:#2e7d32;">傷害 +${x.dmg}%</b>`) : upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`; }).join('');
+                const pickRow = pick.map(x => { const nw = !curIds.has(x.id); return `<div style="text-align:center; min-width:0;">${img(x.id, 52, nw ? 'outline:2.5px solid #2e7d32; outline-offset:1px;' : '')}${nm(x.id, 12, 'font-weight:700; margin-top:3px;')}<div style="font-size:10.5px; color:#6b5a4a; line-height:1.35;">Lv.${own[x.id]}→${L}<br>${x.dmg != null ? (x.dmg < 0.1 ? `<span style="color:#a89a88;">幾乎沒差，這格放什麼都可以</span>` : `<b style="color:#2e7d32;">傷害 +${x.dmg}%</b>`) : upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`; }).join('');
                 return `<div style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">
                     <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:${col[1]};">
                         <span style="font-size:15px; font-weight:900; color:${col[0]};">${CRYSTAL_CAT[cat]}</span>

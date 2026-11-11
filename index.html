@@ -6168,7 +6168,9 @@
         // 它是「這輪突襲累計打過的第幾隻王」的全域計數器（從 0 算起），
         // 兩者是完全不同的東西，不能拿 titan_index 當陣列下標去查 titans[titan_index]。
         function apiFindTitanByEnemyId(enemyId) {
-            return apiRaidTitans.find(t => t.enemy_id === enemyId) || null;
+            // 即時連線沒收到場次快照（突襲打到一半才打開網頁）時，用伺服器存的場次快照（/raid-raw-snapshots）裡的王資料（含詛咒）
+            const fromSnap = (typeof bossHpSnapshot !== 'undefined' && bossHpSnapshot && bossHpSnapshot.raid && Array.isArray(bossHpSnapshot.raid.titans)) ? bossHpSnapshot.raid.titans : [];
+            return apiRaidTitans.find(t => t.enemy_id === enemyId) || fromSnap.find(t => t.enemy_id === enemyId) || null;
         }
 
         // 從官方 titan_target 資料抓出「打叉／禁打」的部位（state === "1"）。
@@ -9797,7 +9799,7 @@
         const BY_PART_RECO_MIN_HITS = 5;     // 現在這種狀態下至少真的打過幾刀
         let byPartRecoToken = 0;
         let byPartRecoSig = '', byPartRecoShownSig = '', byPartRecoShownBoss = '';
-        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim20';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
+        const BY_PART_RECO_LAST_KEY = 'tt2_reco_last_sim21';   // 上次算好的推薦牌組（狀態簽章＋畫面），重開網頁時先顯示
 
         /* ── 遊戲模擬器推薦的 6 組（Overall：Cycle／Focus Head／Focus Armor／Focus Torso／Focus Body／Focus Three Limbs）──
            遊戲的推薦是「這個場次加成＋這個部位狀態」才成立的結果，所以只在「加成類型一樣、
@@ -12618,7 +12620,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v1_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v2_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -12626,7 +12628,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v20';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v21';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12638,7 +12640,7 @@
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v10');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v11');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12660,7 +12662,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v10', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v11', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12725,7 +12727,7 @@
             const me = raidSimPlayer(v, env.morale, env.season);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy]);
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -12736,7 +12738,7 @@
             if (!n) return [];
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v1_${code}` : null;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v2_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
@@ -13950,6 +13952,7 @@
                 const rsa = serverSessionsSummary && serverSessionsSummary[0] ? serverSessionsSummary[0].startedAt : null;
                 if (snap && snap.data && snap.data.raid && (!rsa || snap.startedAt === rsa)) bossHpSnapshot = snap.data;
             } catch (e) {}
+            if (!raidCurseInfo || !raidCurseInfo.length) { try { updateCurseInfo(); } catch (e) {} }   // 補上詛咒（即時快照沒收到時）
             refreshBossHpIfOpen();
         }
         // 預計幾輪打完：預設 6 輪；照目前進度 5 輪就打得完（5 輪的合計結果是正數）才預設往前跳到 5，4 輪也打得完再跳到 4…

@@ -12756,7 +12756,14 @@
         // 下一場每隻王的禁打：禁打頁設定的（自己試算），沒有就用最佳禁打
         // 突襲水晶用的禁打：先把這一關每隻王的「傷害效率」算好（或從伺服器讀），沒手動改過就用刀數最少的禁法
         const crystalBanReady = {};
-        function crystalEnsureBans(lvl) {
+        function crystalShown() { const b = document.getElementById('crystal-reco'); return !!(b && b.offsetParent !== null); }
+        // 背景：下一場預告一出來，就先用 1 個核心把那一場的禁打（傷害效率）算好存到伺服器，大家打開水晶、禁打頁就直接讀
+        setInterval(() => {
+            const lv = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level);   // 預告的下一場，沒有就用禁打頁選的關卡
+            if (document.visibilityState !== 'visible' || !lv || crystalBanReady[lv]) return;
+            crystalEnsureBans(lv, true);
+        }, 60000);
+        function crystalEnsureBans(lvl, bg) {
             if (crystalBanReady[lvl]) return crystalBanReady[lvl];
             return crystalBanReady[lvl] = (async () => {
                 if (!ticketCalc.seed) ticketCalc.seed = await ticketSeedFetch().catch(() => null);
@@ -12771,13 +12778,16 @@
                 }, 1000);
                 for (const n of todo) {
                     key = `${ticketCalc.seed.valid_from}|${lvl}|${n}`;
-                    crystalBanBusy = `依傷害效率確認 ${n} 的禁打…`; renderCrystalReco();
+                    crystalBanBusy = `依傷害效率確認 ${n} 的禁打…`; if (crystalShown()) renderCrystalReco();
                     for (let i = 0; i < 600 && ticketBanEvalRes[key] && ticketBanEvalRes[key].busy && !/失敗/.test(ticketBanEvalRes[key].busy); i++) await new Promise(r => setTimeout(r, 500));   // 禁打頁正在算同一隻就等它
-                    if (!(ticketBanEvalRes[key] && ticketBanEvalRes[key].rows)) await ticketBanEval(n, lvl);
+                    if (!(ticketBanEvalRes[key] && ticketBanEvalRes[key].rows)) {
+                        if (bg && !crystalShown()) raidSimWorkerLimit = 1;   // 背景只用 1 個核心；有人打開水晶頁就全速
+                        try { await ticketBanEval(n, lvl); } finally { if (bg) raidSimWorkerLimit = 0; }
+                    }
                     idx++;
                 }
                 clearInterval(tick);
-                crystalBanBusy = '';
+                crystalBanBusy = ''; if (crystalShown()) renderCrystalReco();
             })();
         }
         let crystalBanBusy = '';

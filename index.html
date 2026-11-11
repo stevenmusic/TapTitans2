@@ -12778,10 +12778,10 @@
                             const o = s1[i] && s1[i].tg ? s1[i] : s0[i];
                             const kc = all[i].cards.filter(c => isCand.has(c));
                             const d = { cards: all[i].cards, kc, val: {}, o }; decks.push(d);
-                            for (let mask = 0; mask < (1 << kc.length); mask++) { const ids = kc.filter((c, b) => mask >> b & 1); jobs.push({ d, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(env, meWith(me, ids), all[i].cards), o, runs: 40 } }); }
+                            for (let mask = 0; mask < (1 << kc.length); mask++) { const ids = kc.filter((c, b) => mask >> b & 1); jobs.push({ d, ids, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(env, meWith(me, ids), all[i].cards), o, runs: 40 } }); }
                         });
                         const fr = await raidSimParallel(P, jobs.map(j => j.job));
-                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, []), j.job.o); j.d.val[j.k] = budVal(j.d.o, r.avg || 0) * raidSimDeckFactor(j.d.cards); });
+                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, j.ids), j.job.o); j.d.val[j.k] = budVal(j.d.o, r.avg || 0) * raidSimDeckFactor(j.d.cards); });
                         ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label });
                     }
                 }

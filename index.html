@@ -12819,7 +12819,9 @@
             logs.forEach(a => a.cards.forEach(c => { if (a.playerCode === p.player_code) mine[c.name] = (mine[c.name] || 0) + 1; if (a.raidStartedAt === sessions[0]) guild[c.name] = (guild[c.name] || 0) + 1; }));
             const guildMax = Math.max(1, ...Object.values(guild));
             let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
-            const own = {}; (p.cards || []).forEach(c => { own[c.skill_name] = (Number(c.level) || 0) + (season[c.skill_name] || 0); });   // 自己的等級＋賽季加成（賽季加成後已經比水晶高的卡放進去沒用）
+            // 水晶是把卡片「本身的等級」拉到水晶等級，賽季加成另外加在上面（攻擊紀錄驗證：實際等級＝max(卡片, 水晶)＋賽季加成），
+            // 所以能提升幾級＝水晶等級 − 卡片本身等級，不能先扣賽季加成；模擬用的等級才加賽季加成（不含水晶）
+            const own = {}, simLv = {}; (p.cards || []).forEach(c => { own[c.skill_name] = Number(c.level) || 0; simLv[c.skill_name] = own[c.skill_name] + (season[c.skill_name] || 0); });
             const boosted = p.boosted_cards || [], plan = {};
             Object.keys(CRYSTAL_CAT).forEach(cat => {
                 const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
@@ -12835,7 +12837,7 @@
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
                 plan[cat] = { cur, L, slots, pick, curIds, pickIds, outs: cur.filter(b => !pickIds.has(b.skill_name)), ins: pick.filter(x => !curIds.has(x.id)) };
             });
-            return { plan, own };
+            return { plan, own, simLv };
         }
         let crystalTab = 'me', crystalAllOpen = new Set(), crystalAllLoadedLv = null;
         function crystalAllToggle(code) { crystalAllOpen.has(code) ? crystalAllOpen.delete(code) : crystalAllOpen.add(code); renderCrystalReco(); }
@@ -12904,12 +12906,12 @@
             const sessions = (serverSessionsSummary || []).slice(0, 2).map(x => x.startedAt);
             if (sessions[1] && !sessionAttacksCache.has(sessions[1])) { try { await ensureSessionAttacksLoaded(sessions[1]); } catch (e) {} }
             const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
-            const { own } = crystalPlanOf(p, null, logs, sessions);
+            const { own, simLv } = crystalPlanOf(p, null, logs, sessions);
             // 下一場：預告的關卡，沒有就用門票試算選的關卡
             if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level) || null;
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
-            if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, own); }, 0);
+            if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, simLv); }, 0);
             const upUses = up && up.uses ? up.uses : null;
             const { plan } = crystalPlanOf(p, upUses, logs, sessions);
             const sections = Object.keys(CRYSTAL_CAT).map(cat => {

@@ -12932,6 +12932,11 @@
             return `<div style="padding:0 8px 9px;"><div style="display:grid; grid-template-columns:${ms.map(m => m + 'fr').join(' ')}; gap:4px;">${groups}</div>${outs.length ? `<div style="display:flex; align-items:center; gap:4px; margin-top:5px; font-size:11px; color:#c0392b; font-weight:700;">換掉${outs.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" alt="" style="width:22px; height:22px; border-radius:4px; opacity:.6; filter:grayscale(.5);">` : '').join('')}</div>` : ''}</div>`;
         }
         // 全公會一覽（像攻擊紀錄）：每個人一行，點開看每一欄換掉→換上；用伺服器上算好的下一場
+        let crystalAllQ = '';
+        function crystalAllFilter(q) {   // 只藏行、不重畫（打字時輸入框不會跳掉）
+            crystalAllQ = q; const k = String(q || '').trim().toLowerCase();
+            document.querySelectorAll('#crystal-reco .crystal-all-row').forEach(el => { el.style.display = !k || el.dataset.name.includes(k) ? '' : 'none'; });
+        }
         async function renderCrystalAll(box, players, logs, sessions, upRaid, head) {
             const list = players.filter(p => (p.boosted_cards || []).length);
             if (crystalLevel) await banPlanLoad(crystalLevel);   // 公會共用禁打先讀進來，不然對不到算好的結果
@@ -12947,7 +12952,7 @@
             const maxSlots = {}; list.forEach(p => (p.boosted_cards || []).forEach(b => { const k = b.category; maxSlots[k] = Math.max(maxSlots[k] || 0, list.length && (p.boosted_cards || []).filter(x => x.category === k).length); }));
             const fmt = (arr) => arr.map(x => escapeHtml(raidCardLabel(x))).join('、');
             const js = (v) => escapeHtml(JSON.stringify(v));
-            const rows = list.map(p => {
+            const rows = list.map(p => {   // 回傳 [要換幾張, html]，之後照張數多的排前面
                 const up = crystalLevel ? crystalUpRes[keyOf(p)] : null;
                 const ready = !crystalLevel || !!(up && up.uses);
                 const { plan } = crystalPlanOf(p, up && up.uses ? up : null, logs, sessions);
@@ -12956,12 +12961,14 @@
                 const badge = !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
                 const detail = !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
                     : crystalAllRow(plan, maxSlots);
-                return `<div style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
+                return [ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
                     <span style="flex:1; min-width:0; font-size:14px; font-weight:800; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidShortName(p.name))}</span>
-                    <span style="font-size:12.5px; font-weight:800;">${badge}</span></div>${detail}</div>`;
-            }).join('');
-            box.innerHTML = head + `<div style="font-size:10.5px; color:#a89a88; margin:6px 2px;">綠框＝換上｜小圖＝換掉｜半透明＝沒差</div>
+                    <span style="font-size:12.5px; font-weight:800;">${badge}</span></div>${detail}</div>`];
+            }).sort((a, b) => b[0] - a[0]).map(x => x[1]).join('');   // 要換很多張的排上面
+            box.innerHTML = head + `<input class="player-name-input" placeholder="搜尋玩家名稱" value="${escapeHtml(crystalAllQ)}" oninput="crystalAllFilter(this.value)" style="margin-top:8px;">
+                <div style="font-size:10.5px; color:#a89a88; margin:6px 2px;">綠框＝換上｜小圖＝換掉｜半透明＝沒差</div>
                 <div style="background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">${rows || '<div style="padding:10px; font-size:12px; color:#8a7a6a;">沒有人有水晶插槽</div>'}</div>`;
+            if (crystalAllQ) crystalAllFilter(crystalAllQ);
         }
         async function renderCrystalReco() {
             const box = document.getElementById('crystal-reco'); if (!box) return;

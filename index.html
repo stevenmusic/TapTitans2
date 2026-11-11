@@ -14372,12 +14372,40 @@
             return `<details ${ticketCalc.allBansOpen ? 'open' : ''} ontoggle="if (ticketCalc.allBansOpen !== this.open) { ticketCalc.allBansOpen = this.open; renderTicketCalc(); }" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; font-weight:800; color:#5a3a2a;">所有關卡的最佳禁打（點某一關切換過去）</summary>
                 <div style="font-size:11px; color:#8a7a6a; margin:2px 0 4px;">規則一樣：剩下的肉體 ≥ 斬殺線（打得死），選「有效血量」最少的禁法（禁掉詛咒甲會整場扛詛咒，已換算進去）。</div>${rows}</details>`;
         }
+        // 最佳禁打：有傷害效率的結果就用它（刀數最少），還沒算好先用血量最少的
+        function ticketBestBansAuto(t, raid) {
+            const r = ticketCalc.seed && ticketBanEvalRes[`${ticketCalc.seed.valid_from}|${raid.l}|${t.n}`];
+            return r && r.best ? r.best.slice() : ticketBestBans(t, ticketSharesOf(raid));
+        }
+        // 自動依序算這一關每隻王的傷害效率（一次算一隻）；算好就自動套用（自己手動改過的那隻不動）
+        let ticketBanEvalQBusy = false;
+        async function ticketBanEvalQueue() {
+            if (ticketBanEvalQBusy || !ticketCalc.seed) return;
+            const raid = ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level); if (!raid) return;
+            ticketBanEvalQBusy = true;
+            try {
+                for (const n of [...new Set(raid.seq)]) {
+                    const t = raid.titans.find(x => x.n === n); if (!t) continue;
+                    const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
+                    if (!(ticketBanEvalRes[key] && ticketBanEvalRes[key].rows)) await ticketBanEval(n);
+                    const r = ticketBanEvalRes[key];
+                    const manual = ((ticketCalc.manualBans || {})[raid.l] || {})[n];
+                    if (r && r.best && !manual && ticketCalc.level === raid.l) {
+                        const lb = ticketCalc.bansByLv[raid.l] || (ticketCalc.bansByLv[raid.l] = {});
+                        if ((lb[n] || []).slice().sort().join() !== r.best.slice().sort().join()) { lb[n] = r.best.slice(); ticketCalcSave(); renderTicketCalc(); }
+                    }
+                    const md = document.getElementById('ticket-calc-modal');
+                    if (ticketCalc.level !== raid.l || !md || md.style.display === 'none') break;   // 換關或關掉視窗就停（下次打開再接著算）
+                }
+            } finally { ticketBanEvalQBusy = false; }
+        }
         function ticketCalcAutoBan() {
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level);
             if (!raid) return;
             const b = {};
-            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t, ticketSharesOf(raid)); });
+            raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBansAuto(t, raid); });
             ticketCalc.bansByLv[ticketCalc.level] = b;
+            if (ticketCalc.manualBans) delete ticketCalc.manualBans[ticketCalc.level];
             if (ticketCalcActual) ticketCalc.manualLv = ticketCalc.level;   // 這一場按「改回最佳禁打」＝改成自己試算
             ticketCalcSave();
             renderTicketCalc();
@@ -14386,6 +14414,7 @@
         function ticketCalcSet(field, v) {
             if (field === 'ban' && ticketCalcActual) { ticketCalc.bansByLv[ticketCalc.level] = JSON.parse(JSON.stringify(ticketCalcActual)); ticketCalc.manualLv = ticketCalc.level; }   // 從實際禁打開始改
             if (field === 'actual') { ticketCalc.manualLv = v ? null : ticketCalc.level; ticketCalcSave(); renderTicketCalc(); return; }
+            if (field === 'ban') { const mb = ticketCalc.manualBans || (ticketCalc.manualBans = {}); (mb[ticketCalc.level] || (mb[ticketCalc.level] = {}))[v[0]] = true; }
             if (field === 'ban') { const [name, loc] = v; const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {}); const l = new Set(lb[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); lb[name] = [...l]; }
             else ticketCalc[field] = v;
             ticketCalcSave();
@@ -14464,7 +14493,7 @@
             const zh = (loc) => ({ Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' })[loc] || loc;
             const key = `${ticketCalc.seed.valid_from}|${ticketCalc.level}|${n}`, r = ticketBanEvalRes[key];
             const nm = escapeHtml(JSON.stringify(n)).replace(/"/g, '&quot;');
-            if (!r) return `<div style="text-align:center; margin-top:6px;"><button class="tt-btn2" onclick="ticketBanEval(${nm})" style="font-size:12px; border-radius:7px; padding:4px 12px; font-family:inherit;">依傷害效率確認禁打</button></div>`;
+            if (!r) { setTimeout(ticketBanEvalQueue, 0); return `<div style="text-align:center; margin-top:6px; font-size:11.5px; color:#8a7a6a;">依傷害效率確認禁打：排隊中</div>`; }
             if (!r.rows) return `<div style="text-align:center; margin-top:6px; font-size:11.5px; color:#8a7a6a;">${escapeHtml(r.busy || '')}</div>`;
             const curKey = (curBans || []).slice().sort().join();
             const fmtB = (x) => (x / 1e9).toFixed(1) + 'B';
@@ -14494,7 +14523,7 @@
                     const sh = ticketSharesOf(raid);   // 這一關加成下的爆裂／苦痛佔比
                     const names = [...new Set(raid.seq)];
                     const cnt = (n) => raid.seq.filter(x => x === n).length;
-                    if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBans(t, sh); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
+                    if (!ticketCalc.bansByLv[ticketCalc.level]) { const b = {}; raid.titans.forEach(t => { if (raid.seq.includes(t.n)) b[t.n] = ticketBestBansAuto(t, raid); }); ticketCalc.bansByLv[ticketCalc.level] = b; ticketCalcSave(); }   // 第一次選這一關：先套最佳禁打
                     // 這一場（正在打）：預設用公會實際標的禁打（官方 titan_target），可以切回自己試算
                     const actualBans = (() => {
                         if (raidPreview || raid.l !== curLv) return null;
@@ -14567,7 +14596,7 @@
                         <table style="width:100%; border-collapse:collapse; font-size:13px; color:#4a3728; margin-bottom:10px;"><tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">目標</td><td style="padding:4px 3px; text-align:right;">每輪要打</td><td style="padding:4px 3px; text-align:right;">需要增傷</td><td style="padding:4px 3px; text-align:right;">門票</td></tr>${rows}</table>
                         ${actualBans ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; margin:4px 0; padding:6px 8px; border-radius:8px; background:${useActual ? '#eef6ee' : '#fff4e5'}; color:${useActual ? '#2e7d32' : '#a0522d'};">${useActual ? '✔ 這一場：照公會實際標的禁打' : '這一場：目前是自己試算的禁打'}<button class="tt-btn2" onclick="ticketCalcSet('actual', ${useActual ? 'false' : 'true'})" style="font-size:12px; padding:3px 9px; white-space:nowrap;">${useActual ? '改成自己試算' : '改回實際禁打'}</button></div>` : ''}
                         <div style="font-size:13px; font-weight:800; color:#5a3a2a; margin:4px 0;">每隻王（點部位設定禁打，<span style="color:#8e5cc0;">紫框</span>＝詛咒甲；數字是出場盔甲，已扣掉開場傷害）</div>
-                        ${names.some(n => { const best = ticketBestBans(T[n], sh).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
+                        ${names.some(n => { const best = ticketBestBansAuto(T[n], raid).slice().sort().join(); return banOf(n).slice().sort().join() !== best; }) ? '<button onclick="ticketCalcAutoBan()" style="width:100%; font:inherit; font-size:14px; font-weight:800; padding:8px; margin-bottom:8px; border-radius:10px; border:none; background:#6a3d9a; color:#fff;">↺ 改回最佳禁打</button>' : ''}
                         ${titanCards}
                         ${ticketAllBansHtml(master)}`;
                 } else body = '<div style="font-size:12px; color:#8a7a6a;">seed 裡沒有 Master 關卡。</div>';

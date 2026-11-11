@@ -12680,7 +12680,8 @@
         function raidSimStrategyLine(env) {
             if (!env || !env.strategy) return '';
             const big = env.bigPart ? raidPartLabel(env.bigPart) : '';
-            const t = env.strategy === 'clear' ? `先清其他部位，再用凱旋行軍打${big}（${big}佔 ${Math.round(env.bigShare * 100)}%）` : '照各部位血量平均打';
+            const t = env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
+                : env.strategy === 'clear' ? `平均打完其他部位，最後用凱旋行軍打${big}（${big}佔 ${Math.round(env.bigShare * 100)}%）` : '照各部位血量平均打';
             return `<div style="font-size:11.5px; color:#8a7a6a; margin:0 0 4px;">策略：${t}</div>`;
         }
         const RAID_SIM_OVERFLOW = 0.3;   // 超過份額的傷害還算 3 成價值（份額是軟的：不會為了份額把一組牌硬改到很差的打法）
@@ -12689,7 +12690,9 @@
             const sumHp = open.reduce((t, k) => t + env.hp[k], 0);
             if (!(sumHp > 0) || !(T > 0)) return null;
             const b = {};
-            if (env.strategy === 'clear') {
+            if (env.strategy === 'armor') {   // 先拆盔甲：還有盔甲的部位可以打到盔甲打完為止，已經是肉體的部位只分一點（不要一直打四肢）
+                open.forEach(k => { const ar = (env.armorLeft || {})[k] || 0; b[k] = ar > 0 ? Math.min(env.hp[k], ar) : Math.min(env.hp[k], T * 0.05); });
+            } else if (env.strategy === 'clear') {
                 const big = env.bigPart, small = open.filter(k => k !== big), smallHp = small.reduce((t, k) => t + env.hp[k], 0);
                 small.forEach(k => { b[k] = env.hp[k]; });
                 if (big && env.hp[big] > 0) b[big] = Math.min(env.hp[big], Math.max(T - smallHp, T * 0.2));
@@ -13207,8 +13210,13 @@
             const bigPart = open.slice().sort((a, b) => hp[b] - hp[a])[0] || null;   // 血最厚的部位（頭、肚子都可能）
             const small = open.filter(k => k !== bigPart);
             const bigShare = bigPart && openHp > 0 ? hp[bigPart] / openHp : 0;
-            const strategy = bigShare >= 0.6 && nSkel + small.length >= 6 ? 'clear' : 'even';
-            return { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, strategy, bigPart, bigShare };
+            // 先清其他部位的情況再分兩段：肉體部位還不到 6 個、又還有盔甲沒拆 → 先拆盔甲（肉體 6 個以上瘟疫、瘋狂無效、時間之沙才有最大效果）；之後才平均打完其他部位，最後凱旋行軍
+            const armorLeft = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; armorLeft[key] = Math.max(0, Number(pt.armor) || 0); });
+            const nBody = open.filter(k => board[k].layer === 'body').length;
+            const armorOpen = open.filter(k => board[k].layer === 'armor');
+            let strategy = bigShare >= 0.6 && nSkel + small.length >= 6 ? 'clear' : 'even';
+            if (strategy === 'clear' && nBody < 6 && armorOpen.length) strategy = 'armor';
+            return { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, strategy, bigPart, bigShare, armorLeft, nBody };
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
         const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 200;

@@ -12951,7 +12951,7 @@
                 const up = crystalLevel ? crystalUpRes[keyOf(p)] : null;
                 const ready = !crystalLevel || !!(up && up.uses);
                 const { plan } = crystalPlanOf(p, up && up.uses ? up : null, logs, sessions);
-                const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.outs.length : 0), 0) : 0;
+                const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.ins.filter(y => !(y.dmg != null && y.dmg < 0.1)).length : 0), 0) : 0;   // 只算真正有差的（換上去的卡貢獻 ≥ 0.1%）
                 const open = crystalAllOpen.has(p.player_code);
                 const badge = !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
                 const detail = !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`

@@ -12773,12 +12773,13 @@
                 const V0 = V(new Set()) || 1;
                 const byCat = {}; candIds.forEach(id => (byCat[crystalSkills[id].cat] = byCat[crystalSkills[id].cat] || []).push(id));
                 // 先挑：每一類照單張提升排，取格數那麼多張
-                const S = new Set();
-                Object.keys(byCat).forEach(cat => { byCat[cat].map(id => [id, V(new Set([id]))]).sort((a, b) => b[1] - a[1]).slice(0, slotInfo[cat].n).forEach(([id]) => S.add(id)); });
+                const S = new Set(), curNow = new Set((p.boosted_cards || []).map(b => b.skill_name));
+                // 提升差不多（< 0.1%）就留現在放的，不要為了沒差的卡叫人換
+                Object.keys(byCat).forEach(cat => { byCat[cat].map(id => [id, V(new Set([id])) + (curNow.has(id) ? V0 * 0.001 : 0)]).sort((a, b) => b[1] - a[1]).slice(0, slotInfo[cat].n).forEach(([id]) => S.add(id)); });
                 // 交叉比對：一張一張換（同類別），換到更高就留下，直到換不動
                 for (let round = 0; round < 8; round++) {
                     let best = V(S), mv = null;
-                    Object.keys(byCat).forEach(cat => byCat[cat].filter(x => S.has(x)).forEach(x => byCat[cat].filter(y => !S.has(y)).forEach(y => { const T = new Set(S); T.delete(x); T.add(y); const val = V(T); if (val > best * 1.0005) { best = val; mv = [x, y]; } })));
+                    Object.keys(byCat).forEach(cat => byCat[cat].filter(x => S.has(x)).forEach(x => byCat[cat].filter(y => !S.has(y)).forEach(y => { const T = new Set(S); T.delete(x); T.add(y); const val = V(T); if (val > best + V0 * 0.001 * (curNow.has(x) ? 1 : 0.5)) { best = val; mv = [x, y]; } })));
                     if (!mv) break; S.delete(mv[0]); S.add(mv[1]);
                 }
                 const VS = V(S);
@@ -12857,7 +12858,7 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v4_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v5_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -12975,7 +12976,7 @@
                     : `<span style="color:#2e7d32;">目前就是最好的</span>`;
                 const grid = (n) => `display:grid; grid-template-columns:repeat(${Math.max(n, 3)}, 1fr); gap:6px;`;
                 const curRow = cur.map(b => { const gone = !waiting && pick.length && !pickIds.has(b.skill_name); return `<div style="text-align:center; min-width:0;">${img(b.skill_name, 34, gone ? 'opacity:.45; filter:grayscale(.6);' : '')}${nm(b.skill_name, 10.5, gone ? 'color:#c0392b; text-decoration:line-through;' : '')}</div>`; }).join('');
-                const pickRow = pick.map(x => { const nw = !curIds.has(x.id); return `<div style="text-align:center; min-width:0;">${img(x.id, 52, nw ? 'outline:2.5px solid #2e7d32; outline-offset:1px;' : '')}${nm(x.id, 12, 'font-weight:700; margin-top:3px;')}<div style="font-size:10.5px; color:#6b5a4a; line-height:1.35;">Lv.${own[x.id]}→${L}<br>${x.dmg != null ? `<b style="color:#2e7d32;">傷害 +${x.dmg}%</b>` : upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`; }).join('');
+                const pickRow = pick.map(x => { const nw = !curIds.has(x.id); return `<div style="text-align:center; min-width:0;">${img(x.id, 52, nw ? 'outline:2.5px solid #2e7d32; outline-offset:1px;' : '')}${nm(x.id, 12, 'font-weight:700; margin-top:3px;')}<div style="font-size:10.5px; color:#6b5a4a; line-height:1.35;">Lv.${own[x.id]}→${L}<br>${x.dmg != null ? (x.dmg < 0.1 ? `<span style="color:#a89a88;">幾乎沒差</span>` : `<b style="color:#2e7d32;">傷害 +${x.dmg}%</b>`) : upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`; }).join('');
                 return `<div style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">
                     <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:${col[1]};">
                         <span style="font-size:15px; font-weight:900; color:${col[0]};">${CRYSTAL_CAT[cat]}</span>

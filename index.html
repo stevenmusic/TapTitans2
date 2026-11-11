@@ -7872,7 +7872,7 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 5;   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
+        const RAID_SIM_PICK_VER = 6;   // 6：少見牌組不打九折、放大補等級（舊版分母偏低，不能跟新版混著算）   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
         // 舊版本（tt2_sim_pick_v1～v8）算過的也搬過來，新的版本優先；搬完刪掉舊的
@@ -8161,7 +8161,7 @@
                 let pickInfo = raidSimPickByPlayer.get(identity) || null;
                 {
                     let pa = 0, pb = 0, pn = 0, old = 0;
-                    attacks.forEach(a => { if (!a.simB) return; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0) { pa += a.totalDamage; pb += st.v; pn++; if (!(st.ver >= 3)) old++; } });
+                    attacks.forEach(a => { if (!a.simB) return; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0 && st.ver === RAID_SIM_PICK_VER) { pa += a.totalDamage; pb += st.v; pn++; } });   // 只用目前版本算的，不跟舊算法混
                     if (pn > 0) pickInfo = { ratio: pa / pb, old: old * 2 > pn };   // 大多還是舊算法的結果：標紅用舊門檻，免得還沒重算完就一堆人變紅
                 }
                 // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；

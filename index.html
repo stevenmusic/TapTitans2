@@ -12760,16 +12760,28 @@
                         const s0 = await scr(me), s1 = candIds.length ? await scr(meUp) : s0;
                         const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, CRYSTAL_SHORT_N).map(x => x[0]);
                         const short = [...new Set([...rank(s0), ...rank(s1)])];
+                        // 部位份額（跟推薦牌組一樣）：這個狀態每個部位剩多少血，照血量比例分這個人 6 組的傷害；只打得到小部位（例如四肢）的牌組，
+                        // 價值只算到那些部位分到的份額，超過的只算 3 成——不然會一直配打四肢的卡，實際上四肢很快就沒血了
+                        const hp = {}; Object.keys(board).forEach(k => { const L = board[k].layer; hp[k] = L === 'armor' ? (Number(t.p[k][1]) || 0) : L === 'body' ? (Number(t.p[k][2]) || 0) : 0; });
+                        const T0 = s0.map(o => o.avg * raidSimDeckFactor(o.cards)).sort((a, b) => b - a).slice(0, 6).reduce((a, b) => a + b, 0);
+                        const bud = raidSimBudgets({ open, hp }, T0);
+                        const budVal = (o, x) => {   // x＝這個組合（升級後）的傷害；照 o 的各種打法挑份額內最多的
+                            if (!bud) return x;
+                            const scale = o.avg > 0 ? x / o.avg : 1;
+                            const alts = o.alts && o.alts.length ? o.alts : [{ tg: o.tg, raw: o.raw || o.avg }];
+                            const cur = alts.find(a => a.tg.join() === (o.tg || []).join()); const sc = cur && cur.raw > 0 ? (o.raw || o.avg) / cur.raw : 1;
+                            return Math.max(...alts.map(a => { const per = a.raw * sc * scale / a.tg.length; return a.tg.reduce((t2, k) => t2 + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));
+                        };
                         // 每組：候選卡升／不升的所有組合都精算（固定亂數，差別只來自等級）
                         const jobs = [], decks = [];
                         short.forEach(i => {
                             const o = s1[i] && s1[i].tg ? s1[i] : s0[i];
                             const kc = all[i].cards.filter(c => isCand.has(c));
-                            const d = { cards: all[i].cards, kc, val: {} }; decks.push(d);
+                            const d = { cards: all[i].cards, kc, val: {}, o }; decks.push(d);
                             for (let mask = 0; mask < (1 << kc.length); mask++) { const ids = kc.filter((c, b) => mask >> b & 1); jobs.push({ d, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(env, meWith(me, ids), all[i].cards), o, runs: 40 } }); }
                         });
                         const fr = await raidSimParallel(P, jobs.map(j => j.job));
-                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, []), j.job.o); j.d.val[j.k] = (r.avg || 0) * raidSimDeckFactor(j.d.cards); });
+                        jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, []), j.job.o); j.d.val[j.k] = budVal(j.d.o, r.avg || 0) * raidSimDeckFactor(j.d.cards); });
                         ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label });
                     }
                 }
@@ -12886,7 +12898,7 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v7_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v8_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;

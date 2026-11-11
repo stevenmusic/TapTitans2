@@ -11655,11 +11655,19 @@
             clearTimeout(byPartRecoTimer);
             byPartRecoTimer = setTimeout(byPartRecoRefreshNow, 300);
         }
+        // 突襲頁上方的推薦牌組：不自動算，按「推薦」才算、才顯示（省 CPU）；模擬板照舊自動
+        let byPartRecoOn = false;
+        function byPartRecoShow() { byPartRecoOn = true; byPartRecoSig = ''; const box = document.getElementById('by-part-reco'); if (box) box.innerHTML = ''; byPartRecoRefreshNow(); }
         async function byPartRecoRefreshNow() {
             const box = document.getElementById('by-part-reco');
             if (!box) return;
             const live = byPartLiveStates();
             if (!live) { box.style.display = 'none'; return; }
+            if (!byPartRecoOn && !raidSimActive) {
+                box.style.display = 'block'; box.style.opacity = '';
+                if (!box.querySelector('#by-part-reco-btn')) box.innerHTML = '<div style="text-align:center; margin:6px 0;"><button id="by-part-reco-btn" class="tt-btn2" onclick="byPartRecoShow()" style="font-size:15px; font-weight:800; border-radius:10px; padding:9px 34px; font-family:inherit; cursor:pointer;">推薦</button></div>';
+                return;
+            }
             if (!attackCacheState.ready && attackCacheCanStart() && attackCacheState.error) attackCacheEnsure();   // 上次失敗、已經隔夠久：重試（這次先用伺服器統計顯示）
             // 歷史攻擊紀錄還在背景載入時不再空等：先用伺服器算好的統計（很快）把推薦牌組顯示出來，載好之後再用網頁端統計重算一次
             if (typeof indexedDB !== 'undefined' && !attackCacheState.ready && !attackCacheState.error && !attackCacheState.loading) attackCacheEnsure();

@@ -12768,8 +12768,8 @@
             return crystalBanReady[lvl] = (async () => {
                 if (!ticketCalc.seed) ticketCalc.seed = await ticketSeedFetch().catch(() => null);
                 const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === lvl); if (!raid) return;
-                const manual = ((ticketCalc.bansByLv || {})[lvl]) || {};
-                const todo = [...new Set(raid.seq)].filter(n => !manual[n] && !crystalPvBans(lvl, n));
+                await banPlanLoad(lvl);
+                const todo = [...new Set(raid.seq)].filter(n => !((ticketCalc.manualBans || {})[lvl] || {})[n] && !crystalPlanBans(lvl, n) && !crystalPvBans(lvl, n));
                 let idx = 0, key = '';
                 const tick = setInterval(() => {   // 進度％：已算完的王＋這隻算到第幾個禁法
                     const m = /(\d+)\/(\d+)/.exec((ticketBanEvalRes[key] || {}).busy || '');
@@ -12791,9 +12791,30 @@
             })();
         }
         let crystalBanBusy = '';
+        // 公會共用禁打：有人在禁打頁手動改了某隻王，就存到伺服器（這一週的 seed＋關卡），所有人的禁打頁、水晶頁都照這個
+        const banPlan = {};   // lvl -> { 王: [部位] }（null＝讀過但沒有）
+        const banPlanKey = (lvl) => `ban_plan_v1_${String((ticketCalc.seed || {}).valid_from || '').replace(/[^0-9]/g, '').slice(0, 8)}_${lvl}`;
+        async function banPlanLoad(lvl) {
+            if (lvl in banPlan) return banPlan[lvl];
+            if (!ticketCalc.seed) ticketCalc.seed = await ticketSeedFetch().catch(() => null);
+            if (!ticketCalc.seed) return null;
+            const d = await kvGet(banPlanKey(lvl));
+            banPlan[lvl] = d && typeof d === 'object' ? d : null;
+            return banPlan[lvl];
+        }
+        function banPlanSave(lvl) {
+            if (!ticketCalc.seed) return;
+            const mb = (ticketCalc.manualBans || {})[lvl] || {}, lb = (ticketCalc.bansByLv || {})[lvl] || {}, out = {};
+            Object.keys(mb).forEach(n => { if (mb[n] && lb[n]) out[n] = lb[n].slice(); });
+            banPlan[lvl] = out; kvSet(banPlanKey(lvl), out);
+        }
+        function crystalPlanBans(lvl, n) { const b = (banPlan[lvl] || {})[n]; return Array.isArray(b) ? b.slice() : null; }
         function crystalPvBans(lvl, n) { const b = raidPreview && raidPreview.bansByName && String(raidPreview.level) === String(lvl) && raidPreview.bansByName[n]; return Array.isArray(b) && b.length ? b.slice() : null; }
         // 禁打順序：自己在禁打頁手動改的 ＞ 預告出來後公會在遊戲裡設好的 ＞ 傷害效率算出刀數最少的
-        function crystalBansOf(raid, t) { return (((ticketCalc && ticketCalc.bansByLv) || {})[raid.l] || {})[t.n] || crystalPvBans(raid.l, t.n) || ticketBestBansAuto(t, raid); }
+        function crystalBansOf(raid, t) {
+            const mine = ((ticketCalc.manualBans || {})[raid.l] || {})[t.n] && (((ticketCalc && ticketCalc.bansByLv) || {})[raid.l] || {})[t.n];
+            return mine || crystalPlanBans(raid.l, t.n) || crystalPvBans(raid.l, t.n) || ticketBestBansAuto(t, raid);
+        }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         async function renderCrystalReco() {
@@ -14545,6 +14566,13 @@
             const raid = ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === ticketCalc.level); if (!raid) return;
             ticketBanEvalQBusy = true;
             try {
+                const plan = await banPlanLoad(raid.l);   // 公會共用的禁打先套上（當成手動改過，不會被自動蓋掉）
+                if (plan && ticketCalc.level === raid.l) {
+                    const lb = ticketCalc.bansByLv[raid.l] || (ticketCalc.bansByLv[raid.l] = {}), mb = ticketCalc.manualBans || (ticketCalc.manualBans = {}), m = mb[raid.l] || (mb[raid.l] = {});
+                    let ch = false;
+                    Object.entries(plan).forEach(([n, b]) => { if ((lb[n] || []).slice().sort().join() !== b.slice().sort().join() || !m[n]) { lb[n] = b.slice(); m[n] = true; ch = true; } });
+                    if (ch) { ticketCalcSave(); renderTicketCalc(); }
+                }
                 for (const n of [...new Set(raid.seq)]) {
                     const t = raid.titans.find(x => x.n === n); if (!t) continue;
                     const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
@@ -14568,6 +14596,7 @@
             ticketCalc.bansByLv[ticketCalc.level] = b;
             if (ticketCalc.manualBans) delete ticketCalc.manualBans[ticketCalc.level];
             if (ticketCalcActual) ticketCalc.manualLv = ticketCalc.level;   // 這一場按「改回最佳禁打」＝改成自己試算
+            banPlanSave(ticketCalc.level);
             ticketCalcSave();
             renderTicketCalc();
         }
@@ -14578,6 +14607,7 @@
             if (field === 'ban') { const mb = ticketCalc.manualBans || (ticketCalc.manualBans = {}); (mb[ticketCalc.level] || (mb[ticketCalc.level] = {}))[v[0]] = true; }
             if (field === 'ban') { const [name, loc] = v; const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {}); const l = new Set(lb[name] || []); l.has(loc) ? l.delete(loc) : l.add(loc); lb[name] = [...l]; }
             else ticketCalc[field] = v;
+            if (field === 'ban') banPlanSave(ticketCalc.level);
             ticketCalcSave();
             renderTicketCalc();
         }
@@ -14648,7 +14678,9 @@
         function ticketBanApply(n, bans) {
             if (ticketCalcActual) { ticketCalc.bansByLv[ticketCalc.level] = JSON.parse(JSON.stringify(ticketCalcActual)); ticketCalc.manualLv = ticketCalc.level; }
             const lb = ticketCalc.bansByLv[ticketCalc.level] || (ticketCalc.bansByLv[ticketCalc.level] = {});
-            lb[n] = bans.slice(); ticketCalcSave(); renderTicketCalc();
+            lb[n] = bans.slice();
+            const mb = ticketCalc.manualBans || (ticketCalc.manualBans = {}); (mb[ticketCalc.level] || (mb[ticketCalc.level] = {}))[n] = true;
+            banPlanSave(ticketCalc.level); ticketCalcSave(); renderTicketCalc();
         }
         function ticketBanEvalHtml(n, curBans) {
             const zh = (loc) => ({ Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' })[loc] || loc;

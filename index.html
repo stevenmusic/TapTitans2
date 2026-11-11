@@ -12708,8 +12708,7 @@
             if (crystalUpRes[key] && (crystalUpRes[key].busy || crystalUpRes[key].uses)) return;
             if (!raid) { crystalUpRes[key] = { busy: `seed 裡沒有 M-${lvl}` }; return; }
             // 伺服器暫存的名稱帶禁打（換了禁打就是另一份）
-            let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-            const kvKey = `crystal_v2_${lvl}_${p.player_code}_${h.toString(36)}`.slice(0, 64);
+            const kvKey = crystalKvKey(lvl, p.player_code, banSig);
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
             const remote = await kvGet(kvKey);
             if (remote && remote.uses && remote.seed === seed.valid_from) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
@@ -12816,6 +12815,66 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v2_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
+        function crystalPlanOf(p, upUses, logs, sessions) {
+            const mine = {}, guild = {};
+            logs.forEach(a => a.cards.forEach(c => { if (a.playerCode === p.player_code) mine[c.name] = (mine[c.name] || 0) + 1; if (a.raidStartedAt === sessions[0]) guild[c.name] = (guild[c.name] || 0) + 1; }));
+            const guildMax = Math.max(1, ...Object.values(guild));
+            let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
+            const own = {}; (p.cards || []).forEach(c => { own[c.skill_name] = (Number(c.level) || 0) + (season[c.skill_name] || 0); });   // 自己的等級＋賽季加成（賽季加成後已經比水晶高的卡放進去沒用）
+            const boosted = p.boosted_cards || [], plan = {};
+            Object.keys(CRYSTAL_CAT).forEach(cat => {
+                const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
+                if (!cur.length) return;
+                const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
+                const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
+                    const gain = Math.max(0, L - own[id]);
+                    const nxt = upUses ? (upUses[id] || 0) : 0;
+                    const use = upUses ? nxt + 0.4 * (mine[id] || 0) + 0.05 * (guild[id] || 0) / guildMax : (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 有下一場的模擬就以下一場為主，過去用的次數為輔
+                    return { id, gain, use, mine: mine[id] || 0, nxt, score: gain * use };
+                }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
+                const pick = cands.slice(0, slots);
+                const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
+                plan[cat] = { cur, L, slots, pick, curIds, pickIds, outs: cur.filter(b => !pickIds.has(b.skill_name)), ins: pick.filter(x => !curIds.has(x.id)) };
+            });
+            return { plan, own };
+        }
+        let crystalTab = 'me', crystalAllOpen = new Set(), crystalAllLoadedLv = null;
+        function crystalAllToggle(code) { crystalAllOpen.has(code) ? crystalAllOpen.delete(code) : crystalAllOpen.add(code); renderCrystalReco(); }
+        // 全公會一覽（像攻擊紀錄）：每個人一行，點開看每一欄換掉→換上；用伺服器上算好的下一場
+        async function renderCrystalAll(box, players, logs, sessions, upRaid, head) {
+            const list = players.filter(p => (p.boosted_cards || []).length);
+            if (crystalLevel) await banPlanLoad(crystalLevel);   // 公會共用禁打先讀進來，不然對不到算好的結果
+            const sig = upRaid ? crystalBanSig(upRaid) : '';
+            const keyOf = (p) => `${crystalLevel}|${p.player_code}|${sig}`;
+            if (crystalLevel && upRaid && crystalAllLoadedLv !== crystalLevel + sig) {
+                crystalAllLoadedLv = crystalLevel + sig;
+                const seed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch().catch(() => null);
+                const need = list.filter(p => !(crystalUpRes[keyOf(p)] && crystalUpRes[keyOf(p)].uses));
+                const got = await kvGetMany(need.map(p => crystalKvKey(crystalLevel, p.player_code, sig)));
+                need.forEach(p => { const r = got[crystalKvKey(crystalLevel, p.player_code, sig)]; if (r && r.uses && seed && r.seed === seed.valid_from) crystalUpRes[keyOf(p)] = r; });
+            }
+            const fmt = (arr) => arr.map(x => escapeHtml(raidCardLabel(x))).join('、');
+            const js = (v) => escapeHtml(JSON.stringify(v));
+            const rows = list.map(p => {
+                const up = crystalLevel ? crystalUpRes[keyOf(p)] : null;
+                const ready = !crystalLevel || !!(up && up.uses);
+                const { plan } = crystalPlanOf(p, up && up.uses ? up.uses : null, logs, sessions);
+                const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.outs.length : 0), 0) : 0;
+                const open = crystalAllOpen.has(p.player_code);
+                const badge = !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
+                const detail = !open ? '' : !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
+                    : `<div style="padding:0 12px 9px;">${Object.keys(CRYSTAL_CAT).filter(c => plan[c]).map(c => { const x = plan[c]; const col = { Burst: '#8b263e', Affliction: '#4a148c', Support: '#1b5e20' }[c];
+                        return `<div style="font-size:12.5px; line-height:1.7;"><b style="color:${col};">${CRYSTAL_CAT[c]}</b>　${!x.pick.length ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : x.outs.length ? `<span style="color:#c0392b;">${fmt(x.outs.map(b => b.skill_name))}</span> → <span style="color:#2e7d32; font-weight:700;">${x.ins.length ? fmt(x.ins.map(y => y.id)) : '空著'}</span>` : '<span style="color:#2e7d32;">不用換</span>'}</div>`; }).join('')}</div>`;
+                return `<div style="border-bottom:1px solid #f0e6d6;"><div onclick="crystalAllToggle(${js(p.player_code)})" style="display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer;">
+                    <span style="flex:1; min-width:0; font-size:14px; font-weight:800; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidShortName(p.name))}</span>
+                    <span style="font-size:12.5px; font-weight:800;">${badge}</span><span style="color:#b8a890; font-size:11px;">${open ? '▲' : '▼'}</span></div>${detail}</div>`;
+            }).join('');
+            const allOpen = list.length > 0 && list.every(p => crystalAllOpen.has(p.player_code));
+            box.innerHTML = head + `<div style="display:flex; justify-content:flex-end; margin:6px 0;"><button onclick="crystalAllOpen = ${allOpen ? 'new Set()' : `new Set(${js(list.map(p => p.player_code))})`}; renderCrystalReco();" style="font:inherit; font-size:12px; font-weight:700; padding:5px 12px; border:1px solid #e2d7c5; border-radius:8px; background:#fff; color:#4a3728;">${allOpen ? '全部收起' : '全部展開'}</button></div>
+                <div style="background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">${rows || '<div style="padding:10px; font-size:12px; color:#8a7a6a;">沒有人有水晶插槽</div>'}</div>`;
+        }
         async function renderCrystalReco() {
             const box = document.getElementById('crystal-reco'); if (!box) return;
             if (!raidClanData) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; text-align:center;">載入公會資料中…</div>'; try { await raidLoadClanData(); } catch (e) {} }
@@ -12832,30 +12891,17 @@
             const sessions = (serverSessionsSummary || []).slice(0, 2).map(x => x.startedAt);
             if (sessions[1] && !sessionAttacksCache.has(sessions[1])) { try { await ensureSessionAttacksLoaded(sessions[1]); } catch (e) {} }
             const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
-            const mine = {}, guild = {};
-            logs.forEach(a => a.cards.forEach(c => { if (a.playerCode === p.player_code) mine[c.name] = (mine[c.name] || 0) + 1; if (a.raidStartedAt === sessions[0]) guild[c.name] = (guild[c.name] || 0) + 1; }));
-            const guildMax = Math.max(1, ...Object.values(guild));
-            let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
-            const own = {}; (p.cards || []).forEach(c => { own[c.skill_name] = (Number(c.level) || 0) + (season[c.skill_name] || 0); });   // 自己的等級＋賽季加成（賽季加成後已經比水晶高的卡放進去沒用）
+            const { own } = crystalPlanOf(p, null, logs, sessions);
             // 下一場：預告的關卡，沒有就用門票試算選的關卡
             if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level) || null;
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
-            if (crystalLevel && !up) setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, own); }, 0);
+            if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, own); }, 0);
             const upUses = up && up.uses ? up.uses : null;
-            const boosted = p.boosted_cards || [];
+            const { plan } = crystalPlanOf(p, upUses, logs, sessions);
             const sections = Object.keys(CRYSTAL_CAT).map(cat => {
-                const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
-                if (!cur.length) return `<div style="margin-top:6px; font-size:12px; color:#8a7a6a;"><b>${CRYSTAL_CAT[cat]}</b>：沒有水晶插槽</div>`;
-                const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
-                const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
-                    const gain = Math.max(0, L - own[id]);
-                    const nxt = upUses ? (upUses[id] || 0) : 0;
-                    const use = upUses ? nxt + 0.4 * (mine[id] || 0) + 0.05 * (guild[id] || 0) / guildMax : (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 有下一場的模擬就以下一場為主，過去用的次數為輔
-                    return { id, gain, use, mine: mine[id] || 0, nxt, score: gain * use };
-                }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
-                const pick = cands.slice(0, slots);
-                const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
+                if (!plan[cat]) return `<div style="margin-top:6px; font-size:12px; color:#8a7a6a;"><b>${CRYSTAL_CAT[cat]}</b>：沒有水晶插槽</div>`;
+                const { cur, L, slots, pick, curIds, pickIds } = plan[cat];
                 const waiting = !!crystalLevel && !upUses;   // 下一場還在算：先不下結論
                 const col = { Burst: ['#8b263e', '#f8eee6'], Affliction: ['#4a148c', '#f1ebf8'], Support: ['#1b5e20', '#e9f5ea'] }[cat];
                 const img = (id, sz, extra) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:${sz}px; height:${sz}px; border-radius:${Math.round(sz / 6)}px; display:block; margin:0 auto; ${extra || ''}">` : `<div style="width:${sz}px; height:${sz}px; margin:0 auto;"></div>`;
@@ -12884,7 +12930,10 @@
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);
             const lvSel = `<div style="display:flex; align-items:center; gap:6px; margin:6px 0 2px; font-size:12.5px; font-weight:700; color:#4a3728;">下一場<select onchange="crystalLevel = Number(this.value) || null; renderCrystalReco();" style="font:inherit; font-size:13px; padding:3px 6px; border:1px solid #e2d7c5; border-radius:7px; background:#fff;"><option value="">不看下一場（只看過去用的卡）</option>${seedLvls.map(l => `<option value="${l}" ${l === crystalLevel ? 'selected' : ''}>M-${l}</option>`).join('')}</select></div>`
                 + (up ? (up.uses ? `<div style="font-size:11px; color:#6b5a4a;">M-${crystalLevel}：${(up.seq || []).join('、')}｜禁打 ${upRaid ? [...new Set(upRaid.seq)].map(n => { const t = upRaid.titans.find(x => x.n === n); const b = t ? crystalBansOf(upRaid, t) : []; const zh = { Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' }; return n + (b.length ? b.map(x => zh[x] || x).join('') : '不禁'); }).join('、') : ''}｜加成 ${(up.buffs || []).map(b => ({ BurstDamage: '爆裂傷害', BurstChance: '爆裂機率', AfflictedDamage: '苦痛傷害', AfflictedChance: '苦痛機率', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' })[b[0]] || b[0]).join('、') || '無'}（照禁打頁的禁打、各王詛咒模擬他的推薦牌組）</div>` : `<div style="font-size:11px; color:#8a7a6a;">${escapeHtml(up.busy || '')}</div>`) : (crystalLevel && crystalBanBusy ? `<div id="crystal-ban-busy" style="font-size:11px; color:#8a7a6a;">${escapeHtml(crystalBanBusy)}</div>` : ''));
-            box.innerHTML = `<div style="font-size:13.5px; font-weight:800; color:#1565c0; margin-bottom:4px;">水晶推薦（依卡片等級和${upUses ? '下一場會用的卡' : '攻擊時用的卡'}）</div>${sel}${lvSel}${sections}
+            const tabBtn = (k, label) => `<button onclick="crystalTab = '${k}'; renderCrystalReco();" style="flex:1; font:inherit; font-size:14px; font-weight:900; padding:8px 0; border:none; border-radius:9px; cursor:pointer; ${crystalTab === k ? 'background:#1565c0; color:#fff;' : 'background:transparent; color:#1565c0;'}">${label}</button>`;
+            const tabs = `<div style="display:flex; gap:4px; padding:3px; background:#e3ecf8; border-radius:11px; margin-bottom:8px;">${tabBtn('me', '個人')}${tabBtn('all', '全公會')}</div>`;
+            if (crystalTab === 'all') { await renderCrystalAll(box, players, logs, sessions, upRaid, tabs + lvSel); return; }
+            box.innerHTML = tabs + `${sel}${lvSel}${sections}
                 <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">綠框＝建議新放進去的卡。${upUses ? '分數＝能提升幾級 ×（下一場預計用幾次＋過去兩場用的次數 × 0.4）。' : '分數＝能提升幾級 × 這場和前一場攻擊用過幾次（自己沒用的參考全公會常用的）。'}</div>`;
         }
         function raidSimPartFns(scene) {

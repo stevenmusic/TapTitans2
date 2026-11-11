@@ -12694,7 +12694,8 @@
                 open.forEach(k => { const ar = (env.armorLeft || {})[k] || 0; b[k] = ar > 0 ? Math.min(env.hp[k], ar) : Math.min(env.hp[k], T * 0.05); });
             } else if (env.strategy === 'clear') {
                 const big = env.bigPart, small = open.filter(k => k !== big), smallHp = small.reduce((t, k) => t + env.hp[k], 0);
-                small.forEach(k => { b[k] = env.hp[k]; });
+                // 小部位照各自剩的血按比例平均打（多 3 成彈性），讓它們一起往下降、差不多同時打完（肉體部位維持到最後，最後一起收掉再用凱旋行軍）
+                small.forEach(k => { b[k] = Math.min(env.hp[k], Math.min(T, smallHp) * env.hp[k] / (smallHp || 1) * 1.3); });
                 if (big && env.hp[big] > 0) b[big] = Math.min(env.hp[big], Math.max(T - smallHp, T * 0.2));
             } else open.forEach(k => { b[k] = Math.min(env.hp[k], T * env.hp[k] / sumHp * 1.3); });
             return b;

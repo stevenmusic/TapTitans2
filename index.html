@@ -12705,6 +12705,12 @@
            每組牌把裡面的候選卡各種升／不升的組合都實際模擬（同一組亂數，只差等級），得到「哪幾張升級 → 這組打多少」；
            一種水晶放法的價值＝各王各狀態挑最好的 6 組（卡片不重複）傷害加總，照要打的量加權。
            先挑單張提升最多的，再一張一張換（同一類別內）直到換不出更高，就是交叉比對後最好的放法 */
+        // 水晶格數一樣、等級差不到 5 級，傷害差不多，沿用算好的；格數變了或等級差太多才重算
+        function crystalSlotClose(a, b) {
+            const parse = (x) => Object.fromEntries(String(x || '').split(',').filter(Boolean).map(t => { const m = /^([A-Za-z]+)(\d+)x(\d+)$/.exec(t); return m ? [m[1], [+m[2], +m[3]]] : [t, [0, 0]]; }));
+            const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
+            return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
+        }
         let CRYSTAL_SHORT_N = 40;   // 每個情境精算幾組候選牌組（沒放水晶、全部升級各取前幾名）
         async function crystalUpcoming(p, lvl, simLv) {
             const seed = await ticketSeedFetch().catch(() => null);
@@ -12718,7 +12724,7 @@
             const kvKey = crystalKvKey(lvl, p.player_code, banSig);
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
             const remote = await kvGet(kvKey);
-            if (remote && remote.uses && remote.picks && remote.seed === seed.valid_from && remote.slotSig === slotSig) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
+            if (remote && remote.uses && remote.picks && remote.seed === seed.valid_from && crystalSlotClose(remote.slotSig, slotSig)) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
             try {
                 const P = await raidSimLoad();
                 const cands = await raidSimCandidateDecks(null, true);

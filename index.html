@@ -13305,7 +13305,8 @@
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;
                 return Math.max(...alts.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害
             };
-            const val = (o) => budVal(o) * raidSimDeckFactor(o.cards);
+            const valMemo = new Map();   // 同一組的價值只算一次（搜尋時會被問上百萬次）；補精算後物件換新，自然重算
+            const val = (o) => { let v = valMemo.get(o); if (v === undefined) { v = budVal(o) * raidSimDeckFactor(o.cards); valMemo.set(o, v); } return v; };
             pool.sort((a, b) => val(b) - val(a));
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;

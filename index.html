@@ -11585,6 +11585,7 @@
                     <div style="font-size:13px; font-weight:800; color:#4a3728;"><span class="ic ic-cards"></span>推薦牌組${SESSION_BUFFS[byPartRecoBuffNow] ? ` <span style="font-size:11px; font-weight:700; color:#fff; background:#8e6a3a; border-radius:5px; padding:1px 6px;">${SESSION_BUFFS[byPartRecoBuffNow].label}</span>` : ''}${rows.stateTotal ? ` <span style="font-size:11px; font-weight:700; color:#6b5a48; background:#efe3cf; border-radius:5px; padding:1px 6px;">總 ${rows.stateTotal} 次</span>` : ''}</div>
                     <button class="tt-btn2 ic ic-image" onclick="saveByPartRecoImage('${view || 'home'}')" style="font-size:11.5px; border-radius:6px; padding:4px 9px;">存成圖片</button>
                 </div>
+                ${(view || 'home') === 'home' && !raidSimActive && raidSimEnvLast ? raidSimStrategyLine(raidSimEnvLast) : ''}
                 <div class="reco3" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px;">
                     ${rows.map(r => `<div style="padding:2px; border-radius:7px; background:#fbf2e2;">${renderByPartRow(r)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(r)}</div>${r.overall && !r.hideCount ? `<div style="text-align:center; font-size:11px; font-weight:700; color:#8a7a6a;">${r.overall} 次</div>` : ''}</div>`).join('')}
                 </div>`;
@@ -12666,6 +12667,21 @@
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
+        let raidSimEnvLast = null;
+        // 全公會這一輪還能打的傷害：每位成員這輪還剩幾刀（6 − 這輪已出刀數）× 他這場的平均每刀傷害（沒出過刀的用全公會中位數）
+        function raidGuildRemainingCap() {
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && (!latest || a.raidStartedAt === latest));
+            if (!log.length || !raidClanData) return 0;
+            const cyc = Math.max(...log.map(a => Number(a.cycle) || 0));
+            const by = new Map();
+            log.forEach(a => { const k = a.playerCode || a.player; const x = by.get(k) || { n: 0, sum: 0, inCyc: 0 }; x.n++; x.sum += a.totalDamage || 0; if (a.cycle === cyc) x.inCyc++; by.set(k, x); });
+            const avgs = [...by.values()].map(x => x.sum / x.n).sort((a, b) => a - b);
+            const med = avgs.length ? avgs[Math.floor(avgs.length / 2)] : 0;
+            let cap = 0;
+            raidClanData.byCode.forEach((v, code) => { const x = by.get(code); const left = Math.max(0, RAID_ATTACKS_PER_CYCLE - (x ? x.inCyc : 0)); cap += left * (x ? x.sum / x.n : med); });
+            return cap;
+        }
         function raidSimPartFns(scene) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
@@ -12680,7 +12696,7 @@
         function raidSimStrategyLine(env) {
             if (!env || !env.strategy) return '';
             const big = env.bigPart ? raidPartLabel(env.bigPart) : '';
-            const t = env.strategy === 'park' ? `其他部位剩不多，先集中打${big}，最後一起收掉再用凱旋行軍` : env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
+            const t = env.strategy === 'sweep' ? `收尾：全公會這輪的刀打得完了，一起收掉其他部位，再用凱旋行軍打${big}` : env.strategy === 'park' ? `其他部位剩不多，先集中打${big}，最後一起收掉再用凱旋行軍` : env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
                 : env.strategy === 'clear' ? `平均打完其他部位，最後用凱旋行軍打${big}（${big}佔 ${Math.round(env.bigShare * 100)}%）` : '照各部位血量平均打';
             return `<div style="font-size:11.5px; color:#8a7a6a; margin:0 0 4px;">策略：${t}</div>`;
         }
@@ -12694,7 +12710,7 @@
                 open.forEach(k => { b[k] = k === env.bigPart ? env.hp[k] : Math.min(env.hp[k], T * env.hp[k] / sumHp * 1.3); });
             } else if (env.strategy === 'armor') {   // 先拆盔甲：還有盔甲的部位可以打到盔甲打完為止，已經是肉體的部位只分一點（不要一直打四肢）
                 open.forEach(k => { const ar = (env.armorLeft || {})[k] || 0; b[k] = ar > 0 ? Math.min(env.hp[k], ar) : Math.min(env.hp[k], T * 0.05); });
-            } else if (env.strategy === 'clear') {
+            } else if (env.strategy === 'clear' || env.strategy === 'sweep') {
                 const big = env.bigPart, small = open.filter(k => k !== big), smallHp = small.reduce((t, k) => t + env.hp[k], 0);
                 // 小部位照各自剩的血按比例平均打（多 3 成彈性），讓它們一起往下降、差不多同時打完（肉體部位維持到最後，最後一起收掉再用凱旋行軍）
                 small.forEach(k => { b[k] = Math.min(env.hp[k], Math.min(T, smallHp) * env.hp[k] / (smallHp || 1) * 1.3); });
@@ -13223,10 +13239,15 @@
             const armorOpen = open.filter(k => board[k].layer === 'armor');
             let strategy = bigShare >= 0.6 && nSkel + small.length >= 6 ? 'clear' : 'even';
             if (strategy === 'clear' && nBody < 6 && armorOpen.length) strategy = 'armor';
-            // 其他部位已經壓得很低（加起來不到能打部位的 2 成）：先停著，集中打血最厚的部位，最後再一起收掉、用凱旋行軍
+            // 全公會這一輪還能打多少：每個人這輪還剩幾刀 × 他這場的平均每刀傷害
+            const guildCap = raidGuildRemainingCap();
+            // 其他部位已經壓得很低（加起來不到能打部位的 2 成）：先停著，集中打血最厚的部位；
+            // 等全公會這一輪剩下的刀打得完血最厚的部位時，才一起收掉其他部位、再用凱旋行軍（收尾）
             const smallHp0 = small.reduce((t, k) => t + hp[k], 0);
-            if (strategy === 'clear' && openHp > 0 && smallHp0 / openHp <= 0.2) strategy = 'park';
-            return { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, strategy, bigPart, bigShare, armorLeft, nBody };
+            if (strategy === 'clear' && openHp > 0 && smallHp0 / openHp <= 0.2) strategy = guildCap > 0 && guildCap >= openHp ? 'sweep' : 'park';
+            const envOut = { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, strategy, bigPart, bigShare, armorLeft, nBody, guildCap };
+            raidSimEnvLast = envOut;
+            return envOut;
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
         const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 200;

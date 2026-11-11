@@ -8023,7 +8023,7 @@
                 try { pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE); } finally { raidSimRankBusy--; }
                 raidRecoAtPools.set(pkey, pool);
             }
-            const pick = await raidSimPickPool(P, env, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);
+            const pick = await raidSimPickPool(P, { ...env, hp: null }, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);   // 配卡：照舊算法挑（不算部位份額，省運算）
             return pick.map(o => o.cards.slice().sort().join('+'));
         }
         async function raidSimPickRecent() {
@@ -8115,7 +8115,7 @@
                         raidPickPools.set(pkey, pool);
                     }
                     const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
-                    const pick = await raidSimPickPool(P, env, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);
+                    const pick = await raidSimPickPool(P, { ...env, hp: null }, me, pool.filter(o => !o.cards.some(c => used.has(c))), n);   // 配卡：照舊算法挑（不算部位份額，省運算）
                     best = pick.length ? { v: pick.reduce((t, o) => t + o.avg, 0) / pick.length, cards: pick[0].cards, tg: pick[0].tg } : { v: 0 };
                     cache.set(key, best);
                 }

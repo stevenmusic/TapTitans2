@@ -116,7 +116,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #e0d5c1;
+            background-color: #fdf1ef;   /* 一打開就是突襲頁：底色先用突襲頁的，不會閃 */
             margin: 0; padding: 0;
             overflow-x: hidden;
             overflow-y: visible;
@@ -3028,40 +3028,8 @@
     <!-- ══════════════════════════════════════════════════════════
          首頁（導航入口）
          ══════════════════════════════════════════════════════════ -->
-    <div class="view" id="view-home">
-        <div class="home-header">
-            <span class="lang-toggle-btn" style="visibility:hidden;" aria-hidden="true">EN</span>
-            <div class="home-eyebrow" data-i18n="homeEyebrow">TT2 TOOLKIT</div>
-            <div class="home-title">Tap Titans 2</div>
-            <div class="home-subtitle" data-i18n="appSubtitle">配卡與戰報分析工具</div>
-            <p class="home-tagline" data-i18n="homeTagline">突襲前先配好牌組，突襲後貼上戰報分析誤傷與輸出排名</p>
-        </div>
-        <div class="home-content">
-            <div class="home-section-label" data-i18n="homeSectionLabel">選擇功能</div>
-            <div class="home-nav-cards">
-                <button class="home-nav-card raidstatus" onclick="showView('raidStatus')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3z"/><path d="M7.5 12.5h2l1.5-3 2 6 1.5-3h2"/></svg></div><div class="home-nav-title" data-i18n="navRaidStatusTitle">突襲狀態</div></div>
-                    <div class="home-nav-desc" data-i18n="navRaidStatusDesc">即時顯示當前王、部位盔甲與血量，換王自動通知</div>
-                </button>
-                <button class="home-nav-card deck" onclick="showView('deck')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></div><div class="home-nav-title" data-i18n="navDeckTitle">牌組建構</div></div>
-                    <div class="home-nav-desc" data-i18n="navDeckDesc">配置爆裂／苦痛／支援牌組，自動儲存進度</div>
-                </button>
-                <button class="home-nav-card raidcrystal" onclick="showView('raidCrystal')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l4 6h-8l4-6z"/><path d="M4 8h16l-8 14L4 8z"/></svg></div><div class="home-nav-title" data-i18n="navCrystalTitle">突襲水晶</div></div>
-                    <div class="home-nav-desc" data-i18n="navCrystalDesc">分類管理要升級、要練、不要練的卡片</div>
-                </button>
-                <button class="home-nav-card abyss" onclick="showView('abyssList')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></div><div class="home-nav-title" data-i18n="navAbyssTitle">深淵錦標賽</div></div>
-                    <div class="home-nav-desc" data-i18n="navAbyssDesc">各模式推薦流派、技能配點與出裝順序攻略</div>
-                </button>
-                <button class="home-nav-card players" onclick="showView('players')">
-                    <div class="home-nav-card-top"><div class="home-nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6"/><circle cx="17.5" cy="9" r="2.2"/><path d="M15.8 14a4.3 4.3 0 0 1 5.2 4.2"/></svg></div><div class="home-nav-title" data-i18n="navPlayersTitle">玩家資料庫</div></div>
-                    <div class="home-nav-desc" data-i18n="navPlayersDesc">儲存其他玩家的存檔資料，點名字一鍵複製</div>
-                </button>
-            </div>
-            <div class="home-footnote" data-i18n="homeFootnote">TT2 TOOLKIT</div>
-        </div>
+    <!-- 首頁已改成直接顯示突襲頁（showView 會把 home 轉成 raidStatus），這裡保留空的容器 -->
+    <div class="view" id="view-home" style="display:none;"></div>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════
@@ -3472,7 +3440,7 @@
     <!-- ══════════════════════════════════════════════════════════
          突襲狀態（即時王血量／盔甲狀態）
          ══════════════════════════════════════════════════════════ -->
-    <div class="view" id="view-raidstatus" style="display:none;">
+    <div class="view" id="view-raidstatus">
 
         <div class="nav-header" id="nav-header-raidstatus">
             <div class="nav-title-row">

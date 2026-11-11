@@ -3184,6 +3184,7 @@
             </div>
         </div>
         <div class="standalone-page" id="page-raidcrystal">
+            <div id="crystal-reco" style="width:100%; max-width:500px; margin:4px auto 8px;"></div>
             <div style="display: flex; gap: 12px; margin: 5px 0; justify-content: center; flex-wrap: wrap; width: 100%; max-width: 500px;">
                 <button class="btn-clear-all" onclick="clearAllCrystalZones()" style="flex: 1; max-width: 48%;" data-i18n="btnClearAllShort">一鍵清除</button>
                 <button class="btn-download" onclick="generateCrystalImage()" style="flex: 1; max-width: 48%;" data-i18n="btnSaveImageDeco">✨ 儲存圖片 ✨</button>
@@ -4504,6 +4505,7 @@
                 syncCardPoolCardSize();
             }
             if (view === 'raidCrystal') {
+                setTimeout(renderCrystalReco, 0);
                 syncCardPoolCardSize();
             }
             if (view === 'analysis') updateAnalysisEmptyUI();
@@ -12689,6 +12691,55 @@
             let cap = 0;
             raidClanData.byCode.forEach((v, code) => { const x = by.get(code); const left = Math.max(0, RAID_ATTACKS_PER_CYCLE - (x ? x.inCyc : 0)); cap += left * (x ? x.sum / x.n : med); });
             return cap;
+        }
+        /* 突襲水晶推薦：依每位玩家的卡片等級和水晶插槽，推薦每一類（爆裂／苦痛／支援）要放哪幾張卡。
+           放進水晶的卡，等級＝自己等級和水晶等級取高的。價值＝能提升幾級 × 他攻擊時用這張卡的次數（這場＋前一場攻擊紀錄）；
+           自己用得少的，用全公會這場常用的程度補（權重低）。每一類照插槽數挑分數最高的 */
+        const CRYSTAL_CAT = { Burst: '爆裂', Affliction: '苦痛', Support: '支援' };
+        let crystalSkills = null, crystalPlayer = null;
+        async function renderCrystalReco() {
+            const box = document.getElementById('crystal-reco'); if (!box) return;
+            if (!raidClanData) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; text-align:center;">載入公會資料中…</div>'; try { await raidLoadClanData(); } catch (e) {} }
+            if (!crystalSkills) { try { crystalSkills = await (await fetch('raid-sim/skills.json?v=1')).json(); } catch (e) { crystalSkills = {}; } }
+            try { await ensureServerRaidDataFresh(true); } catch (e) {}
+            if (!raidClanData) { box.innerHTML = '<div style="font-size:12px; color:#c0392b; text-align:center;">拿不到公會資料</div>'; return; }
+            const players = [...raidClanData.byCode.values()].map(v => v.raw).filter(p => p && p.name).sort((a, b) => raidShortName(a.name).localeCompare(raidShortName(b.name), 'zh-Hant'));
+            if (!crystalPlayer) { try { const me = localStorage.getItem(CARDLV_ME_KEY); const hit = players.find(p => p.name === me); crystalPlayer = hit ? hit.player_code : null; } catch (e) {} }
+            if (!crystalPlayer && players[0]) crystalPlayer = players[0].player_code;
+            const p = players.find(x => x.player_code === crystalPlayer);
+            const sel = `<select onchange="crystalPlayer = this.value; renderCrystalReco();" style="width:100%; font:inherit; font-size:14px; font-weight:700; padding:7px 9px; border:1px solid #e2d7c5; border-radius:8px; background:#fff;">${players.map(x => `<option value="${escapeHtml(x.player_code)}" ${x.player_code === crystalPlayer ? 'selected' : ''}>${escapeHtml(raidShortName(x.name))}</option>`).join('')}</select>`;
+            if (!p) { box.innerHTML = sel; return; }
+            // 用卡次數：他自己（這場＋前一場）、全公會（這場）
+            const sessions = (serverSessionsSummary || []).slice(0, 2).map(x => x.startedAt);
+            if (sessions[1] && !sessionAttacksCache.has(sessions[1])) { try { await ensureSessionAttacksLoaded(sessions[1]); } catch (e) {} }
+            const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
+            const mine = {}, guild = {};
+            logs.forEach(a => a.cards.forEach(c => { if (a.playerCode === p.player_code) mine[c.name] = (mine[c.name] || 0) + 1; if (a.raidStartedAt === sessions[0]) guild[c.name] = (guild[c.name] || 0) + 1; }));
+            const guildMax = Math.max(1, ...Object.values(guild));
+            let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
+            const own = {}; (p.cards || []).forEach(c => { own[c.skill_name] = (Number(c.level) || 0) + (season[c.skill_name] || 0); });   // 自己的等級＋賽季加成（賽季加成後已經比水晶高的卡放進去沒用）
+            const boosted = p.boosted_cards || [];
+            const sections = Object.keys(CRYSTAL_CAT).map(cat => {
+                const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
+                if (!cur.length) return `<div style="margin-top:6px; font-size:12px; color:#8a7a6a;"><b>${CRYSTAL_CAT[cat]}</b>：沒有水晶插槽</div>`;
+                const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
+                const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id)).map(id => {
+                    const gain = Math.max(0, L - own[id]);
+                    const use = (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 自己用的為主，全公會常用的只是補
+                    return { id, gain, use, mine: mine[id] || 0, score: gain * use };
+                }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
+                const pick = cands.slice(0, slots);
+                const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
+                const icon = (id, mark) => `<div title="${escapeHtml(raidCardLabel(id))}" style="text-align:center; width:62px;">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:40px; height:40px; border-radius:7px; display:block; margin:0 auto; ${mark || ''}">` : ''}<div style="font-size:10.5px; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidCardLabel(id))}</div></div>`;
+                const pickHtml = pick.map(x => `<div>${icon(x.id, curIds.has(x.id) ? '' : 'outline:2px solid #2e7d32; outline-offset:1px;')}<div style="font-size:10px; color:#6b5a4a; text-align:center;">Lv.${own[x.id]}→${L}<br>用了 ${x.mine} 次</div></div>`).join('');
+                const out = cur.filter(b => !pickIds.has(b.skill_name));
+                return `<div style="margin-top:8px; padding:6px 8px; background:#fffdf8; border:1px solid #eadfcc; border-radius:9px;">
+                    <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin-bottom:4px;">${CRYSTAL_CAT[cat]}（${slots} 格，水晶 Lv.${L}）${out.length ? `<span style="font-weight:700; color:#c0392b;">　建議換掉 ${out.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>` : '<span style="font-weight:700; color:#2e7d32;">　目前就是最好的</span>'}</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${pickHtml || '<span style="font-size:11.5px; color:#8a7a6a;">沒有等級低於水晶、而且有在用的卡</span>'}</div>
+                    <div style="font-size:10.5px; color:#8a7a6a; margin-top:3px;">目前放：${cur.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</div></div>`;
+            }).join('');
+            box.innerHTML = `<div style="font-size:13.5px; font-weight:800; color:#1565c0; margin-bottom:4px;">水晶推薦（依卡片等級和攻擊時用的卡）</div>${sel}${sections}
+                <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">綠框＝建議新放進去的卡。分數＝能提升幾級 × 這場和前一場攻擊用過幾次（自己沒用的參考全公會常用的）。</div>`;
         }
         function raidSimPartFns(scene) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));

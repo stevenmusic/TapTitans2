@@ -3853,7 +3853,6 @@
         /* ── 最上方功能列：每一頁的標題列都換成同一條功能列（深淵模式詳細頁保留返回鍵）── */
         const APP_NAV_ITEMS = [
             { view: 'raidStatus', zh: '突襲', en: 'Raid', color: '#c62828' },
-            { view: 'deck', zh: '牌組', en: 'Decks', color: '#8b263e' },
             { view: 'raidCrystal', zh: '水晶', en: 'Crystal', color: '#1565c0' },
             { view: 'abyssList', zh: '深淵', en: 'Abyss', color: '#5e35b1' }
         ];
@@ -12857,13 +12856,29 @@
                 }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
                 const pick = cands.slice(0, slots);
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
-                const icon = (id, mark) => `<div title="${escapeHtml(raidCardLabel(id))}" style="text-align:center; width:62px;">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:40px; height:40px; border-radius:7px; display:block; margin:0 auto; ${mark || ''}">` : ''}<div style="font-size:10.5px; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidCardLabel(id))}</div></div>`;
-                const pickHtml = pick.map(x => `<div>${icon(x.id, curIds.has(x.id) ? '' : 'outline:2px solid #2e7d32; outline-offset:1px;')}<div style="font-size:10px; color:#6b5a4a; text-align:center;">Lv.${own[x.id]}→${L}<br>${upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`).join('');
-                const out = cur.filter(b => !pickIds.has(b.skill_name));
-                return `<div style="margin-top:8px; padding:6px 8px; background:#fffdf8; border:1px solid #eadfcc; border-radius:9px;">
-                    <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin-bottom:4px;">${CRYSTAL_CAT[cat]}（${slots} 格，水晶 Lv.${L}）${out.length ? `<span style="font-weight:700; color:#c0392b;">　建議換掉 ${out.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>` : '<span style="font-weight:700; color:#2e7d32;">　目前就是最好的</span>'}</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${pickHtml || '<span style="font-size:11.5px; color:#8a7a6a;">沒有等級低於水晶、而且有在用的卡</span>'}</div>
-                    <div style="font-size:10.5px; color:#8a7a6a; margin-top:3px;">目前放：${cur.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</div></div>`;
+                const waiting = !!crystalLevel && !upUses;   // 下一場還在算：先不下結論
+                const col = { Burst: ['#8b263e', '#f8eee6'], Affliction: ['#4a148c', '#f1ebf8'], Support: ['#1b5e20', '#e9f5ea'] }[cat];
+                const img = (id, sz, extra) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:${sz}px; height:${sz}px; border-radius:${Math.round(sz / 6)}px; display:block; margin:0 auto; ${extra || ''}">` : `<div style="width:${sz}px; height:${sz}px; margin:0 auto;"></div>`;
+                const nm = (id, fs, extra) => `<div style="font-size:${fs}px; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; ${extra || ''}">${escapeHtml(raidCardLabel(id))}</div>`;
+                const outs = cur.filter(b => !pickIds.has(b.skill_name)), ins = pick.filter(x => !curIds.has(x.id));
+                const status = waiting ? `<span style="color:#8a7a6a;">計算下一場中…</span>`
+                    : !pick.length ? `<span style="color:#8a7a6a;">沒有等級低於水晶、而且有在用的卡</span>`
+                    : outs.length ? `<span style="color:#c0392b;">換掉 ${outs.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>${ins.length ? `<span style="color:#2e7d32;"> → 換上 ${ins.map(x => escapeHtml(raidCardLabel(x.id))).join('、')}</span>` : ''}`
+                    : `<span style="color:#2e7d32;">目前就是最好的</span>`;
+                const grid = (n) => `display:grid; grid-template-columns:repeat(${Math.max(n, 3)}, 1fr); gap:6px;`;
+                const curRow = cur.map(b => { const gone = !waiting && pick.length && !pickIds.has(b.skill_name); return `<div style="text-align:center; min-width:0;">${img(b.skill_name, 34, gone ? 'opacity:.45; filter:grayscale(.6);' : '')}${nm(b.skill_name, 10.5, gone ? 'color:#c0392b; text-decoration:line-through;' : '')}</div>`; }).join('');
+                const pickRow = pick.map(x => { const nw = !curIds.has(x.id); return `<div style="text-align:center; min-width:0;">${img(x.id, 52, nw ? 'outline:2.5px solid #2e7d32; outline-offset:1px;' : '')}${nm(x.id, 12, 'font-weight:700; margin-top:3px;')}<div style="font-size:10.5px; color:#6b5a4a; line-height:1.35;">Lv.${own[x.id]}→${L}<br>${upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`; }).join('');
+                return `<div style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:${col[1]};">
+                        <span style="font-size:15px; font-weight:900; color:${col[0]};">${CRYSTAL_CAT[cat]}</span>
+                        <span style="font-size:11.5px; font-weight:700; color:#6b5a4a;">${slots} 格・水晶 Lv.${L}</span>
+                    </div>
+                    <div style="padding:8px 10px 10px;">
+                        <div style="font-size:13px; font-weight:800; margin-bottom:8px;">${status}</div>
+                        ${waiting ? '' : `<div style="font-size:10.5px; font-weight:700; color:#8a7a6a; margin-bottom:4px;">建議放</div><div style="${grid(slots)}">${pickRow}</div>`}
+                        <div style="font-size:10.5px; font-weight:700; color:#8a7a6a; margin:${waiting ? 0 : 10}px 0 4px; padding-top:${waiting ? 0 : 8}px; ${waiting ? '' : 'border-top:1px dashed #eadfcc;'}">目前放</div>
+                        <div style="${grid(slots)}">${curRow}</div>
+                    </div></div>`;
             }).join('');
             let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);

@@ -12704,6 +12704,13 @@
             const prog = (t) => entry.progress ? entry.progress(t) : undefined;
             entry.p = (async (progress) => {
             if (!n) return [];
+            // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
+            const code = v && v.raw && v.raw.player_code;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v1_${code}` : null;
+            if (kvKey) {
+                const remote = await kvGet(kvKey);
+                if (remote && remote.sig === key && Array.isArray(remote.rows) && remote.rows.length) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
+            }
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
@@ -12732,6 +12739,7 @@
             raidSimDeplete(pick, env);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
+            if (kvKey && rows.length) kvSet(kvKey, { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) });
             return rows;
             })(prog);
             raidSimPickInflight.set(key, entry);

@@ -12355,7 +12355,7 @@
                             <button id="raidlog-toggle-all-${rIdx}" class="tt-btn2" onclick="toggleAllRaidLogDetails(${rIdx})" style="font-size:11px; border-radius:6px; padding:2px 8px; white-space:nowrap; flex-shrink:0;">${t('raidLogExpandAll')}</button>
                         </div>
                         <div data-player-group="${rIdx}" style="display:flex; flex-direction:column; gap:3px;">
-                            ${r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('')}
+                            ${isExpanded ? r.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join('') : ''}
                         </div>
                     </div>
                 </div>
@@ -13452,6 +13452,9 @@
             if (!group) return;
             const isHidden = group.style.display === 'none';
             group.style.display = isHidden ? 'block' : 'none';
+            // 收起來的玩家不畫每一刀的明細（重畫整個排行時省很多時間），打開時才畫
+            const list = group.querySelector(`[data-player-group="${rIdx}"]`), rr0 = raidLogLastRanked[rIdx];
+            if (isHidden && list && !list.children.length && rr0) { list.innerHTML = rr0.attacks.map((a, aIdx) => renderRaidLogAttackCard(a, rIdx, aIdx, false)).join(''); setTimeout(raidAtkRangeFill, 0); }
             if (isHidden) {   // 打開攻擊紀錄時，推薦牌組收起來
                 const rr = raidLogLastRanked[rIdx], rb = rr && raidLogRecoBox(rr.player);
                 if (rr) raidLogRecoOpen.delete(rr.player);

@@ -12330,6 +12330,7 @@
             `;
             }).join('');
             raidLogRestorePlayerRecos();   // 打開中的玩家推薦牌組，重畫後補回去
+            raidRecoPrefetch();   // 所有人的推薦先從伺服器拿好（每分鐘最多一次）
             setTimeout(raidAtkRangeFill, 0);   // 已經展開的單刀，補算應打的高低範圍
         }
 
@@ -12593,6 +12594,31 @@
         }
         // 首頁推薦：照目前部位狀態，用標準玩家模擬出卡片不重複、加總最高的 6 組（部位狀態沒變就用上次算好的）
         // 伺服器上的通用暫存（/kv）：存什麼由網頁決定，推薦牌組是其中一項；之後要存別的資料只要換個名稱，不用改伺服器
+        // 一次拿多個名稱（伺服器一次最多 50 個）：回傳 { 名稱: data }
+        async function kvGetMany(keys) {
+            const out = {};
+            for (let i = 0; i < keys.length; i += 50) {
+                try {
+                    const base = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
+                    const r = await fetch(`${base}/kv?keys=${keys.slice(i, i + 50).map(encodeURIComponent).join(',')}`, { cache: 'no-store' });
+                    if (!r.ok) continue;
+                    const items = ((await r.json()) || {}).items || {};
+                    Object.entries(items).forEach(([k, v]) => { if (v && v.data != null) out[k] = v.data; });
+                } catch (e) {}
+            }
+            return out;
+        }
+        // 玩家推薦先拿好：攻擊紀錄出現在畫面上時，一次把所有人的推薦從伺服器拿下來放在手機上（最多每分鐘一次），點下去直接用
+        const raidRecoKvMem = new Map();   // 伺服器暫存名稱 -> { sig, rows }
+        let raidRecoPrefetchAt = 0;
+        async function raidRecoPrefetch() {
+            if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
+            raidRecoPrefetchAt = Date.now();
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v1_${c}`))];
+            if (!keys.length) return;
+            const got = await kvGetMany(keys);
+            Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
+        }
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
@@ -12708,6 +12734,8 @@
             const code = v && v.raw && v.raw.player_code;
             const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v1_${code}` : null;
             if (kvKey) {
+                const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
+                if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
                 const remote = await kvGet(kvKey);
                 if (remote && remote.sig === key && Array.isArray(remote.rows) && remote.rows.length) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
             }
@@ -12739,7 +12767,7 @@
             raidSimDeplete(pick, env);
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
-            if (kvKey && rows.length) kvSet(kvKey, { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) });
+            if (kvKey && rows.length) { const slim = { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) }; raidRecoKvMem.set(kvKey, slim); kvSet(kvKey, slim); }
             return rows;
             })(prog);
             raidSimPickInflight.set(key, entry);

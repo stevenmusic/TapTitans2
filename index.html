@@ -12698,6 +12698,56 @@
         const CRYSTAL_CAT = { Burst: '爆裂', Affliction: '苦痛', Support: '支援' };
         const CRYSTAL_SKIP = new Set(['PoisonAttack', 'SandsOfTime']);   // 不放進突襲水晶的卡（強酸侵蝕、時間之沙）
         let crystalSkills = null, crystalPlayer = null;
+        // 下一場會用到哪些卡：用這個人的卡片等級（自己等級＋賽季，不含水晶），對下一場每隻王（照禁打、詛咒、場次加成）
+        // 開場全盔甲、拆完盔甲兩種狀態各挑最好的 6 組，每張卡出現的比例 × 24 刀 ＝ 下一場預計用幾次
+        const crystalUpRes = {};   // `${關}|${玩家}` -> { busy } | { uses, lvl }
+        async function crystalUpcoming(p, lvl, own) {
+            const key = `${lvl}|${p.player_code}`;
+            if (crystalUpRes[key] && (crystalUpRes[key].busy || crystalUpRes[key].uses)) return;
+            const seed = await ticketSeedFetch().catch(() => null);
+            const raid = seed && seed.raids.find(r => r.t === 9999 && r.l === lvl);
+            if (!raid) { crystalUpRes[key] = { busy: `seed 裡沒有 M-${lvl}` }; return; }
+            const kvKey = `crystal_v1_${lvl}_${p.player_code}`.slice(0, 64);
+            crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
+            const remote = await kvGet(kvKey);
+            if (remote && remote.uses && remote.seed === seed.valid_from) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
+            try {
+                const P = await raidSimLoad();
+                const cands = await raidSimCandidateDecks(null, true);
+                const buff = {}; let extraSec = 0;
+                (raid.buffs || []).forEach(([type, amt]) => { const a = Number(amt) || 0; if (type === 'BurstChance') buff.burstChance = a > 1 ? a - 1 : a; else if (type === 'AfflictedChance') buff.affChance = a > 1 ? a - 1 : a; else if (type === 'BurstDamage') buff.burstDamage = a; else if (type === 'AfflictedDamage') buff.affDamage = a; else if (type === 'AllRaidDamage') buff.all = a; else if (type === 'SupportEffect' || type === 'SupportDamage') buff.supportEffect = a; else if (type === 'RaidAttackDuration') extraSec = a; });
+                const names = [...new Set(raid.seq)], cnt = (n) => raid.seq.filter(x => x === n).length;
+                const uses = {}; let steps = 0, done = 0;
+                for (const n of names) {
+                    const t = raid.titans.find(x => x.n === n); if (!t) continue;
+                    const bans = ((ticketCalc.bansByLv || {})[lvl] || {})[n] || ticketBestBansAuto(t, raid);
+                    const v = raidClanData.byCode.get(p.player_code);
+                    const me = raidSimPlayer(v, 0.3, {}, { boss: n }); Object.keys(own).forEach(c => { me.lv[c] = own[c]; });
+                    for (const layer of ['armor', 'body']) {
+                        crystalUpRes[key] = { busy: `計算下一場 ${++done}/${names.length * 2}` }; renderCrystalReco();
+                        const ban = new Set(bans), board = {}, scene = {};
+                        Object.keys(t.p).forEach(k => { const cur = !!t.p[k][3]; if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; } else { board[k] = { layer, cursed: layer === 'armor' && cur }; scene[k] = layer === 'armor' ? (cur ? 'cursed' : 'armor') : 'body'; } });
+                        const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
+                        const plans = []; const add = (tg) => { if (tg.length && !plans.some(q => q.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
+                        open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
+                        const c0 = t.c && t.c[0];
+                        const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: 0.35, buff, extraSec, morale: 0.3, season: {}, hp: null };
+                        const { hitParts } = raidSimPartFns(scene);
+                        const all = [];
+                        cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                        const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
+                        const pick = await raidSimPickPool(P, env, me, pool, 6);
+                        pick.forEach(o => o.cards.forEach(c => { uses[c] = (uses[c] || 0) + cnt(n); }));
+                        steps += cnt(n);
+                    }
+                }
+                Object.keys(uses).forEach(c => { uses[c] = Math.round(uses[c] / Math.max(1, steps) * 24 * 10) / 10; });   // 每 6 刀出現一次 ≈ 一整場（約 24 刀）用 4 次
+                const res = { uses, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
+                crystalUpRes[key] = res; kvSet(kvKey, res);
+            } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
+            renderCrystalReco();
+        }
+        let crystalLevel = null;
         async function renderCrystalReco() {
             const box = document.getElementById('crystal-reco'); if (!box) return;
             if (!raidClanData) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a; text-align:center;">載入公會資料中…</div>'; try { await raidLoadClanData(); } catch (e) {} }
@@ -12719,6 +12769,11 @@
             const guildMax = Math.max(1, ...Object.values(guild));
             let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
             const own = {}; (p.cards || []).forEach(c => { own[c.skill_name] = (Number(c.level) || 0) + (season[c.skill_name] || 0); });   // 自己的等級＋賽季加成（賽季加成後已經比水晶高的卡放進去沒用）
+            // 下一場：預告的關卡，沒有就用門票試算選的關卡
+            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level) || null;
+            const up = crystalLevel ? crystalUpRes[`${crystalLevel}|${p.player_code}`] : null;
+            if (crystalLevel && !up) setTimeout(() => crystalUpcoming(p, crystalLevel, own), 0);
+            const upUses = up && up.uses ? up.uses : null;
             const boosted = p.boosted_cards || [];
             const sections = Object.keys(CRYSTAL_CAT).map(cat => {
                 const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
@@ -12726,21 +12781,26 @@
                 const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
                 const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
                     const gain = Math.max(0, L - own[id]);
-                    const use = (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 自己用的為主，全公會常用的只是補
-                    return { id, gain, use, mine: mine[id] || 0, score: gain * use };
+                    const nxt = upUses ? (upUses[id] || 0) : 0;
+                    const use = upUses ? nxt + 0.4 * (mine[id] || 0) + 0.05 * (guild[id] || 0) / guildMax : (mine[id] || 0) + 0.15 * (guild[id] || 0) / guildMax;   // 有下一場的模擬就以下一場為主，過去用的次數為輔
+                    return { id, gain, use, mine: mine[id] || 0, nxt, score: gain * use };
                 }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
                 const pick = cands.slice(0, slots);
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
                 const icon = (id, mark) => `<div title="${escapeHtml(raidCardLabel(id))}" style="text-align:center; width:62px;">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:40px; height:40px; border-radius:7px; display:block; margin:0 auto; ${mark || ''}">` : ''}<div style="font-size:10.5px; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidCardLabel(id))}</div></div>`;
-                const pickHtml = pick.map(x => `<div>${icon(x.id, curIds.has(x.id) ? '' : 'outline:2px solid #2e7d32; outline-offset:1px;')}<div style="font-size:10px; color:#6b5a4a; text-align:center;">Lv.${own[x.id]}→${L}<br>用了 ${x.mine} 次</div></div>`).join('');
+                const pickHtml = pick.map(x => `<div>${icon(x.id, curIds.has(x.id) ? '' : 'outline:2px solid #2e7d32; outline-offset:1px;')}<div style="font-size:10px; color:#6b5a4a; text-align:center;">Lv.${own[x.id]}→${L}<br>${upUses ? `下一場 ${x.nxt} 次` : `用了 ${x.mine} 次`}</div></div>`).join('');
                 const out = cur.filter(b => !pickIds.has(b.skill_name));
                 return `<div style="margin-top:8px; padding:6px 8px; background:#fffdf8; border:1px solid #eadfcc; border-radius:9px;">
                     <div style="font-size:12.5px; font-weight:800; color:#4a3728; margin-bottom:4px;">${CRYSTAL_CAT[cat]}（${slots} 格，水晶 Lv.${L}）${out.length ? `<span style="font-weight:700; color:#c0392b;">　建議換掉 ${out.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>` : '<span style="font-weight:700; color:#2e7d32;">　目前就是最好的</span>'}</div>
                     <div style="display:flex; flex-wrap:wrap; gap:6px;">${pickHtml || '<span style="font-size:11.5px; color:#8a7a6a;">沒有等級低於水晶、而且有在用的卡</span>'}</div>
                     <div style="font-size:10.5px; color:#8a7a6a; margin-top:3px;">目前放：${cur.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</div></div>`;
             }).join('');
-            box.innerHTML = `<div style="font-size:13.5px; font-weight:800; color:#1565c0; margin-bottom:4px;">水晶推薦（依卡片等級和攻擊時用的卡）</div>${sel}${sections}
-                <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">綠框＝建議新放進去的卡。分數＝能提升幾級 × 這場和前一場攻擊用過幾次（自己沒用的參考全公會常用的）。</div>`;
+            let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
+            const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);
+            const lvSel = `<div style="display:flex; align-items:center; gap:6px; margin:6px 0 2px; font-size:12.5px; font-weight:700; color:#4a3728;">下一場<select onchange="crystalLevel = Number(this.value) || null; renderCrystalReco();" style="font:inherit; font-size:13px; padding:3px 6px; border:1px solid #e2d7c5; border-radius:7px; background:#fff;"><option value="">不看下一場（只看過去用的卡）</option>${seedLvls.map(l => `<option value="${l}" ${l === crystalLevel ? 'selected' : ''}>M-${l}</option>`).join('')}</select></div>`
+                + (up ? (up.uses ? `<div style="font-size:11px; color:#6b5a4a;">M-${crystalLevel}：${(up.seq || []).join('、')}｜加成 ${(up.buffs || []).map(b => ({ BurstDamage: '爆裂傷害', BurstChance: '爆裂機率', AfflictedDamage: '苦痛傷害', AfflictedChance: '苦痛機率', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' })[b[0]] || b[0]).join('、') || '無'}（照禁打頁的禁打、各王詛咒模擬他的推薦牌組）</div>` : `<div style="font-size:11px; color:#8a7a6a;">${escapeHtml(up.busy || '')}</div>`) : '');
+            box.innerHTML = `<div style="font-size:13.5px; font-weight:800; color:#1565c0; margin-bottom:4px;">水晶推薦（依卡片等級和${upUses ? '下一場會用的卡' : '攻擊時用的卡'}）</div>${sel}${lvSel}${sections}
+                <div style="font-size:10.5px; color:#a89a88; margin-top:4px;">綠框＝建議新放進去的卡。${upUses ? '分數＝能提升幾級 ×（下一場預計用幾次＋過去兩場用的次數 × 0.4）。' : '分數＝能提升幾級 × 這場和前一場攻擊用過幾次（自己沒用的參考全公會常用的）。'}</div>`;
         }
         function raidSimPartFns(scene) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));

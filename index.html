@@ -7926,11 +7926,26 @@
         const raidPickPools = new Map();
         let raidPickCands = null;   // 配卡的候選牌組（跟推薦同一份）   // 配卡用的傷害表（玩家＋部位狀態）
         let raidSimPickAutoBusy = false, raidSimPickRerenderTimer = null, raidSimPickRerenderAt = 0;
+        // 背景配卡：每分鐘最多跑一次；算好的每一刀存到伺服器暫存（kv，每場一份），別人打開直接拿、沒變就不重算
+        let raidSimPickAutoAt = 0, raidSimPickAutoTimer = null;
         async function raidSimPickAuto() {
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
-            raidSimPickAutoBusy = true;
+            const wait = 60000 - (Date.now() - raidSimPickAutoAt);
+            if (wait > 0) { if (!raidSimPickAutoTimer) raidSimPickAutoTimer = setTimeout(() => { raidSimPickAutoTimer = null; raidSimPickAuto(); }, wait); return; }
+            raidSimPickAutoBusy = true; raidSimPickAutoAt = Date.now();
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const kvKey = sa ? `sim_pick_v${RAID_SIM_PICK_VER}_${sa}` : null;
+            const sessKeys = () => (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).map(a => raidSimExpKey(a));
+            const doneCount = () => sessKeys().filter(k => raidSimPickStore[k] && raidSimPickStore[k].ver === RAID_SIM_PICK_VER).length;
+            let before = 0;
             try {
                 await new Promise(r => setTimeout(r, 1500));
+                if (kvKey) {   // 先拿伺服器上別人算好的
+                    const remote = await kvGet(kvKey); let added = 0;
+                    if (remote && typeof remote === 'object') Object.entries(remote).forEach(([k, v]) => { const cur = raidSimPickStore[k]; if (v && v.v > 0 && v.ver === RAID_SIM_PICK_VER && (!cur || cur.ver !== RAID_SIM_PICK_VER)) { raidSimPickStore[k] = v; added++; } });
+                    if (added) { raidSimPickSave(); if (raidLogPanelShown()) renderRaidLogQueryResult(); }
+                }
+                before = doneCount();
                 // 先算首頁「最近攻擊」裡的玩家（才能盡快標有沒有照推薦打），其他照排行榜順序
                 const recentNames = new Set((raidRecentAttacks || []).map(a => a.player));
                 const order = (raidLogLastRanked || []).slice().sort((a, b) => (recentNames.has(b.player) ? 1 : 0) - (recentNames.has(a.player) ? 1 : 0));
@@ -7943,6 +7958,12 @@
                     if (info && info.ratio != null && !pending) continue;
                     while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));   // 有人按「推薦」在算：背景配卡先等它算完
                     await raidSimPickRun(r.identity, true);
+                }
+                if (kvKey && doneCount() > before) {   // 有新算好的：跟伺服器上的合併後存回去
+                    const remote = (await kvGet(kvKey)) || {};
+                    const out = (remote && typeof remote === 'object') ? remote : {};
+                    sessKeys().forEach(k => { const v = raidSimPickStore[k]; if (v && v.ver === RAID_SIM_PICK_VER) out[k] = v; });
+                    kvSet(kvKey, out);
                 }
             } finally { raidSimPickAutoBusy = false; }
         }

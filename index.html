@@ -7914,6 +7914,7 @@
                     if (added) { raidSimPickSave(); if (raidLogPanelShown()) renderRaidLogQueryResult(); }
                 }
                 before = doneCount();
+                let doneThisRun = 0;
                 // 先算首頁「最近攻擊」裡的玩家（才能盡快標有沒有照推薦打），其他照排行榜順序
                 const recentNames = new Set((raidRecentAttacks || []).map(a => a.player));
                 const order = (raidLogLastRanked || []).slice().sort((a, b) => (recentNames.has(b.player) ? 1 : 0) - (recentNames.has(a.player) ? 1 : 0));
@@ -7925,7 +7926,9 @@
                     const pending = r.attacks.some(a => { if (a.placeholder || !a.simB) return false; const st = raidSimPickStore[raidSimExpKey(a)]; return !st || st.ver !== RAID_SIM_PICK_VER; });
                     if (info && info.ratio != null && !pending) continue;
                     while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));   // 有人按「推薦」在算：背景配卡先等它算完
-                    await raidSimPickRun(r.identity, true);
+                    if (++doneThisRun > 2) { raidSimPickAutoAt = 0; setTimeout(raidSimPickAuto, 60000); break; }   // 每分鐘最多算 2 個人（細水長流，不要一直佔 CPU）
+                    raidSimWorkerLimit = 1;   // 背景只用 1 個核心
+                    try { await raidSimPickRun(r.identity, true); } finally { raidSimWorkerLimit = 0; }
                 }
                 if (kvKey && doneCount() > before) {   // 有新算好的：跟伺服器上的合併後存回去
                     const remote = (await kvGet(kvKey)) || {};
@@ -13254,6 +13257,7 @@
             return raidSimPool;
         }
         // 平行算一批工作（順序跟輸入一樣）；失敗回傳 null，呼叫的地方改回主畫面算
+        let raidSimWorkerLimit = 0;   // 背景配卡時只用 1 個核心（0＝全部）
         async function raidSimParallel(P, jobs, onProgress) {
             const pool = raidSimPoolGet();
             if (!pool || !jobs.length) return pool ? [] : null;
@@ -13261,7 +13265,7 @@
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
-                await Promise.all(pool.ws.map(async (w) => {
+                await Promise.all(pool.ws.slice(0, raidSimWorkerLimit || pool.ws.length).map(async (w) => {
                     while (next < chunks.length && !stopped) {
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;

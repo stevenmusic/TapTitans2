@@ -13825,11 +13825,27 @@
         }
         // 公會總覽：帳號資料一覽（死靈熊研究點得少、研究點數放著沒用的排前面）
         let raidAccountSort = 'necro';
+        /* 死靈熊還差幾等才會點到下一階突襲加成（大概）：沒有官方研究樹的表，用全公會推——
+           死靈熊研究的突襲倍率（盔甲／肉體 × 頭／肚／四肢 × 各王）比自己高的人裡，等級第二低的那位（避開點法特別偏的人）＝下一階大約要到幾等；
+           加成＝那個等級以下最小的更高倍率 ÷ 自己的倍率。差距 ≤ 0：同等級的人已經比較高（可能研究點在別的地方，或還沒點） */
+        function raidNecroNextMap() {
+            const arr = [...raidClanData.byCode.values()].map(v => ({ code: v.raw.player_code, lv: Number(v.raw.summon_level) || 0, m: v.necroMult || 1 }));
+            const out = new Map();
+            arr.forEach(a => {
+                const hi = arr.filter(b => b.m > a.m * 1.002).sort((x, y) => x.lv - y.lv);
+                if (!hi.length) { out.set(a.code, null); return; }
+                const ref = hi[Math.min(1, hi.length - 1)];
+                const m2 = Math.min(...hi.filter(b => b.lv <= ref.lv).map(b => b.m));
+                out.set(a.code, { gap: ref.lv - a.lv, gain: m2 / a.m - 1 });
+            });
+            return out;
+        }
         function raidAccountSortBy(key) { raidAccountSort = key; if (document.getElementById('cardlv-guild')) cardLevelsGuild(); }
         function raidAccountGuildHtml() {
             if (!raidClanData) return '';
             const med = raidAccountNecroMedian();
             const exp = raidExpectedByCode();
+            const nx = raidNecroNextMap();
             // 點欄名就照那一欄從高到低排（預設死靈熊）
             const sortVal = {
                 necro: (a) => a.necroLv,
@@ -13837,6 +13853,7 @@
                 raid: (a) => Number(a.p.player_raid_level) || 0,
                 card: (a) => Number(a.p.total_card_level) || 0,
                 soul: (a) => Number(a.p.titan_souls) || 0,
+                nx: (a) => { const x = nx.get(a.p.player_code); return x ? -Math.max(0, x.gap) : -1e9; },   // 差越少排越前面
                 exp: (a) => { const e = exp.get(a.p.player_code); return e ? e.expected : -1; },
             };
             const sk = sortVal[raidAccountSort] ? raidAccountSort : 'necro';
@@ -13847,8 +13864,8 @@
             const g7 = list.map(a => raidNecroGrowth7(a.p.player_code)).find(Boolean);
             const g7Head = !g7 || g7.days >= 7 ? '7天' : `${g7.from.slice(5).replace('-', '/')}起`;
             return `<div style="margin-top:4px; font-size:12.5px; font-weight:800; color:#5a3a2a;">帳號資料（官方，每 12 小時更新）</div>
-                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 2px; font-size:10.5px; color:#8a7a6a; text-align:left;">玩家</th>${th('死靈熊', 'necro')}${th(g7Head, 'grow')}${th('突襲', 'raid')}${th('卡片', 'card')}${th('靈魂', 'soul')}${th('期望均傷', 'exp')}</tr>
-                ${list.map((a, i) => `<tr style="border-top:${i > 0 && i % 10 === 0 ? '2px solid #c9a876' : '1px solid #f0e6d4'}; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 2px; font-size:11.5px; white-space:nowrap;" title="${escapeHtml(a.p.name)}">${escapeHtml(raidShortName(a.p.name))}</td>${td(a.necroLv, a.necroLv < med / 2 ? 'color:#c0392b; font-weight:800;' : 'font-weight:700;')}${(() => { const g = raidNecroGrowth7(a.p.player_code); return g ? td(g.gain > 0 ? '+' + g.gain : '0', g.gain > 0 ? 'color:#2e7d32; font-weight:700;' : 'color:#c0392b; font-weight:800;') : td('—', 'color:#a89a88;'); })()}${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${(() => { const n = Number(a.p.titan_souls) || 0; return td(n >= 10000 ? Math.round(n / 1000) + 'k' : (n / 1000).toFixed(1) + 'k', 'color:#6a5a4a;'); })()}${(() => { const e = exp.get(a.p.player_code); if (!e) return td('—'); const low = e.actual && e.actual < e.expected * RAID_LOG_OVERALL_LOW; return td(escapeHtml(formatNumAlwaysM(e.expected)) + (e.actual ? `<div style="font-size:10px; color:${low ? '#d35400' : '#a89a88'}; font-weight:${low ? 800 : 400};">實際 ${Math.round(e.actual / e.expected * 100)}%</div>` : '')); })()}</tr>`).join('')}</table></div>`;
+                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;"><tr><th style="padding:3px 2px; font-size:10.5px; color:#8a7a6a; text-align:left;">玩家</th>${th('死靈熊', 'necro')}${th(g7Head, 'grow')}${th('下一階', 'nx')}${th('突襲', 'raid')}${th('卡片', 'card')}${th('靈魂', 'soul')}${th('期望均傷', 'exp')}</tr>
+                ${list.map((a, i) => `<tr style="border-top:${i > 0 && i % 10 === 0 ? '2px solid #c9a876' : '1px solid #f0e6d4'}; cursor:pointer;" onclick="cardLevelsTab('me'); cardLevelsShow(${escapeHtml(JSON.stringify(a.p.name)).replace(/"/g, '&quot;')})"><td style="padding:3px 2px; font-size:11.5px; white-space:nowrap;" title="${escapeHtml(a.p.name)}">${escapeHtml(raidShortName(a.p.name))}</td>${td(a.necroLv, a.necroLv < med / 2 ? 'color:#c0392b; font-weight:800;' : 'font-weight:700;')}${(() => { const g = raidNecroGrowth7(a.p.player_code); return g ? td(g.gain > 0 ? '+' + g.gain : '0', g.gain > 0 ? 'color:#2e7d32; font-weight:700;' : 'color:#c0392b; font-weight:800;') : td('—', 'color:#a89a88;'); })()}${(() => { const x = nx.get(a.p.player_code); if (!x) return td('最高', 'color:#a89a88;'); return td(x.gap > 0 ? `差 ${x.gap} 等` : '可點', x.gap > 0 ? 'font-weight:700;' : 'color:#d35400; font-weight:800;') .replace('</td>', `<div style="font-size:10px; color:#2e7d32;">+${(x.gain * 100).toFixed(1)}%</div></td>`); })()}${td(a.p.player_raid_level)}${td(a.p.total_card_level)}${(() => { const n = Number(a.p.titan_souls) || 0; return td(n >= 10000 ? Math.round(n / 1000) + 'k' : (n / 1000).toFixed(1) + 'k', 'color:#6a5a4a;'); })()}${(() => { const e = exp.get(a.p.player_code); if (!e) return td('—'); const low = e.actual && e.actual < e.expected * RAID_LOG_OVERALL_LOW; return td(escapeHtml(formatNumAlwaysM(e.expected)) + (e.actual ? `<div style="font-size:10px; color:${low ? '#d35400' : '#a89a88'}; font-weight:${low ? 800 : 400};">實際 ${Math.round(e.actual / e.expected * 100)}%</div>` : '')); })()}</tr>`).join('')}</table></div>`;
         }
         function cardLevelsGuild() {
             const box = document.getElementById('cardlv-guild');

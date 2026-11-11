@@ -12694,7 +12694,7 @@
         // 部位份額：T＝這個人這幾刀的傷害。平均打：照能打部位剩下血量的比例（多 3 成彈性）；
         // 先清小部位：其他部位可以打到全部的血，血最厚的部位只分到其他部位打不完剩下的（至少 2 成）
         function raidSimStrategyLine(env) {
-            if (!env || !env.strategy) return '';
+            if (!env || env.strategy !== 'sweep') return '';   // 只在收尾時顯示
             const big = env.bigPart ? raidPartLabel(env.bigPart) : '';
             const t = env.strategy === 'sweep' ? `收尾：一起收掉其他部位，再用凱旋行軍打${big}` : env.strategy === 'park' ? `其他部位剩不多，先集中打${big}，最後一起收掉再用凱旋行軍` : env.strategy === 'armor' ? `先拆盔甲（肉體 ${env.nBody}/6），再平均打完其他部位，最後用凱旋行軍打${big}`
                 : env.strategy === 'clear' ? `平均打完其他部位，最後用凱旋行軍打${big}（${big}佔 ${Math.round(env.bigShare * 100)}%）` : '照各部位血量平均打';

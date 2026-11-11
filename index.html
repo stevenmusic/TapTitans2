@@ -8083,7 +8083,7 @@
                             const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
                             if (pl.length) all.push({ cards: d.cards, plans: pl });
                         });
-                        pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE, null, 10);
+                        pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE, null, 10, true);   // 配卡：輕量版
                         raidPickPools.set(pkey, pool);
                     }
                     const n = RAID_ATTACKS_PER_CYCLE;
@@ -13247,7 +13247,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=5');
+                    const w = new Worker('raid-sim/simworker.js?v=6');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -13283,9 +13283,9 @@
             return raidSimPickPool(P, env, me, pool, n);
         }
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
-        async function raidSimEvalPool(P, env, me, all, n, progress, topN) {
+        async function raidSimEvalPool(P, env, me, all, n, progress, topN, lite) {   // lite：配卡用的輕量版（模擬次數約減半，只是打分數不用那麼精準）
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
-            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans })), (f) => progress ? progress(`計算中 ${Math.round(f * 60)}%`) : undefined);
+            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans, lite })), (f) => progress ? progress(`計算中 ${Math.round(f * 60)}%`) : undefined);
             if (!quick) {
                 quick = [];
                 for (let i = 0; i < all.length; i++) {
@@ -13296,7 +13296,7 @@
             }
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
             const nTop = Math.min(quick.length, topN || Math.max(24, n * 4));   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
-            const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
+            const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o, runs: lite ? 100 : undefined })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {
                 if (progress && progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`) === 'stop') throw new Error('cancelled');

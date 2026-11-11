@@ -12710,7 +12710,7 @@
                 alts.forEach(a => { const est = a.raw * scale, eff = effOf(a.tg, est); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
                 if (!best || !(best.eff > 0)) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
-                if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; }
+                if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; o.reFinal = true; }   // 換了部位：之後在新部位重新精算（不用粗算換算的數字）
                 const c = best.a.tg.reduce((t, k) => t + (env.hp[k] || 0), 0); o.cap = c;   // 顯示：算到部位真正剩下的血為止（份額只用來分配）
                 o.avg = Math.min(best.est, c); if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
                 const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); });
@@ -12769,6 +12769,14 @@
                 pick.push(best);
             }
             raidSimDeplete(pick, env);
+            // 換過部位的組：在新部位重新跑 200 次精算，顯示的應打一定是精算的（算到部位剩下的血為止）
+            const re = pick.filter(o => o.reFinal);
+            if (re.length) {
+                const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
+                const fr = (await raidSimParallel(P, jobs)) || jobs.map(j => raidSimFinal(P, env, me, j.o));
+                re.forEach((o, i) => { const f = fr[i]; if (f) { o.avg = f.avg; o.lo = f.lo; o.hi = f.hi; o.raw = f.raw; } delete o.reFinal; });
+                pick.sort((a, b) => b.avg - a.avg);
+            }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             raidSimPickCache.set(key, rows);
             if (kvKey && rows.length) { const slim = { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) }; raidRecoKvMem.set(kvKey, slim); kvSet(kvKey, slim); }

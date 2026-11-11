@@ -16182,7 +16182,7 @@
             const parts = Object.values(raidState.parts);
             const armorSum = parts.reduce((s, p) => s + p.armor, 0);
             const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
-            const bodySum = typeof raidState.currentHp === 'number' ? raidState.currentHp : parts.reduce((s, p) => s + p.body, 0);
+            const bodySum = Math.max(0, typeof raidState.currentHp === 'number' ? raidState.currentHp : parts.reduce((s, p) => s + p.body, 0));   // 最後一刀打超過時伺服器會回報負數，顯示 0
             const bodyMaxSum = raidState.killMaxHp || parts.reduce((s, p) => s + p.bodyMax, 0);
             const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
             const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;
@@ -16191,8 +16191,8 @@
             document.getElementById('raid-boss-armor-hp-text').textContent =
                 `${formatNum(armorSum)} / ${formatNum(armorMaxSum)} (${armorPct.toFixed(1)}%)`;
             document.getElementById('raid-boss-body-hpbar-fill').style.width = bodyPct.toFixed(1) + '%';
-            document.getElementById('raid-boss-body-hp-text').textContent =
-                `${formatNum(bodySum)} / ${formatNum(bodyMaxSum)} (${bodyPct.toFixed(1)}%)`;
+            document.getElementById('raid-boss-body-hp-text').textContent = bodySum <= 0 && bodyMaxSum > 0
+                ? `已擊殺 / ${formatNum(bodyMaxSum)}` : `${formatNum(bodySum)} / ${formatNum(bodyMaxSum)} (${bodyPct.toFixed(1)}%)`;
 
             const target = computeRaidTarget();
             const bannerEl = document.getElementById('raid-target-banner');
@@ -16485,7 +16485,7 @@
             const parts = Object.values(raidState.parts);
             const armorSum = parts.reduce((s, p) => s + p.armor, 0);
             const armorMaxSum = parts.reduce((s, p) => s + p.armorMax, 0);
-            const bodySum = typeof raidState.currentHp === 'number' ? raidState.currentHp : parts.reduce((s, p) => s + p.body, 0);
+            const bodySum = Math.max(0, typeof raidState.currentHp === 'number' ? raidState.currentHp : parts.reduce((s, p) => s + p.body, 0));   // 最後一刀打超過時伺服器會回報負數，顯示 0
             const bodyMaxSum = raidState.killMaxHp || parts.reduce((s, p) => s + p.bodyMax, 0);
             const armorPct = armorMaxSum > 0 ? Math.max(0, Math.min(100, (armorSum / armorMaxSum) * 100)) : 0;
             const bodyPct = bodyMaxSum > 0 ? Math.max(0, Math.min(100, (bodySum / bodyMaxSum) * 100)) : 0;

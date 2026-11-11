@@ -12705,6 +12705,7 @@
            每組牌把裡面的候選卡各種升／不升的組合都實際模擬（同一組亂數，只差等級），得到「哪幾張升級 → 這組打多少」；
            一種水晶放法的價值＝各王各狀態挑最好的 6 組（卡片不重複）傷害加總，照要打的量加權。
            先挑單張提升最多的，再一張一張換（同一類別內）直到換不出更高，就是交叉比對後最好的放法 */
+        let CRYSTAL_SHORT_N = 40;   // 每個情境精算幾組候選牌組（沒放水晶、全部升級各取前幾名）
         async function crystalUpcoming(p, lvl, simLv) {
             const seed = await ticketSeedFetch().catch(() => null);
             const raid = seed && seed.raids.find(r => r.t === 9999 && r.l === lvl);
@@ -12751,7 +12752,7 @@
                         if (!all.length) continue;
                         const scr = async (m) => (await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || all.map(a => raidSimScreen(P, env, m, a.cards, a.plans));
                         const s0 = await scr(me), s1 = candIds.length ? await scr(meUp) : s0;
-                        const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, 40).map(x => x[0]);
+                        const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, CRYSTAL_SHORT_N).map(x => x[0]);
                         const short = [...new Set([...rank(s0), ...rank(s1)])];
                         // 每組：候選卡升／不升的所有組合都精算（固定亂數，差別只來自等級）
                         const jobs = [], decks = [];

@@ -14678,9 +14678,12 @@
             const mirrorShare = r1Dmg > 0 && (serverAttackLogCache || []).filter(a => a.cycle === 1).length >= 30 ? mirrorDmg / r1Dmg : 0.125;
             const roundW = (c) => c === 1 ? 1 : 1 + 0.35 * mirrorShare;
             const targetOf = (c, k) => { let tw = 0; for (let i = 1; i <= k; i++) tw += roundW(i); return sumFull * roundW(c) / tw; };
-            const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k) p += got - targetOf(c, k); }); return p; };
+            // 自動選幾輪打完：只看「已經打完的輪」的加總（進行中的那一輪剛開打一定是負的，不能拿來判斷）
+            const raidOver = !!(raidLiveInfo && raidLiveInfo.ended);
+            const doneCycle = (c) => raidOver || c < lastCycle;
+            const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k && doneCycle(c)) p += got - targetOf(c, k); }); return p; };
             let autoN = 6;
-            for (let k = 5; k >= 2; k--) { if (byCycle.size && progressAt(k) >= 0) autoN = k; else break; }
+            if ([...byCycle.keys()].some(doneCycle)) for (let k = 5; k >= 2; k--) { if (progressAt(k) >= 0) autoN = k; else break; }
             const n = bossHpRounds || autoN;
             const per = sumFull / n;   // 平均（其他地方顯示用）
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);

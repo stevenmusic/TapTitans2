@@ -7875,7 +7875,8 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 8;   // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
+        const RAID_SIM_PICK_VER = 9;   // 9：6 組一定要有一組帶鏡子力
+          // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
         // 7：分母不扣掉這輪用過的卡（一整輪 6 組平均），跟出牌順序無關；6：少見牌組不打九折、放大補等級   // 6：少見牌組不打九折、放大補等級（舊版分母偏低，不能跟新版混著算）   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
         try { raidSimPickStore = JSON.parse(localStorage.getItem(RAID_SIM_PICK_KEY) || '{}') || {}; } catch (e) {}
@@ -12637,7 +12638,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v3_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v4_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -12645,7 +12646,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v22';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v23';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -12822,6 +12823,19 @@
                         }
                     };
                     dfs(0, 0, ctx.bud || {});
+                    // 鏡子力一定要用（每人每輪用一次，下一輪全公會 +1%，最多 35%）：6 組沒帶到就從帶鏡子力的前 3 組各當第一組重新搜尋
+                    if (!best.some(([d]) => d.cards.includes(RAID_MIRROR_CARD))) {
+                        let fb = best, fs = bestSum, forced = false;
+                        sc.filter(([d]) => d.cards.includes(RAID_MIRROR_CARD)).slice(0, 3).forEach(([m, x]) => {
+                            best = []; bestSum = -1; steps = 0; used.clear(); cur.length = 0;
+                            const R0 = ctx.bud || {}; const al = ctx.bud ? ctx.alloc(m.o, x, R0) : { v: x, take: null };
+                            let R2 = R0; if (al.take) { R2 = { ...R0 }; Object.keys(al.take).forEach(k => { R2[k] = Math.max(0, (R2[k] || 0) - al.take[k]); }); }
+                            m.cards.forEach(c => used.add(c)); cur.push([m, al.v, x]);
+                            dfs(0, al.v, R2);
+                            if (!forced || best.length > fb.length || (best.length === fb.length && bestSum > fs)) { fb = best.slice(); fs = bestSum; forced = true; }
+                        });
+                        best = fb;
+                    }
                     return best;
                 };
                 const memo = new Map();
@@ -12916,7 +12930,7 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v10_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -13162,7 +13176,7 @@
             if (!n) return [];
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v3_${code}` : null;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v4_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
@@ -13754,6 +13768,7 @@
             return quick;
         }
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
+        const RAID_MIRROR_CARD = 'MirrorForce';
         async function raidSimPickPool(P, env, me, pool, n) {
             // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
             // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位
@@ -13793,6 +13808,18 @@
                 best = []; bestSum = -1; steps = 0;
                 pool.sort((a, b) => val(b) - val(a));
                 dfs(0, 0);
+                // 鏡子力一定要用：每人每輪用一次，下一輪全公會加成 +1%（最多 35%），沒人用下一輪加成就掉。
+                // 有鏡子力的牌組就強制 6 組裡要有一組帶鏡子力：從帶鏡子力的前 5 組各當第一組再搜尋，挑加總最高的
+                if (pool.some(o => o.cards.includes(RAID_MIRROR_CARD)) && !best.some(o => o.cards.includes(RAID_MIRROR_CARD))) {
+                    let fb = [], fs = -1;
+                    pool.filter(o => o.cards.includes(RAID_MIRROR_CARD)).slice(0, 5).forEach(m => {
+                        best = []; bestSum = -1; steps = 0; used.clear(); cur.length = 0;
+                        m.cards.forEach(c => used.add(c)); cur.push(m);
+                        dfs(0, val(m));
+                        if (best.length > fb.length || (best.length === fb.length && bestSum > fs)) { fb = best.slice(); fs = bestSum; }
+                    });
+                    used.clear(); cur.length = 0; best = fb; bestSum = fs;
+                }
                 const rough = best.filter(o => !o.final);
                 if (!rough.length) break;
                 // 補精算：丟給 Web Worker 平行算（不佔畫面）；不支援才在主畫面算

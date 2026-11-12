@@ -8259,7 +8259,8 @@
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
                     // 天體靜態：伺服器的應打還是舊模擬（只點四肢才充能，例如 Krolowv 那刀算成 +415%），改用網頁的新模擬重算這一刀（算好前先不顯示）
                     const csAtk = (a.cards || []).some(c => c.name === 'CelestialStatic') || ((a.cards || []).some(c => c.name === 'TotemFairySkill') && ((a.cards || []).some(c => c.name === 'Haymaker') || (sx && sx.tg && sx.tg.length > 1)));   // 圖騰打多部位：精靈只在一個部位，伺服器舊模擬高估   // 宇宙激光＋圖騰之力：伺服器還是舊模擬，也改網頁重算
-                    a.simExp = sx && sx.exp ? (csAtk ? raidCsExp(a, sx) : (raidCsExp(a, sx) || raidSimExpFix(a, sx))) : null;   // 這場每一刀都用網頁新版模擬重算（伺服器的模擬是舊版），算好前先用伺服器的 a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    // 這場每一刀都用網頁新版模擬重算（伺服器的模擬是舊版），算好前先用伺服器的
+                    a.simExp = sx && sx.exp ? (csAtk ? raidCsExp(a, sx) : (raidCsExp(a, sx) || raidSimExpFix(a, sx))) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;

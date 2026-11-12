@@ -7900,7 +7900,8 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 9;   // 9：6 組一定要有一組帶鏡子力
+        const RAID_SIM_PICK_VER = 10;   // 10：剛開打時賽季加成沿用上一場（之前變成沒加成，分母偏低）
+          // 9：6 組一定要有一組帶鏡子力
           // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
         // 7：分母不扣掉這輪用過的卡（一整輪 6 組平均），跟出牌順序無關；6：少見牌組不打九折、放大補等級   // 6：少見牌組不打九折、放大補等級（舊版分母偏低，不能跟新版混著算）   // 3：分母改成「照推薦打能打多少」   // 算法版本：舊版的結果先照常顯示，背景用新算法一刀一刀換掉
         let raidSimPickStore = {};
@@ -12671,7 +12672,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v4_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v5_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -12679,7 +12680,7 @@
         function kvUrl(key) { return (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '') + '/kv/' + encodeURIComponent(key); }
         async function kvGet(key) { try { const r = await fetch(kvUrl(key), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j && j.data != null ? j.data : null; } catch (e) { return null; } }
         async function kvSet(key, data) { try { await fetch(kvUrl(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }); } catch (e) {} }
-        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v23';
+        const RAID_SIM_HOME_KEY = 'tt2_home_sim_v24';
         let raidSimHomeMem = null;
         let raidSimHomeInflight = null, raidSimHomeGen = 0;
         async function raidSimHomeRows(data, progress) {
@@ -13198,7 +13199,7 @@
             const me = raidSimPlayer(v, env.morale, env.season);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse]);
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env)]);
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13209,7 +13210,7 @@
             if (!n) return [];
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v4_${code}` : null;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v5_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
@@ -13276,7 +13277,7 @@
             let P; try { P = await raidSimLoad(); } catch (e) { return; }
             const env = await raidSimEnv();
             const me = raidSimPlayer(v, env.morale, env.season);
-            const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror]);
+            const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.season, raidHpBuckets(env)]);
             for (let i = 0; i < rows.length; i++) {
                 if (raidLogRecoRows.get(name) !== rows) return;   // 推薦換了：外面會再補一次新的
                 box = raidLogRecoBox(name) || box;   // 算的途中畫面可能重畫過（框換了一個新的），每次都抓目前畫面上的
@@ -13587,12 +13588,13 @@
         /* 賽季加成卡：官方資料沒有這個欄位，從這一場的攻擊紀錄自動偵測——
            某張卡在大家身上「攻擊紀錄等級 − 帳號等級（含加成卡）」都是同一個正數（例如 M-44：鏡子力 +20、防空高砲 +20、先祖加護 +10）。
            搭配「放大」的攻擊會被分享等級，不拿來算 */
-        function raidSimSeasonBonus() {
-            if (!raidClanData) return {};
-            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+        // 賽季加成：攻擊紀錄的等級 − 帳號等級（水晶算進去）的眾數。剛開打這場還沒幾刀（每張卡要 5 刀以上才算），
+        // 就先用上一場的（賽季加成一整季都一樣），不然會變成沒有加成，應打整個偏低
+        let raidSeasonPrevMemo = null;
+        function raidSeasonFrom(list) {
             const diffs = {};
-            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
-                if ((latest && a.raidStartedAt && a.raidStartedAt !== latest) || !a.cards || a.cards.some(c => c.name === 'MagicPotion')) return;
+            list.forEach(a => {
+                if (!a || !a.cards || a.placeholder || a.cards.some(c => c.name === 'MagicPotion')) return;
                 const v = raidClanData.byCode.get(a.playerCode); if (!v) return;
                 a.cards.forEach(c => { const e = raidSimBaseLevel(v.raw, c.name); if (e > 0) (diffs[c.name] = diffs[c.name] || []).push((Number(c.level) || 0) - e); });
             });
@@ -13601,8 +13603,23 @@
                 if (d.length < 5) return;
                 const cnt = {}; d.forEach(x => { cnt[x] = (cnt[x] || 0) + 1; });
                 const [top, n] = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
-                if (+top > 0 && n >= d.length * 0.8) out[c] = +top;
+                if (+top > 0 && n >= d.length * 0.8) out[c] = +top; else out[c] = 0;
             });
+            return out;
+        }
+        function raidSimSeasonBonus() {
+            if (!raidClanData) return {};
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const cur = raidSeasonFrom((Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !latest || !a.raidStartedAt || a.raidStartedAt === latest));
+            // 上一場：已經載過就算一次記住；沒載過就用手機上記的
+            const prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
+            let prev = raidSeasonPrevMemo && raidSeasonPrevMemo.sa === prevSa ? raidSeasonPrevMemo.out : null;
+            if (!prev && prevSa && sessionAttacksCache.has(prevSa)) { prev = raidSeasonFrom(sessionAttacksCache.get(prevSa)); raidSeasonPrevMemo = { sa: prevSa, out: prev }; }
+            if (!prev) { try { prev = JSON.parse(localStorage.getItem('tt2_season_bonus') || 'null'); } catch (e) {} }
+            const out = {};
+            Object.entries(prev || {}).forEach(([c, v]) => { if (v > 0) out[c] = v; });
+            Object.entries(cur).forEach(([c, v]) => { if (v > 0) out[c] = v; else delete out[c]; });   // 這場有足夠資料的以這場為準
+            if (Object.keys(out).length) { try { localStorage.setItem('tt2_season_bonus', JSON.stringify(out)); } catch (e) {} }
             return out;
         }
         // 帳號資料的卡片等級（加成卡取原本等級和加成等級較高的）
@@ -13625,11 +13642,20 @@
             return { lv, necro, rl, tau: 4.002 * Math.pow(Number(opt.rl) || rl, 0.884) * loy * (1 + morale) };
         }
         // 模擬環境：目前王的部位狀態、禁打、詛咒、場次加成、門票、賽季加成、可選的打法
+        // 每個部位剩下的血分 10 段（推薦的暫存用：同一層血一直掉，掉一段就重算，不會一直用舊的份額和封頂）
+        function raidHpBuckets(env) {
+            if (!raidState || !raidState.parts) return '';
+            return RAID_PARTS.map(({ key }) => { const pt = raidState.parts[key] || {}; const max = (Number(pt.armorMax) || 0) + (Number(pt.bodyMax) || 0); const cur = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return max > 0 ? Math.ceil(cur / max * 10) : 0; }).join('');
+        }
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
             const morale = snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;
-            const season = raidSimSeasonBonus();
+            let season = raidSimSeasonBonus();
+            if (!Object.keys(season).length && serverSessionsSummary && serverSessionsSummary[1]) {   // 還不知道賽季加成：先載上一場的攻擊紀錄算（一台裝置只會載一次）
+                try { await ensureSessionAttacksLoaded(serverSessionsSummary[1].startedAt); } catch (e) {}
+                season = raidSimSeasonBonus();
+            }
             const board = {};
             RAID_PARTS.forEach(({ key }) => {
                 const pt = raidState.parts[key] || {};

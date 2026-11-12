@@ -13012,6 +13012,8 @@
                 }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
                 // 有照牌組交叉比對的結果就用它（dmg＝這張拿掉，整場傷害少幾 %）
                 const pick = up && up.picks ? (up.picks[cat] || []).map(x => ({ id: x.id, gain: L - (own[x.id] || 0), nxt: upUses[x.id] || 0, mine: mine[x.id] || 0, dmg: x.gain })) : cands.slice(0, slots);
+                // 能升級的卡不夠填滿格子時：空出來的格子保留現在放的卡（放了也不虧），不要留空（時間之沙、強酸侵蝕除外）
+                if (up && up.picks && pick.length < slots) cur.forEach(b => { if (pick.length < slots && !pick.some(x => x.id === b.skill_name) && !CRYSTAL_SKIP.has(b.skill_name)) pick.push({ id: b.skill_name, gain: Math.max(0, L - (own[b.skill_name] || 0)), nxt: upUses[b.skill_name] || 0, mine: mine[b.skill_name] || 0, dmg: 0 }); });
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
                 plan[cat] = { cur, L, slots, pick, curIds, pickIds, outs: cur.filter(b => !pickIds.has(b.skill_name)), ins: pick.filter(x => !curIds.has(x.id)) };
             });

@@ -13128,11 +13128,11 @@
             if (!k) return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
             // 有套裝沒做：少的格子先扣掉沒做的套裝（分不出是哪一類），剩下的才算空著沒放卡
             const total = Object.values(miss).reduce((a, b) => a + b, 0);
-            return { miss: {}, n: Math.max(0, total - k), sets: [`${k} 套加插槽的裝備沒做（${CRYSTAL_SLOT_SET_NAMES} 其中 ${k} 套）`], lackSlots: k };
+            return { miss: {}, n: Math.max(0, total - k), sets: [`少做 ${k} 套加格裝備（鐵殼守衛、深海豎琴、林地笛翾）`], lackSlots: k };
         }
         function crystalSlotWarn(p, players) {
             const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';
-            return `<div style="font-size:12px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `沒做套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
+            return `<div style="font-size:12px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
         }
         /* 牌組頁：選玩家（或搜尋名字）→ 從他的卡挑 3 張 → 照現在的王、部位狀態、禁打、詛咒、加成跑傷害（他的卡片等級、水晶、賽季加成） */
         let deckSimPlayer = null, deckSimCards = [null, null, null], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;

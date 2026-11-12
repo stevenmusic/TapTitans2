@@ -8136,6 +8136,7 @@
             rerender();
             try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
+        const raidPrevLoadTried = new Set();
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
             setTimeout(raidSimPickAuto, 0);
@@ -8223,7 +8224,14 @@
             const latestSa = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             if ((!raidSessionFilter || raidSessionFilter.startedAt === latestSa) && raidClanData && !raidLogDemoActive) {
                 const have = new Set(ranked.flatMap(r => [r.identity, r.player]));
-                [...raidClanData.byCode.values()].forEach(v => {
+                // 還沒出刀的人照上一場的總傷害排（上一場的攻擊紀錄還沒載就先載，載好再重畫）
+                const prevSa = serverSessionsSummary[1] && serverSessionsSummary[1].startedAt, prevDmg = new Map();
+                if (prevSa) {
+                    const pl = sessionAttacksCache.get(prevSa);
+                    if (pl) pl.forEach(a => { if (!a || a.placeholder) return; const k = a.playerCode || a.player; prevDmg.set(k, (prevDmg.get(k) || 0) + (Number(a.totalDamage) || 0)); });
+                    else if (!raidPrevLoadTried.has(prevSa)) { raidPrevLoadTried.add(prevSa); ensureSessionAttacksLoaded(prevSa).then(() => { if (raidLogPanelShown()) renderRaidLogQueryResult(); }).catch(() => {}); }
+                }
+                [...raidClanData.byCode.values()].sort((x, y) => ((prevDmg.get(y.raw && y.raw.player_code) || prevDmg.get(y.raw && y.raw.name) || 0) - (prevDmg.get(x.raw && x.raw.player_code) || prevDmg.get(x.raw && x.raw.name) || 0))).forEach(v => {
                     const p = v.raw;
                     if (!p || !p.name || have.has(p.player_code) || have.has(p.name)) return;
                     if (keywordLower && !p.name.toLowerCase().includes(keywordLower)) return;

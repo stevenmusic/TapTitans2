@@ -14967,8 +14967,23 @@
         let allCardLevelsPending = null;
         function loadAllCardLevels() {
             if (allCardLevels && Date.now() - allCardLevelsAt < 10 * 60 * 1000) return Promise.resolve(allCardLevels);
-            if (!allCardLevelsPending) allCardLevelsPending = loadAllCardLevelsNow().finally(() => { allCardLevelsPending = null; });
+            if (!allCardLevelsPending) allCardLevelsPending = loadAllCardLevelsNow().then(cardLevelsFillFromClan).finally(() => { allCardLevelsPending = null; });
             return allCardLevelsPending;
+        }
+        // 攻擊紀錄只看得到每個人用過的卡：其他卡用官方帳號資料補上（卡片和水晶取高＋賽季加成），全公會每個人的卡都補齊（沒出過刀的成員也加進來）
+        async function cardLevelsFillFromClan(map) {
+            try {
+                if (!raidClanData) await raidLoadClanData();
+                if (!raidClanData || !map) return map;
+                let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
+                raidClanData.byCode.forEach(v => {
+                    const p = v.raw; if (!p || !p.name) return;
+                    const e = map[p.name] || (map[p.name] = {});
+                    (p.cards || []).forEach(c => { if (e[c.skill_name] == null) { const b = raidSimBaseLevel(p, c.skill_name); if (b > 0) e[c.skill_name] = b + (season[c.skill_name] || 0); } });
+                });
+                if (map === allCardLevels) allCardLevelsAt = Date.now();
+            } catch (e) {}
+            return map;
         }
         // 先在區域變數篩好（只留現在的成員）才一次放進 allCardLevels，同時呼叫的人不會拿到還沒篩的名單
         async function loadAllCardLevelsNow() {

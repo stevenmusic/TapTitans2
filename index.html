@@ -8186,7 +8186,8 @@
                     if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
                     const env = { ...env0, board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
                     const me = raidSimPlayer(v, env0.morale, {}, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
-                    a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成）
+                    a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成、放大的等級加成）
+                    me.fromAttack = true;   // 攻擊紀錄的等級已含放大加成，模擬時不要再加一次
                     await new Promise(r => setTimeout(r, 0));
                     const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: sx.tg, seed: 11 }, 60, P);
                     raidCsExpMem.set(k, r.total > 0 ? r.total : null);

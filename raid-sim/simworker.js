@@ -1,6 +1,6 @@
 // 推薦牌組的平行計算：主畫面把「快速篩選」「精算 200 次」的工作分給多個 Worker 同時跑（手機有幾核就用幾核）
 // 算法跟 index.html 的 raidSimScreen／raidSimFinal 完全一樣（同樣的亂數種子），結果不變，只是比較快
-importScripts('raidsim.js?v=9');
+importScripts('raidsim.js?v=10');
 const ready = fetch('skills.json?v=1').then(r => r.json()).then(sk => RaidSim.init(sk));
 const SCREEN_RUNS = 8, FINAL_RUNS = 200;
 // cap：目標部位剩下的血，傷害算到那裡為止；alts：每種打法的粗算結果（推薦好幾組時重新分配部位用）

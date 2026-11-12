@@ -13376,7 +13376,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r8|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r9|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13737,13 +13737,34 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=9'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=10'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=6').then(r => r.json())]);
                 RaidSim.init(sk);
-                return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
+                return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
             })();
             raidSimReady.catch(() => { raidSimReady = null; });
-            return raidSimReady;
+            return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
+        }
+        /* 推薦牌組校正（只在網頁，不動伺服器）：最近幾場的攻擊紀錄，同一組牌實際 ÷ 應打（伺服器模擬）的中位數，
+           打過 10 刀以上、差 3% 以上的牌組，把差距乘進模擬的整組修正（deckK）。網頁模擬跟伺服器同一套，所以中位數就是網頁模擬要補的量。
+           每 10 分鐘重算一次；模擬工作會把 P 一起送進 Web Worker，所以 Worker 也會用到 */
+        let raidDeckCalAt = 0, raidDeckCalBase = null, raidDeckCal = {};
+        function raidDeckCalApply(P) {
+            if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };
+            if (Date.now() - raidDeckCalAt > 10 * 60 * 1000) {
+                const g = {};
+                const sess = (serverSessionsSummary || []).slice(0, 3);
+                sess.forEach((se, i) => {
+                    const list = i === 0 ? (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []) : (sessionAttacksCache.get(se.startedAt) || []);
+                    list.forEach(a => { if (!a || a.placeholder || !a.cards || a.cards.length !== 3 || a.cards.some(c => c.name === 'MagicPotion')) return; const e = raidSimExpMap.get(raidSimExpKey(a)); if (!e || !(e.exp > 0) || !(a.totalDamage > 0)) return;
+                        const k = a.cards.map(c => c.name).sort().join('+'); (g[k] = g[k] || []).push(a.totalDamage / e.exp); });
+                });
+                const out = {};
+                Object.entries(g).forEach(([k, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) out[k] = Math.max(0.85, Math.min(1.15, m)); });
+                raidDeckCal = out; if (Object.keys(g).length) raidDeckCalAt = Date.now();
+            }
+            const dk = { ...raidDeckCalBase }; Object.entries(raidDeckCal).forEach(([k, f]) => { dk[k] = (dk[k] || 1) * f; });
+            P.deckK = dk;
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
@@ -13961,7 +13982,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=9');
+                    const w = new Worker('raid-sim/simworker.js?v=10');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

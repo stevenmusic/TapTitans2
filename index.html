@@ -8162,6 +8162,7 @@
             try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
         const raidPrevLoadTried = new Set();
+        let raidRatioScale = { play: 1, pick: 1 };   // 打法、配卡這場用的校正（中位數）
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
             setTimeout(raidSimPickAuto, 0);
@@ -8216,7 +8217,9 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    a.simExp = sx && sx.exp ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    // 天體靜態模擬不準（例如 Krolowv 天體靜態那刀算成 +415%）：不顯示應打、不算進打法 %（宇宙激光攻擊紀錄驗證過是準的，照常）
+                    const unreliable = (a.cards || []).some(c => c.name === 'CelestialStatic');
+                    a.simExp = sx && sx.exp && !unreliable ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;
@@ -8244,6 +8247,13 @@
                 const overallLow = overallRatio != null && attacks.length >= 6 && overallRatio < RAID_LOG_OVERALL_LOW;   // 出刀 6 次以上才標偏低
                 return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage: totalDamage + missEst, missEst, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, playRatio, pickInfo, identity, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
+            // 權重校正（不用重算）：這一場模擬整體偏低／偏高時，打法、配卡用全公會的中位數校正，讓中位數＝100%。
+            // 只往下校（中位數超過 100% 才除），出刀 3 次以上的人才算進中位數，至少 8 人才校正
+            { const med = (arr) => { const x = arr.filter(v => v > 0).sort((a, b) => a - b); return x.length >= 8 ? x[Math.floor(x.length / 2)] : 1; };
+              const base = ranked.filter(r => r.attackCount >= 3);
+              const fP = Math.max(1, med(base.map(r => r.playRatio))), fK = Math.max(1, med(base.map(r => r.pickInfo && r.pickInfo.ratio)));
+              ranked.forEach(r => { if (r.playRatio != null) r.playRatio /= fP; if (r.pickInfo && r.pickInfo.ratio != null) r.pickInfo = { ...r.pickInfo, ratio: r.pickInfo.ratio / fK }; });
+              raidRatioScale = { play: fP, pick: fK }; }
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             // 還沒出刀的成員（官方公會名單）：排在最後，按「推薦」看該用什麼牌、應打多少（只在看最新一場時列）
             const latestSa = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
@@ -8662,7 +8672,7 @@
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
         // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
-        function quizCardUsable(card, scene, onlyPart, ignoreParts) {
+        function quizCardUsable(card, scene, onlyPart, ignoreParts, loose) {   // loose：牌組頁自己挑卡，不套推薦用的「只在某些情況才用」（例如帶刺的晨星）
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]) && (!onlyPart || k === onlyPart));
@@ -8677,7 +8687,7 @@
             const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
             const parts = ignoreParts ? null : quizPartGroups(card);   // ignoreParts：模擬器推薦用，部位加成交給模擬器算，不當成限制
             let onlyLayerName = null;
-            if (card === 'BarbedMorningstar') {
+            if (card === 'BarbedMorningstar' && !loose) {
                 const l = CARD_ONLY_WHEN.BarbedMorningstar({ armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton });
                 if (!l) return { ok: false, why: '只有在盔甲或肉體其中一種只剩 1～2 個部位時才能用' };
                 onlyLayerName = l === 'armor' ? '盔甲' : '肉體';
@@ -12394,7 +12404,7 @@
                         <span class="rl-name" title="${escapeHtml(r.player)}" style="display:flex; align-items:center; font-size:13px; font-weight:700; color:#4a3a2a; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; flex-shrink:0; color:#a89a88; font-weight:700;">${rIdx + 1}</span><span style="overflow:hidden; text-overflow:ellipsis; min-width:0;">${escapeHtml(raidShortName(r.player))}</span>${r.missedCount ? `<span title="伺服器漏收 ${r.missedCount} 刀（傷害已依部位血量估算算進總傷害）" style="flex-shrink:0; margin-left:4px; padding:0 4px; border-radius:5px; background:#fbe6e3; color:#c0392b; font-size:10px; font-weight:800; line-height:1.5;">漏${r.missedCount}</span>` : ''}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:11px; border-radius:6px; padding:2px 8px; min-width:5.2em; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}
-                            <span style="display:flex; align-items:center; gap:6px; line-height:1.15;">${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="display:flex; flex-direction:column; align-items:flex-end; min-width:5.2em; font-size:10.5px; font-weight:800; white-space:nowrap; line-height:1.2;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : '<span style="display:inline-block; min-width:5.2em; font-size:10.5px;"></span>'}<span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:clamp(12.5px, 3.5vw, 14px); font-weight:800; white-space:nowrap; text-align:right; min-width:7em; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次`}</span></span>
+                            <span style="display:flex; align-items:center; gap:6px; line-height:1.15;">${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="display:flex; flex-direction:column; align-items:flex-end; min-width:5.2em; font-size:10.5px; font-weight:800; white-space:nowrap; line-height:1.2;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : '<span style="display:inline-block; min-width:5.2em; font-size:10.5px;"></span>'}<span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:clamp(12.5px, 3.5vw, 14px); font-weight:800; white-space:nowrap; text-align:center; min-width:6.4em; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#a89a88;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次`}</span></span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:11px; color:#a89a88; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
                     </div>
@@ -12787,12 +12797,15 @@
             const key = `${lvl}|${p.player_code}|${banSig}`;
             if (crystalUpRes[key] && (crystalUpRes[key].busy || crystalUpRes[key].uses)) return;
             if (!raid) { crystalUpRes[key] = { busy: `seed 裡沒有 M-${lvl}` }; return; }
-            const slotInfo = {}; (p.boosted_cards || []).forEach(b => { const c = slotInfo[b.category] || (slotInfo[b.category] = { L: 0, n: 0 }); c.L = Math.max(c.L, Number(b.boost_level) || 0); c.n++; });
+            const slotInfo = {}; Object.entries(crystalSlotsOf(p)).forEach(([c, x]) => { slotInfo[c] = { L: x.L, n: x.n }; });   // 含空著沒放卡的格子
             const slotSig = Object.keys(slotInfo).sort().map(c => `${c}${slotInfo[c].n}x${slotInfo[c].L}`).join(',');
             const kvKey = crystalKvKey(lvl, p.player_code, banSig);
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
             const remote = await kvGet(kvKey);
             if (remote && remote.uses && remote.picks && remote.ver === CRYSTAL_DATA_VER && remote.seed === seed.valid_from && crystalSlotClose(remote.slotSig, slotSig)) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
+            // 同樣場次加成、賽季加成卡沒換：直接用之前算過的（不用再算一次）
+            { const lib = await crystalBuffLibGet(raid); const e = lib && lib.players && lib.players[p.player_code];
+              if (e && e.ver === CRYSTAL_DATA_VER && crystalSlotClose(e.slotSig, slotSig)) { crystalUpRes[key] = { ...e, fromBuff: lib.buffLabel || true, seq: raid.seq, buffs: raid.buffs || [] }; renderCrystalReco(); return; } }
             try {
                 const P = await raidSimLoad();
                 const cands = await raidSimCandidateDecks(null, true);
@@ -12920,7 +12933,7 @@
                 // 每隻王每個狀態：照建議放法挑中的 6 組（給人對照看邏輯）
                 const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, v, x]) => [d.cards, Math.round(v / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
                 const res = { ver: CRYSTAL_DATA_VER, uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
-                crystalUpRes[key] = res; kvSet(kvKey, res);
+                crystalUpRes[key] = res; kvSet(kvKey, res); crystalBuffLibPut(raid, p.player_code, res);
             } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
             renderCrystalReco();
         }
@@ -12990,6 +13003,28 @@
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
         const CRYSTAL_DATA_VER = 11;
+        /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
+           之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
+        const crystalBuffKey = (raid) => 'crystalbuff_' + ((raid.buffs || []).map(b => b[0] + '_' + Math.round((Number(b[1]) || 0) * 100)).sort().join('-') || 'none');
+        const crystalSeasonSig = () => { let s = {}; try { s = raidSimSeasonBonus() || {}; } catch (e) {} return Object.keys(s).sort().map(k => k + s[k]).join(','); };
+        const crystalBuffMem = {};
+        async function crystalBuffLibGet(raid) {
+            const k = crystalBuffKey(raid);
+            if (!(k in crystalBuffMem)) crystalBuffMem[k] = await kvGet(k);
+            const lib = crystalBuffMem[k];
+            return lib && lib.season === crystalSeasonSig() ? lib : null;
+        }
+        async function crystalBuffLibPut(raid, code, res) {
+            const k = crystalBuffKey(raid), season = crystalSeasonSig();
+            const entry = { ver: res.ver, uses: res.uses, picks: res.picks, slotSig: res.slotSig, gain: res.gain, gainCur: res.gainCur, lvl: res.lvl, seed: res.seed };
+            for (let t = 0; t < 4; t++) {   // 很多人同時存：伺服器同一個名稱 2 秒只收一次，失敗就等一下再合併重存
+                let lib = await kvGet(k); if (!lib || lib.season !== season) lib = { season, players: {} };
+                lib.players[code] = entry; lib.buffLabel = (raid.buffs || []).map(b => b[0]).join('、');
+                crystalBuffMem[k] = lib;
+                try { const r = await fetch(kvUrl(k), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: lib }) }); if (r.ok) return; } catch (e) {}
+                await new Promise(r => setTimeout(r, 2500 + Math.random() * 2000));
+            }
+        }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -13000,11 +13035,10 @@
             // 水晶是把卡片「本身的等級」拉到水晶等級，賽季加成另外加在上面（攻擊紀錄驗證：實際等級＝max(卡片, 水晶)＋賽季加成），
             // 所以能提升幾級＝水晶等級 − 卡片本身等級，不能先扣賽季加成；模擬用的等級才加賽季加成（不含水晶）
             const own = {}, simLv = {}; (p.cards || []).forEach(c => { own[c.skill_name] = Number(c.level) || 0; simLv[c.skill_name] = own[c.skill_name] + (season[c.skill_name] || 0); });
-            const boosted = p.boosted_cards || [], plan = {};
+            const plan = {}, slotsOf = crystalSlotsOf(p);
             Object.keys(CRYSTAL_CAT).forEach(cat => {
-                const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
-                if (!cur.length) return;
-                const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
+                const so = slotsOf[cat]; if (!so) return;
+                const cur = so.cur, L = so.L, slots = so.n;   // 空著沒放卡的格子也算進去（例如 gkair 一張都沒放）
                 const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
                     const gain = Math.max(0, L - own[id]);
                     const nxt = upUses ? (upUses[id] || 0) : 0;
@@ -13040,36 +13074,52 @@
         /* 水晶插槽有沒有少（遊戲說明：強化槽只看卡片總等級）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
            已知門檻（遊戲畫面＋公會確認）：支援第 4 格 2000、打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
         const CRYSTAL_SLOT_AT = { Support: { 4: 2000, 5: 3500 }, Burst: { 4: 2400 }, Affliction: { 4: 2800 } };
+        // 加水晶插槽的三套：鐵殼守衛（爆裂 +1）、深海豎琴演奏家（苦痛 +1）、林地笛翾（支援 +1）。
+        // 官方資料只有英文代號，還沒對上是哪一個：junjin 缺 SoloRaid、Scorpion、Runestone 剛好三類各少 1 格，先當成這三個（每個 +1 格，哪一類還不知道）
+        const CRYSTAL_SLOT_SETS = { SoloRaid: 1, Scorpion: 1, Runestone: 1 };
+        const CRYSTAL_SLOT_SET_NAMES = '鐵殼守衛（爆裂）、深海豎琴演奏家（苦痛）、林地笛翾（支援）';
         function crystalSlotCheck(p, players) {
             // 卡片總等級 1000 才開放突襲水晶：還沒到的不標
             if ((Number(p.total_card_level) || 0) < 1000) return { miss: {}, n: 0, sets: [] };
             const has = players.filter(x => (x.boosted_cards || []).length);
             const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
             const lv = Number(p.total_card_level) || 0, miss = {};
+            // 套裝加格子：沒做的套裝每一類少幾格（公會資料推的：沒做 Scorpion 的三十不含頭、junjin 每類都剛好少 1 格）
+            const setLack = (x) => { const own = new Set(x.equipment_set || []); return Object.entries(CRYSTAL_SLOT_SETS).filter(([k]) => !own.has(k)); };
+            const lackN = (x) => setLack(x).reduce((t, [, n]) => t + n, 0);
+            // 套裝做齊的人當基準（比他卡片總等級低、套裝做齊的人最多幾格）
+            const full = has.filter(x => !lackN(x) && (Number(x.total_card_level) || 0) <= lv);
             Object.keys(CRYSTAL_CAT).forEach(c => { const known = Math.max(0, ...Object.entries(CRYSTAL_SLOT_AT[c] || {}).filter(([, t]) => lv >= t).map(([n]) => +n));
-                const exp = Math.max(known, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
-            // 遊戲說明：強化槽只看卡片總等級（跟套裝無關），所以不再看套裝
-            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
+                const exp = Math.max(known, ...full.map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
+            const k = lackN(p);
+            if (!k) return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
+            // 有套裝沒做：少的格子先扣掉沒做的套裝（分不出是哪一類），剩下的才算空著沒放卡
+            const total = Object.values(miss).reduce((a, b) => a + b, 0);
+            return { miss: {}, n: Math.max(0, total - k), sets: [`${k} 套加插槽的裝備沒做（${CRYSTAL_SLOT_SET_NAMES} 其中 ${k} 套）`], lackSlots: k };
         }
         function crystalSlotWarn(p, players) {
             const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';
-            return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `缺套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
+            return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `沒做套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
         }
         /* 牌組頁：選玩家（或搜尋名字）→ 從他的卡挑 3 張 → 照現在的王、部位狀態、禁打、詛咒、加成跑傷害（他的卡片等級、水晶、賽季加成） */
-        let deckSimPlayer = null, deckSimCards = [], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;
-        function deckSimPick(code) { deckSimPlayer = code; deckSimCards = []; deckSimRes = null; renderDeckSim(); }
+        let deckSimPlayer = null, deckSimCards = [null, null, null], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;
+        const deckSimSel = () => deckSimCards.filter(Boolean);   // 選了的卡（格子固定位置，空格是 null）
+        // 換人：牌組不清，直接用同一組牌算這個人的傷害（方便比較不同人）
+        function deckSimPick(code) { deckSimPlayer = code; deckSimRes = null; renderDeckSim().then(() => { if (deckSimSel().length === 3) deckSimRun(); }); }
         function deckSimToggle(id) {
+            // 格子位置固定：拿掉的那格空著，其他卡不往前移；新選的放進第一個空格
             const i = deckSimCards.indexOf(id);
-            if (i >= 0) deckSimCards.splice(i, 1); else if (deckSimCards.length < 3) deckSimCards.push(id);
+            if (i >= 0) deckSimCards[i] = null; else { const j = deckSimCards.indexOf(null); if (j >= 0) deckSimCards[j] = id; }
             deckSimRes = null; renderDeckSim();
         }
         function deckSimSearch(q) {
             const k = String(q || '').trim().toLowerCase(); if (!k || !raidClanData) return;
             const hit = [...raidClanData.byCode.values()].map(v => v.raw).find(p => p && p.name && raidShortName(p.name).toLowerCase().includes(k));
-            if (hit && hit.player_code !== deckSimPlayer) { deckSimPlayer = hit.player_code; deckSimCards = []; deckSimRes = null; renderDeckSim(true); }
+            if (hit && hit.player_code !== deckSimPlayer) { deckSimPlayer = hit.player_code; deckSimRes = null; renderDeckSim(true).then(() => { if (deckSimSel().length === 3) deckSimRun(); }); }
         }
         async function deckSimRun() {
-            if (deckSimBusy || deckSimCards.length !== 3 || !raidState || !raidState.parts) return;
+            if (deckSimBusy || deckSimSel().length !== 3 || !raidState || !raidState.parts) return;
+            const cards3 = deckSimSel();
             deckSimBusy = true; deckSimRes = { busy: true }; renderDeckSim();
             try {
                 const P = await raidSimLoad(); await raidSimLoadDeckList();
@@ -13077,19 +13127,20 @@
                 const v = raidClanData.byCode.get(deckSimPlayer);
                 const me = raidSimPlayerNow(v, env);
                 const scene = {}; Object.keys(env.board).forEach(k => { const b = env.board[k]; scene[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
-                const { hitParts } = raidSimPartFns(scene);
-                const hp = hitParts(deckSimCards);
-                if (!hp.length) { deckSimRes = { err: '這 3 張卡在現在的部位狀態打不到同一個部位（部位限制或層別限制）' }; return; }
+                // 牌組頁：只保留卡片的部位限制（例如錘子只打頭、肚）；推薦用的條件（詛咒甲只給撼地破甲／毀了雨、帶刺的晨星）不套
+                const { hitParts } = raidSimPartFns(scene, true);
+                const hp = hitParts(cards3);
+                if (!hp.length) { deckSimRes = { err: '這 3 張卡現在打不到同一個部位（卡片部位限制）' }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
-                plans = raidSimPlansFor(deckSimCards, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
+                plans = raidSimPlansFor(cards3, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
                 if (!plans.length) { deckSimRes = { err: '這組打不到選的部位' }; return; }
                 await new Promise(r => setTimeout(r, 0));
-                const r = raidSimFinal(P, env, me, raidSimScreen(P, env, me, deckSimCards, plans));
+                const r = raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards3, plans));
                 // 每張卡各打多少（跟遊戲的攻擊數據一樣分開列）：同一個打法再跑 100 次取平均
-                const bd = RaidSim.simMean({ ...raidSimBase(env, me, deckSimCards), targets: r.tg, seed: 7 }, 100, P);
+                const bd = RaidSim.simMean({ ...raidSimBase(env, me, cards3), targets: r.tg, seed: 7 }, 100, P);
                 const sc = bd.total > 0 ? Math.min(1, r.avg / bd.total) : 1;   // 部位剩的血不夠打完時，照比例縮
-                deckSimRes = { avg: r.avg, lo: r.lo, hi: r.hi, tg: r.tg || [], lv: deckSimCards.map(c => me.lv[c] || 0), tap: bd.tap * sc, by: deckSimCards.map(c => (bd.by[c] || 0) * sc), boss: raidState.bossName, mirror: env.mirror,
+                deckSimRes = { avg: r.avg, lo: r.lo, hi: r.hi, tg: r.tg || [], cards: cards3, lv: cards3.map(c => me.lv[c] || 0), tap: bd.tap * sc, by: cards3.map(c => (bd.by[c] || 0) * sc), boss: raidState.bossName, mirror: env.mirror,
                     info: { rl: v.raw.player_raid_level, morale: env.morale, buff: env.buff, curse: env.curse, cap: r.raw > r.avg } };
             } catch (e) { deckSimRes = { err: '計算失敗：' + (e && e.message || e) }; }
             finally { deckSimBusy = false; renderDeckSim(); }
@@ -13111,7 +13162,7 @@
             if (!crystalSkills) { try { crystalSkills = await (await fetch('raid-sim/skills.json?v=1')).json(); } catch (e) { crystalSkills = {}; } }
             const groups = Object.keys(CRYSTAL_CAT).map(cat => [cat, owned.filter(id => (crystalSkills[id] || {}).cat === cat).sort((a, b) => lvOf(b) - lvOf(a))]);
             const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };
-            const cell = (id) => { const on = deckSimCards.includes(id); return `<div onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})" title="${escapeHtml(raidCardLabel(id))}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && deckSimCards.length >= 3 ? 0.45 : 1};">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:100%; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #2e7d32; outline-offset:-1px;' : ''}">` : ''}<div style="font-size:9.5px; color:#4a3728; white-space:nowrap; letter-spacing:-0.3px; margin:0 -2px;">${escapeHtml(raidCardLabel(id))}<span style="color:#b8a890;">丨</span><b>${lvOf(id)}</b></div></div>`; };
+            const cell = (id) => { const on = deckSimCards.includes(id); return `<div onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})" title="${escapeHtml(raidCardLabel(id))}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && deckSimSel().length >= 3 ? 0.45 : 1};">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:100%; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #2e7d32; outline-offset:-1px;' : ''}">` : ''}<div style="font-size:9.5px; color:#4a3728; white-space:nowrap; letter-spacing:-0.3px; margin:0 -2px;">${escapeHtml(raidCardLabel(id))}<span style="color:#b8a890;">丨</span><b>${lvOf(id)}</b></div></div>`; };
             const grid = groups.filter(([, ids]) => ids.length).map(([cat, ids]) => `<div style="margin-top:6px; padding:5px; background:${col[cat]}; border-radius:9px;"><div style="font-size:11.5px; font-weight:800; color:#4a3728; margin-bottom:3px;">${CRYSTAL_CAT[cat]}</div><div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;">${ids.map(cell).join('')}</div></div>`).join('');
             const slots = [0, 1, 2].map(i => { const id = deckSimCards[i]; return `<div ${id ? `onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})"` : ''} style="flex:1; text-align:center; cursor:${id ? 'pointer' : 'default'};">${id && raidCardImage(id) ? `<img src="${raidCardImage(id)}" style="width:54px; height:54px; border-radius:9px; display:block; margin:0 auto;">` : `<div style="width:54px; height:54px; border-radius:9px; margin:0 auto; border:2px dashed #d8cbb5;"></div>`}<div style="font-size:11px; font-weight:700; color:#4a3728; margin-top:2px;">${id ? escapeHtml(raidCardLabel(id)) : '　'}</div></div>`; }).join('');
             const parts = env ? env.open : [];
@@ -13126,17 +13177,32 @@
                     <div style="text-align:center; font-size:11.5px; color:#8a7a6a;">一半的刀落在 ${formatNumAlwaysM(r.lo)}～${formatNumAlwaysM(r.hi)}${r.info.cap ? '｜打到部位沒血為止' : ''}</div>
                     <div style="display:grid; grid-template-columns:1fr auto; gap:3px 10px; margin-top:8px; font-size:12.5px; color:#4a3728;">
                         <span>點擊</span><b style="text-align:right;">${formatNumAlwaysM(r.tap)}</b>
-                        ${deckSimCards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${formatNumAlwaysM(r.by[i])}</b>`).join('')}
+                        ${r.cards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${formatNumAlwaysM(r.by[i])}</b>`).join('')}
                     </div>
                     <div style="font-size:10.5px; color:#8a7a6a; margin-top:6px; text-align:center;">突襲等級 ${escapeHtml(String(r.info.rl || '—'))}｜士氣 ${Math.round((r.info.morale || 0) * 100)}%｜加成 ${escapeHtml(Object.entries(r.info.buff || {}).map(([k, x]) => ({ burstDamage: '爆裂傷害', burstChance: '爆裂機會', affDamage: '苦痛傷害', affChance: '苦痛機會', all: '全傷害', supportEffect: '支援' })[k] + ' +' + Math.round(x * 100) + '%').join('、') || '無')}${r.info.curse ? `｜詛咒 ${({ Burst: '爆裂', Afflicted: '苦痛', Body: '肉體' })[r.info.curse.type]} −${Math.round(r.info.curse.per * 100)}%／個` : ''}</div>
                 </div>`;
             box.innerHTML = `<div style="display:flex; gap:6px; align-items:center;">${sel}${search}</div>
                 <div style="display:flex; gap:6px; margin:10px 0 6px; padding:8px; background:#fff; border:1px solid #eadfcc; border-radius:12px;">${slots}</div>
-                <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin-bottom:8px;">${tgSel}<button onclick="deckSimRun()" ${deckSimCards.length === 3 && env ? '' : 'disabled'} style="font:inherit; font-size:15px; font-weight:900; padding:8px 22px; border:none; border-radius:10px; background:${deckSimCards.length === 3 && env ? '#8b263e' : '#cbbfae'}; color:#fff; cursor:pointer;">跑傷害</button></div>
+                <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin-bottom:8px;">${tgSel}<button onclick="deckSimRun()" ${deckSimSel().length === 3 && env ? '' : 'disabled'} style="font:inherit; font-size:15px; font-weight:900; padding:8px 22px; border:none; border-radius:10px; background:${deckSimSel().length === 3 && env ? '#8b263e' : '#cbbfae'}; color:#fff; cursor:pointer;">跑傷害</button></div>
                 ${result}
                 <div style="font-size:10.5px; color:#a89a88; margin-top:6px;">點卡片選 3 張（再點一次取消）。照現在的王、部位狀態、禁打、詛咒、場次加成，用他這場實際的卡片等級（含水晶、賽季加成）模擬。</div>
                 ${grid}`;
             if (keepSearch) { const q = document.getElementById('decksim-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+        }
+        /* 每一類水晶有幾格、幾級：有放卡的照資料；格子比卡片總等級該有的少（空著沒放），補上空格。
+           水晶等級＝這一類卡片裡第 6 高的等級（全公會 134 欄全部吻合），空格也用這個 */
+        function crystalSlotsOf(p) {
+            const players = raidClanData ? [...raidClanData.byCode.values()].map(v => v.raw).filter(Boolean) : [];
+            const chk = players.length ? crystalSlotCheck(p, players) : { miss: {} };
+            const out = {};
+            Object.keys(CRYSTAL_CAT).forEach(cat => {
+                const cur = (p.boosted_cards || []).filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
+                const n = cur.length + ((chk.miss || {})[cat] || 0);
+                if (!n) return;
+                const lv6 = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat).map(c => Number(c.level) || 0).sort((a, b) => b - a)[5] || 0;
+                out[cat] = { cur, n, L: cur.length ? Math.max(...cur.map(b => Number(b.boost_level) || 0)) : lv6 };
+            });
+            return out;
         }
         let crystalAllQ = '';
         function crystalAllFilter(q) {   // 只藏行、不重畫（打字時輸入框不會跳掉）
@@ -13154,6 +13220,8 @@
                 const need = list.filter(p => !(crystalUpRes[keyOf(p)] && crystalUpRes[keyOf(p)].uses));
                 const got = await kvGetMany(need.map(p => crystalKvKey(crystalLevel, p.player_code, sig)));
                 need.forEach(p => { const r = got[crystalKvKey(crystalLevel, p.player_code, sig)]; if (r && r.uses && r.ver === CRYSTAL_DATA_VER && seed && r.seed === seed.valid_from) crystalUpRes[keyOf(p)] = r; });
+                const lib = await crystalBuffLibGet(upRaid);   // 這一關還沒算的：同樣場次加成算過的先拿來用
+                if (lib) need.forEach(p => { const e = lib.players && lib.players[p.player_code]; if (!crystalUpRes[keyOf(p)] && e && e.ver === CRYSTAL_DATA_VER) crystalUpRes[keyOf(p)] = { ...e, fromBuff: true }; });
             }
             const maxSlots = {}; list.forEach(p => (p.boosted_cards || []).forEach(b => { const k = b.category; maxSlots[k] = Math.max(maxSlots[k] || 0, list.length && (p.boosted_cards || []).filter(x => x.category === k).length); }));
             const fmt = (arr) => arr.map(x => escapeHtml(raidCardLabel(x))).join('、');
@@ -13164,8 +13232,8 @@
                 const { plan } = crystalPlanOf(p, up && up.uses ? up : null, logs, sessions);
                 const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.ins.filter(y => !(y.dmg != null && y.dmg < 0.1)).length : 0), 0) : 0;   // 只算真正有差的（換上去的卡貢獻 ≥ 0.1%）
                 const open = crystalAllOpen.has(p.player_code);
-                const badge = !(p.boosted_cards || []).length ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
-                const none = !(p.boosted_cards || []).length;
+                const none = !Object.keys(crystalSlotsOf(p)).length;
+                const badge = none ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
                 const detail = none ? '' : !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
                     : crystalAllRow(plan, maxSlots);
                 return [none ? 99 : ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
@@ -13212,6 +13280,7 @@
                 const status = waiting ? `<span style="color:#8a7a6a;">計算下一場中…</span>`
                     : !pick.length ? `<span style="color:#8a7a6a;">沒有適合的卡</span>`
                     : outs.length ? `<span style="color:#c0392b;">${outs.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>${ins.length ? `<span style="color:#2e7d32;"> → ${ins.map(x => escapeHtml(raidCardLabel(x.id))).join('、')}</span>` : ''}`
+                    : ins.length ? `<span style="color:#2e7d32;">空格放 ${ins.map(x => escapeHtml(raidCardLabel(x.id))).join('、')}</span>`
                     : `<span style="color:#2e7d32;">不用換</span>`;
                 // 精簡版：一欄只有一排圖示（綠框＝換上），換掉的寫在標題列，一個畫面看得完三欄
                 const grid = (n) => `display:grid; grid-template-columns:repeat(${Math.max(n, 3)}, 1fr); gap:4px;`;
@@ -13234,17 +13303,17 @@
             const tabs = `<div style="display:flex; gap:4px; padding:3px; background:#e3ecf8; border-radius:11px; margin-bottom:8px;">${tabBtn('me', '個人')}${tabBtn('all', '全公會')}</div>`;
             if (crystalTab === 'all') { await renderCrystalAll(box, players, logs, sessions, upRaid, tabs + lvSel); return; }
             const deckBox = up && up.decks ? `<details style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; padding:8px 10px;"><summary style="font-size:13px; font-weight:800; color:#4a3728; cursor:pointer;">看模擬用的牌組（每隻王、每個狀態最強 6 組）</summary>${up.decks.map(c => `<div style="margin-top:8px;"><div style="font-size:12px; font-weight:800; color:#6b5a4a;">${escapeHtml(c.n)}・${escapeHtml(c.label)}</div>${c.d.map(([cards, b, g]) => `<div style="display:flex; align-items:center; gap:4px; margin-top:3px;">${cards.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" style="width:26px; height:26px; border-radius:5px; ${up.picks && Object.values(up.picks).some(a => a.some(x => x.id === id)) ? 'outline:2px solid #2e7d32; outline-offset:-1px;' : ''}">` : '').join('')}<span style="flex:1; font-size:11px; color:#4a3728; margin-left:4px;">${cards.map(id => escapeHtml(raidCardLabel(id))).join('、')}</span><span style="font-size:11px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${b}B${g > 0 ? ` <span style="color:#2e7d32;">+${g}%</span>` : ''}</span></div>`).join('')}</div>`).join('')}<div style="font-size:10.5px; color:#a89a88; margin-top:6px;">綠框＝建議放水晶的卡；+% ＝這組因為水晶升級多打的</div></details>` : '';
-            const gainLine = up && up.picks ? `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span></div>` : '';
+            const gainLine = up && up.picks ? (up.fromBuff ? `<div style="font-size:10.5px; color:#8a7a6a; text-align:center; margin-top:4px;">沿用同樣場次加成算過的結果</div>` : '') + `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span></div>` : '';
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}`;
             box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
                 <div style="font-size:10px; color:#a89a88; margin-top:4px;">綠框＝換上｜半透明＝沒差｜%＝拿掉這張整場少打多少</div>`;
         }
         const RAID_CURSE_BREAKERS = new Set(['Fragmentize', 'RuinousRust']);   // 撼地破甲、毀了雨
-        function raidSimPartFns(scene) {
+        function raidSimPartFns(scene, loose) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
-            const hitParts = (cards) => attackable.filter(k => (scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = (cards) => attackable.filter(k => (loose || scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
@@ -13313,7 +13382,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r7|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r10|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13674,17 +13743,38 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=8'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=6').then(r => r.json())]);
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=11'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=7').then(r => r.json())]);
                 RaidSim.init(sk);
-                return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) } };
+                return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
             })();
             raidSimReady.catch(() => { raidSimReady = null; });
-            return raidSimReady;
+            return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
+        }
+        /* 推薦牌組校正（只在網頁，不動伺服器）：最近幾場的攻擊紀錄，同一組牌實際 ÷ 應打（伺服器模擬）的中位數，
+           打過 10 刀以上、差 3% 以上的牌組，把差距乘進模擬的整組修正（deckK）。網頁模擬跟伺服器同一套，所以中位數就是網頁模擬要補的量。
+           每 10 分鐘重算一次；模擬工作會把 P 一起送進 Web Worker，所以 Worker 也會用到 */
+        let raidDeckCalAt = 0, raidDeckCalBase = null, raidDeckCal = {};
+        function raidDeckCalApply(P) {
+            if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };
+            if (Date.now() - raidDeckCalAt > 10 * 60 * 1000) {
+                const g = {};
+                const sess = (serverSessionsSummary || []).slice(0, 3);
+                sess.forEach((se, i) => {
+                    const list = i === 0 ? (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []) : (sessionAttacksCache.get(se.startedAt) || []);
+                    list.forEach(a => { if (!a || a.placeholder || !a.cards || a.cards.length !== 3 || a.cards.some(c => c.name === 'MagicPotion')) return; const e = raidSimExpMap.get(raidSimExpKey(a)); if (!e || !(e.exp > 0) || !(a.totalDamage > 0)) return;
+                        const k = a.cards.map(c => c.name).sort().join('+'); (g[k] = g[k] || []).push(a.totalDamage / e.exp); });
+                });
+                const out = {};
+                Object.entries(g).forEach(([k, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) out[k] = Math.max(0.85, Math.min(1.15, m)); });
+                raidDeckCal = out; if (Object.keys(g).length) raidDeckCalAt = Date.now();
+            }
+            const dk = { ...raidDeckCalBase }; Object.entries(raidDeckCal).forEach(([k, f]) => { dk[k] = (dk[k] || 1) * f; });
+            P.deckK = dk;
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
-        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);
+        const RAID_SIM_EXCLUDE = new Set(['Haymaker']);   // 天體靜態 11/12 修正機制後模擬準了（每下點擊都充能），加回推薦
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
         function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
@@ -13898,7 +13988,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=8');
+                    const w = new Worker('raid-sim/simworker.js?v=11');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

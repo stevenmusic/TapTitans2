@@ -13196,10 +13196,10 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
             const env = await raidSimEnv();
-            const me = raidSimPlayer(v, env.morale, env.season);
+            const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env)]);
+            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13276,8 +13276,8 @@
             if (!rows || !rows.length || !v || !raidState || !raidState.parts) return;
             let P; try { P = await raidSimLoad(); } catch (e) { return; }
             const env = await raidSimEnv();
-            const me = raidSimPlayer(v, env.morale, env.season);
-            const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.season, raidHpBuckets(env)]);
+            const me = raidSimPlayerNow(v, env);
+            const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);
             for (let i = 0; i < rows.length; i++) {
                 if (raidLogRecoRows.get(name) !== rows) return;   // 推薦換了：外面會再補一次新的
                 box = raidLogRecoBox(name) || box;   // 算的途中畫面可能重畫過（框換了一個新的），每次都抓目前畫面上的
@@ -13646,6 +13646,20 @@
         function raidHpBuckets(env) {
             if (!raidState || !raidState.parts) return '';
             return RAID_PARTS.map(({ key }) => { const pt = raidState.parts[key] || {}; const max = (Number(pt.armorMax) || 0) + (Number(pt.bodyMax) || 0); const cur = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return max > 0 ? Math.ceil(cur / max * 10) : 0; }).join('');
+        }
+        /* 推薦用的玩家：帳號資料每 12 小時才更新一次，開打前剛換的水晶可能還沒進來；
+           這場他已經出過刀的卡，攻擊紀錄上的等級就是這場實際的等級（水晶＋賽季加成，水晶整場固定），直接用；沒用過的卡照帳號資料 */
+        function raidSimPlayerNow(v, env) {
+            const me = raidSimPlayer(v, env.morale, env.season);
+            const code = v && v.raw && v.raw.player_code, latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            if (!code) return me;
+            const seen = {};
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => {
+                if (!a || a.placeholder || a.playerCode !== code || (latest && a.raidStartedAt && a.raidStartedAt !== latest) || !a.cards || a.cards.some(c => c.name === 'MagicPotion')) return;
+                a.cards.forEach(c => { const l = Number(c.level) || 0; if (l > (seen[c.name] || 0)) seen[c.name] = l; });
+            });
+            Object.entries(seen).forEach(([c, l]) => { if (me.lv[c]) me.lv[c] = l; });
+            return me;
         }
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();

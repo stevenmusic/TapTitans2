@@ -8670,7 +8670,7 @@
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
         // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
-        function quizCardUsable(card, scene, onlyPart, ignoreParts) {
+        function quizCardUsable(card, scene, onlyPart, ignoreParts, loose) {   // loose：牌組頁自己挑卡，不套推薦用的「只在某些情況才用」（例如帶刺的晨星）
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]) && (!onlyPart || k === onlyPart));
@@ -8685,7 +8685,7 @@
             const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
             const parts = ignoreParts ? null : quizPartGroups(card);   // ignoreParts：模擬器推薦用，部位加成交給模擬器算，不當成限制
             let onlyLayerName = null;
-            if (card === 'BarbedMorningstar') {
+            if (card === 'BarbedMorningstar' && !loose) {
                 const l = CARD_ONLY_WHEN.BarbedMorningstar({ armor: n.armor + n.cursed + n.banned, body: n.body, skeleton: n.skeleton });
                 if (!l) return { ok: false, why: '只有在盔甲或肉體其中一種只剩 1～2 個部位時才能用' };
                 onlyLayerName = l === 'armor' ? '盔甲' : '肉體';
@@ -13121,7 +13121,7 @@
                 const v = raidClanData.byCode.get(deckSimPlayer);
                 const me = raidSimPlayerNow(v, env);
                 const scene = {}; Object.keys(env.board).forEach(k => { const b = env.board[k]; scene[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
-                const { hitParts } = raidSimPartFns(scene);
+                const { hitParts } = raidSimPartFns(scene, true);   // 自己挑的牌：只看卡片本身能打什麼部位、層別
                 const hp = hitParts(deckSimCards);
                 if (!hp.length) { deckSimRes = { err: '這 3 張卡在現在的部位狀態打不到同一個部位（部位限制或層別限制）' }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
@@ -13303,10 +13303,10 @@
                 <div style="font-size:10px; color:#a89a88; margin-top:4px;">綠框＝換上｜半透明＝沒差｜%＝拿掉這張整場少打多少</div>`;
         }
         const RAID_CURSE_BREAKERS = new Set(['Fragmentize', 'RuinousRust']);   // 撼地破甲、毀了雨
-        function raidSimPartFns(scene) {
+        function raidSimPartFns(scene, loose) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
-            const hitParts = (cards) => attackable.filter(k => (scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = (cards) => attackable.filter(k => (scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }

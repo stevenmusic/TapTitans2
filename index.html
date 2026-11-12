@@ -13807,7 +13807,8 @@
                         const k = a.cards.map(c => c.name).sort().join('+'); (g[k] = g[k] || []).push(a.totalDamage / e.exp); });
                 });
                 const out = {};
-                Object.entries(g).forEach(([k, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) out[k] = Math.max(0.85, Math.min(1.15, m)); });
+                Object.entries(g).forEach(([k, x]) => { if (x.length < 10 || /CelestialStatic/.test(k) || (/Haymaker/.test(k) && /TotemFairySkill/.test(k))) return;   // 天體靜態、宇宙激光＋圖騰之力：模擬器本身已經照攻擊紀錄修正（伺服器應打是舊的），不要再重複校正
+                x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) out[k] = Math.max(0.85, Math.min(1.15, m)); });
                 raidDeckCal = out; if (Object.keys(g).length) raidDeckCalAt = Date.now();
             }
             const dk = { ...raidDeckCalBase }; Object.entries(raidDeckCal).forEach(([k, f]) => { dk[k] = (dk[k] || 1) * f; });

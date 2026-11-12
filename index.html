@@ -12787,7 +12787,7 @@
             const key = `${lvl}|${p.player_code}|${banSig}`;
             if (crystalUpRes[key] && (crystalUpRes[key].busy || crystalUpRes[key].uses)) return;
             if (!raid) { crystalUpRes[key] = { busy: `seed 裡沒有 M-${lvl}` }; return; }
-            const slotInfo = {}; (p.boosted_cards || []).forEach(b => { const c = slotInfo[b.category] || (slotInfo[b.category] = { L: 0, n: 0 }); c.L = Math.max(c.L, Number(b.boost_level) || 0); c.n++; });
+            const slotInfo = {}; Object.entries(crystalSlotsOf(p)).forEach(([c, x]) => { slotInfo[c] = { L: x.L, n: x.n }; });   // 含空著沒放卡的格子
             const slotSig = Object.keys(slotInfo).sort().map(c => `${c}${slotInfo[c].n}x${slotInfo[c].L}`).join(',');
             const kvKey = crystalKvKey(lvl, p.player_code, banSig);
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
@@ -13025,11 +13025,10 @@
             // 水晶是把卡片「本身的等級」拉到水晶等級，賽季加成另外加在上面（攻擊紀錄驗證：實際等級＝max(卡片, 水晶)＋賽季加成），
             // 所以能提升幾級＝水晶等級 − 卡片本身等級，不能先扣賽季加成；模擬用的等級才加賽季加成（不含水晶）
             const own = {}, simLv = {}; (p.cards || []).forEach(c => { own[c.skill_name] = Number(c.level) || 0; simLv[c.skill_name] = own[c.skill_name] + (season[c.skill_name] || 0); });
-            const boosted = p.boosted_cards || [], plan = {};
+            const plan = {}, slotsOf = crystalSlotsOf(p);
             Object.keys(CRYSTAL_CAT).forEach(cat => {
-                const cur = boosted.filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
-                if (!cur.length) return;
-                const L = Math.max(...cur.map(b => Number(b.boost_level) || 0)), slots = cur.length;
+                const so = slotsOf[cat]; if (!so) return;
+                const cur = so.cur, L = so.L, slots = so.n;   // 空著沒放卡的格子也算進去（例如 gkair 一張都沒放）
                 const cands = Object.keys(crystalSkills).filter(id => crystalSkills[id].cat === cat && own[id] > 0 && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id)).map(id => {
                     const gain = Math.max(0, L - own[id]);
                     const nxt = upUses ? (upUses[id] || 0) : 0;
@@ -13163,6 +13162,21 @@
                 ${grid}`;
             if (keepSearch) { const q = document.getElementById('decksim-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
         }
+        /* 每一類水晶有幾格、幾級：有放卡的照資料；格子比卡片總等級該有的少（空著沒放），補上空格。
+           水晶等級＝這一類卡片裡第 6 高的等級（全公會 134 欄全部吻合），空格也用這個 */
+        function crystalSlotsOf(p) {
+            const players = raidClanData ? [...raidClanData.byCode.values()].map(v => v.raw).filter(Boolean) : [];
+            const chk = players.length ? crystalSlotCheck(p, players) : { miss: {} };
+            const out = {};
+            Object.keys(CRYSTAL_CAT).forEach(cat => {
+                const cur = (p.boosted_cards || []).filter(b => b.category === cat).sort((a, b) => a.slot_number - b.slot_number);
+                const n = cur.length + ((chk.miss || {})[cat] || 0);
+                if (!n) return;
+                const lv6 = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat).map(c => Number(c.level) || 0).sort((a, b) => b - a)[5] || 0;
+                out[cat] = { cur, n, L: cur.length ? Math.max(...cur.map(b => Number(b.boost_level) || 0)) : lv6 };
+            });
+            return out;
+        }
         let crystalAllQ = '';
         function crystalAllFilter(q) {   // 只藏行、不重畫（打字時輸入框不會跳掉）
             crystalAllQ = q; const k = String(q || '').trim().toLowerCase();
@@ -13191,8 +13205,8 @@
                 const { plan } = crystalPlanOf(p, up && up.uses ? up : null, logs, sessions);
                 const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.ins.filter(y => !(y.dmg != null && y.dmg < 0.1)).length : 0), 0) : 0;   // 只算真正有差的（換上去的卡貢獻 ≥ 0.1%）
                 const open = crystalAllOpen.has(p.player_code);
-                const badge = !(p.boosted_cards || []).length ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
-                const none = !(p.boosted_cards || []).length;
+                const none = !Object.keys(crystalSlotsOf(p)).length;
+                const badge = none ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
                 const detail = none ? '' : !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
                     : crystalAllRow(plan, maxSlots);
                 return [none ? 99 : ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
@@ -13239,6 +13253,7 @@
                 const status = waiting ? `<span style="color:#8a7a6a;">計算下一場中…</span>`
                     : !pick.length ? `<span style="color:#8a7a6a;">沒有適合的卡</span>`
                     : outs.length ? `<span style="color:#c0392b;">${outs.map(b => escapeHtml(raidCardLabel(b.skill_name))).join('、')}</span>${ins.length ? `<span style="color:#2e7d32;"> → ${ins.map(x => escapeHtml(raidCardLabel(x.id))).join('、')}</span>` : ''}`
+                    : ins.length ? `<span style="color:#2e7d32;">空格放 ${ins.map(x => escapeHtml(raidCardLabel(x.id))).join('、')}</span>`
                     : `<span style="color:#2e7d32;">不用換</span>`;
                 // 精簡版：一欄只有一排圖示（綠框＝換上），換掉的寫在標題列，一個畫面看得完三欄
                 const grid = (n) => `display:grid; grid-template-columns:repeat(${Math.max(n, 3)}, 1fr); gap:4px;`;

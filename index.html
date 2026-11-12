@@ -8162,6 +8162,7 @@
             try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
         const raidPrevLoadTried = new Set();
+        let raidRatioScale = { play: 1, pick: 1 };   // 打法、配卡這場用的校正（中位數）
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
             setTimeout(raidSimPickAuto, 0);
@@ -8244,6 +8245,13 @@
                 const overallLow = overallRatio != null && attacks.length >= 6 && overallRatio < RAID_LOG_OVERALL_LOW;   // 出刀 6 次以上才標偏低
                 return { player: playerName, attackCount: attacks.length + missed.reduce((n, m) => n + m.missedCount, 0), totalDamage: totalDamage + missEst, missEst, attacks: shown, hasLowAttack, raidLevel, expectedAvg, overallRatio, overallLow, playRatio, pickInfo, identity, missedCount: missed.reduce((n, m) => n + m.missedCount, 0) };
             });
+            // 權重校正（不用重算）：這一場模擬整體偏低／偏高時，打法、配卡用全公會的中位數校正，讓中位數＝100%。
+            // 只往下校（中位數超過 100% 才除），出刀 3 次以上的人才算進中位數，至少 8 人才校正
+            { const med = (arr) => { const x = arr.filter(v => v > 0).sort((a, b) => a - b); return x.length >= 8 ? x[Math.floor(x.length / 2)] : 1; };
+              const base = ranked.filter(r => r.attackCount >= 3);
+              const fP = Math.max(1, med(base.map(r => r.playRatio))), fK = Math.max(1, med(base.map(r => r.pickInfo && r.pickInfo.ratio)));
+              ranked.forEach(r => { if (r.playRatio != null) r.playRatio /= fP; if (r.pickInfo && r.pickInfo.ratio != null) r.pickInfo = { ...r.pickInfo, ratio: r.pickInfo.ratio / fK }; });
+              raidRatioScale = { play: fP, pick: fK }; }
             ranked.sort((a, b) => b.totalDamage - a.totalDamage); // 總傷害高到低排行
             // 還沒出刀的成員（官方公會名單）：排在最後，按「推薦」看該用什麼牌、應打多少（只在看最新一場時列）
             const latestSa = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;

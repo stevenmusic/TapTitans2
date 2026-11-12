@@ -6735,6 +6735,9 @@
            ══════════════════════════════════════════════════════════ */
         const RAID_FULL_LOG_BACKUP_KEY = 'tt2_raid_full_attack_log_backup';
         let serverAttackLogCache = []; // 目前「預設場次」（通常是最新一場）的攻擊紀錄
+        /* 伺服器記錯等級的場次（新一場開打時還沿用上一場的等級）：照 seed 的王順序和加成確認過的正確等級，只改顯示 */
+        const RAID_SESSION_LEVEL_FIX = { '2026-11-12T02:30:20Z': 46 };
+        function raidFixSessionLevels(list) { return list.map(x => x && RAID_SESSION_LEVEL_FIX[x.startedAt] ? { ...x, levelTier: RAID_SESSION_LEVEL_FIX[x.startedAt] } : x); }
         let serverSessionsSummary = []; // 伺服器算好的場次清單（含每場筆數、時間範圍），新到舊排序，不含逐筆攻擊內容
         let serverAllPlayersCache = []; // 所有場次出現過的玩家名字（給漏打名單的「全部成員名單」用，需要時才抓）
         let serverAllPlayersAt = 0;
@@ -6800,7 +6803,7 @@
             ]);
             if (summaryResp.ok) {
                 const data = await summaryResp.json();
-                if (Array.isArray(data.sessions)) serverSessionsSummary = data.sessions;
+                if (Array.isArray(data.sessions)) serverSessionsSummary = raidFixSessionLevels(data.sessions);
                 renderSharedSessionMenu();
             }
             if (logResp.ok) {
@@ -6834,9 +6837,31 @@
             const st = parseRaidSessionTs(startedAt);
             return st ? Math.max(1, Math.floor((Date.now() - st) / CARD_USAGE_ROUND_MS) + 1) : 0;
         }
+        let raidSeedOpeningFor = null;
+        async function raidSeedOpening(cb, silent) {
+            if (raidSeedOpeningFor === cb.raidStartedAt && raidState) return;
+            const lv = RAID_SESSION_LEVEL_FIX[cb.raidStartedAt] || ((serverSessionsSummary || []).find(x => x.startedAt === cb.raidStartedAt) || {}).levelTier;
+            if (!lv) return;
+            const sd = await ticketSeedFetch().catch(() => null);
+            const raid = sd && sd.raids.find(r => r.t === 9999 && r.l === lv);
+            const t = raid && raid.titans.find(x => x.n === raid.seq[0]);
+            if (!t || apiHasReceivedAttack) return;
+            raidSeedOpeningFor = cb.raidStartedAt;
+            const parts = {};
+            Object.keys(t.p).forEach(k => { const e = t.p[k]; parts[k] = { armor: e[1], armorMax: e[0], body: e[2], bodyMax: e[2], cursed: !!e[3] }; });
+            if (Array.isArray(cb.titanTarget) && cb.titanTarget.length) apiTitanTarget = cb.titanTarget;
+            apiCurrentEnemyId = RAID_ENEMY_INDEX[t.n] ? 'Enemy' + RAID_ENEMY_INDEX[t.n] : null; raidBossOrdinal = 1; apiBossTotal = raid.seq.length;
+            raidState = { bossIndex: RAID_BOSS_NAMES.indexOf(t.n), bossName: t.n, bossOrdinal: 1, parts, maxHp: t.k, currentHp: t.k, killMaxHp: t.k, updatedAt: Date.now(), fromSeed: true };
+            if (!raidBannedFromTarget()) restoreBannedPartsCache();
+            updateCurseInfo();
+            if (!silent) renderRaidStatus();
+            if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
+        }
         function applyCurrentBossPayload(cb, silent) {
             if (cb && !cb.preview && 'raidStartedAt' in cb) raidLiveInfo = { startedAt: cb.raidStartedAt || null, ended: !!cb.raidEnded };
             if (raidSimActive) return;
+            // 剛開打還沒人出刀：伺服器還沒有王的部位血量，先用 seed 的第一隻王（開場狀態）顯示，推薦按鈕才按得到；第一刀進來就換成即時資料
+            if (cb && !cb.preview && cb.raidStartedAt && !cb.raidEnded && !cb.hasReceivedAttack && !apiHasReceivedAttack) { raidSeedOpening(cb, silent); return; }
             if (!cb || !cb.hasReceivedAttack || !cb.parts || Object.keys(cb.parts).length === 0) return;
             // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
             // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
@@ -7385,7 +7410,7 @@
             const startToLevel = new Map(); // raidStartedAt -> levelTier
             log.forEach(a => {
                 if (a.raidStartedAt && !startToLevel.has(a.raidStartedAt)) {
-                    startToLevel.set(a.raidStartedAt, a.raidLevelTier);
+                    startToLevel.set(a.raidStartedAt, RAID_SESSION_LEVEL_FIX[a.raidStartedAt] || a.raidLevelTier);
                 }
             });
             const rawStarts = [...startToLevel.keys()].sort((a, b) => parseRaidSessionTs(a) - parseRaidSessionTs(b));
@@ -7708,7 +7733,7 @@
                 const c = raidCurseSeeds.get(sa);
                 if (!c || c === 'loading') return;
                 const se = (serverSessionsSummary || []).find(x => x.startedAt === sa) || {};
-                const lv = list[0].raidLevelTier || se.levelTier;
+                const lv = RAID_SESSION_LEVEL_FIX[sa] || list[0].raidLevelTier || se.levelTier;
                 const raid = c.seed.raids.find(r => r.t === 9999 && r.l === lv);
                 if (!raid) return;
                 const sh = TICKET_SHARE_BY_BUFF[se.buffType] || TICKET_SHARE_AVG;
@@ -8141,7 +8166,7 @@
             if (keywordLower) {
                 identities = identities.filter(id => latestByIdentity.get(id).name.toLowerCase().includes(keywordLower));
             }
-            if (identities.length === 0) return [];
+            // 沒人出刀（剛開打 0 筆）也不要直接回空的：下面還要把公會成員列成「尚未出刀」，才按得到推薦
 
             const ranked = identities.map(identity => {
                 const attacks = attacksByIdentity.get(identity).slice().sort((a, b) => b.ts - a.ts); // 最新的排前面
@@ -15422,7 +15447,7 @@
                     const resp = await fetch(`${relayUrl}/raid-sessions-summary`);
                     if (resp.ok) {
                         const data = await resp.json();
-                        if (Array.isArray(data.sessions)) serverSessionsSummary = data.sessions;
+                        if (Array.isArray(data.sessions)) serverSessionsSummary = raidFixSessionLevels(data.sessions);
                     }
                 } catch (e) { /* 連不上就先不顯示，打開功能時會再抓 */ }
             }

@@ -160,7 +160,6 @@ function simAttack(opt, P = P0) {
       if (id === 'Fragmentize' && layer === 'armor') m = board[loc].cursed ? 1.5 * 1.25 : 1.5;
       if (id === 'BarbedMorningstar') m = layer === 'armor' ? 1 + 0.15 * Math.min(5, nBody) : 1 + 0.15 * Math.min(5, nArmor);
       if (id === 'MirrorForce') m = 1 + (opt.mirror || 0);
-      if (id === 'Haymaker' && has.has('TotemFairySkill')) m *= has.has('AstralEcho') ? (P.hmTotemAstral || 1) : (P.hmTotem || 1);   // 宇宙激光＋圖騰之力：爆炸前接觸到的精靈會加傷害（加星體迴聲更多），攻擊紀錄 M-44、M-46 全部有這兩張的刀擬合
       if (id === 'BurstCount') m = 1 + 0.04 * burstCount;
       if (id === 'ChainLightning') { const n = Math.min(6, new Set(hitHistory).size || 1); m = Math.pow(1.027, n - 1); }
       if (id === 'Purify') { let n = 0; for (const c in stacks[loc]) { n += liveCount(loc, c, t); stacks[loc][c] = []; } m = 1 + n; }
@@ -229,7 +228,7 @@ function simAttack(opt, P = P0) {
     // 瘟疫＋瘋狂無效：部位剛好 6 個（能打的全部是肉體、不多不少）就是最高傷害，原本的修正（肉體 6 個以上 0.91）在這時偏低
     // （攻擊紀錄：肉體 6、能打的也只有 6 個：5 刀中位 1.08，Steven 11/12 重打兩次都約 1.09）
     const nOpen = LOCS.filter(x => board[x] && (board[x].layer === 'armor' || board[x].layer === 'body')).length;
-    const f = (P.pcK[nb] || 1) * (nb >= 6 && nOpen === 6 ? 1.08 : 1);
+    const f = (P.pcK[nb] || 1) * (nb >= 6 && nOpen === 6 ? (P.pc6 ?? 1.08) : 1);
     out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f;
   }
   // 整組修正：攻擊紀錄驗證過固定偏高／偏低的組合（至少 2 人、4 刀，偏差 7% 以上）

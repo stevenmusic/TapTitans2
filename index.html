@@ -13104,7 +13104,7 @@
             let env = null; try { if (raidState && raidState.parts) env = await raidSimEnv(); } catch (e) {}
             const me = p && env ? raidSimPlayerNow(v, env) : null;
             const lvOf = (id) => me ? (me.lv[id] || 0) : raidSimBaseLevel(p || {}, id);
-            const owned = p ? (p.cards || []).map(c => c.skill_name).filter(id => lvOf(id) > 0 && !RAID_SIM_EXCLUDE.has(id)) : [];
+            const owned = p ? (p.cards || []).map(c => c.skill_name).filter(id => lvOf(id) > 0) : [];   // 牌組頁自己挑卡：全部的卡都列（天體靜態、宇宙激光只是推薦不用，這裡照樣能模擬）
             if (!crystalSkills) { try { crystalSkills = await (await fetch('raid-sim/skills.json?v=1')).json(); } catch (e) { crystalSkills = {}; } }
             const groups = Object.keys(CRYSTAL_CAT).map(cat => [cat, owned.filter(id => (crystalSkills[id] || {}).cat === cat).sort((a, b) => lvOf(b) - lvOf(a))]);
             const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };

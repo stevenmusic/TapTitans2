@@ -12963,12 +12963,14 @@
         }
         // 全公會一覽（像攻擊紀錄）：每個人一行，點開看每一欄換掉→換上；用伺服器上算好的下一場
         /* 水晶插槽有沒有少（遊戲說明：強化槽只看卡片總等級）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
-           已知門檻（遊戲畫面）：打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
+           已知門檻（遊戲畫面＋公會確認）：支援第 4 格 2000、打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
+        const CRYSTAL_SLOT_AT = { Support: { 4: 2000, 5: 3500 }, Burst: { 4: 2400 }, Affliction: { 4: 2800 } };
         function crystalSlotCheck(p, players) {
             const has = players.filter(x => (x.boosted_cards || []).length);
             const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
             const lv = Number(p.total_card_level) || 0, miss = {};
-            Object.keys(CRYSTAL_CAT).forEach(c => { const exp = Math.max(0, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
+            Object.keys(CRYSTAL_CAT).forEach(c => { const known = Math.max(0, ...Object.entries(CRYSTAL_SLOT_AT[c] || {}).filter(([, t]) => lv >= t).map(([n]) => +n));
+                const exp = Math.max(known, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
             // 遊戲說明：強化槽只看卡片總等級（跟套裝無關），所以不再看套裝
             return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
         }

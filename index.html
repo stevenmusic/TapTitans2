@@ -12780,7 +12780,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h22', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h23', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13429,7 +13429,7 @@
                 if (!best) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
                 if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; o.reFinal = true; }   // 換了部位：之後在新部位重新精算
-                const c = best.a.tg.reduce((t, k) => t + (left[k] || 0), 0); o.cap = c;   // 顯示：算到部位扣掉前面幾組之後真正剩下的血為止
+                const c = capOf(best.a.tg, best.est); o.cap = c;   // 顯示：每個部位各自算到扣掉前面幾組之後剩下的血為止（傷害平均分到各部位，血少的部位吃不下的不算）
                 o.avg = Math.min(best.est, c); if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
                 const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); });
             });
@@ -13443,7 +13443,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r23|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r24|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -14103,7 +14103,7 @@
                 }
             }
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
-            const nTop = Math.min(quick.length, topN || Math.max(24, n * 4));   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
+            const nTop = Math.min(quick.length, topN || Math.max(40, n * 6));   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o, runs: lite ? 100 : undefined })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {
@@ -14136,6 +14136,11 @@
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;
             const used = new Set(), cur = [];
+            // 傷害效率：6 組合計，每個部位最多只算到它剩下的血（好幾組打同一個快沒血的部位，多的打不出來）
+            const left = env && env.hp ? { ...env.hp } : null;
+            const take = (o) => { if (!left) return { g: val(o), d: null }; const tg = o.tg && o.tg.length ? o.tg : []; const per = (o.raw || o.avg || 0) * raidSimDeckFactor(o.cards) / Math.max(1, tg.length); let g = 0; const d = {};
+                tg.forEach(k => { const u = Math.min(per, left[k] || 0); g += u; d[k] = u; left[k] = (left[k] || 0) - u; }); return { g, d }; };
+            const untake = (t) => { if (t.d) Object.entries(t.d).forEach(([k, u]) => { left[k] += u; }); };
             const dfs = (i, sum) => {
                 if (++steps > 2e6) return;
                 if (cur.length > best.length || (cur.length === best.length && sum > bestSum)) { best = cur.slice(); bestSum = sum; }
@@ -14144,9 +14149,9 @@
                     const o = pool[j];
                     if (best.length === n && sum + (n - cur.length) * val(o) <= bestSum) return;
                     if (o.cards.some(c => used.has(c))) continue;
-                    o.cards.forEach(c => used.add(c)); cur.push(o);
-                    dfs(j + 1, sum + val(o));
-                    cur.pop(); o.cards.forEach(c => used.delete(c));
+                    o.cards.forEach(c => used.add(c)); cur.push(o); const tk = take(o);
+                    dfs(j + 1, sum + tk.g);
+                    untake(tk); cur.pop(); o.cards.forEach(c => used.delete(c));
                 }
             };
             // 挑中的組如果只快速篩過（8 次，可能剛好偏高）：補跑 200 次再重新搜尋，直到挑中的都是精算過的
@@ -14160,8 +14165,8 @@
                     let fb = [], fs = -1;
                     pool.filter(o => o.cards.includes(RAID_MIRROR_CARD)).slice(0, 5).forEach(m => {
                         best = []; bestSum = -1; steps = 0; used.clear(); cur.length = 0;
-                        m.cards.forEach(c => used.add(c)); cur.push(m);
-                        dfs(0, val(m));
+                        m.cards.forEach(c => used.add(c)); cur.push(m); const tm = take(m);
+                        dfs(0, tm.g); untake(tm);
                         if (best.length > fb.length || (best.length === fb.length && bestSum > fs)) { fb = best.slice(); fs = bestSum; }
                     });
                     used.clear(); cur.length = 0; best = fb; bestSum = fs;

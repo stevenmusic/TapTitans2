@@ -203,7 +203,7 @@ function simAttack(opt, P = P0) {
           continue;
         }
         if (!live.length || id === 'PowerBubble' && false) continue;
-        // 暴食蜂擁、強酸侵蝕跟淨化爆裂同組：攻擊紀錄實際比模擬高（M-44、M-46：暴食蜂擁 15 刀 1.65 倍、強酸侵蝕 36 刀 1.45 倍），照紀錄校正（P.purifyAffK）
+        // 暴食蜂擁、強酸侵蝕跟淨化爆裂同組：攻擊紀錄實際比模擬高（M-44、M-46：暴食蜂擁 33 刀 1.29 倍、強酸侵蝕 38 刀 1.47 倍；試過降低觸發、部分保留、清掉時結算都不符合），照紀錄校正（P.purifyAffK）
         const lv = effLv(id, t, l);
         let m = 1;
         if (id === 'Shadow') m = Math.pow(1.2, live.length);

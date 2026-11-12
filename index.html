@@ -12509,6 +12509,20 @@
         // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）
         const raidLogRecoOpen = new Set((raidLogUiLoaded && raidLogUiLoaded.recos) || []);
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
+        // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
+        const raidRecoProg = new Map();   // 名字 → { target, shown, timer }
+        function raidRecoProgSet(name, t) {
+            const m = /(\d+)%/.exec(String(t || '')); const v = m ? Math.min(99, Number(m[1])) : 0;
+            let g = raidRecoProg.get(name);
+            if (!g) { g = { target: 0, shown: 0, timer: null }; raidRecoProg.set(name, g); }
+            g.target = Math.max(g.target, v);
+            if (!g.timer) g.timer = setInterval(() => {
+                if (g.shown < g.target) g.shown++;
+                const bx = raidLogRecoBox(name);
+                if (bx && !raidLogRecoHtml.get(name)) { const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; if (bx.innerHTML !== html) bx.innerHTML = html; }
+            }, 50);
+        }
+        function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); }
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
@@ -12544,7 +12558,7 @@
             let box = raidLogRecoBox(r.player);
             if (!box) return;
             box.style.display = 'block';
-            box.innerHTML = raidLogRecoHtml.get(r.player) || '<div style="font-size:12px; color:#8a7a6a;">計算中…</div>';
+            box.innerHTML = raidLogRecoHtml.get(r.player) || (raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
             if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
@@ -12602,7 +12616,7 @@
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
                     const simFns = raidSimPartFns(scene);
-                    const simPick = await raidSimPlayerPick(r.player, info, data, simFns.playable, simFns.hitParts, (t) => { const bx = raidLogRecoBox(r.player); if (bx && !raidLogRecoHtml.get(r.player)) bx.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; });
+                    let simPick; try { simPick = await raidSimPlayerPick(r.player, info, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t)); } finally { raidRecoProgDone(r.player); }
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         html = head + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');

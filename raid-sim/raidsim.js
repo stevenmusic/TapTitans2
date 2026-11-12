@@ -6,7 +6,8 @@ const isHead = (l) => l === 'Head', isTorso = (l) => l === 'ChestUpper';
 const isLimb = (l) => !isHead(l) && !isTorso(l);
 const isArm = (l) => /^Arm|^Hand/.test(l), isLeg = (l) => /^Leg/.test(l);
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
-function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+// 亂數：種子先打散（xorshift 直接吃 1000、1001… 這種連號的小數字，前面幾百個數字會偏，整批結果差到 5%）
+function rng(seed) { let s = seed >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = (s ^ (s >>> 16)) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
 const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, cbSands1: 0.68, cbSands4: 1.85, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, burstJitter: 0.9, k: {} };

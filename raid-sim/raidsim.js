@@ -145,7 +145,9 @@ function simAttack(opt, P = P0) {
       if (id === 'Haymaker') { if (!bonus || P.haymakerBonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
       else if (id === 'CelestialStatic') { charge = Math.min(100, charge + 1); if (charge >= 8) { charge -= 8; fire = true; } }   // 每下點擊 +1 充能（不分部位），滿 8 放一次（攻擊紀錄：只打肚子、頭也有約 100M，舊的「只有四肢充能」會算成 0）
       else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : P.whipOpen ? Math.max(afflictedParts(t), LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton').length) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
-      else if (P.burstJitter != null && !bonus) {   // 觸發比較平均（類似保底）：累積機率，超過門檻才觸發，門檻在 1±jitter 之間隨機
+      // P.burstRandom（淨化爆裂）：真正隨機觸發（每下獨立機率）。規律觸發時苦痛平均只活半個間隔就被清掉，隨機觸發（無記憶性）平均活一整個間隔——
+      // 攻擊紀錄：強酸侵蝕 1.47→0.99、暴食蜂擁 1.66→1.21（再加係數）、淨化爆裂本身不變，不用補丁
+      else if (P.burstJitter != null && !bonus && !(P.burstRandom || []).includes(id)) {   // 觸發比較平均（類似保底）：累積機率，超過門檻才觸發，門檻在 1±jitter 之間隨機
         acc[id] = (acc[id] || 0) + s.ch * burstChanceMult;
         if (thr[id] == null) thr[id] = 1 + P.burstJitter * (2 * R() - 1) - R();   // 第一次的門檻：起點隨機
         if (acc[id] >= thr[id]) { acc[id] -= thr[id]; thr[id] = 1 + P.burstJitter * (2 * R() - 1); fire = true; }
@@ -203,7 +205,6 @@ function simAttack(opt, P = P0) {
           continue;
         }
         if (!live.length || id === 'PowerBubble' && false) continue;
-        // 暴食蜂擁、強酸侵蝕跟淨化爆裂同組：攻擊紀錄實際比模擬高（M-44、M-46：暴食蜂擁 33 刀 1.29 倍、強酸侵蝕 38 刀 1.47 倍；試過降低觸發、部分保留、清掉時結算都不符合），照紀錄校正（P.purifyAffK）
         const lv = effLv(id, t, l);
         let m = 1;
         if (id === 'Shadow') m = Math.pow(1.2, live.length);
@@ -217,7 +218,7 @@ function simAttack(opt, P = P0) {
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
         if (id === 'Disease') dmg = live.length * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = live.length;
-        out.by[id] += P.aff * (P.k[id] || 1) * (P.purifyAffK && has.has('Purify') ? (P.purifyAffK[id] || 1) : 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
+        out.by[id] += P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
       }
     }
   }

@@ -12762,7 +12762,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h15', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h16', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13428,7 +13428,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r15|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r16|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -14100,7 +14100,7 @@
         async function raidSimPickPool(P, env, me, pool, n) {
             // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
             // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位
-            const bud = env && env.hp && n > 1 ? raidSimBudgets(env, pool.map(o => o.raw || o.avg || 0).sort((a, b) => b - a).slice(0, n).reduce((t, x) => t + x, 0)) : null;
+            const bud = null;   // 不照部位份額壓低價值：只看每組最好打法的傷害（已算到部位剩的血為止）。用份額時剩的組數一少，打小部位的高傷害組會被換成低的
             const budVal = (o) => {
                 if (!bud) return o.avg;
                 const raw0 = o.raw || o.avg;

@@ -7931,7 +7931,8 @@
         }
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
-        const RAID_SIM_PICK_VER = 11;   // 11：詛咒甲只給撼地破甲、毀了雨的牌組打
+        const RAID_SIM_PICK_VER = 12;   // 12：新版推薦邏輯（不為部位平衡犧牲傷害）＋新版模擬校正
+        const RAID_WEB_EXP_VER = 'c19';   // 網頁重算的應打存到伺服器的版本（模擬校正 calibration 改版就要跟著改）   // 11：詛咒甲只給撼地破甲、毀了雨的牌組打
           // 10：剛開打時賽季加成沿用上一場（之前變成沒加成，分母偏低）
           // 9：6 組一定要有一組帶鏡子力
           // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
@@ -7973,6 +7974,8 @@
                 await new Promise(r => setTimeout(r, 1500));
                 if (kvKey) {   // 先拿伺服器上別人算好的
                     const remote = await kvGet(kvKey); let added = 0;
+                    // 別人算好的新版應打（每一刀的 e）：直接用，不用自己重算
+                    if (remote && typeof remote === 'object') Object.entries(remote).forEach(([k, v]) => { if (v && v.e > 0 && v.ev === RAID_WEB_EXP_VER && !(raidCsExpMem.get(k) > 0)) raidCsExpMem.set(k, v.e); });
                     if (remote && typeof remote === 'object') Object.entries(remote).forEach(([k, v]) => { const cur = raidSimPickStore[k]; if (v && v.v > 0 && v.ver === RAID_SIM_PICK_VER && (!cur || cur.ver !== RAID_SIM_PICK_VER)) { raidSimPickStore[k] = v; added++; } });
                     if (added) { raidSimPickSave(); if (raidLogPanelShown()) renderRaidLogQueryResult(); }
                 }
@@ -7996,7 +7999,7 @@
                 if (kvKey && doneCount() > before) {   // 有新算好的：跟伺服器上的合併後存回去
                     const remote = (await kvGet(kvKey)) || {};
                     const out = (remote && typeof remote === 'object') ? remote : {};
-                    sessKeys().forEach(k => { const v = raidSimPickStore[k]; if (v && v.ver === RAID_SIM_PICK_VER) out[k] = v; });
+                    sessKeys().forEach(k => { const v = raidSimPickStore[k], e = raidCsExpMem.get(k); if (v && v.ver === RAID_SIM_PICK_VER) out[k] = { ...v, ...(e > 0 ? { e: Math.round(e), ev: RAID_WEB_EXP_VER } : out[k] && out[k].ev === RAID_WEB_EXP_VER ? { e: out[k].e, ev: out[k].ev } : {}) }; });
                     kvSet(kvKey, out);
                 }
             } finally { raidSimPickAutoBusy = false; }

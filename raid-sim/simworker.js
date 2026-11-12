@@ -18,7 +18,9 @@ function final(P, base, o, n) {
   for (let k = 0; k < (n || FINAL_RUNS); k++) runs.push(RaidSim.simAttack({ ...base, targets: o.tg, seed: 1000 + k }, P).total);
   runs.sort((x, y) => x - y);
   const c = o.cap > 0 ? o.cap : Infinity, raw = runs.reduce((x, y) => x + y, 0) / runs.length;
-  return { ...o, raw, avg: Math.min(raw, c), lo: Math.min(runs[Math.floor(runs.length * 0.25)], c), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c), final: true };
+  // 範圍（一半的刀落在哪）：模擬的亂數比實際大（攻擊紀錄：同一組牌實際 ÷ 應打，一半的刀在 ±2～7% 內），最多顯示到 ±8%
+  const av = Math.min(raw, c), W = 0.08;
+  return { ...o, raw, avg: av, lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
 }
 // 配卡用：每種打法各跑 1 次挑最好的（不超過部位剩下的血）
 function quickPick(P, base, plans, caps) {

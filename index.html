@@ -12688,7 +12688,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v6_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v7_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -13311,7 +13311,7 @@
             if (!n) return [];
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v6_${code}` : null;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v7_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
@@ -13865,7 +13865,9 @@
             for (let k = 0; k < RAID_SIM_FINAL_RUNS; k++) runs.push(RaidSim.simAttack({ ...base, targets: o.tg, seed: 1000 + k }, P).total);
             runs.sort((x, y) => x - y);
             const c = o.cap > 0 ? o.cap : Infinity, raw = runs.reduce((x, y) => x + y, 0) / runs.length;
-            return { ...o, raw, avg: Math.min(raw, c), lo: Math.min(runs[Math.floor(runs.length * 0.25)], c), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c), final: true };
+            // 範圍（一半的刀落在哪）：模擬的亂數比實際大（攻擊紀錄：同一組牌實際 ÷ 應打，一半的刀在 ±2～7% 內），最多顯示到 ±8%
+            const av = Math.min(raw, c), W = 0.08;
+            return { ...o, raw, avg: av, lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
@@ -13883,7 +13885,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=7');
+                    const w = new Worker('raid-sim/simworker.js?v=8');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

@@ -158,6 +158,7 @@ function simAttack(opt, P = P0) {
       if (id === 'Fragmentize' && layer === 'armor') m = board[loc].cursed ? 1.5 * 1.25 : 1.5;
       if (id === 'BarbedMorningstar') m = layer === 'armor' ? 1 + 0.15 * Math.min(5, nBody) : 1 + 0.15 * Math.min(5, nArmor);
       if (id === 'MirrorForce') m = 1 + (opt.mirror || 0);
+      if (id === 'Haymaker' && has.has('TotemFairySkill')) m *= has.has('AstralEcho') ? (P.hmTotemAstral || 1) : (P.hmTotem || 1);   // 宇宙激光＋圖騰之力：爆炸前接觸到的精靈會加傷害（加星體迴聲更多），攻擊紀錄 M-46 擬合
       if (id === 'BurstCount') m = 1 + 0.04 * burstCount;
       if (id === 'ChainLightning') { const n = Math.min(6, new Set(hitHistory).size || 1); m = Math.pow(1.027, n - 1); }
       if (id === 'Purify') { let n = 0; for (const c in stacks[loc]) { n += liveCount(loc, c, t); stacks[loc][c] = []; } m = 1 + n; }

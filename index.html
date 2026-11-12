@@ -8251,7 +8251,7 @@
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
                     // 天體靜態：伺服器的應打還是舊模擬（只點四肢才充能，例如 Krolowv 那刀算成 +415%），改用網頁的新模擬重算這一刀（算好前先不顯示）
-                    const csAtk = (a.cards || []).some(c => c.name === 'CelestialStatic');
+                    const csAtk = (a.cards || []).some(c => c.name === 'CelestialStatic') || ((a.cards || []).some(c => c.name === 'Haymaker') && (a.cards || []).some(c => c.name === 'TotemFairySkill'));   // 宇宙激光＋圖騰之力：伺服器還是舊模擬，也改網頁重算
                     a.simExp = sx && sx.exp ? (csAtk ? raidCsExp(a, sx) : raidSimExpFix(a, sx)) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
@@ -13782,8 +13782,8 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=11'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=7').then(r => r.json())]);
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=12'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=8').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
             })();
@@ -14027,7 +14027,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=11');
+                    const w = new Worker('raid-sim/simworker.js?v=12');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

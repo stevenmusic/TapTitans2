@@ -13656,7 +13656,9 @@
         async function cardLevelsShow(name) {
             try { localStorage.setItem(CARDLV_ME_KEY, name); } catch (e) {}
             { const sel = document.getElementById('cardlv-sel'); if (sel && sel.value !== name) sel.value = name; }
-            const lv = (allCardLevels && allCardLevels[name]) || {};
+            const lv = { ...((allCardLevels && allCardLevels[name]) || {}) };
+            // 攻擊紀錄只看得到他用過的卡：沒用過的卡用官方帳號資料補上（卡片等級和水晶取高的＋賽季加成），全部卡都列
+            try { if (!raidClanData) await raidLoadClanData(); const acct0 = raidAccountInfo(name); if (acct0 && acct0.raw) { let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {} (acct0.raw.cards || []).forEach(c => { if (lv[c.skill_name] == null) { const b = raidSimBaseLevel(acct0.raw, c.skill_name); if (b > 0) lv[c.skill_name] = b + (season[c.skill_name] || 0); } }); } } catch (e) {}
             const med = guildCardMedians();
             document.getElementById('cardlv-name').textContent = name;
             const body = document.getElementById('cardlv-body');

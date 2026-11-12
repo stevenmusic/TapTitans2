@@ -2685,9 +2685,9 @@
         }
         @keyframes spin360 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .is-spinning { animation: spin360 0.7s linear infinite; }
-        .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-        .raid-recent-time { font-size: 12px; font-weight: 600; color: #8a6f68; line-height: 1.1; }
-        .raid-recent-name { font-size: 14px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .raid-recent-player { font-weight: 800; color: #4a2020; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0; }
+        .raid-recent-time { font-size: 12px; font-weight: 600; color: #8a6f68; line-height: 1.05; }
+        .raid-recent-name { font-size: 14px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .raid-recent-part { flex-shrink: 0; min-width: 62px; text-align: right; color: #757575; white-space: nowrap; margin-right: 4px; }
         /* 層別標籤：用深淺＋外框樣式區分（不只靠顏色），色盲也分得出來 */
         .raid-recent-part { color: #3e2f22 !important; font-weight: 700; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
@@ -12432,7 +12432,7 @@
                 const isExpanded = raidLogExpandedPlayers.has(r.player);
                 return `
                 <div style="position:relative; border:1px solid ${r.hasLowAttack ? '#e8b4ae' : 'var(--tt-line)'}; border-radius:10px; overflow:hidden; box-shadow:var(--tt-shadow);">
-                    <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:9px 8px 9px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
+                    <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:5px 8px 5px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span class="rl-name" title="${escapeHtml(r.player)}" style="display:flex; align-items:center; font-size:14px; font-weight:800; color:#4a3a2a; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; flex-shrink:0; color:#857a6b; font-weight:700;">${rIdx + 1}</span><span style="overflow:hidden; text-overflow:ellipsis; min-width:0;">${escapeHtml(raidShortName(r.player))}</span>${r.missedCount ? `<span title="伺服器漏收 ${r.missedCount} 刀（傷害已依部位血量估算算進總傷害）" style="flex-shrink:0; margin-left:4px; padding:0 4px; border-radius:5px; background:#fbe6e3; color:#c0392b; font-size:12px; font-weight:800; line-height:1.5;">漏${r.missedCount}</span>` : ''}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
                             ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:12px; border-radius:6px; padding:2px 8px; min-width:5.2em; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}
@@ -14707,7 +14707,7 @@
             if (activeIdx >= SHARED_SESSION_RECENT_COUNT) sharedSessionMenuShowOlder = true; // 選到的在收合區時自動展開
             const row = (x, i) => {
                 const isActive = i === activeIdx;
-                return `<div style="display:flex; gap:6px; align-items:stretch;"><button onclick="selectSharedSession(${i})" style="flex:1; min-width:0; text-align:left; padding:8px 12px; border-radius:10px; border:1px solid ${isActive ? '#8b263e' : 'var(--tt-line)'}; background:${isActive ? '#8b263e' : '#fff'}; box-shadow:${isActive ? 'none' : 'var(--tt-shadow)'}; color:${isActive ? '#fff' : '#4a3728'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆）</button><button class="tt-btn2" onclick="saveSessionReportImage(${i})" title="把這一場的戰報存成圖片" style="flex:0 0 auto; padding:0 14px; border-radius:10px; font-size:13px; white-space:nowrap;">戰報</button></div>`;
+                return `<div style="display:flex; gap:6px; align-items:stretch;"><button onclick="selectSharedSession(${i})" style="flex:1; min-width:0; text-align:left; padding:5px 12px; border-radius:10px; border:1px solid ${isActive ? '#8b263e' : 'var(--tt-line)'}; background:${isActive ? '#8b263e' : '#fff'}; box-shadow:${isActive ? 'none' : 'var(--tt-shadow)'}; color:${isActive ? '#fff' : '#4a3728'}; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer;">${escapeHtml(formatSessionLabelShort(x))}丨（${x.attackCount != null ? x.attackCount : (x.attacks || []).length} 筆）</button><button class="tt-btn2" onclick="saveSessionReportImage(${i})" title="把這一場的戰報存成圖片" style="flex:0 0 auto; padding:0 14px; border-radius:10px; font-size:13px; white-space:nowrap;">戰報</button></div>`;
             };
             const recent = sessions.slice(0, SHARED_SESSION_RECENT_COUNT).map((x, i) => row(x, i)).join('');
             const olderList = sessions.slice(SHARED_SESSION_RECENT_COUNT);

@@ -13382,7 +13382,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r10|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r11|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13774,7 +13774,7 @@
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
-        const RAID_SIM_EXCLUDE = new Set(['Haymaker']);   // 天體靜態 11/12 修正機制後模擬準了（每下點擊都充能），加回推薦
+        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 推薦不用天體靜態、宇宙激光（模擬已經準了，牌組頁照樣能算）
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
         function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }

@@ -13121,9 +13121,9 @@
                 const v = raidClanData.byCode.get(deckSimPlayer);
                 const me = raidSimPlayerNow(v, env);
                 const scene = {}; Object.keys(env.board).forEach(k => { const b = env.board[k]; scene[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
-                const { hitParts } = raidSimPartFns(scene, true);   // 自己挑的牌：只看卡片本身能打什麼部位、層別
-                const hp = hitParts(deckSimCards);
-                if (!hp.length) { deckSimRes = { err: '這 3 張卡在現在的部位狀態打不到同一個部位（部位限制或層別限制）' }; return; }
+                // 牌組頁單純算傷害：不套推薦用的任何限制（部位限制、詛咒甲只給撼地破甲／毀了雨、帶刺的晨星條件都不管），能打的部位都可以打，卡片效果交給模擬器
+                const hp = env.open.slice();
+                if (!hp.length) { deckSimRes = { err: '現在沒有可以打的部位' }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
                 plans = raidSimPlansFor(deckSimCards, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));

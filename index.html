@@ -8217,7 +8217,9 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    a.simExp = sx && sx.exp ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    // 天體靜態模擬不準（例如 Krolowv 天體靜態那刀算成 +415%）：不顯示應打、不算進打法 %（宇宙激光攻擊紀錄驗證過是準的，照常）
+                    const unreliable = (a.cards || []).some(c => c.name === 'CelestialStatic');
+                    a.simExp = sx && sx.exp && !unreliable ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;

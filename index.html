@@ -8162,6 +8162,33 @@
             try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
         const raidPrevLoadTried = new Set();
+        const raidCsExpMem = new Map(); let raidCsExpBusy = false;
+        function raidCsExp(a, sx) {
+            const k = raidSimExpKey(a);
+            if (raidCsExpMem.has(k)) return raidCsExpMem.get(k);
+            raidCsExpMem.set(k, null);
+            (async () => {
+                while (raidCsExpBusy) await new Promise(r => setTimeout(r, 200));
+                raidCsExpBusy = true;
+                try {
+                    const P = await raidSimLoad(), env0 = await raidSimEnv();
+                    if (!bossHpSnapshot || !bossHpSnapshot.raid) { raidCsExpMem.delete(k); return; }   // 場次加成、門票還沒載好：先不算（不然少算爆裂傷害加成），下次重畫再算
+                    const v = raidClanData && raidClanData.byCode.get(a.playerCode); if (!v || !sx.b) return;
+                    const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+                    const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+                    if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
+                    const env = { ...env0, board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const me = raidSimPlayer(v, env0.morale, {}, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
+                    a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成）
+                    await new Promise(r => setTimeout(r, 0));
+                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: sx.tg, seed: 11 }, 60, P);
+                    raidCsExpMem.set(k, r.total > 0 ? r.total : null);
+                    if (r.total > 0 && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
+                } catch (e) {} finally { raidCsExpBusy = false; }
+            })();
+            return null;
+        }
         let raidRatioScale = { play: 1, pick: 1 };   // 打法、配卡這場用的校正（中位數）
         function buildRaidLogRanking(keyword) {
             raidSimExpLoad();
@@ -8217,9 +8244,9 @@
                 let simAct = 0, simExp = 0, simN = 0;
                 attacks.forEach(a => {
                     const sx = raidSimExpMap.get(raidSimExpKey(a));
-                    // 天體靜態模擬不準（例如 Krolowv 天體靜態那刀算成 +415%）：不顯示應打、不算進打法 %（宇宙激光攻擊紀錄驗證過是準的，照常）
-                    const unreliable = (a.cards || []).some(c => c.name === 'CelestialStatic');
-                    a.simExp = sx && sx.exp && !unreliable ? raidSimExpFix(a, sx) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    // 天體靜態：伺服器的應打還是舊模擬（只點四肢才充能，例如 Krolowv 那刀算成 +415%），改用網頁的新模擬重算這一刀（算好前先不顯示）
+                    const csAtk = (a.cards || []).some(c => c.name === 'CelestialStatic');
+                    a.simExp = sx && sx.exp ? (csAtk ? raidCsExp(a, sx) : raidSimExpFix(a, sx)) : null; a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;

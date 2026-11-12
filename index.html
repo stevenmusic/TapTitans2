@@ -13064,20 +13064,24 @@
         /* 水晶插槽有沒有少（遊戲說明：強化槽只看卡片總等級）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
            已知門檻（遊戲畫面＋公會確認）：支援第 4 格 2000、打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
         const CRYSTAL_SLOT_AT = { Support: { 4: 2000, 5: 3500 }, Burst: { 4: 2400 }, Affliction: { 4: 2800 } };
+        const CRYSTAL_SLOT_SETS = { Scorpion: 1 };   // 做了這個套裝，爆裂、苦痛、支援各多 1 格（推測）
         function crystalSlotCheck(p, players) {
             // 卡片總等級 1000 才開放突襲水晶：還沒到的不標
             if ((Number(p.total_card_level) || 0) < 1000) return { miss: {}, n: 0, sets: [] };
             const has = players.filter(x => (x.boosted_cards || []).length);
             const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
             const lv = Number(p.total_card_level) || 0, miss = {};
+            // 套裝加格子：沒做的套裝每一類少幾格（公會資料推的：沒做 Scorpion 的三十不含頭、junjin 每類都剛好少 1 格）
+            const setLack = (x) => { const own = new Set(x.equipment_set || []); return Object.entries(CRYSTAL_SLOT_SETS).filter(([k]) => !own.has(k)); };
+            const lackN = (x) => setLack(x).reduce((t, [, n]) => t + n, 0);
             Object.keys(CRYSTAL_CAT).forEach(c => { const known = Math.max(0, ...Object.entries(CRYSTAL_SLOT_AT[c] || {}).filter(([, t]) => lv >= t).map(([n]) => +n));
-                const exp = Math.max(known, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
-            // 遊戲說明：強化槽只看卡片總等級（跟套裝無關），所以不再看套裝
-            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
+                const full = Math.max(known, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c) + lackN(x)));   // 套裝都做齊時該有幾格
+                const exp = Math.max(0, full - lackN(p)); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
+            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: setLack(p).map(([k, n]) => `${k}（每類 +${n} 格）`) };
         }
         function crystalSlotWarn(p, players) {
             const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';
-            return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `缺套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
+            return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `沒做套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
         }
         /* 牌組頁：選玩家（或搜尋名字）→ 從他的卡挑 3 張 → 照現在的王、部位狀態、禁打、詛咒、加成跑傷害（他的卡片等級、水晶、賽季加成） */
         let deckSimPlayer = null, deckSimCards = [], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;

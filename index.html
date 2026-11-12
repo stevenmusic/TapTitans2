@@ -12962,13 +12962,29 @@
             return `<div style="padding:0 8px 9px;"><div style="display:grid; grid-template-columns:${ms.map(m => m + 'fr').join(' ')}; gap:4px;">${groups}</div>${outs.length ? `<div style="display:flex; align-items:center; gap:4px; margin-top:5px; font-size:11px; color:#c0392b; font-weight:700;">換掉${outs.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" alt="" style="width:22px; height:22px; border-radius:4px; opacity:.6; filter:grayscale(.5);">` : '').join('')}</div>` : ''}</div>`;
         }
         // 全公會一覽（像攻擊紀錄）：每個人一行，點開看每一欄換掉→換上；用伺服器上算好的下一場
+        /* 水晶插槽有沒有少：同一類別裡，突襲等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
+           另外看公會八成以上的人都有、他卻沒有的裝備套裝（有的套裝會加水晶插槽，可能忘了買） */
+        function crystalSlotCheck(p, players) {
+            const has = players.filter(x => (x.boosted_cards || []).length);
+            const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
+            const lv = Number(p.player_raid_level) || 0, miss = {};
+            Object.keys(CRYSTAL_CAT).forEach(c => { const exp = Math.max(0, ...has.filter(x => (Number(x.player_raid_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
+            const setCnt = {}; has.forEach(x => (x.equipment_set || []).forEach(k => { setCnt[k] = (setCnt[k] || 0) + 1; }));
+            const mine = new Set(p.equipment_set || []);
+            const sets = Object.keys(setCnt).filter(k => setCnt[k] >= has.length * 0.8 && !mine.has(k));
+            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets };
+        }
+        function crystalSlotWarn(p, players) {
+            const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';
+            return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `插槽可能少 ${r.n} 格（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}，同突襲等級以下的人有）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `缺套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
+        }
         let crystalAllQ = '';
         function crystalAllFilter(q) {   // 只藏行、不重畫（打字時輸入框不會跳掉）
             crystalAllQ = q; const k = String(q || '').trim().toLowerCase();
             document.querySelectorAll('#crystal-reco .crystal-all-row').forEach(el => { el.style.display = !k || el.dataset.name.includes(k) ? '' : 'none'; });
         }
         async function renderCrystalAll(box, players, logs, sessions, upRaid, head) {
-            const list = players.filter(p => (p.boosted_cards || []).length);
+            const list = players.filter(p => (p.boosted_cards || []).length || crystalSlotCheck(p, players).n);   // 沒放水晶但同等級的人有插槽的也列出來（可能忘了買）
             if (crystalLevel) await banPlanLoad(crystalLevel);   // 公會共用禁打先讀進來，不然對不到算好的結果
             const sig = upRaid ? crystalBanSig(upRaid) : '';
             const keyOf = (p) => `${crystalLevel}|${p.player_code}|${sig}`;
@@ -12988,12 +13004,13 @@
                 const { plan } = crystalPlanOf(p, up && up.uses ? up : null, logs, sessions);
                 const n = ready ? Object.values(plan).reduce((t, x) => t + (x.pick.length ? x.ins.filter(y => !(y.dmg != null && y.dmg < 0.1)).length : 0), 0) : 0;   // 只算真正有差的（換上去的卡貢獻 ≥ 0.1%）
                 const open = crystalAllOpen.has(p.player_code);
-                const badge = !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
-                const detail = !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
+                const badge = !(p.boosted_cards || []).length ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
+                const none = !(p.boosted_cards || []).length;
+                const detail = none ? '' : !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
                     : crystalAllRow(plan, maxSlots);
-                return [ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
+                return [none ? 99 : ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
                     <span style="flex:1; min-width:0; font-size:14px; font-weight:800; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidShortName(p.name))}</span>
-                    <span style="font-size:12.5px; font-weight:800;">${badge}</span></div>${detail}</div>`];
+                    <span style="font-size:12.5px; font-weight:800;">${badge}</span></div>${crystalSlotWarn(p, players)}${detail}</div>`];
             }).sort((a, b) => b[0] - a[0]).map(x => x[1]).join('');   // 要換很多張的排上面
             box.innerHTML = head + `<input class="player-name-input" placeholder="搜尋玩家名稱" value="${escapeHtml(crystalAllQ)}" oninput="crystalAllFilter(this.value)" style="margin-top:8px;">
                 <div style="font-size:10.5px; color:#a89a88; margin:6px 2px;">綠框＝換上｜小圖＝換掉｜半透明＝沒差</div>
@@ -13060,7 +13077,7 @@
             const gainLine = up && up.picks ? `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span></div>` : '';
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}`;
-            box.innerHTML = tabs + `${top}${gainLine}${sections}${deckBox}
+            box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
                 <div style="font-size:10px; color:#a89a88; margin-top:4px;">綠框＝換上｜半透明＝沒差｜%＝拿掉這張整場少打多少</div>`;
         }
         function raidSimPartFns(scene) {

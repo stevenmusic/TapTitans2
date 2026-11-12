@@ -101,7 +101,8 @@ function simAttack(opt, P = P0) {
     return m;
   };
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));
-  let affChanceMult = (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1) * (1 + (buff.affChance || 0));
+  // 苦痛觸發機率加成：變質氣體 ×1.3、靈魂之火 ×1.1 同時帶時只取最高（P.affChanceMax；攻擊紀錄：兩張都帶時毀了雨、電擊都比只帶變質氣體少約 9%＝1.3÷1.43）
+  let affChanceMult = (P.affChanceMax ? Math.max(has.has('MentalFocus') ? 1.3 : 1, has.has('InnerTruth') ? 1.1 : 1) : (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1)) * (1 + (buff.affChance || 0));
   let burstCount = 0, haymaker = 0, charge = 0, tapCount = 0;
   const acc = {}, thr = {};
   const hitHistory = [];

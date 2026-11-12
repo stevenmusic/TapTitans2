@@ -198,6 +198,7 @@ function simAttack(opt, P = P0) {
           continue;
         }
         if (!live.length || id === 'PowerBubble' && false) continue;
+        // 暴食蜂擁、強酸侵蝕跟淨化爆裂同組：攻擊紀錄實際比模擬高（M-44、M-46：暴食蜂擁 15 刀 1.65 倍、強酸侵蝕 36 刀 1.45 倍），照紀錄校正（P.purifyAffK）
         const lv = effLv(id, t, l);
         let m = 1;
         if (id === 'Shadow') m = Math.pow(1.2, live.length);
@@ -211,7 +212,7 @@ function simAttack(opt, P = P0) {
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
         if (id === 'Disease') dmg = live.length * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = live.length;
-        out.by[id] += P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
+        out.by[id] += P.aff * (P.k[id] || 1) * (P.purifyAffK && has.has('Purify') ? (P.purifyAffK[id] || 1) : 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
       }
     }
   }

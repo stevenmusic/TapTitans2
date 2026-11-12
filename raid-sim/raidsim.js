@@ -108,10 +108,12 @@ function simAttack(opt, P = P0) {
   const addStack = (loc, id, t) => {
     const s = SK[id];
     let dur = s.dur;
-    if (has.has('SandsOfTime') && id !== 'SandsOfTime' && !(P.sandsSkip || []).includes(id) && liveCount(loc, 'SandsOfTime', t)) dur *= 2;
+    // 時間之沙（卡片說明：延長該部位其他苦痛的持續時間）：套上時把同部位已經在的苦痛延長；P.sandsNoNew＝之後新套上的苦痛不另外加倍（攻擊紀錄驗證：瘟疫打 6 部位以上 0.93→1.01）
+    const sandsOn = P.sandsGlobal ? LOCS.some(l => liveCount(l, 'SandsOfTime', t)) : liveCount(loc, 'SandsOfTime', t);
+    if (has.has('SandsOfTime') && id !== 'SandsOfTime' && !(P.sandsSkip || []).includes(id) && sandsOn && !P.sandsNoNew) dur *= (P.sandsMul || 2);
     const arr = (stacks[loc][id] || []).filter(x => x.end > t);
     if (id === 'SandsOfTime') { // 時間之沙：套上去時，這個部位其他苦痛延長
-      for (const o in stacks[loc]) if (o !== 'SandsOfTime') stacks[loc][o].forEach(x => { if (x.end > t) x.end += (x.end - t); });
+      for (const l2 of (P.sandsGlobal ? LOCS : [loc])) for (const o in stacks[l2]) if (o !== 'SandsOfTime' && !(P.sandsExtSkip && (P.sandsSkip || []).includes(o))) stacks[l2][o].forEach(x => { if (x.end > t) x.end += (x.end - t) * (P.sandsMul ? P.sandsMul - 1 : 1); });
     }
     if (id === 'PoisonAttack' || id === 'PowerBubble' || id === 'Fuse') arr.forEach(x => { x.end = t + dur; x.start = id === 'Fuse' ? x.start : x.start; });
     if (id === 'Fuse' && arr.length) { arr[0].end = t + dur; if (P.fuseReset) arr[0].start = t; stacks[loc][id] = arr; return; }
@@ -223,7 +225,7 @@ function simAttack(opt, P = P0) {
     const k = P.cbsK[third]; const f = k ? (targets.length === 1 ? k[0] : k[1]) : 1;
     if (f && f !== 1) { out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f; }
   }
-  // 肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.91 倍、5 個 1.07 倍、4 個以下 1.1 倍）
+  // （舊補丁，calibration 已拿掉 pcK：時間之沙改成「只延長已經在的苦痛、新套上的不加倍」後不需要）肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.91 倍、5 個 1.07 倍、4 個以下 1.1 倍）
   if (P.pcK && has.has('PlagueAttack') && has.has('CrushingVoid')) {
     const nb = Math.min(6, LOCS.filter(x => board[x] && board[x].layer === 'body').length);
     // 瘟疫＋瘋狂無效：部位剛好 6 個（能打的全部是肉體、不多不少）就是最高傷害，原本的修正（肉體 6 個以上 0.91）在這時偏低

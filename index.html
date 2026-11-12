@@ -12756,7 +12756,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h14', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h15', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13400,10 +13400,10 @@
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
                 let best = null;
-                // 只能換到每張卡都打得到的部位（例如破碎本能只能打頭、肚子），而且應打不能掉到這組最好打法的 85% 以下
+                // 只能換到每張卡都打得到的部位（例如破碎本能只能打頭、肚子），而且應打要跟這組最好的打法差不多（98% 以上）
                 const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
                 const top = Math.max(...alts.map(a => a.raw * scale));
-                alts = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.85));
+                alts = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.98));   // 不為了部位平衡犧牲傷害（例如暴食蜂擁本來就該打多部位）：只在傷害幾乎一樣（差 2% 內）時才換部位
                 alts.forEach(a => { const est = a.raw * scale, eff = effOf(a.tg, est); if (!best || eff > best.eff * 1.02 || (a.tg.join() === o.tg.join() && eff >= best.eff * 0.98)) best = { a, est, eff }; });
                 if (!best || !(best.eff > 0)) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
@@ -13422,7 +13422,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r13|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r14|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -14103,7 +14103,7 @@
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;
                 const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
                 const top = Math.max(...alts.map(a => a.raw * scale));
-                const ok = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.85));
+                const ok = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.98));
                 return Math.max(...ok.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害
             };
             const valMemo = new Map();   // 同一組的價值只算一次（搜尋時會被問上百萬次）；補精算後物件換新，自然重算

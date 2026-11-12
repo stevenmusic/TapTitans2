@@ -53,6 +53,8 @@ function simAttack(opt, P = P0) {
   const weakenEnd = {}; LOCS.forEach(l => { weakenEnd[l] = -1; });
   // 支援、加成：回傳這一下打在 loc 的倍率
   const mult = (kind, loc, t, self) => {
+    // 圖騰之力的精靈只出現在一個部位：同時打好幾個部位時，精靈的額外加成只有第一個部位有（基本加成照算）（攻擊紀錄：帶圖騰打兩個部位只有單打的 7 成左右）
+    const totemHere = has.has('TotemFairySkill') && (!P.totemOnePart || !opt.targets || opt.targets.length < 2 || loc === opt.targets[0]);
     const layer = layerOf(loc);
     const parts = [];
     const add = (v) => parts.push(v);
@@ -78,9 +80,9 @@ function simAttack(opt, P = P0) {
     const addB = (v) => { if (P.boostAdd) parts.push(v); else boost *= 1 + v; };
     if (has.has('Weaken') && weakenEnd[loc] > t) addB(1.439 * A('Weaken', effLv('Weaken', t, loc)));
     if (has.has('RuneAttack')) { const n = liveCount(loc, 'RuneAttack', t) - (self === 'RuneAttack' && !P.runeSelf ? 1 : 0); if (n > 0) addB(3.421 * A('RuneAttack', effLv('RuneAttack', t, loc)) * n); }
-    const totemA = has.has('TotemFairySkill') ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
-    const totemX = has.has('TotemFairySkill') && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
-    if (has.has('TotemFairySkill') && P.totemExtra && P.totemMode === 'add') parts.push(((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
+    const totemA = totemHere ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
+    const totemX = totemHere && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
+    if (totemHere && P.totemExtra && P.totemMode === 'add') parts.push(((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
     let m = totemX * (P.additive ? 1 + parts.reduce((a, b) => a + b, 0) : parts.reduce((a, b) => a * (1 + b), 1)) * boost;
     // 場次加成
     if (kind === 'burst' && buff.burstDamage) m *= 1 + buff.burstDamage;

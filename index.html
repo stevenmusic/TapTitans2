@@ -13121,10 +13121,10 @@
                 const v = raidClanData.byCode.get(deckSimPlayer);
                 const me = raidSimPlayerNow(v, env);
                 const scene = {}; Object.keys(env.board).forEach(k => { const b = env.board[k]; scene[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
-                // 牌組頁：保留卡片的部位限制（例如錘子只打頭、肚）和「詛咒甲只給撼地破甲、毀了雨的牌組打」，其他推薦用的條件（帶刺的晨星）不套
+                // 牌組頁：只保留卡片的部位限制（例如錘子只打頭、肚）；推薦用的條件（詛咒甲只給撼地破甲／毀了雨、帶刺的晨星）不套
                 const { hitParts } = raidSimPartFns(scene, true);
                 const hp = hitParts(deckSimCards);
-                if (!hp.length) { deckSimRes = { err: '這 3 張卡現在打不到同一個部位（卡片部位限制，或詛咒甲只給撼地破甲、毀了雨打）' }; return; }
+                if (!hp.length) { deckSimRes = { err: '這 3 張卡現在打不到同一個部位（卡片部位限制）' }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
                 plans = raidSimPlansFor(deckSimCards, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
@@ -13307,7 +13307,7 @@
         function raidSimPartFns(scene, loose) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
-            const hitParts = (cards) => attackable.filter(k => (scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = (cards) => attackable.filter(k => (loose || scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }

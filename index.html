@@ -13214,7 +13214,7 @@
                     <div style="text-align:center; font-size:12px; color:#857a6b;">用這場實際等級模擬</div>
                     <div style="display:grid; grid-template-columns:1fr auto; gap:3px 10px; margin-top:8px; font-size:12.5px; color:#4a3728;">
                         <span>點擊</span><b style="text-align:right;">${formatNumAlwaysM(r.tap)}</b>
-                        ${r.cards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${!(r.by[i] > 0) && ((crystalSkills || {})[id] || {}).cat === 'Support' ? '<span style="font-weight:700; color:#857a6b;">加成（算在別張）</span>' : formatNumAlwaysM(r.by[i])}</b>`).join('')}
+                        ${r.cards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${!(r.by[i] > 0) && ((crystalSkills || {})[id] || {}).cat === 'Support' ? '<span style="font-weight:700; color:#857a6b;">輔助</span>' : formatNumAlwaysM(r.by[i])}</b>`).join('')}
                     </div>
                     <div style="font-size:12px; color:#8a7a6a; margin-top:6px; text-align:center;">突襲等級 ${escapeHtml(String(r.info.rl || '—'))}｜士氣 ${Math.round((r.info.morale || 0) * 100)}%｜加成 ${escapeHtml(Object.entries(r.info.buff || {}).map(([k, x]) => ({ burstDamage: '爆裂傷害', burstChance: '爆裂機會', affDamage: '苦痛傷害', affChance: '苦痛機會', all: '全傷害', supportEffect: '支援' })[k] + ' +' + Math.round(x * 100) + '%').join('、') || '無')}${r.info.curse ? `｜詛咒 ${({ Burst: '爆裂', Afflicted: '苦痛', Body: '肉體' })[r.info.curse.type]} −${Math.round(r.info.curse.per * 100)}%／個` : ''}</div>
                 </div>`;

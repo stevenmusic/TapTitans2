@@ -13064,7 +13064,10 @@
         /* 水晶插槽有沒有少（遊戲說明：強化槽只看卡片總等級）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
            已知門檻（遊戲畫面＋公會確認）：支援第 4 格 2000、打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
         const CRYSTAL_SLOT_AT = { Support: { 4: 2000, 5: 3500 }, Burst: { 4: 2400 }, Affliction: { 4: 2800 } };
-        const CRYSTAL_SLOT_SETS = { Scorpion: 1 };   // 做了這個套裝，爆裂、苦痛、支援各多 1 格（推測）
+        // 加水晶插槽的三套：鐵殼守衛（爆裂 +1）、深海豎琴演奏家（苦痛 +1）、林地笛翾（支援 +1）。
+        // 官方資料只有英文代號，還沒對上是哪一個：junjin 缺 SoloRaid、Scorpion、Runestone 剛好三類各少 1 格，先當成這三個（每個 +1 格，哪一類還不知道）
+        const CRYSTAL_SLOT_SETS = { SoloRaid: 1, Scorpion: 1, Runestone: 1 };
+        const CRYSTAL_SLOT_SET_NAMES = '鐵殼守衛（爆裂）、深海豎琴演奏家（苦痛）、林地笛翾（支援）';
         function crystalSlotCheck(p, players) {
             // 卡片總等級 1000 才開放突襲水晶：還沒到的不標
             if ((Number(p.total_card_level) || 0) < 1000) return { miss: {}, n: 0, sets: [] };
@@ -13074,10 +13077,15 @@
             // 套裝加格子：沒做的套裝每一類少幾格（公會資料推的：沒做 Scorpion 的三十不含頭、junjin 每類都剛好少 1 格）
             const setLack = (x) => { const own = new Set(x.equipment_set || []); return Object.entries(CRYSTAL_SLOT_SETS).filter(([k]) => !own.has(k)); };
             const lackN = (x) => setLack(x).reduce((t, [, n]) => t + n, 0);
+            // 套裝做齊的人當基準（比他卡片總等級低、套裝做齊的人最多幾格）
+            const full = has.filter(x => !lackN(x) && (Number(x.total_card_level) || 0) <= lv);
             Object.keys(CRYSTAL_CAT).forEach(c => { const known = Math.max(0, ...Object.entries(CRYSTAL_SLOT_AT[c] || {}).filter(([, t]) => lv >= t).map(([n]) => +n));
-                const full = Math.max(known, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c) + lackN(x)));   // 套裝都做齊時該有幾格
-                const exp = Math.max(0, full - lackN(p)); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
-            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: setLack(p).map(([k, n]) => `${k}（每類 +${n} 格）`) };
+                const exp = Math.max(known, ...full.map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
+            const k = lackN(p);
+            if (!k) return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
+            // 有套裝沒做：少的格子先扣掉沒做的套裝（分不出是哪一類），剩下的才算空著沒放卡
+            const total = Object.values(miss).reduce((a, b) => a + b, 0);
+            return { miss: {}, n: Math.max(0, total - k), sets: [`${k} 套加插槽的裝備沒做（${CRYSTAL_SLOT_SET_NAMES} 其中 ${k} 套）`], lackSlots: k };
         }
         function crystalSlotWarn(p, players) {
             const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';

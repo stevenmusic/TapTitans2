@@ -13100,20 +13100,24 @@
             return `<div style="font-size:11px; font-weight:700; color:#c0392b; padding:0 10px 4px;">⚠ ${r.n ? `有 ${r.n} 格水晶沒放卡（${Object.keys(r.miss).map(c => CRYSTAL_CAT[c] + ' ' + r.miss[c]).join('、')}）` : ''}${r.n && r.sets.length ? '｜' : ''}${r.sets.length ? `沒做套裝 ${r.sets.map(escapeHtml).join('、')}` : ''}</div>`;
         }
         /* 牌組頁：選玩家（或搜尋名字）→ 從他的卡挑 3 張 → 照現在的王、部位狀態、禁打、詛咒、加成跑傷害（他的卡片等級、水晶、賽季加成） */
-        let deckSimPlayer = null, deckSimCards = [], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;
-        function deckSimPick(code) { deckSimPlayer = code; deckSimCards = []; deckSimRes = null; renderDeckSim(); }
+        let deckSimPlayer = null, deckSimCards = [null, null, null], deckSimTarget = '', deckSimRes = null, deckSimBusy = false;
+        const deckSimSel = () => deckSimCards.filter(Boolean);   // 選了的卡（格子固定位置，空格是 null）
+        // 換人：牌組不清，直接用同一組牌算這個人的傷害（方便比較不同人）
+        function deckSimPick(code) { deckSimPlayer = code; deckSimRes = null; renderDeckSim().then(() => { if (deckSimSel().length === 3) deckSimRun(); }); }
         function deckSimToggle(id) {
+            // 格子位置固定：拿掉的那格空著，其他卡不往前移；新選的放進第一個空格
             const i = deckSimCards.indexOf(id);
-            if (i >= 0) deckSimCards.splice(i, 1); else if (deckSimCards.length < 3) deckSimCards.push(id);
+            if (i >= 0) deckSimCards[i] = null; else { const j = deckSimCards.indexOf(null); if (j >= 0) deckSimCards[j] = id; }
             deckSimRes = null; renderDeckSim();
         }
         function deckSimSearch(q) {
             const k = String(q || '').trim().toLowerCase(); if (!k || !raidClanData) return;
             const hit = [...raidClanData.byCode.values()].map(v => v.raw).find(p => p && p.name && raidShortName(p.name).toLowerCase().includes(k));
-            if (hit && hit.player_code !== deckSimPlayer) { deckSimPlayer = hit.player_code; deckSimCards = []; deckSimRes = null; renderDeckSim(true); }
+            if (hit && hit.player_code !== deckSimPlayer) { deckSimPlayer = hit.player_code; deckSimRes = null; renderDeckSim(true).then(() => { if (deckSimSel().length === 3) deckSimRun(); }); }
         }
         async function deckSimRun() {
-            if (deckSimBusy || deckSimCards.length !== 3 || !raidState || !raidState.parts) return;
+            if (deckSimBusy || deckSimSel().length !== 3 || !raidState || !raidState.parts) return;
+            const cards3 = deckSimSel();
             deckSimBusy = true; deckSimRes = { busy: true }; renderDeckSim();
             try {
                 const P = await raidSimLoad(); await raidSimLoadDeckList();
@@ -13123,18 +13127,18 @@
                 const scene = {}; Object.keys(env.board).forEach(k => { const b = env.board[k]; scene[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
                 // 牌組頁：只保留卡片的部位限制（例如錘子只打頭、肚）；推薦用的條件（詛咒甲只給撼地破甲／毀了雨、帶刺的晨星）不套
                 const { hitParts } = raidSimPartFns(scene, true);
-                const hp = hitParts(deckSimCards);
+                const hp = hitParts(cards3);
                 if (!hp.length) { deckSimRes = { err: '這 3 張卡現在打不到同一個部位（卡片部位限制）' }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
-                plans = raidSimPlansFor(deckSimCards, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
+                plans = raidSimPlansFor(cards3, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
                 if (!plans.length) { deckSimRes = { err: '這組打不到選的部位' }; return; }
                 await new Promise(r => setTimeout(r, 0));
-                const r = raidSimFinal(P, env, me, raidSimScreen(P, env, me, deckSimCards, plans));
+                const r = raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards3, plans));
                 // 每張卡各打多少（跟遊戲的攻擊數據一樣分開列）：同一個打法再跑 100 次取平均
-                const bd = RaidSim.simMean({ ...raidSimBase(env, me, deckSimCards), targets: r.tg, seed: 7 }, 100, P);
+                const bd = RaidSim.simMean({ ...raidSimBase(env, me, cards3), targets: r.tg, seed: 7 }, 100, P);
                 const sc = bd.total > 0 ? Math.min(1, r.avg / bd.total) : 1;   // 部位剩的血不夠打完時，照比例縮
-                deckSimRes = { avg: r.avg, lo: r.lo, hi: r.hi, tg: r.tg || [], lv: deckSimCards.map(c => me.lv[c] || 0), tap: bd.tap * sc, by: deckSimCards.map(c => (bd.by[c] || 0) * sc), boss: raidState.bossName, mirror: env.mirror,
+                deckSimRes = { avg: r.avg, lo: r.lo, hi: r.hi, tg: r.tg || [], cards: cards3, lv: cards3.map(c => me.lv[c] || 0), tap: bd.tap * sc, by: cards3.map(c => (bd.by[c] || 0) * sc), boss: raidState.bossName, mirror: env.mirror,
                     info: { rl: v.raw.player_raid_level, morale: env.morale, buff: env.buff, curse: env.curse, cap: r.raw > r.avg } };
             } catch (e) { deckSimRes = { err: '計算失敗：' + (e && e.message || e) }; }
             finally { deckSimBusy = false; renderDeckSim(); }
@@ -13156,7 +13160,7 @@
             if (!crystalSkills) { try { crystalSkills = await (await fetch('raid-sim/skills.json?v=1')).json(); } catch (e) { crystalSkills = {}; } }
             const groups = Object.keys(CRYSTAL_CAT).map(cat => [cat, owned.filter(id => (crystalSkills[id] || {}).cat === cat).sort((a, b) => lvOf(b) - lvOf(a))]);
             const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };
-            const cell = (id) => { const on = deckSimCards.includes(id); return `<div onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})" title="${escapeHtml(raidCardLabel(id))}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && deckSimCards.length >= 3 ? 0.45 : 1};">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:100%; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #2e7d32; outline-offset:-1px;' : ''}">` : ''}<div style="font-size:9.5px; color:#4a3728; white-space:nowrap; letter-spacing:-0.3px; margin:0 -2px;">${escapeHtml(raidCardLabel(id))}<span style="color:#b8a890;">丨</span><b>${lvOf(id)}</b></div></div>`; };
+            const cell = (id) => { const on = deckSimCards.includes(id); return `<div onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})" title="${escapeHtml(raidCardLabel(id))}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && deckSimSel().length >= 3 ? 0.45 : 1};">${raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" style="width:100%; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #2e7d32; outline-offset:-1px;' : ''}">` : ''}<div style="font-size:9.5px; color:#4a3728; white-space:nowrap; letter-spacing:-0.3px; margin:0 -2px;">${escapeHtml(raidCardLabel(id))}<span style="color:#b8a890;">丨</span><b>${lvOf(id)}</b></div></div>`; };
             const grid = groups.filter(([, ids]) => ids.length).map(([cat, ids]) => `<div style="margin-top:6px; padding:5px; background:${col[cat]}; border-radius:9px;"><div style="font-size:11.5px; font-weight:800; color:#4a3728; margin-bottom:3px;">${CRYSTAL_CAT[cat]}</div><div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;">${ids.map(cell).join('')}</div></div>`).join('');
             const slots = [0, 1, 2].map(i => { const id = deckSimCards[i]; return `<div ${id ? `onclick="deckSimToggle(${escapeHtml(JSON.stringify(id))})"` : ''} style="flex:1; text-align:center; cursor:${id ? 'pointer' : 'default'};">${id && raidCardImage(id) ? `<img src="${raidCardImage(id)}" style="width:54px; height:54px; border-radius:9px; display:block; margin:0 auto;">` : `<div style="width:54px; height:54px; border-radius:9px; margin:0 auto; border:2px dashed #d8cbb5;"></div>`}<div style="font-size:11px; font-weight:700; color:#4a3728; margin-top:2px;">${id ? escapeHtml(raidCardLabel(id)) : '　'}</div></div>`; }).join('');
             const parts = env ? env.open : [];
@@ -13171,13 +13175,13 @@
                     <div style="text-align:center; font-size:11.5px; color:#8a7a6a;">一半的刀落在 ${formatNumAlwaysM(r.lo)}～${formatNumAlwaysM(r.hi)}${r.info.cap ? '｜打到部位沒血為止' : ''}</div>
                     <div style="display:grid; grid-template-columns:1fr auto; gap:3px 10px; margin-top:8px; font-size:12.5px; color:#4a3728;">
                         <span>點擊</span><b style="text-align:right;">${formatNumAlwaysM(r.tap)}</b>
-                        ${deckSimCards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${formatNumAlwaysM(r.by[i])}</b>`).join('')}
+                        ${r.cards.map((id, i) => `<span>${escapeHtml(raidCardLabel(id))} <span style="color:#8a7a6a;">Lv.${r.lv[i]}</span></span><b style="text-align:right;">${formatNumAlwaysM(r.by[i])}</b>`).join('')}
                     </div>
                     <div style="font-size:10.5px; color:#8a7a6a; margin-top:6px; text-align:center;">突襲等級 ${escapeHtml(String(r.info.rl || '—'))}｜士氣 ${Math.round((r.info.morale || 0) * 100)}%｜加成 ${escapeHtml(Object.entries(r.info.buff || {}).map(([k, x]) => ({ burstDamage: '爆裂傷害', burstChance: '爆裂機會', affDamage: '苦痛傷害', affChance: '苦痛機會', all: '全傷害', supportEffect: '支援' })[k] + ' +' + Math.round(x * 100) + '%').join('、') || '無')}${r.info.curse ? `｜詛咒 ${({ Burst: '爆裂', Afflicted: '苦痛', Body: '肉體' })[r.info.curse.type]} −${Math.round(r.info.curse.per * 100)}%／個` : ''}</div>
                 </div>`;
             box.innerHTML = `<div style="display:flex; gap:6px; align-items:center;">${sel}${search}</div>
                 <div style="display:flex; gap:6px; margin:10px 0 6px; padding:8px; background:#fff; border:1px solid #eadfcc; border-radius:12px;">${slots}</div>
-                <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin-bottom:8px;">${tgSel}<button onclick="deckSimRun()" ${deckSimCards.length === 3 && env ? '' : 'disabled'} style="font:inherit; font-size:15px; font-weight:900; padding:8px 22px; border:none; border-radius:10px; background:${deckSimCards.length === 3 && env ? '#8b263e' : '#cbbfae'}; color:#fff; cursor:pointer;">跑傷害</button></div>
+                <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin-bottom:8px;">${tgSel}<button onclick="deckSimRun()" ${deckSimSel().length === 3 && env ? '' : 'disabled'} style="font:inherit; font-size:15px; font-weight:900; padding:8px 22px; border:none; border-radius:10px; background:${deckSimSel().length === 3 && env ? '#8b263e' : '#cbbfae'}; color:#fff; cursor:pointer;">跑傷害</button></div>
                 ${result}
                 <div style="font-size:10.5px; color:#a89a88; margin-top:6px;">點卡片選 3 張（再點一次取消）。照現在的王、部位狀態、禁打、詛咒、場次加成，用他這場實際的卡片等級（含水晶、賽季加成）模擬。</div>
                 ${grid}`;

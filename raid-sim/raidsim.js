@@ -105,15 +105,16 @@ function simAttack(opt, P = P0) {
   let burstCount = 0, haymaker = 0, charge = 0, tapCount = 0;
   const acc = {}, thr = {};
   const hitHistory = [];
-  const addStack = (loc, id, t) => {
+  const addStack = (loc, id, t, inherit) => {
     const s = SK[id];
     let dur = s.dur;
-    // 時間之沙（卡片說明：延長該部位其他苦痛的持續時間）：套上時把同部位已經在的苦痛延長；P.sandsNoNew＝之後新套上的苦痛不另外加倍（攻擊紀錄驗證：瘟疫打 6 部位以上 0.93→1.01）
-    const sandsOn = P.sandsGlobal ? LOCS.some(l => liveCount(l, 'SandsOfTime', t)) : liveCount(loc, 'SandsOfTime', t);
+    // 時間之沙（卡片說明：其他苦痛持續時間 +100%）：有時間之沙在的時候（P.sandsGlobal：任何部位），新套上的苦痛持續時間加倍，電擊也算；P.sandsNoExt：不回頭延長已經在的苦痛
+    // （M-44、M-46 帶沙 169 刀：整體誤差 0.217→0.073，電擊單打／多部位都 1.0，原本電擊＋沙漏的補丁拿掉）
+    const sandsOn = inherit || (P.sandsGlobal ? LOCS.some(l => liveCount(l, 'SandsOfTime', t)) : liveCount(loc, 'SandsOfTime', t));
     if (has.has('SandsOfTime') && id !== 'SandsOfTime' && !(P.sandsSkip || []).includes(id) && sandsOn && !P.sandsNoNew) dur *= (P.sandsMul || 2);
     const arr = (stacks[loc][id] || []).filter(x => x.end > t);
     if (id === 'SandsOfTime') { // 時間之沙：套上去時，這個部位其他苦痛延長
-      for (const l2 of (P.sandsGlobal ? LOCS : [loc])) for (const o in stacks[l2]) if (o !== 'SandsOfTime' && !(P.sandsExtSkip && (P.sandsSkip || []).includes(o))) stacks[l2][o].forEach(x => { if (x.end > t) x.end += (x.end - t) * (P.sandsMul ? P.sandsMul - 1 : 1); });
+      if (!P.sandsNoExt) for (const l2 of (P.sandsGlobal ? LOCS : [loc])) for (const o in stacks[l2]) if (o !== 'SandsOfTime' && !(P.sandsExtSkip && o === 'CosmicBarb')) stacks[l2][o].forEach(x => { if (x.end > t) x.end += (x.end - t) * (P.sandsMul ? P.sandsMul - 1 : 1); });
     }
     if (id === 'PoisonAttack' || id === 'PowerBubble' || id === 'Fuse') arr.forEach(x => { x.end = t + dur; x.start = id === 'Fuse' ? x.start : x.start; });
     if (id === 'Fuse' && arr.length) { arr[0].end = t + dur; if (P.fuseReset) arr[0].start = t; stacks[loc][id] = arr; return; }
@@ -179,8 +180,10 @@ function simAttack(opt, P = P0) {
       if (id === 'BurningAttack') ch += 0.02 * Math.min(6, LOCS.filter(l => liveCount(l, 'BurningAttack', t)).length);
       if (R() < ch * affChanceMult * chMul) {
         addStack(loc, id, t);
+        // 電擊（說明：對受影響的部位造成苦痛傷害）：P.cbAffected＝所有身上有苦痛的部位都套一層
+        if (id === 'CosmicBarb' && P.cbAffected) LOCS.forEach(l => { if (l !== loc && board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton' && Object.keys(stacks[l] || {}).some(c => c !== 'CosmicBarb' && liveCount(l, c, t))) addStack(l, id, t); });
         // 肆虐瘟疫擴散：同時傳到另一個隨機部位（禁打、骨架除外）
-        if (id === 'PlagueAttack' && P.plagueSpread && R() < (P.plagueSpreadP ?? 1)) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t); }
+        if (id === 'PlagueAttack' && P.plagueSpread && R() < (P.plagueSpreadP ?? 1)) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t, P.plagueSpreadInherit && liveCount(loc, 'SandsOfTime', t) > 0); }
       }
     }
   };

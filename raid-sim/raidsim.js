@@ -83,7 +83,8 @@ function simAttack(opt, P = P0) {
     const totemA = totemHere ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
     const totemX = totemHere && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
     if (totemHere && P.totemExtra && P.totemMode === 'add') parts.push(((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
-    let m = totemX * (P.additive ? 1 + parts.reduce((a, b) => a + b, 0) : parts.reduce((a, b) => a * (1 + b), 1)) * boost;
+    const totemLow = has.has('TotemFairySkill') && P.totemLowA ? 1 + Math.max(0, P.totemLowA - P.totemLowB * effLv('TotemFairySkill', t, loc)) : 1;   // 圖騰等級低時實際比模擬高（M-44、M-46 231 刀：<40 級 +6%、40～59 +4%、60～74 +1.4%、75+ ≈0）
+    let m = totemLow * totemX * (P.additive ? 1 + parts.reduce((a, b) => a + b, 0) : parts.reduce((a, b) => a * (1 + b), 1)) * boost;
     // 場次加成
     if (kind === 'burst' && buff.burstDamage) m *= 1 + buff.burstDamage;
     if (kind === 'aff' && buff.affDamage) m *= 1 + buff.affDamage;

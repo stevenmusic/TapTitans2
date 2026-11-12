@@ -13190,7 +13190,7 @@
             const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
             const { own, simLv } = crystalPlanOf(p, null, logs, sessions);
             // 下一場：預告的關卡，沒有就用門票試算選的關卡
-            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level) || null;
+            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (serverSessionsSummary && serverSessionsSummary[0] && (raidLiveInfo ? (raidLiveInfo.startedAt === serverSessionsSummary[0].startedAt && !raidLiveInfo.ended) : Date.now() - parseRaidSessionTs(serverSessionsSummary[0].startedAt) < 60 * 3600 * 1000) && serverSessionsSummary[0].levelTier) || (ticketCalc && ticketCalc.level) || null;   // 預告的下一場 ＞ 現在在打的這場 ＞ 禁打頁選的
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
             if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, simLv); }, 0);

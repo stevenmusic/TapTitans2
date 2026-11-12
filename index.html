@@ -13040,8 +13040,8 @@
            已知門檻（遊戲畫面＋公會確認）：支援第 4 格 2000、打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
         const CRYSTAL_SLOT_AT = { Support: { 4: 2000, 5: 3500 }, Burst: { 4: 2400 }, Affliction: { 4: 2800 } };
         function crystalSlotCheck(p, players) {
-            // 突襲等級 1000 以下、又完全沒放水晶：可能還沒開放突襲水晶，不標
-            if (!(p.boosted_cards || []).length && (Number(p.player_raid_level) || 0) < 1000) return { miss: {}, n: 0, sets: [] };
+            // 卡片總等級 1000 才開放突襲水晶：還沒到的不標
+            if ((Number(p.total_card_level) || 0) < 1000) return { miss: {}, n: 0, sets: [] };
             const has = players.filter(x => (x.boosted_cards || []).length);
             const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
             const lv = Number(p.total_card_level) || 0, miss = {};

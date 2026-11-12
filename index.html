@@ -7915,6 +7915,8 @@
             (list || []).filter(d => isVer(d.cards)).forEach(d => add(d.cards));
             (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { const cs = (a.cards || []).map(c => c.name); if (cs.length === 3 && isVer(cs)) add(cs); });
             ((data && data.decks) || []).forEach(d => { const k = Array.isArray(d.cards) ? d.cards.slice().sort().join('+') : ''; if ((uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(d.cards); });
+            // 這場有人實際打過的牌組也收（有真實紀錄，例如復仇鍊子＋炎燒地獄＋輻射萬花筒打過次數不到 30，但上班族大叔這場打出比推薦高的傷害）
+            if (!fast) (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length === 3) add(cs); });
             const scenCnt = new Map(), scenCards = new Map();
             (BY_PART_GAME_SCENARIOS || []).forEach(sc => new Set((sc.decks || []).filter(d => Array.isArray(d.cards) && d.cards.length === 3).map(d => { const k = d.cards.slice().sort().join('+'); scenCards.set(k, d.cards); return k; })).forEach(k => scenCnt.set(k, (scenCnt.get(k) || 0) + 1)));
             scenCnt.forEach((n, k) => { if (n >= RAID_SIM_SCEN_MIN || (uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(scenCards.get(k)); });
@@ -13422,7 +13424,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r14|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r15|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);

@@ -7860,8 +7860,16 @@
                 Object.entries((j && j.sim) || {}).forEach(([k, v]) => raidSimExpMap.set(k, v));
                 raidSimExpAt = Date.now();
                 if (raidSimExpMap.size !== before && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
-            } catch (e) {} finally { raidSimExpLoading = false; }
+            } catch (e) {} finally {
+                raidSimExpLoading = false;
+                // 伺服器算應打要一點時間：這場還有刀沒拿到應打，攻擊紀錄又開著，就每分鐘再拿一次，直到補齊（不用等下一刀進來才更新）
+                const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+                const missing = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).some(a => a && !a.placeholder && a.raidStartedAt === latest && a.cards && !raidSimExpMap.has(raidSimExpKey(a)) && Date.now() - (Number(a.ts) || Date.parse(a.attackDatetime || a.ts) || 0) < 3 * 3600 * 1000);
+                clearTimeout(raidSimExpTimer);
+                if (missing && raidLogPanelShown() && document.visibilityState === 'visible') raidSimExpTimer = setTimeout(raidSimExpLoad, 61 * 1000);
+            }
         }
+        let raidSimExpTimer = null;
         // 攻擊紀錄面板真的出現在畫面上才重畫（停在首頁時不在背景一直重畫排行榜，打開面板時會重畫最新的）
         function raidLogPanelShown() { const el = document.getElementById('raid-log-query-result'); return !!(el && el.style.display !== 'none' && el.offsetParent !== null); }
         const raidSimPickByPlayer = new Map();   // identity -> { ratio, busy }

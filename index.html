@@ -12793,6 +12793,9 @@
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
             const remote = await kvGet(kvKey);
             if (remote && remote.uses && remote.picks && remote.ver === CRYSTAL_DATA_VER && remote.seed === seed.valid_from && crystalSlotClose(remote.slotSig, slotSig)) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
+            // 同樣場次加成、賽季加成卡沒換：直接用之前算過的（不用再算一次）
+            { const lib = await crystalBuffLibGet(raid); const e = lib && lib.players && lib.players[p.player_code];
+              if (e && e.ver === CRYSTAL_DATA_VER && crystalSlotClose(e.slotSig, slotSig)) { crystalUpRes[key] = { ...e, fromBuff: lib.buffLabel || true, seq: raid.seq, buffs: raid.buffs || [] }; renderCrystalReco(); return; } }
             try {
                 const P = await raidSimLoad();
                 const cands = await raidSimCandidateDecks(null, true);
@@ -12920,7 +12923,7 @@
                 // 每隻王每個狀態：照建議放法挑中的 6 組（給人對照看邏輯）
                 const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, v, x]) => [d.cards, Math.round(v / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
                 const res = { ver: CRYSTAL_DATA_VER, uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
-                crystalUpRes[key] = res; kvSet(kvKey, res);
+                crystalUpRes[key] = res; kvSet(kvKey, res); crystalBuffLibPut(raid, p.player_code, res);
             } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
             renderCrystalReco();
         }
@@ -12990,6 +12993,28 @@
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
         const CRYSTAL_DATA_VER = 11;
+        /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
+           之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
+        const crystalBuffKey = (raid) => 'crystalbuff_' + ((raid.buffs || []).map(b => b[0] + '_' + Math.round((Number(b[1]) || 0) * 100)).sort().join('-') || 'none');
+        const crystalSeasonSig = () => { let s = {}; try { s = raidSimSeasonBonus() || {}; } catch (e) {} return Object.keys(s).sort().map(k => k + s[k]).join(','); };
+        const crystalBuffMem = {};
+        async function crystalBuffLibGet(raid) {
+            const k = crystalBuffKey(raid);
+            if (!(k in crystalBuffMem)) crystalBuffMem[k] = await kvGet(k);
+            const lib = crystalBuffMem[k];
+            return lib && lib.season === crystalSeasonSig() ? lib : null;
+        }
+        async function crystalBuffLibPut(raid, code, res) {
+            const k = crystalBuffKey(raid), season = crystalSeasonSig();
+            const entry = { ver: res.ver, uses: res.uses, picks: res.picks, slotSig: res.slotSig, gain: res.gain, gainCur: res.gainCur, lvl: res.lvl, seed: res.seed };
+            for (let t = 0; t < 4; t++) {   // 很多人同時存：伺服器同一個名稱 2 秒只收一次，失敗就等一下再合併重存
+                let lib = await kvGet(k); if (!lib || lib.season !== season) lib = { season, players: {} };
+                lib.players[code] = entry; lib.buffLabel = (raid.buffs || []).map(b => b[0]).join('、');
+                crystalBuffMem[k] = lib;
+                try { const r = await fetch(kvUrl(k), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: lib }) }); if (r.ok) return; } catch (e) {}
+                await new Promise(r => setTimeout(r, 2500 + Math.random() * 2000));
+            }
+        }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -13154,6 +13179,8 @@
                 const need = list.filter(p => !(crystalUpRes[keyOf(p)] && crystalUpRes[keyOf(p)].uses));
                 const got = await kvGetMany(need.map(p => crystalKvKey(crystalLevel, p.player_code, sig)));
                 need.forEach(p => { const r = got[crystalKvKey(crystalLevel, p.player_code, sig)]; if (r && r.uses && r.ver === CRYSTAL_DATA_VER && seed && r.seed === seed.valid_from) crystalUpRes[keyOf(p)] = r; });
+                const lib = await crystalBuffLibGet(upRaid);   // 這一關還沒算的：同樣場次加成算過的先拿來用
+                if (lib) need.forEach(p => { const e = lib.players && lib.players[p.player_code]; if (!crystalUpRes[keyOf(p)] && e && e.ver === CRYSTAL_DATA_VER) crystalUpRes[keyOf(p)] = { ...e, fromBuff: true }; });
             }
             const maxSlots = {}; list.forEach(p => (p.boosted_cards || []).forEach(b => { const k = b.category; maxSlots[k] = Math.max(maxSlots[k] || 0, list.length && (p.boosted_cards || []).filter(x => x.category === k).length); }));
             const fmt = (arr) => arr.map(x => escapeHtml(raidCardLabel(x))).join('、');
@@ -13234,7 +13261,7 @@
             const tabs = `<div style="display:flex; gap:4px; padding:3px; background:#e3ecf8; border-radius:11px; margin-bottom:8px;">${tabBtn('me', '個人')}${tabBtn('all', '全公會')}</div>`;
             if (crystalTab === 'all') { await renderCrystalAll(box, players, logs, sessions, upRaid, tabs + lvSel); return; }
             const deckBox = up && up.decks ? `<details style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; padding:8px 10px;"><summary style="font-size:13px; font-weight:800; color:#4a3728; cursor:pointer;">看模擬用的牌組（每隻王、每個狀態最強 6 組）</summary>${up.decks.map(c => `<div style="margin-top:8px;"><div style="font-size:12px; font-weight:800; color:#6b5a4a;">${escapeHtml(c.n)}・${escapeHtml(c.label)}</div>${c.d.map(([cards, b, g]) => `<div style="display:flex; align-items:center; gap:4px; margin-top:3px;">${cards.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" style="width:26px; height:26px; border-radius:5px; ${up.picks && Object.values(up.picks).some(a => a.some(x => x.id === id)) ? 'outline:2px solid #2e7d32; outline-offset:-1px;' : ''}">` : '').join('')}<span style="flex:1; font-size:11px; color:#4a3728; margin-left:4px;">${cards.map(id => escapeHtml(raidCardLabel(id))).join('、')}</span><span style="font-size:11px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${b}B${g > 0 ? ` <span style="color:#2e7d32;">+${g}%</span>` : ''}</span></div>`).join('')}</div>`).join('')}<div style="font-size:10.5px; color:#a89a88; margin-top:6px;">綠框＝建議放水晶的卡；+% ＝這組因為水晶升級多打的</div></details>` : '';
-            const gainLine = up && up.picks ? `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span></div>` : '';
+            const gainLine = up && up.picks ? (up.fromBuff ? `<div style="font-size:10.5px; color:#8a7a6a; text-align:center; margin-top:4px;">沿用同樣場次加成算過的結果</div>` : '') + `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span></div>` : '';
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}`;
             box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}

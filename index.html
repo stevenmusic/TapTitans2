@@ -8191,7 +8191,11 @@
                     a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成、放大的等級加成）
                     me.fromAttack = true;   // 攻擊紀錄的等級已含放大加成，模擬時不要再加一次
                     await new Promise(r => setTimeout(r, 0));
-                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: sx.tg, seed: 11 }, 60, P);
+                    // 防空高砲只打盔甲、打中會彈射到其他部位：有傷害的肉體部位是彈射的，打的部位只算盔甲
+                    // 盤面是這刀打完的狀態（打破的盔甲已經變肉體）：用這刀自己記錄的部位層別修正（追風 左肩盔甲被打破，被當成打肉體，防空高砲沒算到）
+                    (a.parts || []).forEach(pp => { if (pp && board[pp.part] && pp.layer === 'armor' && board[pp.part].layer === 'body') board[pp.part] = { layer: 'armor', cursed: false }; });
+                    let tgs = sx.tg; if (a.cards.some(c => c.name === 'FlakShot') && tgs.length > 1) { const ar = tgs.filter(k => board[k] && board[k].layer === 'armor'); if (ar.length && ar.length < tgs.length) tgs = ar; }
+                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: tgs, seed: 11 }, 60, P);
                     raidCsExpMem.set(k, r.total > 0 ? r.total : null);
                     if (r.total > 0 && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown() && !raidCsExpRedraw) raidCsExpRedraw = setTimeout(() => { raidCsExpRedraw = null; try { if (raidLogPanelShown()) renderRaidLogQueryResult(); } catch (e) {} }, 1500);
                 } catch (e) {} finally { raidCsExpBusy = false; }

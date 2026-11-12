@@ -7957,7 +7957,7 @@
             if (wait > 0) { if (!raidSimPickAutoTimer) raidSimPickAutoTimer = setTimeout(() => { raidSimPickAutoTimer = null; raidSimPickAuto(); }, wait); return; }
             raidSimPickAutoBusy = true; raidSimPickAutoAt = Date.now();
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            const kvKey = sa ? `sim_pick_v${RAID_SIM_PICK_VER}_${sa}` : null;
+            const kvKey = sa ? `sim_pick_v10_${sa}` : null;   // 名稱固定（伺服器暫存名稱已滿，不能再開新的）；每一筆自己帶 ver，舊版的會被略過
             const sessKeys = () => (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).map(a => raidSimExpKey(a));
             const doneCount = () => sessKeys().filter(k => raidSimPickStore[k] && raidSimPickStore[k].ver === RAID_SIM_PICK_VER).length;
             let before = 0;
@@ -12696,7 +12696,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v7_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v3_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -12712,11 +12712,11 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify([env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h13', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
-            const remote = await kvGet('home_reco_v13');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
+            const remote = await kvGet('home_reco_v12');   // 名稱帶版本：推薦算法改了就換名稱，不會拿到舊算法的結果
             if (remote && remote.sig === sig && Array.isArray(remote.rows) && remote.rows.length) {
                 raidSimHomeMem = { sig, rows: remote.rows };
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
@@ -12738,7 +12738,7 @@
             raidSimHomeMem = { sig, rows };
             try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
             // 存到伺服器，其他人打開網頁時同狀態就不用重算（門票、場次加成還沒從伺服器載入時算的先不存，免得存到用預設值算的結果）
-            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v13', { sig, rows, at: Date.now() });
+            if (raidSimActive === false && bossHpSnapshot && bossHpSnapshot.morale && bossHpSnapshot.raid) kvSet('home_reco_v12', { sig, rows, at: Date.now() });
             return rows;
         }
         // 模擬器推薦用的「打得到哪些部位」：只看層別（盔甲／肉體／詛咒甲）限制；頭、肚、四肢這類部位加成不當成限制（模擬器自己會算加成）
@@ -12792,7 +12792,7 @@
             const kvKey = crystalKvKey(lvl, p.player_code, banSig);
             crystalUpRes[key] = { busy: '讀取中…' }; renderCrystalReco();
             const remote = await kvGet(kvKey);
-            if (remote && remote.uses && remote.picks && remote.seed === seed.valid_from && crystalSlotClose(remote.slotSig, slotSig)) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
+            if (remote && remote.uses && remote.picks && remote.ver === CRYSTAL_DATA_VER && remote.seed === seed.valid_from && crystalSlotClose(remote.slotSig, slotSig)) { crystalUpRes[key] = remote; renderCrystalReco(); return; }
             try {
                 const P = await raidSimLoad();
                 const cands = await raidSimCandidateDecks(null, true);
@@ -12919,7 +12919,7 @@
                 Object.keys(uses).forEach(c => { uses[c] = Math.round(uses[c] / Math.max(1, steps) * 24 * 10) / 10; });
                 // 每隻王每個狀態：照建議放法挑中的 6 組（給人對照看邏輯）
                 const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, v, x]) => [d.cards, Math.round(v / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
-                const res = { uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
+                const res = { ver: CRYSTAL_DATA_VER, uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
                 crystalUpRes[key] = res; kvSet(kvKey, res);
             } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
             renderCrystalReco();
@@ -12988,7 +12988,8 @@
         }
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
-        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v11_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }
+        function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
+        const CRYSTAL_DATA_VER = 11;
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -13152,7 +13153,7 @@
                 const seed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch().catch(() => null);
                 const need = list.filter(p => !(crystalUpRes[keyOf(p)] && crystalUpRes[keyOf(p)].uses));
                 const got = await kvGetMany(need.map(p => crystalKvKey(crystalLevel, p.player_code, sig)));
-                need.forEach(p => { const r = got[crystalKvKey(crystalLevel, p.player_code, sig)]; if (r && r.uses && seed && r.seed === seed.valid_from) crystalUpRes[keyOf(p)] = r; });
+                need.forEach(p => { const r = got[crystalKvKey(crystalLevel, p.player_code, sig)]; if (r && r.uses && r.ver === CRYSTAL_DATA_VER && seed && r.seed === seed.valid_from) crystalUpRes[keyOf(p)] = r; });
             }
             const maxSlots = {}; list.forEach(p => (p.boosted_cards || []).forEach(b => { const k = b.category; maxSlots[k] = Math.max(maxSlots[k] || 0, list.length && (p.boosted_cards || []).filter(x => x.category === k).length); }));
             const fmt = (arr) => arr.map(x => escapeHtml(raidCardLabel(x))).join('、');
@@ -13312,7 +13313,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r7|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13323,7 +13324,7 @@
             if (!n) return [];
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v7_${code}` : null;
+            const kvKey = code && !fast && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v3_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }

@@ -12962,17 +12962,15 @@
             return `<div style="padding:0 8px 9px;"><div style="display:grid; grid-template-columns:${ms.map(m => m + 'fr').join(' ')}; gap:4px;">${groups}</div>${outs.length ? `<div style="display:flex; align-items:center; gap:4px; margin-top:5px; font-size:11px; color:#c0392b; font-weight:700;">換掉${outs.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" alt="" style="width:22px; height:22px; border-radius:4px; opacity:.6; filter:grayscale(.5);">` : '').join('')}</div>` : ''}</div>`;
         }
         // 全公會一覽（像攻擊紀錄）：每個人一行，點開看每一欄換掉→換上；用伺服器上算好的下一場
-        /* 水晶插槽有沒有少（插槽看卡片總等級＋套裝）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
-           另外看公會八成以上的人都有、他卻沒有的裝備套裝（有的套裝會加水晶插槽，可能忘了買） */
+        /* 水晶插槽有沒有少（遊戲說明：強化槽只看卡片總等級）：同一類別裡，卡片總等級比他低（或一樣）的人最多有幾格，他就至少該有幾格；
+           已知門檻（遊戲畫面）：打擊第 4 格 2400、苦痛第 4 格 2800、支援第 5 格 3500 */
         function crystalSlotCheck(p, players) {
             const has = players.filter(x => (x.boosted_cards || []).length);
             const cnt = (x, c) => (x.boosted_cards || []).filter(b => b.category === c).length;
             const lv = Number(p.total_card_level) || 0, miss = {};
             Object.keys(CRYSTAL_CAT).forEach(c => { const exp = Math.max(0, ...has.filter(x => (Number(x.total_card_level) || 0) <= lv).map(x => cnt(x, c))); const d = exp - cnt(p, c); if (d > 0) miss[c] = d; });
-            const setCnt = {}; has.forEach(x => (x.equipment_set || []).forEach(k => { setCnt[k] = (setCnt[k] || 0) + 1; }));
-            const mine = new Set(p.equipment_set || []);
-            const sets = Object.keys(setCnt).filter(k => setCnt[k] >= has.length * 0.8 && !mine.has(k));
-            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets };
+            // 遊戲說明：強化槽只看卡片總等級（跟套裝無關），所以不再看套裝
+            return { miss, n: Object.values(miss).reduce((a, b) => a + b, 0), sets: [] };
         }
         function crystalSlotWarn(p, players) {
             const r = crystalSlotCheck(p, players); if (!r.n && !r.sets.length) return '';

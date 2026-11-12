@@ -13162,7 +13162,12 @@
                 // 牌組頁：只保留卡片的部位限制（例如錘子只打頭、肚）；推薦用的條件（詛咒甲只給撼地破甲／毀了雨、帶刺的晨星）不套
                 const { hitParts } = raidSimPartFns(scene, true);
                 const hp = hitParts(cards3);
-                if (!hp.length) { deckSimRes = { err: '這 3 張卡現在打不到同一個部位（卡片部位限制）' }; return; }
+                if (!hp.length) {
+                    const att = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
+                    const lines = cards3.map(n => { const ok = att.filter(k => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, true).ok); const all = ok.length === att.length;
+                        return { n, all, txt: `${raidCardLabel(n)}：${all ? '每個部位都能打' : ok.length ? '只能打 ' + ok.map(raidPartLabel).join('、') : (att.length && QUIZ_CARDS[n] ? (quizCardUsable(n, scene, att[0], false, true).why || '現在沒有能打的部位') : '現在沒有能打的部位')}` }; });
+                    const bad = lines.filter(x => !x.all).map(x => raidCardLabel(x.n));
+                    deckSimRes = { err: `這 3 張卡沒有共同能打的部位${bad.length === 1 ? `，問題在「${bad[0]}」` : ''}\n` + lines.map(x => (x.all ? '' : '✖ ') + x.txt).join('\n') }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
                 plans = raidSimPlansFor(cards3, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
@@ -13202,7 +13207,7 @@
             const r = deckSimRes;
             const result = !env ? '<div style="font-size:12px; color:#c0392b; text-align:center;">目前沒有王的資料（突襲還沒開打，或還在載入）</div>'
                 : !r ? '' : r.busy ? '<div style="text-align:center; font-size:13px; color:#8a7a6a;">計算中…</div>'
-                : r.err ? `<div style="text-align:center; font-size:12.5px; color:#c0392b;">${escapeHtml(r.err)}</div>`
+                : r.err ? `<div style="text-align:center; font-size:13px; line-height:1.6; color:#c0392b; white-space:pre-line;">${escapeHtml(r.err)}</div>`
                 : `<div style="padding:8px 10px; background:#eef6ee; border-radius:10px;">
                     <div style="text-align:center; font-size:12px; color:#6b5a4a;">${escapeHtml(r.boss)}・打 ${r.tg.map(k => escapeHtml(raidPartLabel(k))).join('、')}${r.mirror ? '・鏡子力 +35%' : ''}</div>
                     <div style="text-align:center; font-size:22px; font-weight:900; color:#2e7d32;">應打 ${formatNumAlwaysM(r.avg)}</div>

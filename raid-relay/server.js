@@ -769,7 +769,7 @@ async function upsertRaidSessionIfNew(startedAt, levelTier) {
     const sessions = await getManualRaidSessions();
     const dup = sessions.find(s => Math.abs(new Date(s.startedAt).getTime() - ts) < RAID_SESSION_MATCH_MS);
     if (dup) {
-      if (dup.levelTier == null && typeof levelTier === 'number') {
+      if (typeof levelTier === 'number' && dup.levelTier !== levelTier) {   // 等級沒記或記錯（新場次沿用了上一場）：照這場的資料更正
         await db.execute({ sql: 'UPDATE manual_raid_sessions SET level_tier = ? WHERE started_at = ?', args: [levelTier, dup.startedAt] });
       }
       return;
@@ -1754,6 +1754,7 @@ function watcherHandleRaidSnapshot(payload, event) {
       watcherBossOrdinal = 0;            // 新場次還沒打到任何一隻王
       watcherHasReceivedAttack = false;
       watcherTitanTarget = null;
+      watcherCurrentRaidLevel = null;    // 新場次：等級要等這場的資料帶進來，不能沿用上一場（11/12 M-46 被記成 M-44）
     }
     watcherCurrentRaidStartedAt = payload.raid_started_at;
   }

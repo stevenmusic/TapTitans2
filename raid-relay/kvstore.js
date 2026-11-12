@@ -6,7 +6,7 @@
 //   POST /kv/:key  { data } → { ok, at }
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const MAX_BYTES = 512 * 1024;   // 單筆最多 512KB
-const MAX_KEYS = 300;           // 最多 300 個名稱
+const MAX_KEYS = 600;           // 最多 600 個名稱（滿了就先清掉最久沒更新的）
 const MIN_WRITE_MS = 2000;      // 同一個名稱 2 秒內只收一次寫入（避免很多人同時打開網頁一直覆寫）
 
 function createKvStore({ app, db, dbReady }) {
@@ -22,6 +22,12 @@ function createKvStore({ app, db, dbReady }) {
     loaded = true;
   })().catch(e => { console.error('[kv] 初始化失敗:', e && e.message ? e.message : e); });
 
+  const delKeys = async (keys) => {
+    if (!keys.length) return;
+    keys.forEach(k => mem.delete(k));
+    try { for (let i = 0; i < keys.length; i += 50) { const part = keys.slice(i, i + 50); await db.execute({ sql: `DELETE FROM kv_store WHERE key IN (${part.map(() => '?').join(',')})`, args: part }); } }
+    catch (e) { console.error('[kv] 刪除失敗:', e && e.message ? e.message : e); }
+  };
   const out = (key) => { const x = mem.get(key); return x ? { data: JSON.parse(x.text), at: x.at } : { data: null, at: null }; };
 
   app.get('/kv', async (req, res) => {
@@ -43,7 +49,14 @@ function createKvStore({ app, db, dbReady }) {
     const text = JSON.stringify(req.body.data);
     if (Buffer.byteLength(text) > MAX_BYTES) return res.status(413).json({ error: 'too large' });
     await ready;
-    if (!mem.has(key) && mem.size >= MAX_KEYS) return res.status(507).json({ error: 'too many keys' });
+    // 突襲水晶只留最新一場：存某一關的水晶結果時，把其他關卡、舊版本的水晶結果都刪掉
+    const cm = /^crystal_v\d+_(\d+)_/.exec(key);
+    if (cm) { const pre = cm[0]; const drop = [...mem.keys()].filter(k => /^crystal_v\d+_/.test(k) && !k.startsWith(pre)); await delKeys(drop); }
+    // 名稱滿了：清掉最久沒更新的（舊場次的暫存），不要整個拒收
+    if (!mem.has(key) && mem.size >= MAX_KEYS) {
+      const old = [...mem.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, Math.max(1, mem.size - MAX_KEYS + 20)).map(e => e[0]);
+      await delKeys(old);
+    }
     const now = Date.now();
     if (now - (lastWrite.get(key) || 0) < MIN_WRITE_MS) return res.status(429).json({ error: 'too fast' });
     lastWrite.set(key, now);

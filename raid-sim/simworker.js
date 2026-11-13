@@ -2,7 +2,7 @@
 // 算法跟 index.html 的 raidSimScreen／raidSimFinal 完全一樣（同樣的亂數種子），結果不變，只是比較快
 importScripts('raidsim.js?v=22');
 const ready = fetch('skills.json?v=1').then(r => r.json()).then(sk => RaidSim.init(sk));
-const SCREEN_RUNS = 8, FINAL_RUNS = 100;
+const SCREEN_RUNS = 2, FINAL_RUNS = 100;
 // cap：目標部位剩下的血，傷害算到那裡為止；alts：每種打法的粗算結果（推薦好幾組時重新分配部位用）
 function screen(P, base, cards, plans, lite) {   // lite：配卡用的輕量版（粗算 1 次、細算 4 次）
   const capOf = (pl) => pl.cap > 0 ? pl.cap : Infinity;

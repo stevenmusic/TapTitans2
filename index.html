@@ -14020,7 +14020,7 @@
             return envOut;
         }
         // 一組牌：先每種打法跑 8 次挑傷害最高的（screen），之後再跑 200 次算平均和 P25～P75（final）
-        const RAID_SIM_SCREEN_RUNS = 8, RAID_SIM_FINAL_RUNS = 100;   // 精算 100 次（跟 200 次比中位只差約 0.4%，快一倍）
+        const RAID_SIM_SCREEN_RUNS = 2, RAID_SIM_FINAL_RUNS = 100;   // 粗篩每種打法 2 次、精算前 80 組（最佳 6 組粗篩排名常在 50～70 名，名額放寬比粗篩跑多次更準）   // 精算 100 次（跟 200 次比中位只差約 0.4%，快一倍）
         // 放大（MagicPotion）：攻擊紀錄上同組另外兩張卡的等級會多 ceil((放大等級＋1)÷10.5) 級（這一場 20～60 級全部對得上）。
         // 模擬器的校正是用攻擊紀錄上的等級做的，所以用帳號等級算（推薦、配卡）時要先補上；已經是攻擊紀錄等級的（me.fromAttack）不再補
         function raidSimPotionBonus(potionLv) { return potionLv > 0 ? Math.ceil((potionLv + 1) / 10.5) : 0; }
@@ -14068,7 +14068,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=23');
+                    const w = new Worker('raid-sim/simworker.js?v=24');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -14116,7 +14116,7 @@
                 }
             }
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
-            const nTop = Math.min(quick.length, topN || Math.max(40, n * 6));   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
+            const nTop = Math.min(quick.length, topN || Math.max(80, n * 12));   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o, runs: lite ? 100 : undefined })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {

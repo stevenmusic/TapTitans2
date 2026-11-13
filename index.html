@@ -6830,7 +6830,7 @@
             if (logResp.ok) {
                 const data = await logResp.json();
                 if (Array.isArray(data.attacks)) {
-                    serverAttackLogCache = raidFixCycles(data.attacks);
+                    serverAttackLogCache = raidFixOrder(raidFixCycles(data.attacks));
                     setTimeout(refreshBossHpIfOpen, 0);
                     mergeIntoRaidFullLogBackup(data.attacks); // 雙重保險：合併備份到本機，絕對不主動清空
                     // 這批資料就是最新一場的內容，順便存進場次快取，選到最新這場就不用再抓一次
@@ -6948,7 +6948,7 @@
                 const resp = await fetch(`${relayUrl}/full-attack-log?session=${encodeURIComponent(startedAt)}`);
                 if (!resp.ok) return [];
                 const data = await resp.json();
-                const attacks = raidFixCycles(Array.isArray(data.attacks) ? data.attacks : []);
+                const attacks = raidFixOrder(raidFixCycles(Array.isArray(data.attacks) ? data.attacks : []));
                 sessionAttacksCache.set(startedAt, attacks);
                 mergeIntoRaidFullLogBackup(attacks);
                 return attacks;
@@ -8322,6 +8322,15 @@
 
         // 輪次校正：伺服器偶爾在換輪後幾十秒內還把攻擊記成上一輪（官方換輪事件比攻擊晚到）。
         // 每輪 12 小時，從場次開始時間跟攻擊時間算出應該的輪次，記錄的比較小就用算出來的
+        function raidFixOrder(list) {
+            // 同一個人同一輪：剩餘次數一定遞減。補匯入的刀時間可能記在後面一刀之後（例如最愛喝獸奶 剩1 的刀記成 06:11:08，剩0 是 06:11:03），
+            // 照剩餘次數把順序排回來（只調網頁上的排序時間，不動伺服器資料），漏記檢查也才不會看成跳號
+            const g = new Map();
+            (list || []).forEach(a => { if (!a || a.placeholder || typeof a.cycle !== 'number' || typeof a.attacksRemaining !== 'number') return; const k = (a.raidStartedAt || '') + '|' + (a.playerCode || a.player) + '|' + a.cycle; if (!g.has(k)) g.set(k, []); g.get(k).push(a); });
+            g.forEach(arr => { if (arr.length < 2) return; arr.sort((x, y) => y.attacksRemaining - x.attacksRemaining || x.ts - y.ts);
+                for (let i = arr.length - 2; i >= 0; i--) if (arr[i].attacksRemaining > arr[i + 1].attacksRemaining && arr[i].ts >= arr[i + 1].ts) arr[i].ts = arr[i + 1].ts - 1; });
+            return list;
+        }
         function raidFixCycles(list) {
             (list || []).forEach(a => {
                 if (!a || typeof a.cycle !== 'number' || !a.raidStartedAt) return;
@@ -12780,7 +12789,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h23', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h24', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13409,6 +13418,8 @@
             } else open.forEach(k => { b[k] = Math.min(env.hp[k], T * env.hp[k] / sumHp * 1.3); });
             return b;
         }
+        // 一組打好幾個部位時傷害平均分配，每個部位最多吃到它剩的血
+        function raidSimCapParts(x, leftAt) { const ks = Object.keys(leftAt || {}); if (!ks.length) return x; const per = x / ks.length; return ks.reduce((t, k) => t + Math.min(per, leftAt[k]), 0); }
         function raidSimDeplete(pick, env) {
             if (!env || !env.hp || !pick.length) return;
             // 不為了部位平衡犧牲傷害：每組照自己最好的打法，只有「部位剩的血不夠打」時才換部位。
@@ -13429,8 +13440,10 @@
                 if (!best) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
                 if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; o.reFinal = true; }   // 換了部位：之後在新部位重新精算
-                const c = capOf(best.a.tg, best.est); o.cap = c;   // 顯示：每個部位各自算到扣掉前面幾組之後剩下的血為止（傷害平均分到各部位，血少的部位吃不下的不算）
-                o.avg = Math.min(best.est, c); if (o.lo != null) o.lo = Math.min(o.lo * f, c); if (o.hi != null) o.hi = Math.min(o.hi * f, c);
+                // 顯示：每個部位各自算到扣掉前面幾組之後剩下的血為止（傷害平均分到各部位，血少的部位吃不下的不算）；應打、上下限各自套
+                const leftAt = {}; best.a.tg.forEach(k => { leftAt[k] = left[k] || 0; }); o.leftAt = leftAt;
+                o.cap = best.a.tg.reduce((t, k) => t + leftAt[k], 0);   // 精算的上限：部位剩的血（不是這組的傷害）
+                o.avg = raidSimCapParts(best.est, leftAt); if (o.lo != null) o.lo = raidSimCapParts(o.lo * f, leftAt); if (o.hi != null) o.hi = raidSimCapParts(o.hi * f, leftAt);
                 const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); });
             });
             pick.sort((a, b) => b.avg - a.avg);
@@ -13443,7 +13456,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r24|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r25|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13492,7 +13505,7 @@
             if (re.length) {
                 const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
                 const fr = (await raidSimParallel(P, jobs)) || jobs.map(j => raidSimFinal(P, env, me, j.o));
-                re.forEach((o, i) => { const f = fr[i]; if (f) { o.avg = f.avg; o.lo = f.lo; o.hi = f.hi; o.raw = f.raw; } delete o.reFinal; });
+                re.forEach((o, i) => { const f = fr[i]; if (f) { const L = o.leftAt; o.avg = L ? raidSimCapParts(f.raw, L) : f.avg; o.lo = L ? raidSimCapParts(f.lo, L) : f.lo; o.hi = L ? raidSimCapParts(f.hi, L) : f.hi; o.raw = f.raw; } delete o.reFinal; });
                 pick.sort((a, b) => b.avg - a.avg);
             }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));

@@ -13620,7 +13620,7 @@
             const expand = async (pool, E, ok, hitF, keep, K, topN, round = 0, done = new Set()) => {
                 const sig = (c) => c.slice().sort().join('+'), seen = new Set(pool.map(o => sig(o.cards))), add = [];
                 // 換進來的卡只用有潛力的：每張卡在目前候選裡最好那組的傷害排名前 RAID_SIM_SWAP_CARDS 張（沒出現在任何候選的卡也試，因為可能從沒人打過）
-                let swapIn = avail;
+                let swapIn = keep && expand.partners ? avail.filter(c => expand.partners.has(c)) : avail;   // 瘋狂無效那組：只換常跟它搭的卡
                 if (RAID_SIM_SWAP_CARDS) { const best = {}; pool.forEach(o => o.cards.forEach(c => { if ((best[c] || 0) < o.avg) best[c] = o.avg; }));
                     const seenC = avail.filter(c => best[c] > 0).sort((a, b) => best[b] - best[a]); swapIn = seenC.slice(0, RAID_SIM_SWAP_CARDS).concat(avail.filter(c => !(best[c] > 0))); }
                 // 起點：照「挑出來的組合」換（RAID_SIM_SWAP_MODE='pick'，6 組互相搭配才是重點），或單組傷害前 K 名
@@ -13649,7 +13649,9 @@
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
                 let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20) : [];
-                if (vpool0.length) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 5, 12)).pool;   // 瘋狂無效的組也換卡找沒人打過的
+                // 瘋狂無效常搭的卡：公會打過、外部模擬推過的瘋狂無效牌組裡出現過的卡（只用這些換，不用全部卡都試）
+                expand.partners = new Set(vlist.flatMap(d => d.cards).filter(c => c !== VOID));
+                if (vpool0.length) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
                 const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = got.pool;
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);

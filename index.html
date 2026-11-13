@@ -7932,7 +7932,7 @@
         // 配卡算過的每一刀記在這台裝置上，之後打開網頁不重算（模擬器規則改了也保留，不再換名稱清掉）
         const RAID_SIM_PICK_KEY = 'tt2_sim_pick';
         const RAID_SIM_PICK_VER = 13;   // 12：新版推薦邏輯（不為部位平衡犧牲傷害）＋新版模擬校正
-        const RAID_WEB_EXP_VER = 'c20';   // 網頁重算的應打存到伺服器的版本（模擬校正 calibration 改版就要跟著改）   // 11：詛咒甲只給撼地破甲、毀了雨的牌組打
+        const RAID_WEB_EXP_VER = 'c21';   // 網頁重算的應打存到伺服器的版本（模擬校正 calibration 改版就要跟著改）   // 11：詛咒甲只給撼地破甲、毀了雨的牌組打
           // 10：剛開打時賽季加成沿用上一場（之前變成沒加成，分母偏低）
           // 9：6 組一定要有一組帶鏡子力
           // 8：分母照目標部位剩下的血封頂、挑組時算部位份額
@@ -12807,7 +12807,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h25', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h26', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13474,7 +13474,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = 'r26|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = 'r27|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -13838,7 +13838,7 @@
             if (raidSimReady) return raidSimReady;
             raidSimReady = (async () => {
                 if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=22'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
-                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=20').then(r => r.json())]);
+                const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
             })();

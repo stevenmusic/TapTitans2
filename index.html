@@ -12580,9 +12580,8 @@
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
             const box = raidLogRecoBox(r.player);
-            if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 再按一次收起來
+            if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none' && !raidRecoVoid.has(r.player)) {   // 一般推薦開著：再按一次收起來（開著的是留瘋狂無效：下面直接換成一般推薦，不收合）
                 raidLogRecoOpen.delete(r.player);
-                if (raidRecoVoid.delete(r.player)) { raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player); raidRecoVoidBtnRefresh(); }
                 box.style.display = 'none';
                 raidLogUiSave();
                 return;

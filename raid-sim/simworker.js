@@ -4,7 +4,7 @@ importScripts('raidsim.js?v=23');
 const ready = fetch('skills.json?v=1').then(r => r.json()).then(sk => RaidSim.init(sk));
 const SCREEN_RUNS = 2, FINAL_RUNS = 100;
 // 節流：連續算 50ms 就休息 50ms（單一核心最多約 50%，低階筆電不會滿載）
-const BUSY_MS = 50, REST_MS = 50;
+let BUSY_MS = 50, REST_MS = 50;   // 每批由主畫面指定：前景 50/50、背景 35/35
 let sliceAt = 0, lastAt = 0;
 // 這一段連續算了多久：中間閒置超過 REST_MS（等主畫面送下一批）就算休息過，重新計時；不管一批多短都照實際時間休息
 async function tick() { const now = performance.now(); if (!sliceAt || now - lastAt > REST_MS) sliceAt = now; if (now - sliceAt >= BUSY_MS) { await new Promise(r => setTimeout(r, REST_MS)); sliceAt = performance.now(); } lastAt = performance.now(); }
@@ -46,10 +46,10 @@ async function quickPick(P, base, plans, caps) {
 }
 async function meanOf(P, j) { return Math.min((await simMeanT({ ...j.base, targets: j.tg, seed: j.seed }, j.runs, P)).total, j.cap == null ? Infinity : j.cap); }
 onmessage = async (e) => {
-  const { id, P, jobs } = e.data;
+  const { id, P, jobs } = e.data; if (e.data.busy > 0) BUSY_MS = e.data.busy; if (e.data.rest > 0) REST_MS = e.data.rest;
   try {
     await ready;
-    const out = []; for (const j of jobs) out.push(await (j.kind === 's' ? screen(P, j.base, j.cards, j.plans, j.lite) : j.kind === 'q' ? quickPick(P, j.base, j.plans, j.caps) : j.kind === 'm' ? meanOf(P, j) : final(P, j.base, j.o, j.runs)));
+    const out = []; for (const j of jobs) out.push(await (j.kind === 's' ? screen(P, j.base, j.cards, j.plans, j.lite) : j.kind === 'q' ? quickPick(P, j.base, j.plans, j.caps) : j.kind === 'm' ? meanOf(P, j) : j.kind === 'e' ? simMeanT(j.opt, j.runs, P) : final(P, j.base, j.o, j.runs)));
     postMessage({ id, out });
   } catch (err) { postMessage({ id, error: String(err && err.message || err) }); }
 };

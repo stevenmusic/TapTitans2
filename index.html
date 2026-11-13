@@ -7962,7 +7962,6 @@
         // 背景配卡：每分鐘最多跑一次；算好的每一刀存到伺服器暫存（kv，每場一份），別人打開直接拿、沒變就不重算
         let raidSimPickAutoAt = 0, raidSimPickAutoTimer = null;
         async function raidSimPickAuto() {
-            return;   // 背景配卡關閉（不在背景吃 CPU）：配卡只用伺服器上已經算好的
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
             const wait = 60000 - (Date.now() - raidSimPickAutoAt);
             if (wait > 0) { if (!raidSimPickAutoTimer) raidSimPickAutoTimer = setTimeout(() => { raidSimPickAutoTimer = null; raidSimPickAuto(); }, wait); return; }
@@ -7995,8 +7994,8 @@
                     if (info && info.ratio != null && !pending) continue;
                     while (raidSimRankBusy > 0) await new Promise(res => setTimeout(res, 300));   // 有人按「推薦」在算：背景配卡先等它算完
                     if (++doneThisRun > 2) { raidSimPickAutoAt = 0; setTimeout(raidSimPickAuto, 60000); break; }   // 每分鐘最多算 2 個人（細水長流，不要一直佔 CPU）
-                    raidSimWorkerLimit = 1;   // 背景只用 1 個核心
-                    try { await raidSimPickRun(r.identity, true); } finally { raidSimWorkerLimit = 0; }
+                    raidSimWorkerLimit = 1; raidBgMode++;   // 背景作業：只在每分鐘前 30 秒、算 35ms 休息 35ms
+                    try { await raidSimPickRun(r.identity, true); } finally { raidSimWorkerLimit = 0; raidBgMode--; }
                 }
                 if (kvKey && doneCount() > before) {   // 有新算好的：跟伺服器上的合併後存回去
                     const remote = (await kvGet(kvKey)) || {};
@@ -8197,7 +8196,6 @@
         function raidCsExp(a, sx) {
             const k = raidSimExpKey(a);
             if (raidCsExpMem.has(k)) return raidCsExpMem.get(k);
-            return null;   // 不在背景算每一刀的應打（吃 CPU）：只用伺服器上已經算好的，沒有的照伺服器的應打
             raidCsExpMem.set(k, null);
             (async () => {
                 while (raidCsExpBusy) await new Promise(r => setTimeout(r, 200));
@@ -8219,7 +8217,8 @@
                     // 盤面是這刀打完的狀態（打破的盔甲已經變肉體）：用這刀自己記錄的部位層別修正（追風 左肩盔甲被打破，被當成打肉體，防空高砲沒算到）
                     (a.parts || []).forEach(pp => { if (pp && board[pp.part] && pp.layer === 'armor' && board[pp.part].layer === 'body') board[pp.part] = { layer: 'armor', cursed: false }; });
                     let tgs = sx.tg; if (a.cards.some(c => c.name === 'FlakShot') && tgs.length > 1) { const ar = tgs.filter(k => board[k] && board[k].layer === 'armor'); if (ar.length && ar.length < tgs.length) tgs = ar; }
-                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: tgs, seed: 11 }, 60, { ...P, k: raidCardKBase || P.k, deckK: {}, tapK: 1 });   // 存原始應打（不含牌組滾動校正），顯示時再乘
+                    const Pe = { ...P, k: raidCardKBase || P.k, deckK: {}, tapK: 1, bg: true }, opt = { ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: tgs, seed: 11 };   // 背景作業：交給 Worker（每分鐘前 30 秒、算 35ms 休息 35ms）
+                    const rr = await raidSimParallel(Pe, [{ kind: 'e', opt, runs: 60 }]); const r = rr && rr[0]; if (!r) { raidCsExpMem.delete(k); return; }   // Worker 不能用：這次跳過，不在主畫面算   // 存原始應打（不含牌組滾動校正），顯示時再乘
                     raidCsExpMem.set(k, r.total > 0 ? r.total : null);
                     if (r.total > 0) raidCsExpBy.set(k, { t: Math.round(r.tap), b: Object.fromEntries(Object.entries(r.by || {}).filter(([, x]) => x > 0).map(([c, x]) => [c, Math.round(x)])) });
                     if (r.total > 0 && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown() && !raidCsExpRedraw) raidCsExpRedraw = setTimeout(() => { raidCsExpRedraw = null; try { if (raidLogPanelShown()) renderRaidLogQueryResult(); } catch (e) {} }, 1500);
@@ -12626,7 +12625,7 @@
             if (used.has(VOID)) return '<div style="font-size:12px; color:#8a7a6a;">瘋狂無效這輪已經用過。</div>';
             const v = raidAccountInfo(r.player); if (!v) return '<div style="font-size:12px; color:#8a7a6a;">沒有這個人的帳號資料。</div>';
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
-            let P = await raidSimLoad(); const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {} };
+            let P = await raidSimLoad(); const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {}, fg: true };
             const showF = (cards) => deckKShow[cards.slice().sort().join('+')] || 1;
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             if (!(me.lv[VOID] > 0)) return '<div style="font-size:12px; color:#8a7a6a;">沒有瘋狂無效這張卡。</div>';
@@ -13642,7 +13641,7 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
-            const deckKShow = {}; P = { ...P, lowPri: !!fast };   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
+            const deckKShow = {}; P = { ...P, lowPri: !!fast, fg: true };   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
@@ -14351,9 +14350,9 @@
                 const n = 1;   // 只用 1 個 Worker，而且 Worker 算 50ms 就休息 50ms（單核最多 50%，低階筆電也不會滿載）
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=26');
+                    const w = new Worker('raid-sim/simworker.js?v=27');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
-                    w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
+                    w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
                 }
                 raidSimPool = pool;
@@ -14362,33 +14361,40 @@
         }
         // 平行算一批工作（順序跟輸入一樣）；失敗回傳 null，呼叫的地方改回主畫面算
         let raidSimWorkerLimit = 0;   // 背景配卡時只用 1 個核心（0＝全部）
-        let raidSimHiBusy = 0;   // 個人推薦正在用 Worker：首頁推薦每一批先等它
+        // 主畫面直接算（Worker 不能用時）的節流：連續算 50ms 就休息 50ms
+        let raidMainSliceAt = 0;
+        async function raidMainTick() { const now = performance.now(); if (!raidMainSliceAt || now - raidMainSliceAt > 200) raidMainSliceAt = now; if (now - raidMainSliceAt >= 50) { await new Promise(r => setTimeout(r, 50)); raidMainSliceAt = performance.now(); } else await new Promise(r => setTimeout(r, 0)); }
+        let raidSimHiBusy = 0;
+        // 背景作業的時段：每分鐘只有前 30 秒能算（30 秒後休息到下一分鐘）
+        let raidBgMode = 0; const raidBgEpoch = Date.now();
+        function raidBgWindowOpen() { return (Date.now() - raidBgEpoch) % 60000 < 30000; }   // 個人推薦正在用 Worker：首頁推薦每一批先等它
         async function raidSimParallel(P, jobs, onProgress) {
             const pool = raidSimPoolGet();
             if (!pool || !jobs.length) return pool ? [] : null;
-            const lo = !!(P && P.lowPri);
+            const bg = !!(P && (P.bg || (raidBgMode > 0 && !P.fg)));   // 背景作業（伺服器沒有的刀、全公會配卡）
+            const lo = !!(P && P.lowPri) || bg;
             if (!lo) raidSimHiBusy++;
-            try { return await raidSimParallelInner(P, jobs, onProgress, pool, lo); } finally { if (!lo) raidSimHiBusy--; }
+            try { return await raidSimParallelInner(P, jobs, onProgress, pool, lo, bg); } finally { if (!lo) raidSimHiBusy--; }
         }
-        async function raidSimParallelInner(P, jobs, onProgress, pool, lo) {
+        async function raidSimParallelInner(P, jobs, onProgress, pool, lo, bg) {
             const CH = 2, chunks = [];
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
                 await Promise.all(pool.ws.slice(0, raidSimWorkerLimit || pool.ws.length).map(async (w) => {
                     while (next < chunks.length && !stopped) {
-                        while ((lo && raidSimHiBusy > 0) || document.hidden) await new Promise(r => setTimeout(r, document.hidden ? 1000 : 150));   // 網頁在背景（切走、縮小）就暫停
+                        while ((lo && raidSimHiBusy > 0) || document.hidden || (bg && !raidBgWindowOpen())) await new Promise(r => setTimeout(r, 500));   // 網頁在背景（切走、縮小）就暫停；背景作業只在每分鐘前 30 秒算、前景在算就讓
                         if (next >= chunks.length || stopped) break;
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
-                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part }); });
+                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 50, rest: bg ? 35 : 50 }); });   // 前景算 50 休 50；背景算 35 休 35
                         res.forEach((r, k) => { out[start + k] = r; });
                         done += part.length;
                         if (onProgress && onProgress(done / jobs.length) === 'stop') { stopped = true; throw new Error('cancelled'); }   // 呼叫的地方說不用算了（狀態已經變了）
                     }
                 }));
                 return out;
-            } catch (e) { if (e && e.message === 'cancelled') throw e; raidSimPool = false; return null; }
+            } catch (e) { if (e && e.message === 'cancelled') throw e; console.error('raidSimParallel', e && e.message || e); try { pool.ws.forEach(w => w.terminate()); } catch (e2) {} raidSimPool = null; return null; }   // 出錯不永久停用：下次重開 Worker
         }
         async function raidSimRankInner(P, env, me, list, n, progress, extra, topN) {
             const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress, topN);
@@ -14402,7 +14408,7 @@
                 quick = [];
                 for (let i = 0; i < all.length; i++) {
                     if (progress && progress(`計算中 ${Math.round(i / all.length * 60)}%`) === 'stop') throw new Error('cancelled');   // 快速篩約占 6 成時間
-                    await new Promise(r => setTimeout(r, 0));
+                    await raidMainTick();   // Worker 不能用、退回主畫面算：一樣算 50ms 休息 50ms
                     quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
                 }
             }
@@ -14412,7 +14418,7 @@
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {
                 if (progress && progress(`計算中 ${60 + Math.round(i / nTop * 40)}%`) === 'stop') throw new Error('cancelled');
-                await new Promise(r => setTimeout(r, 0));
+                await raidMainTick();   // Worker 不能用、退回主畫面算：一樣算 50ms 休息 50ms
                 quick[i] = raidSimFinal(P, env, me, quick[i]);
             }
             return quick;
@@ -14481,7 +14487,7 @@
                 const fr = await raidSimParallel(P, rough.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })));
                 for (let i = 0; i < rough.length; i++) {
                     const k = pool.indexOf(rough[i]);
-                    if (fr) pool[k] = fr[i]; else { await new Promise(r => setTimeout(r, 0)); pool[k] = raidSimFinal(P, env, me, rough[i]); }
+                    if (fr) pool[k] = fr[i]; else { await raidMainTick(); pool[k] = raidSimFinal(P, env, me, rough[i]); }
                 }
             }
             // 顯示的應打不打折（跟攻擊紀錄的應打同一個算法，兩邊數字一致）；少見牌組只在排順序時打折

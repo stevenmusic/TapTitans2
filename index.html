@@ -12885,7 +12885,7 @@
         const raidSimPickCache = new Map();
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
-        let RAID_SIM_SWAP_ON = false;   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
+        let RAID_SIM_SWAP_ON = false, RAID_SIM_SWAP_FEW = false;   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
         let RAID_SIM_SWAP_MODE = 'pick', RAID_SIM_SWAP_ROUNDS = 3;   // 照挑出來的 6 組換卡（回測 8 人都 ≥ 舊法，多 1.5～3%）
         let RAID_SIM_SWAP_K = 10, RAID_SIM_SWAP_TOP = 24, RAID_SIM_SWAP_LITE = false;   // 換卡：前幾組、精算幾組、初篩用輕量
         const raidSimPoolMemo = new Map();
@@ -13681,7 +13681,10 @@
                 const seeds = (RAID_SIM_SWAP_MODE === 'both' && !keep ? (await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n)).concat(round ? [] : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)) : RAID_SIM_SWAP_MODE === 'pick' && !keep ? await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n) : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)).filter(o => !done.has(sig(o.cards)));   // 換過的組不再換
                 seeds.forEach(o => done.add(sig(o.cards)));
                 seeds.forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
-                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (it) add.push(it); }); }));
+                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (!it) return;
+                        // 只試原本那組的打法＋打最多部位的打法（換一張卡，最好的打法通常差不多；全部打法都試太慢）
+                        if (RAID_SIM_SWAP_FEW) { const keepPl = it.plans.filter(pl => pl.tg.join() === (o.tg || []).join()); const wide = it.plans.slice().sort((a, b) => b.tg.length - a.tg.length)[0]; const pl = keepPl.concat(wide && !keepPl.includes(wide) ? [wide] : []); if (pl.length) it.plans = pl; }
+                        add.push(it); }); }));
                 if (!add.length) return { pool, add };
                 const ev = await raidSimEvalPool(P, E, me, add, 1, keep ? seg(8, 16) : segX(round), topN, RAID_SIM_SWAP_LITE);
                 const out = { pool: pool.concat(ev), add };
@@ -14325,7 +14328,7 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
+                const n = Math.max(1, Math.min(8, navigator.hardwareConcurrency || 2));   // 主畫面等結果時是閒的：核心全部用上（最多 8 個）
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
                     const w = new Worker('raid-sim/simworker.js?v=25');
@@ -14348,7 +14351,7 @@
             try { return await raidSimParallelInner(P, jobs, onProgress, pool, lo); } finally { if (!lo) raidSimHiBusy--; }
         }
         async function raidSimParallelInner(P, jobs, onProgress, pool, lo) {
-            const CH = 3, chunks = [];
+            const CH = 2, chunks = [];
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {

@@ -12903,10 +12903,25 @@
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
         // 推薦只用打過幾次以上的牌組（公會歷史＋這場），沒驗證過的組合不推（0＝不限制）
         let RAID_SIM_MIN_USES = 10;   // 8 人回測：≥10 次比不限制少 0.53%（≥3 也一樣），時間 9 秒→3 秒；≥30 次少 1.65%
+        // 推薦只用驗證過的牌組：跟這場同樣加成類型（爆裂／苦痛／其他）的場次裡，至少 RAID_SIM_MIN_PLAYERS 個不同的人、合計 RAID_SIM_MIN_USES 刀以上
+        //   （牌組好不好跟加成類型很有關係；只有一個人一直打、或很久以前在別種加成打過的不算）。歷史紀錄還沒載入好時先用伺服器的累計次數
+        let RAID_SIM_MIN_PLAYERS = 3;
+        let RAID_SIM_SAME_BUFF = false;   // true：照同加成類型的場次算（較嚴，8 人回測 ≥3 刀≥2 人少 1.1%）；false：伺服器累計次數（不分加成、不看人數）＋這場
         function raidDeckUsesMap() {
-            const m = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), d.uses || 0]));
+            if (!RAID_SIM_SAME_BUFF) { const m0 = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), { n: d.uses || 0, ps: new Set(['-1', '-2', '-3']) }])); const sa0 = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+                (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa0 || !a.cards || a.cards.length !== 3) return; const k = a.cards.map(c => c.name || c).sort().join('+'); const e = m0.get(k) || { n: 0, ps: new Set(['-1', '-2', '-3']) }; e.n++; m0.set(k, e); }); return m0; }
+            const m = new Map(), add = (k, who) => { let e = m.get(k); if (!e) m.set(k, e = { n: 0, ps: new Set() }); e.n++; if (who) e.ps.add(who); };
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa || !a.cards || a.cards.length !== 3) return; const k = a.cards.map(c => c.name || c).sort().join('+'); m.set(k, (m.get(k) || 0) + 1); });
+            const buff = raidSimActive ? simBuffKey() : currentSessionBuff(), grp = buff && SESSION_BUFFS[buff] ? acBuffGroup(buff) : null;
+            let seenCur = false;
+            if (attackCacheState.ready && Array.isArray(attackCacheRecords)) {
+                attackCacheRecords.forEach(rec => {
+                    if (grp && (!rec.buffType || acBuffGroup(rec.buffType) !== grp)) return;
+                    if (rec.startedAt === sa) seenCur = true;
+                    (rec.attacks || []).forEach(a => { const cs = a && a[4]; if (Array.isArray(cs) && cs.length === 3) add(cs.map(c => c.name || c).slice().sort().join('+'), a[1]); });
+                });
+            } else (raidSimDeckList || []).forEach(d => { const e = { n: d.uses || 0, ps: new Set(['?1', '?2', '?3']) }; m.set(d.cards.slice().sort().join('+'), e); });   // 還沒載入：先用伺服器累計（不分加成）
+            if (!seenCur) (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa || !a.cards || a.cards.length !== 3) return; add(a.cards.map(c => c.name || c).sort().join('+'), a.playerCode || a.player); });
             return m;
         }
         let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false;   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
@@ -13665,7 +13680,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r39|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r40' + (RAID_SIM_SAME_BUFF && attackCacheState.ready ? 'A' : 'S') + '|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13689,7 +13704,7 @@
                 const remote = await kvGet(kvKey);
                 if (remote && remote.sig === key && okRows(remote.rows)) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
             }
-            const usesM = RAID_SIM_MIN_USES > 0 ? raidDeckUsesMap() : null, usedEnough = (cards) => !usesM || (usesM.get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES;
+            const usesM = RAID_SIM_MIN_USES > 0 ? raidDeckUsesMap() : null, usedEnough = (cards) => { if (!usesM) return true; const e = usesM.get(cards.slice().sort().join('+')); return !!e && e.n >= RAID_SIM_MIN_USES && e.ps.size >= RAID_SIM_MIN_PLAYERS; };
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => usedEnough(d.cards)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });

@@ -7962,6 +7962,7 @@
         // 背景配卡：每分鐘最多跑一次；算好的每一刀存到伺服器暫存（kv，每場一份），別人打開直接拿、沒變就不重算
         let raidSimPickAutoAt = 0, raidSimPickAutoTimer = null;
         async function raidSimPickAuto() {
+            return;   // 背景配卡關閉（不在背景吃 CPU）：配卡只用伺服器上已經算好的
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
             const wait = 60000 - (Date.now() - raidSimPickAutoAt);
             if (wait > 0) { if (!raidSimPickAutoTimer) raidSimPickAutoTimer = setTimeout(() => { raidSimPickAutoTimer = null; raidSimPickAuto(); }, wait); return; }
@@ -8196,6 +8197,7 @@
         function raidCsExp(a, sx) {
             const k = raidSimExpKey(a);
             if (raidCsExpMem.has(k)) return raidCsExpMem.get(k);
+            return null;   // 不在背景算每一刀的應打（吃 CPU）：只用伺服器上已經算好的，沒有的照伺服器的應打
             raidCsExpMem.set(k, null);
             (async () => {
                 while (raidCsExpBusy) await new Promise(r => setTimeout(r, 200));
@@ -12980,6 +12982,8 @@
                 try { localStorage.setItem(RAID_SIM_HOME_KEY, JSON.stringify(raidSimHomeMem)); } catch (e) {}
                 return remote.rows;
             }
+            // 首頁不在背景跑模擬（吃 CPU）：沒有算好的就回 null，改用攻擊紀錄統計的推薦
+            return null;
             // 同一個狀態已經在算：等它就好，不要再開一份（血量一變就會觸發檢查，以前會疊好幾份同時算，結果一份都算不完）
             if (raidSimHomeInflight && raidSimHomeInflight.sig === sig) { raidSimHomeInflight.progress = progress; return raidSimHomeInflight.promise; }
             const gen = ++raidSimHomeGen;   // 狀態變了：舊的那份在下一批工作時自己停掉
@@ -13192,7 +13196,7 @@
         // 背景：下一場預告一出來，就先用 1 個核心把那一場的禁打（傷害效率）算好存到伺服器，大家打開水晶、禁打頁就直接讀
         setInterval(() => {
             const lv = (raidPreview && raidPreview.level) || (ticketCalc && ticketCalc.level);   // 預告的下一場，沒有就用禁打頁選的關卡
-            if (document.visibilityState !== 'visible' || !lv || crystalBanReady[lv]) return;
+            if (document.visibilityState !== 'visible' || !lv || crystalBanReady[lv] || !crystalShown()) return;   // 只在水晶頁開著時算（不在背景吃 CPU）
             crystalEnsureBans(lv, true);
         }, 60000);
         function crystalEnsureBans(lvl, bg) {
@@ -13736,7 +13740,10 @@
                     if (!cp.length) continue;
                     if (cp.some(pl => pl.tg.join() === o.tg.join())) break;
                     await new Promise(r => setTimeout(r, 0));
-                    const c2 = raidSimFinal(P, env, me, raidSimScreen(P, env, me, o.cards, cp));
+                    // 也交給 Worker（有節流），不在主畫面直接跑
+                    const base = raidSimBase(env, me, o.cards), sc = await raidSimParallel(P, [{ kind: 's', base, cards: o.cards, plans: cp }]);
+                    const fr = sc && sc[0] ? await raidSimParallel(P, [{ kind: 'f', base, o: sc[0] }]) : null;
+                    const c2 = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, raidSimScreen(P, env, me, o.cards, cp));
                     if (c2.avg >= o.avg * RAID_SIM_CURSE_KEEP) { best = c2; break; }
                 }
                 pick.push(best);
@@ -13753,7 +13760,7 @@
             }
             // 防呆：精算出來是 0（Worker 出錯或部位剩血算錯）就在主畫面重算一次，還是 0 就不推薦這組
             for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue;
-                try { const f = raidSimFinal(P, env, me, { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
+                try { const oo = { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }; const fr = await raidSimParallel(P, [{ kind: 'f', base: raidSimBase(env, me, o.cards), o: oo }]); const f = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, oo); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
                 pick.splice(i, 1); }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
@@ -14337,10 +14344,10 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 留一個核心給畫面（全部用上會 CPU 100%、手機發燙卡頓）
+                const n = 1;   // 只用 1 個 Worker，而且 Worker 算 50ms 就休息 50ms（單核最多 50%，低階筆電也不會滿載）
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=25');
+                    const w = new Worker('raid-sim/simworker.js?v=26');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -14366,7 +14373,7 @@
             try {
                 await Promise.all(pool.ws.slice(0, raidSimWorkerLimit || pool.ws.length).map(async (w) => {
                     while (next < chunks.length && !stopped) {
-                        while (lo && raidSimHiBusy > 0) await new Promise(r => setTimeout(r, 150));
+                        while ((lo && raidSimHiBusy > 0) || document.hidden) await new Promise(r => setTimeout(r, document.hidden ? 1000 : 150));   // 網頁在背景（切走、縮小）就暫停
                         if (next >= chunks.length || stopped) break;
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;

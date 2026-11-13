@@ -12476,7 +12476,7 @@
                     <div class="rl-head" data-ridx="${rIdx}" onclick="if(raidLogSwipeJust)return;toggleRaidLogPlayerGroup(${rIdx})" style="position:relative; z-index:1; transition:transform .18s; box-shadow:${raidLogCompareSet.has(r.player) ? 'inset 5px 0 0 #2e9d5b' : 'none'}; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:5px 8px 5px 10px; cursor:pointer; background:${r.hasLowAttack ? '#fbe6e3' : '#f7f1e8'}; min-width:0;">
                         <span class="rl-name" title="${escapeHtml(r.player)}" style="display:flex; align-items:center; font-size:14px; font-weight:800; color:#4a3a2a; white-space:nowrap; flex:1; min-width:0;"><span style="display:inline-block; min-width:1.6em; flex-shrink:0; color:#857a6b; font-weight:700;">${rIdx + 1}</span><span style="overflow:hidden; text-overflow:ellipsis; min-width:0;">${escapeHtml(raidShortName(r.player))}</span>${r.missedCount ? `<span title="伺服器漏收 ${r.missedCount} 刀（傷害已依部位血量估算算進總傷害）" style="flex-shrink:0; margin-left:4px; padding:0 4px; border-radius:5px; background:#fbe6e3; color:#c0392b; font-size:12px; font-weight:800; line-height:1.5;">漏${r.missedCount}</span>` : ''}</span>
                         <span class="rl-right" style="display:flex; flex-wrap:nowrap; align-items:center; gap:5px; flex-shrink:0; white-space:nowrap;">
-                            ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:12px; border-radius:6px; height:24px; box-sizing:border-box; padding:0 6px; line-height:24px; min-width:0; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}${raidLogIsLatestSession(r) && raidRecoVoidOwned(r) ? `<button class="rl-void-btn" title="留一組瘋狂無效等肉體≥6 再打" onclick="event.stopPropagation(); raidRecoVoidToggle(${rIdx})" style="position:relative; flex-shrink:0; width:24px; height:24px; padding:0; border:none; border-radius:5px; background:none; cursor:pointer; ${raidRecoVoid.has(r.player) ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'opacity:.55;'}">${raidCardImage('CrushingVoid') ? `<img src="${raidCardImage('CrushingVoid')}" alt="瘋狂無效" style="width:24px; height:24px; border-radius:5px; display:block;">` : '瘋'}</button>` : raidLogIsLatestSession(r) ? '<span style="display:inline-block; width:24px; flex-shrink:0;"></span>' : ''}
+                            ${raidLogIsLatestSession(r) ? `<button class="rl-reco-btn tt-btn2" onclick="event.stopPropagation(); raidLogRecoHeaderBtn(${rIdx})" style="position:relative; font-size:12px; border-radius:6px; height:24px; box-sizing:border-box; padding:0 6px; line-height:24px; min-width:0; white-space:nowrap; flex-shrink:0; font-family:inherit; cursor:pointer;">推薦</button>` : ''}
                             <span style="display:flex; align-items:center; gap:6px; line-height:1.15;">${r.playRatio != null ? `<span title="打法：實際 ÷ 他用的牌組應打的傷害；配卡：實際 ÷ 照推薦打應打的傷害（照推薦打≈100%）" style="display:flex; flex-direction:column; align-items:flex-end; min-width:5.6em; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; line-height:1.2;"><span style="color:${r.playRatio < RAID_SIM_PLAY_LOW ? '#c0392b' : r.playRatio >= 1 ? '#2e7d32' : '#8a7a6a'};">打法${Math.round(r.playRatio * 100)}%</span>${r.pickInfo && r.pickInfo.ratio != null ? `<span style="color:${r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) ? '#c0392b' : r.pickInfo.ratio >= 1 ? '#2e7d32' : '#8a7a6a'};">配卡${Math.round(r.pickInfo.ratio * 100)}%</span>` : ''}</span>` : '<span style="display:inline-block; min-width:5.6em; font-size:12px;"></span>'}<span ${r.pickInfo && r.pickInfo.ratio > 0 ? `title="照推薦打應打 ${escapeHtml(formatNum(r.totalDamage / r.pickInfo.ratio))}，實際 ${Math.round(r.pickInfo.ratio * 100)}%"` : ''} style="font-size:14px; font-weight:700; white-space:nowrap; text-align:right; min-width:7.1em; font-variant-numeric:tabular-nums; color:${(r.pickInfo && r.pickInfo.ratio != null ? r.pickInfo.ratio < (r.pickInfo.old ? RAID_SIM_PICK_OLD_LOW : RAID_SIM_PICK_LOW) : r.hasLowAttack) ? '#c0392b' : '#4a3a2a'};">${r.notYet ? '<span style="color:#857a6b;">尚未出刀</span>' : `${escapeHtml(formatNum(r.totalDamage))}/${r.attackCount}次`}</span></span>
                             <span id="raidlog-player-chevron-${rIdx}" class="raid-log-chevron" style="font-size:12px; color:#857a6b; display:inline-block; width:1em; text-align:center;">${isExpanded ? '▴' : '▾'}</span>
                         </span>
@@ -12538,7 +12538,9 @@
         // 打開中的玩家推薦（用玩家名字記，不用排行名次——有人出刀排行會變、整個清單會重畫，重畫後要自動補回來）
         const raidLogRecoOpen = new Set((raidLogUiLoaded && raidLogUiLoaded.recos) || []);
         // 個人推薦「留一組瘋狂無效」：按推薦旁邊的瘋狂無效圖示切換（只在這支手機記住）
-        const raidRecoVoid = new Set();
+        // 瘋狂無效開關（推薦框右上角）：有這張卡的人預設開（網站有統計瘋狂無效的使用），按一下關掉看一般推薦。只記關掉的人（這支手機）
+        const raidRecoVoidOff = new Set();
+        function raidRecoVoidOn(r) { return raidRecoVoidOwned(r) && !raidRecoVoidOff.has(r.player); }
         /* 留瘋狂無效：估這一輪（剩 0 次就是下一輪）結束前，能打的肉體部位會不會到 6 個以上。
            還能打多少傷害＝這輪公會還會出幾刀 × 每刀平均傷害：
              還會出幾刀＝前幾輪每輪實際出的刀數（沒有就用上一場）− 這輪已經出的刀數；每刀平均＝最近 100 刀。
@@ -12583,18 +12585,20 @@
             return { ok: false, n: maxN, left: total - skip };
         }
         function raidRecoVoidOwned(r) { const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null; return !!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0); }
-        function raidRecoVoidBtnRefresh() { document.querySelectorAll('.rl-void-btn').forEach(b => { const i = Number((b.getAttribute('onclick').match(/raidRecoVoidToggle\((\d+)\)/) || [])[1]); const rr = raidLogLastRanked[i]; if (rr) b.style.cssText = b.style.cssText.replace(/box-shadow:[^;]*;|opacity:[^;]*;/g, '') + (raidRecoVoid.has(rr.player) ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'opacity:.55;'); }); }
-        function raidRecoVoidToggle(rIdx) {
-            const r = raidLogLastRanked[rIdx]; if (!r) return;
-            const box = raidLogRecoBox(r.player), open = raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none';
-            const closeIt = open && raidRecoVoid.has(r.player);   // 已經是留瘋狂無效的推薦開著：再按一下收起來（跟推薦按鈕一樣）
-            if (closeIt) raidRecoVoid.delete(r.player); else raidRecoVoid.add(r.player);
-            raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player);
-            raidRecoVoidBtnRefresh();
-            if (closeIt) { raidLogRecoOpen.delete(r.player); if (box) box.style.display = 'none'; raidLogUiSave(); return; }
-            const group = document.getElementById(`raidlog-player-group-${rIdx}`); if (group && group.style.display !== 'none') toggleRaidLogPlayerGroup(rIdx);
-            raidLogRecoOpen.add(r.player); raidLogUiSave();
+        function raidRecoVoidBtnRefresh() {}
+        // 推薦框右上角的開關：切換瘋狂無效開／關，框不收合，直接換內容
+        function raidRecoVoidToggle(name) {
+            const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
+            if (raidRecoVoidOff.has(name)) raidRecoVoidOff.delete(name); else raidRecoVoidOff.add(name);
+            raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
+            raidLogRecoOpen.add(name); raidLogUiSave();
             return raidLogRenderPlayerReco(r);
+        }
+        function raidRecoWrap(r, html) { const sw = raidRecoVoidSwitchHtml(r); return sw ? `<div style="display:flex; gap:6px; align-items:flex-start;"><div style="flex:1; min-width:0;">${html}</div>${sw}</div>` : html; }
+        function raidRecoVoidSwitchHtml(r) {
+            if (!raidRecoVoidOwned(r)) return '';
+            const on = !raidRecoVoidOff.has(r.player), img = raidCardImage('CrushingVoid');
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidRecoVoidToggle(this.dataset.p)" title="瘋狂無效：${on ? '開（按一下關掉）' : '關（按一下打開）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${on ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${on ? '#5e35b1' : '#8a7a6a'};">${on ? 'ON' : 'OFF'}</span></button>`;
         }
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
@@ -12607,7 +12611,7 @@
             if (!g.timer) g.timer = setInterval(() => {
                 if (g.shown < g.target) g.shown++;
                 const bx = raidLogRecoBox(name);
-                if (bx && !raidLogRecoHtml.get(name)) { const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; if (bx.innerHTML !== html) bx.innerHTML = html; }
+                if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) pct.textContent = `計算中 ${Math.max(1, g.shown)}%`; else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
             }, 50);
         }
         function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); }
@@ -12624,13 +12628,12 @@
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
             const box = raidLogRecoBox(r.player);
-            if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none' && !raidRecoVoid.has(r.player)) {   // 一般推薦開著：再按一次收起來（開著的是留瘋狂無效：下面直接換成一般推薦，不收合）
+            if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 開著：再按一次收起來
                 raidLogRecoOpen.delete(r.player);
                 box.style.display = 'none';
                 raidLogUiSave();
                 return;
             }
-            if (raidRecoVoid.has(r.player)) { raidRecoVoid.delete(r.player); raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player); raidRecoVoidBtnRefresh(); }   // 按「推薦」打開的是一般推薦
             raidLogRecoOpen.add(r.player);
             raidLogUiSave();
             return raidLogRenderPlayerReco(r);
@@ -12647,9 +12650,9 @@
         async function raidLogRenderPlayerReco(r) {
             let box = raidLogRecoBox(r.player);
             if (!box) return;
-            const wantVoid = raidRecoVoid.has(r.player), gen = (raidRecoGen.get(r.player) || 0) + 1; raidRecoGen.set(r.player, gen);
+            const wantVoid = raidRecoVoidOn(r), gen = (raidRecoGen.get(r.player) || 0) + 1; raidRecoGen.set(r.player, gen);
             box.style.display = 'block';
-            box.innerHTML = raidLogRecoHtml.get(r.player) || (raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
+            box.innerHTML = raidLogRecoHtml.get(r.player) || raidRecoWrap(r, raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
             if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
@@ -12712,7 +12715,7 @@
                         // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
                         if (voidGo && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
                     } finally { raidRecoProgDone(r.player); }
-                    if (raidRecoVoid.has(r.player) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
+                    if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
                     // 留瘋狂沒有比一般推薦多（多一個「一定要留一組」的限制，最多打平）：直接照一般推薦
                     const sumOf = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
                     let noGain = false;
@@ -12721,7 +12724,7 @@
                         simPick.forEach(x => all.push(x));
                         const vr = all.find(x => x.voidLater);
                         const why = sixNow ? '現在已經 6 肉體，不用留，照一般推薦' : noGain ? '留瘋狂沒有比較多，照一般推薦' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦`;
-                        const voidLine = !raidRecoVoid.has(r.player) ? '' : (!voidGo || noGain) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留瘋狂比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
+                        const voidLine = !wantVoid ? '' : (!voidGo || noGain) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留瘋狂比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
                         html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
@@ -12805,7 +12808,8 @@
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
             if (!raidLogRecoOpen.has(r.player)) return;
-            if (raidRecoVoid.has(r.player) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
+            if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
+            html = raidRecoWrap(r, html);
             raidLogRecoHtml.set(r.player, html);
             raidLogUiSave();
             box = raidLogRecoBox(r.player);
@@ -12816,10 +12820,11 @@
         const raidSimPickCache = new Map();
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         const raidSimPoolMemo = new Map();
-        async function raidSimPoolGetOrEval(pk, P, env, me, all, n, progress, topN) {
+        async function raidSimPoolGetOrEval(pk, P, env, me, all, n, progress, topN, post) {   // post：算完再擴充候選（換卡），回傳 { pool, add }
             let m = raidSimPoolMemo.get(pk);   // 存的是 Promise：兩種模式同時在算也只算一次
-            if (!m) { m = raidSimEvalPool(P, env, me, all, n, progress, topN); raidSimPoolMemo.set(pk, m); m.catch(() => raidSimPoolMemo.delete(pk)); if (raidSimPoolMemo.size > 12) raidSimPoolMemo.delete(raidSimPoolMemo.keys().next().value); }
-            return (await m).map(o => ({ ...o }));
+            if (!m) { m = raidSimEvalPool(P, env, me, all, n, progress, topN).then(pool => post ? post(pool) : { pool, add: [] }); raidSimPoolMemo.set(pk, m); m.catch(() => raidSimPoolMemo.delete(pk)); if (raidSimPoolMemo.size > 12) raidSimPoolMemo.delete(raidSimPoolMemo.keys().next().value); }
+            const r = await m;
+            return { pool: r.pool.map(o => ({ ...o })), add: r.add };
         }
         // 首頁推薦用的「標準玩家」：卡片等級、死靈熊研究、突襲等級都取全公會中位數（卡片只算有這張卡的人，一半以上的人有才算），忠誠度 12 級
         // 首頁推薦用的「標準玩家」（虛擬玩家）：卡片等級、死靈熊研究、突襲等級都用「突襲均傷加權平均」——
@@ -13562,7 +13567,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = (info.voidMode ? 'void|' : '') + 'r31|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = (info.voidMode ? 'void|' : '') + 'r32|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.replace(/^void\|/, '') + '|' + raidDeckCalAt;   // 傷害表跟模式無關；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13585,11 +13590,22 @@
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
-            cands.forEach((d, i) => {
-                const hp = hitParts(d.cards);
-                const plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label, cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }); });
-                const pl2 = raidSimPlansFor(d.cards, plans); if (pl2.length) (i < 40 ? list : extra).push({ cards: d.cards, plans: pl2, cplans: raidSimCursedPlans(pl2, env), aplans: raidSimArmorPlans(pl2, env) });
-            });
+            const build = (cards, E, hitF) => {
+                E = E || env; const hp = (hitF || hitParts)(cards);
+                const plans = []; E.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label, cap: E.hp ? tg.reduce((t, k) => t + (E.hp[k] || 0), 0) : undefined }); });
+                const pl2 = raidSimPlansFor(cards, plans); return pl2.length ? { cards, plans: pl2, cplans: raidSimCursedPlans(pl2, E), aplans: raidSimArmorPlans(pl2, E) } : null;
+            };
+            cands.forEach((d, i) => { const it = build(d.cards); if (it) (i < 40 ? list : extra).push(it); });
+            // 沒人打過的組合也要算：前幾名的牌組，每張卡輪流換成手上其他能用的卡，全部模擬，高的加進候選
+            const avail = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c));
+            const expand = async (pool, E, ok, hitF, keep, K, topN) => {
+                const sig = (c) => c.slice().sort().join('+'), seen = new Set(pool.map(o => sig(o.cards))), add = [];
+                pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K).forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
+                    avail.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (it) add.push(it); }); }));
+                if (!add.length) return { pool, add };
+                const ev = await raidSimEvalPool(P, E, me, add, 1, null, topN);
+                return { pool: pool.concat(ev), add };
+            };
             // 留一組瘋狂無效等肉體多再打：瘋狂無效的組用「能打的部位全部變肉體」算，其他 n−1 組照現在的狀態，6 組合計最高（每一組瘋狂無效的候選都試，其他組照樣找最佳解）
             let pick0, voidO = null, normalSum = null;
             const VOID = 'CrushingVoid';
@@ -13600,8 +13616,10 @@
                 const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
-                const vpool = vlist.length ? (await raidSimEvalPool(P, envF, me, vlist, 1, null, 20)).filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8) : [];
-                const all = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, progress, null);
+                let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, null, 20) : [];
+                if (vpool0.length) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 5, 12)).pool;   // 瘋狂無效的組也換卡找沒人打過的
+                const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
+                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, progress, null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, 10, 24)); got.add.forEach(it => extra.push(it)); const all = got.pool;
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -13611,7 +13629,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { pick0 = await raidSimPickPool(P, env, me, await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, progress, fast ? 12 : null), n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, progress, fast ? 12 : null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, 10, 24)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {

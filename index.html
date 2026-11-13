@@ -12895,7 +12895,7 @@
         const raidSimPickCache = new Map();
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
-        let RAID_SIM_SWAP_ON = false, RAID_SIM_SWAP_FEW = false;   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
+        let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false;   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
         let RAID_SIM_SWAP_MODE = 'pick', RAID_SIM_SWAP_ROUNDS = 3;   // 照挑出來的 6 組換卡（回測 8 人都 ≥ 舊法，多 1.5～3%）
         let RAID_SIM_SWAP_K = 10, RAID_SIM_SWAP_TOP = 24, RAID_SIM_SWAP_LITE = false;   // 換卡：前幾組、精算幾組、初篩用輕量
         const raidSimPoolMemo = new Map();
@@ -13649,7 +13649,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r34|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r35|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算

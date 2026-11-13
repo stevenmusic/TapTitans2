@@ -12601,6 +12601,7 @@
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
         function raidRecoWrap(r, html) { const sw = raidRecoVoidSwitchHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
+            return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
             if (!raidRecoVoidOwned(r)) return '';
             const img = raidCardImage('CrushingVoid');
             const inReco = (raidLogRecoRows.get(r.player) || []).some(x => (x.rawCards || x.cards || []).includes('CrushingVoid'));   // 推薦已經排了瘋狂無效：按鈕變暗
@@ -12718,7 +12719,7 @@
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
                     const later = i >= RAID_ATTACKS_PER_CYCLE && !x.voidLater;
-                    return `<div style="padding:2px; border-radius:7px; background:${x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.voidTag ? '瘋狂無效・現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效・現在打' : '留著・6 肉體再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
+                    return `<div style="padding:2px; border-radius:7px; background:${x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.voidTag ? '瘋狂無效・現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效・現在打' : '瘋狂無效・6 肉體再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -12764,43 +12765,26 @@
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
                     const simFns = raidSimPartFns(scene);
-                    const sixNow = wantVoid && raidBodyNow() >= 6, vReach = wantVoid && !sixNow ? raidVoidReach(nextRound) : null, voidGo = wantVoid && !sixNow && !(vReach && !vReach.ok);   // 現在已經 6 肉體（這輪或下一輪都照現在的盤面）：一般推薦本來就能選瘋狂無效，直接用一般推薦、標出那組   // 估這輪等不到肉體≥6：照一般推薦；現在已經 6 肉體：瘋狂無效那組現在就打
-                    let simPick, normRows = null; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidGo, voidNow: voidGo && sixNow }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
-                        // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
-                        if (voidGo && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
-                    } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }   // 有顯示進度的：100% 停 0.25 秒再出結果（同時接著算的幾份都等）
-                    if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
-                    // 留瘋狂沒有比一般推薦多（多一個「一定要留一組」的限制，最多打平）：直接照一般推薦
-                    const sumOf = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
-                    // 有瘋狂無效的那組合計比一般推薦低：不推薦，直接照一般推薦
-                    let noGain = false, sixTag = false;
-                    let voidUsed = false;
-                    if (sixNow && simPick) {
-                        simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
-                        if (simPick.some(x => x.voidTag)) sixTag = true;
-                        else if (info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid'))) voidUsed = true;
-                        else {   // 6 肉體一定要有一組瘋狂無效：一般推薦沒排到就強制排一組（照現在的盤面打）
-                            const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
-                            if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
-                            if (forced && forced.some(x => x.voidLater)) { simPick = forced.map(x => x.voidLater ? { ...x, voidLater: false, voidTag: true } : x); sixTag = true; }
+                    // 瘋狂無效：有這張卡、這輪還沒用的人，6 組裡固定排一組（每輪約 40 人在用）
+                    //   現在已經 6 肉體 → 照現在的盤面（一般推薦有排到就標出來，沒有就強制排一組）
+                    //   還不到 6 肉體、估計這輪等得到 → 那組照 6 肉體挑、應打寫 6 肉體時的傷害；其他 5 組照現在的盤面、卡片不重複
+                    //   估計這輪等不到 → 照一般推薦
+                    const usedVoid = !!(info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid')));
+                    const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, voidLaterGo = hasVoid && !sixNow && !(vReach && !vReach.ok);
+                    let simPick; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
+                        if (hasVoid && sixNow && simPick) {
+                            simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
+                            if (!simPick.some(x => x.voidTag)) {   // 一般推薦沒排到：強制排一組（照現在的盤面打）
+                                const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
+                                if (forced && forced.some(x => x.voidLater)) simPick = forced.map(x => x.voidLater ? { ...x, voidLater: false, voidTag: true } : x);
+                            }
                         }
-                    }
-                    // 6 肉體（或到下一輪前就是 6 肉體）時，一般推薦裡的瘋狂無效那組就是 6 肉體打：沒有比較高就用一般推薦，把那組標出來
-                    if (voidGo && simPick && !normRows) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
-                    if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
-                    const setOf = (rows) => (rows || []).map(x => (x.rawCards || x.cards).slice().sort().join('+')).sort().join('|');
-                    if (normRows && simPick && (sumOf(simPick) < sumOf(normRows) * 1.005 || setOf(simPick) === setOf(normRows))) {   // 多不到 0.5%（誤差範圍）、比較低，或牌組根本一樣：用一般推薦
-                        const six = raidBodyNow() >= 6;
-                        simPick = normRows.map(x => six && (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
-                        noGain = !simPick.some(x => x.voidTag); normRows = null;
-                        if (!noGain) sixTag = true;
-                    }
+                    } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
+                    if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
-                        const vr = all.find(x => x.voidLater);
-                        const why = sixTag ? '現在 6 肉體，瘋狂無效直接打' : voidUsed ? '瘋狂無效這輪已經用過' : noGain ? '留瘋狂無效不會比較多，不用留' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，不用留`;
-                        const voidLine = !wantVoid ? '' : (!voidGo || noGain || sixTag || voidUsed) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留 1 組瘋狂無效，${vReach && vReach.newBoss ? '等下一隻王 6 肉體' : vReach && vReach.need > 0 ? `約再 ${vReach.need} 刀到 6 肉體` : '等 6 肉體再打'}（整輪${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}）</div>`; })()
-                            : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
+                        const voidLine = hasVoid && !sixNow && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦</div>` : '';
                         html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
                     } else {
@@ -13659,7 +13643,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r38|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r39|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13727,7 +13711,7 @@
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
                 const envF = { ...env, board: boardF }; const sceneF = {}; Object.keys(boardF).forEach(k => { sceneF[k] = boardF[k].layer; });
                 const fF = raidSimPartFns(sceneF);
-                const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
+                const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && usedEnough(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
                 let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20) : [];

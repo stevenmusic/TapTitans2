@@ -12539,11 +12539,16 @@
         // 個人推薦「留一組瘋狂無效」：按推薦旁邊的瘋狂無效圖示切換（只在這支手機記住）
         const raidRecoVoid = new Set();
         function raidRecoVoidOwned(r) { const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null; return !!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0); }
+        function raidRecoVoidBtnRefresh() { document.querySelectorAll('.rl-void-btn').forEach(b => { const i = Number((b.getAttribute('onclick').match(/raidRecoVoidToggle\((\d+)\)/) || [])[1]); const rr = raidLogLastRanked[i]; if (rr) b.style.cssText = b.style.cssText.replace(/box-shadow:[^;]*;|opacity:[^;]*;/g, '') + (raidRecoVoid.has(rr.player) ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'opacity:.55;'); }); }
         function raidRecoVoidToggle(rIdx) {
             const r = raidLogLastRanked[rIdx]; if (!r) return;
-            raidRecoVoid.has(r.player) ? raidRecoVoid.delete(r.player) : raidRecoVoid.add(r.player);
+            const box = raidLogRecoBox(r.player), open = raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none';
+            const closeIt = open && raidRecoVoid.has(r.player);   // 已經是留瘋狂無效的推薦開著：再按一下收起來（跟推薦按鈕一樣）
+            if (closeIt) raidRecoVoid.delete(r.player); else raidRecoVoid.add(r.player);
             raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player);
-            document.querySelectorAll('.rl-void-btn').forEach(b => { const i = Number((b.getAttribute('onclick').match(/raidRecoVoidToggle\((\d+)\)/) || [])[1]); const rr = raidLogLastRanked[i]; if (rr) b.style.cssText = b.style.cssText.replace(/box-shadow:[^;]*;|opacity:[^;]*;/g, '') + (raidRecoVoid.has(rr.player) ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'opacity:.55;'); });
+            raidRecoVoidBtnRefresh();
+            if (closeIt) { raidLogRecoOpen.delete(r.player); if (box) box.style.display = 'none'; raidLogUiSave(); return; }
+            const group = document.getElementById(`raidlog-player-group-${rIdx}`); if (group && group.style.display !== 'none') toggleRaidLogPlayerGroup(rIdx);
             raidLogRecoOpen.add(r.player); raidLogUiSave();
             return raidLogRenderPlayerReco(r);
         }
@@ -12577,10 +12582,12 @@
             const box = raidLogRecoBox(r.player);
             if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 再按一次收起來
                 raidLogRecoOpen.delete(r.player);
+                if (raidRecoVoid.delete(r.player)) { raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player); raidRecoVoidBtnRefresh(); }
                 box.style.display = 'none';
                 raidLogUiSave();
                 return;
             }
+            if (raidRecoVoid.has(r.player)) { raidRecoVoid.delete(r.player); raidLogRecoHtml.delete(r.player); raidLogRecoRows.delete(r.player); raidRecoVoidBtnRefresh(); }   // 按「推薦」打開的是一般推薦
             raidLogRecoOpen.add(r.player);
             raidLogUiSave();
             return raidLogRenderPlayerReco(r);

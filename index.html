@@ -13655,9 +13655,10 @@
             const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v3_${code}` : null;
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
-                if (pre && pre.sig === key && pre.rows.length) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
+                const okRows = (rows) => Array.isArray(rows) && rows.length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 有 0 傷害的組：暫存不能用，重算
+                if (pre && pre.sig === key && okRows(pre.rows)) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
                 const remote = await kvGet(kvKey);
-                if (remote && remote.sig === key && Array.isArray(remote.rows) && remote.rows.length) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
+                if (remote && remote.sig === key && okRows(remote.rows)) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
             }
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
@@ -13746,6 +13747,10 @@
                 re.forEach((o, i) => { const f = fr[i]; if (f) { const L = o.leftAt; o.avg = L ? raidSimCapParts(f.raw, L) : f.avg; o.lo = L ? raidSimCapParts(f.lo, L) : f.lo; o.hi = L ? raidSimCapParts(f.hi, L) : f.hi; o.raw = f.raw; } delete o.reFinal; });
                 pick.sort((a, b) => b.avg - a.avg);
             }
+            // 防呆：精算出來是 0（Worker 出錯或部位剩血算錯）就在主畫面重算一次，還是 0 就不推薦這組
+            for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue;
+                try { const f = raidSimFinal(P, env, me, { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
+                pick.splice(i, 1); }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

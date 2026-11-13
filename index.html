@@ -12670,9 +12670,11 @@
             if (group && group.style.display !== 'none') toggleRaidLogPlayerGroup(rIdx);
             return showRaidLogPlayerReco(rIdx);
         }
+        const raidRecoClicked = new Set();   // 這次開網頁後按過「推薦」的人（重畫時才會接著算；沒按過的不自動算）
         function showRaidLogPlayerReco(rIdx) {
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
+            raidRecoClicked.add(r.player);
             const box = raidLogRecoBox(r.player);
             if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 開著：再按一次收起來
                 raidLogRecoOpen.delete(r.player);
@@ -12692,6 +12694,7 @@
                 // 不自動重算（不在背景吃 CPU）：狀態沒變就放回存好的畫面；變了（有人出刀、換王）就收起來，要看再按推薦
                 const h = raidLogRecoHtml.get(name), box = raidLogRecoBox(name);
                 if (h && h.startsWith(`<!--${raidRecoStateSig(r)}-->`) && box) { box.style.display = 'block'; box.innerHTML = h; }
+                else if (raidRecoProg.has(name) || (!h && raidRecoClicked.has(name))) raidLogRenderPlayerReco(r);   // 剛按下、還在算：保持打開接著算（同一份計算，不會重算第二次）
                 else { raidLogRecoOpen.delete(name); if (box) box.style.display = 'none'; }
             });
         }

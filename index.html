@@ -8032,6 +8032,24 @@
                 <span class="raid-recent-dmg" style="visibility:hidden;">${escapeHtml(dmgText)}</span></div>`;
         }
         const raidRecoAtPools = new Map();   // 玩家＋出刀前部位狀態 → 他所有牌組的傷害表（同一人同狀態連打好幾刀只模擬一次）
+        // 每一刀用「那一場」的場次加成（爆裂傷害、爆裂機率、支援效果、攻擊時間…）算，不是一律用現在這場的；這場用即時資料
+        async function raidSimEnvForAttack(env0, a) {
+            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            if (!a || !a.raidStartedAt || a.raidStartedAt === latest) return env0;
+            const se = (serverSessionsSummary || []).find(x => x.startedAt === a.raidStartedAt);
+            // 優先用伺服器記的「那一場實際的加成類型」（關卡資料每週換，舊場次不能用這週的表查：M-42 這週表上是支援，實際是爆裂機率）
+            const BT = { burstDamage: [{ burstDamage: 0.3 }, 0], burstChance: [{ burstChance: 0.3 }, 0], afflictionDamage: [{ affDamage: 0.3 }, 0], afflictionChance: [{ affChance: 0.3 }, 0], support: [{ supportEffect: 0.15 }, 0], timeBoost: [{}, 3], allDamage: [{ all: 0.15 }, 0] };
+            if (se && se.buffType && BT[se.buffType]) return { ...env0, buff: { ...BT[se.buffType][0] }, extraSec: BT[se.buffType][1] };
+            const lv = se ? se.levelTier : a.raidLevelTier;
+            let seed = ticketCalc && ticketCalc.seed; if (!seed) { try { seed = ticketCalc.seed = await ticketSeedFetch(); } catch (e) {} }
+            const raid = seed && seed.raids && seed.raids.find(r => r.t === 9999 && r.l === lv);
+            if (!raid) return env0;
+            const buff = {}; let extraSec = 0;
+            (raid.buffs || []).forEach(([t, v]) => { const x = Number(v) || 0;
+                if (t === 'BurstChance') buff.burstChance = x - 1; else if (t === 'AfflictedChance') buff.affChance = x - 1; else if (t === 'BurstDamage') buff.burstDamage = x;
+                else if (t === 'AfflictedDamage') buff.affDamage = x; else if (t === 'AllRaidDamage') buff.all = x; else if (t === 'SupportEffect') buff.supportEffect = x; else if (t === 'RaidAttackDuration') extraSec = x; });
+            return { ...env0, buff, extraSec };
+        }
         async function raidSimRecoSetAt(r, a, v, P, env0, data, proven) {
             const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
             const used = new Set(); r.attacks.forEach(x => { if (x.cycle === a.cycle && x.ts < a.ts) (x.cards || []).forEach(c => used.add(c.name)); });
@@ -8042,7 +8060,7 @@
             const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
             const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
             open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
-            const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+            const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
             const { hitParts, playable } = raidSimPartFns(scene);
             const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
             const pkey = [r.identity, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
@@ -8140,7 +8158,7 @@
                     const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                     const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
-                    const env = { ...env0, board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
                     // 同一人、同一個部位狀態：他所有牌組的傷害表只算一次，連續幾刀共用
                     const pkey = [identity, a.raidStartedAt, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel].join('|');
                     let pool = raidPickPools.get(pkey);
@@ -14411,7 +14429,7 @@
                     const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Math.max(me.lv[c.name] || 0, Number(c.level) || 0); }); me.fromAttack = true;
                     const board = {}; LOCS.forEach((l, i) => { const ch = a.simB[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
-                    const env = { ...env0, board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
                     const cards = a.cards.map(c => c.name);
                     jobs.push({ kind: 'f', base: raidSimBase(env, me, cards), o: { cards, tg: a.simTg } }); keys.push(k);
                 }

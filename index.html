@@ -12726,7 +12726,8 @@
                     // 6 肉體（或到下一輪前就是 6 肉體）時，一般推薦裡的瘋狂無效那組就是 6 肉體打：沒有比較高就用一般推薦，把那組標出來
                     if (voidGo && simPick && !normRows) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
                     if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
-                    if (normRows && simPick && sumOf(simPick) <= sumOf(normRows)) {
+                    const setOf = (rows) => (rows || []).map(x => (x.rawCards || x.cards).slice().sort().join('+')).sort().join('|');
+                    if (normRows && simPick && (sumOf(simPick) < sumOf(normRows) * 1.005 || setOf(simPick) === setOf(normRows))) {   // 多不到 0.5%（誤差範圍）、比較低，或牌組根本一樣：用一般推薦
                         const six = raidBodyNow() >= 6;
                         simPick = normRows.map(x => six && (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
                         noGain = !simPick.some(x => x.voidTag); normRows = null;
@@ -12735,7 +12736,7 @@
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         const vr = all.find(x => x.voidLater);
-                        const why = sixTag ? '一般推薦已經有瘋狂無效（6 肉體打）' : noGain ? '用瘋狂無效比較低，照一般推薦' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦`;
+                        const why = sixTag ? '一般推薦已經有瘋狂無效（6 肉體打）' : noGain ? '用瘋狂無效沒有比較高，照一般推薦' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦`;
                         const voidLine = !wantVoid ? '' : (!voidGo || noGain || sixTag) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">${sixNow ? '瘋狂無效 6 肉體打' : '留瘋狂'}比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
                         html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
@@ -13680,7 +13681,8 @@
                 }
                 pick.push(best);
             }
-            raidSimDeplete(pick, env);
+            // 現在已經 6 肉體：瘋狂無效那組也是照現在的盤面打，跟其他組一起扣部位剩血（不然會多算）
+            if (voidO && raidBodyNow() >= 6) raidSimDeplete(pick.concat([voidO]), env); else raidSimDeplete(pick, env);
             // 換過部位的組：在新部位重新跑 200 次精算，顯示的應打一定是精算的（算到部位剩下的血為止）
             const re = pick.filter(o => o.reFinal);
             if (re.length) {

@@ -56,7 +56,8 @@ function simAttack(opt, P = P0) {
   // 支援、加成：回傳這一下打在 loc 的倍率
   const multRaw = (kind, loc, t, self) => {
     // 圖騰之力的精靈只出現在一個部位：同時打好幾個部位時，精靈的額外加成只有第一個部位有（基本加成照算）（攻擊紀錄：帶圖騰打兩個部位只有單打的 7 成左右）
-    const totemHere = has.has('TotemFairySkill') && (!P.totemOnePart || !opt.targets || opt.targets.length < 2 || loc === opt.targets[0]);
+    // 只打一個部位時，防空高砲彈射、瘟疫擴散到其他部位的傷害也不在精靈那個部位，不吃圖騰加成（快來加入！防空高砲＋先祖加護＋圖騰之力：模擬 865M、實際約 685M）
+    const totemHere = has.has('TotemFairySkill') && (!P.totemOnePart || !opt.targets || !opt.targets.length || loc === opt.targets[0]);
     const layer = layerOf(loc);
     const parts = [];
     const add = (v) => parts.push(v);

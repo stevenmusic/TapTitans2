@@ -12667,7 +12667,7 @@
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
                     const later = i >= RAID_ATTACKS_PER_CYCLE && !x.voidLater;
-                    return `<div style="padding:2px; border-radius:7px; background:${x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.voidTag ? '瘋狂無效：6 肉體打' : x.voidLater ? (x.voidNow ? '瘋狂無效：現在 6 肉體打' : '留著：肉體≥6 再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
+                    return `<div style="padding:2px; border-radius:7px; background:${x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.voidTag ? '瘋狂無效・現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效・現在打' : '留著・6 肉體再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -12713,7 +12713,7 @@
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
                     const simFns = raidSimPartFns(scene);
-                    const vReach = wantVoid ? raidVoidReach(nextRound) : null, sixNow = !!(vReach && vReach.ok && !nextRound && !vReach.need && !vReach.newBoss), voidGo = wantVoid && !(vReach && !vReach.ok);   // 估這輪等不到肉體≥6：照一般推薦；現在已經 6 肉體：瘋狂無效那組現在就打
+                    const sixNow = wantVoid && raidBodyNow() >= 6, vReach = wantVoid && !sixNow ? raidVoidReach(nextRound) : null, voidGo = wantVoid && !sixNow && !(vReach && !vReach.ok);   // 現在已經 6 肉體（這輪或下一輪都照現在的盤面）：一般推薦本來就能選瘋狂無效，直接用一般推薦、標出那組   // 估這輪等不到肉體≥6：照一般推薦；現在已經 6 肉體：瘋狂無效那組現在就打
                     let simPick, normRows = null; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidGo, voidNow: voidGo && sixNow }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                         // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
                         if (voidGo && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
@@ -12723,6 +12723,17 @@
                     const sumOf = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
                     // 有瘋狂無效的那組合計比一般推薦低：不推薦，直接照一般推薦
                     let noGain = false, sixTag = false;
+                    let voidUsed = false;
+                    if (sixNow && simPick) {
+                        simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
+                        if (simPick.some(x => x.voidTag)) sixTag = true;
+                        else if (info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid'))) voidUsed = true;
+                        else {   // 6 肉體一定要有一組瘋狂無效：一般推薦沒排到就強制排一組（照現在的盤面打）
+                            const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
+                            if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
+                            if (forced && forced.some(x => x.voidLater)) { simPick = forced.map(x => x.voidLater ? { ...x, voidLater: false, voidTag: true } : x); sixTag = true; }
+                        }
+                    }
                     // 6 肉體（或到下一輪前就是 6 肉體）時，一般推薦裡的瘋狂無效那組就是 6 肉體打：沒有比較高就用一般推薦，把那組標出來
                     if (voidGo && simPick && !normRows) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
                     if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
@@ -12736,8 +12747,8 @@
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         const vr = all.find(x => x.voidLater);
-                        const why = sixTag ? '一般推薦已經有瘋狂無效（6 肉體打）' : noGain ? '用瘋狂無效沒有比較高，照一般推薦' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦`;
-                        const voidLine = !wantVoid ? '' : (!voidGo || noGain || sixTag) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">${sixNow ? '瘋狂無效 6 肉體打' : '留瘋狂'}比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
+                        const why = sixTag ? '現在 6 肉體，瘋狂無效直接打' : voidUsed ? '瘋狂無效這輪已經用過' : noGain ? '留瘋狂無效不會比較多，不用留' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，不用留`;
+                        const voidLine = !wantVoid ? '' : (!voidGo || noGain || sixTag || voidUsed) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留 1 組瘋狂無效，${vReach && vReach.newBoss ? '等下一隻王 6 肉體' : vReach && vReach.need > 0 ? `約再 ${vReach.need} 刀到 6 肉體` : '等 6 肉體再打'}（整輪${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}）</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
                         html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);

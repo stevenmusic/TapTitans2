@@ -12899,10 +12899,11 @@
         let RAID_SIM_SWAP_K = 10, RAID_SIM_SWAP_TOP = 24, RAID_SIM_SWAP_LITE = false;   // 換卡：前幾組、精算幾組、初篩用輕量
         const raidSimPoolMemo = new Map();
         async function raidSimPoolGetOrEval(pk, P, env, me, all, n, progress, topN, post) {   // post：算完再擴充候選（換卡），回傳 { pool, add }
+            // pk 不含血量：盤面（盔甲／肉體／禁打）、加成、等級一樣就沿用上次的初篩和精算，只照現在的血量重算「打到部位剩血為止」
             let m = raidSimPoolMemo.get(pk);   // 存的是 Promise：兩種模式同時在算也只算一次
             if (!m) { m = raidSimEvalPool(P, env, me, all, n, progress, topN).then(pool => post ? post(pool) : { pool, add: [] }); raidSimPoolMemo.set(pk, m); m.catch(() => raidSimPoolMemo.delete(pk)); if (raidSimPoolMemo.size > 12) raidSimPoolMemo.delete(raidSimPoolMemo.keys().next().value); }
             const r = await m;
-            return { pool: r.pool.map(o => ({ ...o })), add: r.add };
+            return { pool: r.pool.map(o => raidSimRecap(o, env)), add: r.add };
         }
         // 首頁推薦用的「標準玩家」：卡片等級、死靈熊研究、突襲等級都取全公會中位數（卡片只算有這張卡的人，一半以上的人有才算），忠誠度 12 級
         // 首頁推薦用的「標準玩家」（虛擬玩家）：卡片等級、死靈熊研究、突襲等級都用「突襲均傷加權平均」——
@@ -13649,7 +13650,7 @@
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const key = (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r34|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
-            const poolKey = key.replace(/^void(now)?\|/, '') + '|' + raidDeckCalAt;   // 傷害表跟模式無關；卡片校正每小時更新後重算
+            const poolKey = key.replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
             if (inf) { inf.progress = progress; return inf.p; }
@@ -14081,7 +14082,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=23'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=24'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -14332,7 +14333,7 @@
             const c = o.cap > 0 ? o.cap : Infinity, raw = runs.reduce((x, y) => x + y, 0) / runs.length;
             // 範圍（一半的刀落在哪）：模擬的亂數比實際大（攻擊紀錄：同一組牌實際 ÷ 應打，一半的刀在 ±2～7% 內），最多顯示到 ±8%
             const av = Math.min(raw, c), W = 0.08;
-            return { ...o, raw, avg: av, lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
+            return { ...o, raw, avg: av, q25: runs[Math.floor(runs.length * 0.25)], q75: runs[Math.floor(runs.length * 0.75)], lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
         }
         function raidSimDeck(P, env, me, cards, plans) { return raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards, plans)); }
         // 挑出 n 組（卡片不重複）讓 n 組加總最高：全部快速篩一次，前段的再跑 200 次，最後搜尋所有不撞卡的組合
@@ -14350,7 +14351,7 @@
                 const n = 1;   // 只用 1 個 Worker，而且 Worker 算 50ms 就休息 50ms（單核最多 50%，低階筆電也不會滿載）
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=27');
+                    const w = new Worker('raid-sim/simworker.js?v=28');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -14364,6 +14365,20 @@
         // 主畫面直接算（Worker 不能用時）的節流：連續算 50ms 就休息 50ms
         let raidMainSliceAt = 0;
         async function raidMainTick() { const now = performance.now(); if (!raidMainSliceAt || now - raidMainSliceAt > 200) raidMainSliceAt = now; if (now - raidMainSliceAt >= 50) { await new Promise(r => setTimeout(r, 50)); raidMainSliceAt = performance.now(); } else await new Promise(r => setTimeout(r, 0)); }
+        // 沿用的傷害表照現在的血量重算上限：每種打法的原始傷害（不含上限）不變，上限＝目標部位現在剩的血
+        function raidSimRecap(o0, env) {
+            const o = { ...o0 }; if (!env || !env.hp) return o;
+            const capOf = (tg) => tg.reduce((t, k) => t + (env.hp[k] || 0), 0), W = 0.08;
+            if (o.alts && o.alts.length > 1) {   // 血量變了，最好的打法可能換：照粗算重挑，換了就當成沒精算過（被挑中時會補精算）
+                const best = o.alts.reduce((b, a) => { const v = Math.min(a.raw, capOf(a.tg)); return !b || v > b.v ? { a, v } : b; }, null);
+                if (best && best.a.tg.join() !== (o.tg || []).join() && best.v > Math.min(o.raw || 0, capOf(o.tg || [])) * 1.02) {
+                    const c = capOf(best.a.tg); return { cards: o.cards, alts: o.alts, plan: best.a.plan, tg: best.a.tg, cap: c, raw: best.a.raw, avg: Math.min(best.a.raw, c) };
+                }
+            }
+            const c = capOf(o.tg || []); o.cap = c; o.avg = Math.min(o.raw, c);
+            if (o.final) { if (o.q25 != null) { o.lo = Math.max(Math.min(o.q25, c), o.avg * (1 - W)); o.hi = Math.min(o.q75, c, o.avg * (1 + W)); } else { o.lo = Math.min(o.lo, o.avg); o.hi = Math.min(o.hi, c); } }
+            return o;
+        }
         let raidSimHiBusy = 0;
         // 背景作業的時段：每分鐘只有前 30 秒能算（30 秒後休息到下一分鐘）
         let raidBgMode = 0; const raidBgEpoch = Date.now();

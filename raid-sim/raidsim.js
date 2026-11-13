@@ -6,6 +6,7 @@ const isHead = (l) => l === 'Head', isTorso = (l) => l === 'ChestUpper';
 const isLimb = (l) => !isHead(l) && !isTorso(l);
 const isArm = (l) => /^Arm|^Hand/.test(l), isLeg = (l) => /^Leg/.test(l);
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+const LOC_I = Object.fromEntries(LOCS.map((l, i) => [l, i])), KIND_I = { tap: 0, burst: 1, aff: 2 };
 // 亂數：種子先打散（xorshift 直接吃 1000、1001… 這種連號的小數字，前面幾百個數字會偏，整批結果差到 5%）
 function rng(seed) { let s = seed >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = (s ^ (s >>> 16)) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
@@ -29,7 +30,8 @@ function simAttack(opt, P = P0) {
   const board = opt.board, buff = opt.buff || {};
   const targets = (opt.targets && opt.targets.length) ? opt.targets : LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton');
   const layerOf = (l) => board[l] ? board[l].layer : 'body';
-  const cursedOpen = () => LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length;
+  const cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面一刀內不變：算一次
+  const openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
   const nBody = LOCS.filter(l => board[l] && board[l].layer === 'body').length;
   const nSkel = LOCS.filter(l => board[l] && board[l].layer === 'skeleton').length;
   const nArmor = LOCS.filter(l => board[l] && board[l].layer === 'armor').length;
@@ -47,12 +49,12 @@ function simAttack(opt, P = P0) {
   };
   // 苦痛層：stacks[loc][id] = [{ end, start }]
   const stacks = {}; LOCS.forEach(l => { stacks[l] = {}; });
-  const liveCount = (l, id, t) => (stacks[l][id] || []).filter(s => s.end > t).length;
-  const afflictedParts = (t) => LOCS.filter(l => Object.keys(stacks[l]).some(id => liveCount(l, id, t) > 0)).length;
+  const liveCount = (l, id, t) => { const a = stacks[l][id]; if (!a) return 0; let n = 0; for (let i = 0; i < a.length; i++) if (a[i].end > t) n++; return n; };   // 不建新陣列（效能）
+  const afflictedParts = (t) => { let n = 0; for (const l of LOCS) { for (const id in stacks[l]) if (liveCount(l, id, t) > 0) { n++; break; } } return n; };
   const diseaseSince = {};
   const weakenEnd = {}; LOCS.forEach(l => { weakenEnd[l] = -1; });
   // 支援、加成：回傳這一下打在 loc 的倍率
-  const mult = (kind, loc, t, self) => {
+  const multRaw = (kind, loc, t, self) => {
     // 圖騰之力的精靈只出現在一個部位：同時打好幾個部位時，精靈的額外加成只有第一個部位有（基本加成照算）（攻擊紀錄：帶圖騰打兩個部位只有單打的 7 成左右）
     const totemHere = has.has('TotemFairySkill') && (!P.totemOnePart || !opt.targets || opt.targets.length < 2 || loc === opt.targets[0]);
     const layer = layerOf(loc);
@@ -99,6 +101,14 @@ function simAttack(opt, P = P0) {
     const nc = opt.necro;
     if (nc) m *= (1 + (layer === 'armor' ? nc.armor : nc.body)) * (1 + (isHead(loc) ? nc.head : isTorso(loc) ? nc.chest : nc.limb)) * (1 + nc.enemy);
     return m;
+  };
+  // 倍率只跟這幾件事有關：種類、部位、虛弱有沒有在、這個部位的漩渦層數、放大層數（一刀之內其他都固定）→ 同樣條件只算一次（結果完全一樣，效能）
+  const multMemo = new Map(), hasWeaken = has.has('Weaken'), hasRune = has.has('RuneAttack'), hasPotion = has.has('MagicPotion');
+  const mult = (kind, loc, t, self) => {
+    const key = (((((KIND_I[kind] * 8 + LOC_I[loc]) * 2 + (hasWeaken && weakenEnd[loc] > t ? 1 : 0)) * 64 + (hasRune ? liveCount(loc, 'RuneAttack', t) : 0)) * 2 + (hasRune && self === 'RuneAttack' && !P.runeSelf ? 1 : 0)) * 64) + (hasPotion ? liveCount(loc, 'MagicPotion', t) : 0);   // 數字當索引（比字串快）
+    let v = multMemo.get(key);
+    if (v === undefined) { v = multRaw(kind, loc, t, self); multMemo.set(key, v); }
+    return v;
   };
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));
   // 苦痛觸發機率加成：變質氣體 ×1.3、靈魂之火 ×1.1 同時帶時只取最高（P.affChanceMax；攻擊紀錄：兩張都帶時毀了雨、電擊都比只帶變質氣體少約 9%＝1.3÷1.43）
@@ -198,27 +208,27 @@ function simAttack(opt, P = P0) {
     const ap = afflictedParts(t);
     for (const l of LOCS) {
       for (const id in stacks[l]) {
-        const live = stacks[l][id].filter(x => x.end > t);
+        const liveN = liveCount(l, id, t);
         if (id === 'Fuse') { // 時間到才爆：已到期的爆開
           const done = stacks[l][id].filter(x => x.end <= t && !x.boom);
           done.forEach(x => { x.boom = true; const other = P.fuseStack ? Object.keys(stacks[l]).filter(c => c !== 'Fuse').reduce((n, c) => n + liveCount(l, c, t), 0) : 0; out.by.Fuse += P.aff * (P.k.Fuse || 1) * A('Fuse', effLv('Fuse', t, l)) * opt.tau * (1 + 0.5 * (x.end - x.start)) * (1 + (P.fuseStack || 0) * other) * mult('aff', l, t, 'Fuse'); });
           stacks[l][id] = stacks[l][id].filter(x => !x.boom);
           continue;
         }
-        if (!live.length || id === 'PowerBubble' && false) continue;
+        if (!liveN || id === 'PowerBubble' && false) continue;
         const lv = effLv(id, t, l);
         let m = 1;
-        if (id === 'Shadow') m = Math.pow(1.2, live.length);
+        if (id === 'Shadow') m = Math.pow(1.2, liveN);
         if (id === 'RuinousRust' && board[l] && board[l].cursed && board[l].layer === 'armor') m = 1.5;
         if (id === 'PlagueAttack') {
-          let n = P.plagueOpen ? Math.max(ap, LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length) : ap;
+          let n = P.plagueOpen ? Math.max(ap, openN) : ap;
           if (P.plagueMode === 'stacks') n = Object.keys(stacks[l]).reduce((x, c) => x + liveCount(l, c, t), 0);
           if (P.plagueMode === 'otherStacks') n = Object.keys(stacks[l]).filter(c => c !== 'PlagueAttack').reduce((x, c) => x + liveCount(l, c, t), 0) + ap;
           m = 1 + 0.1467 * Math.min(P.plagueCap || 6, n);
         }
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
-        if (id === 'Disease') dmg = live.length * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = live.length;
+        if (id === 'Disease') dmg = liveN * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = liveN;
         out.by[id] += P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
       }
     }

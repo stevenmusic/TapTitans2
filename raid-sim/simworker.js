@@ -1,6 +1,6 @@
 // 推薦牌組的計算：主畫面把「快速篩選」「精算 100 次」的工作丟給 1 個 Worker，算 50ms 休息 50ms（單核最多約 50%）
 // 算法跟 index.html 的 raidSimScreen／raidSimFinal 完全一樣（同樣的亂數種子），結果不變，只是比較快
-importScripts('raidsim.js?v=23');
+importScripts('raidsim.js?v=24');
 const ready = fetch('skills.json?v=1').then(r => r.json()).then(sk => RaidSim.init(sk));
 const SCREEN_RUNS = 2, FINAL_RUNS = 100;
 // 節流：連續算 50ms 就休息 50ms（單一核心最多約 50%，低階筆電不會滿載）
@@ -36,7 +36,7 @@ async function final(P, base, o, n) {
   const c = o.cap > 0 ? o.cap : Infinity, raw = runs.reduce((x, y) => x + y, 0) / runs.length;
   // 範圍（一半的刀落在哪）：模擬的亂數比實際大（攻擊紀錄：同一組牌實際 ÷ 應打，一半的刀在 ±2～7% 內），最多顯示到 ±8%
   const av = Math.min(raw, c), W = 0.08;
-  return { ...o, raw, avg: av, lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
+  return { ...o, raw, avg: av, q25: runs[Math.floor(runs.length * 0.25)], q75: runs[Math.floor(runs.length * 0.75)], lo: Math.max(Math.min(runs[Math.floor(runs.length * 0.25)], c), av * (1 - W)), hi: Math.min(runs[Math.floor(runs.length * 0.75)], c, av * (1 + W)), final: true };
 }
 // 配卡用：每種打法各跑 1 次挑最好的（不超過部位剩下的血）
 async function quickPick(P, base, plans, caps) {

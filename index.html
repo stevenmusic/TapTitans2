@@ -12707,16 +12707,21 @@
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
                     const simFns = raidSimPartFns(scene);
-                    const vReach = wantVoid ? raidVoidReach(nextRound) : null, voidGo = wantVoid && !(vReach && !vReach.ok);   // 估這輪等不到肉體≥6：照一般推薦
+                    const vReach = wantVoid ? raidVoidReach(nextRound) : null, sixNow = !!(vReach && vReach.ok && !nextRound && !vReach.need && !vReach.newBoss), voidGo = wantVoid && !(vReach && !vReach.ok) && !sixNow;   // 估這輪等不到肉體≥6，或現在已經 6 肉體（不用留）：照一般推薦
                     let simPick, normRows = null; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                         // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
                         if (voidGo && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
                     } finally { raidRecoProgDone(r.player); }
                     if (raidRecoVoid.has(r.player) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
+                    // 留瘋狂沒有比一般推薦多（多一個「一定要留一組」的限制，最多打平）：直接照一般推薦
+                    const sumOf = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
+                    let noGain = false;
+                    if (normRows && simPick && sumOf(simPick) <= sumOf(normRows)) { simPick = normRows; normRows = null; noGain = true; }
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         const vr = all.find(x => x.voidLater);
-                        const voidLine = !raidRecoVoid.has(r.player) ? '' : !voidGo ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留瘋狂比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
+                        const why = sixNow ? '現在已經 6 肉體，不用留，照一般推薦' : noGain ? '留瘋狂沒有比較多，照一般推薦' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦`;
+                        const voidLine = !raidRecoVoid.has(r.player) ? '' : (!voidGo || noGain) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留瘋狂比一般推薦${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}${vReach && vReach.newBoss ? '（會換王）' : vReach && vReach.need > 0 ? `（約再 ${vReach.need} 刀到 6 肉體）` : ''}</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
                         html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
@@ -12887,7 +12892,7 @@
             if (!raidClanData) { try { await raidLoadClanData(); } catch (e) {} }
             const v = raidSimStandardAccount(); if (!v) return null;
             const env = await raidSimEnv();
-            const sig = JSON.stringify(['h29', env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
+            const sig = JSON.stringify(['h30', raidCalSig(), env.board, env.curse, env.buff, env.extraSec, env.mirror, Math.round(env.morale * 100), raidState.bossName, env.strategy]);   // 只看部位狀態（含禁打、詛咒甲）、王、加成、詛咒、第幾輪；血量和虛擬玩家的等級變化不重算
             if (!raidSimHomeMem) { try { raidSimHomeMem = JSON.parse(localStorage.getItem(RAID_SIM_HOME_KEY) || 'null'); } catch (e) {} }
             if (raidSimHomeMem && raidSimHomeMem.sig === sig) return raidSimHomeMem.rows;
             // 先看伺服器上有沒有別人（或自己上次）在同一個狀態算好的推薦，有就直接用，不用再算
@@ -13557,7 +13562,7 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = (info.voidMode ? 'void|' : '') + 'r30|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = (info.voidMode ? 'void|' : '') + 'r31|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.replace(/^void\|/, '') + '|' + raidDeckCalAt;   // 傷害表跟模式無關；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13988,6 +13993,8 @@
             const base = eb ? (eb.t || 0) + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (raidCardCal[c] || 1), 0) : w;
             return base * raidDeckFactorOf(a.cards);
         }
+        // 推薦快取要跟著校正換（舊的校正算的推薦不能再用）：卡片校正＋剩下的整組偏差，取到小數兩位
+        function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase); }
         function raidDeckFactorOf(cards) { const k = raidDeckKeyOf(cards); const t = raidDeckCal || raidDeckCalBase || {}; return t[k] || 1; }
         function raidDeckCalApply(P) {
             if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };

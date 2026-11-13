@@ -12650,17 +12650,18 @@
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
         const raidRecoProg = new Map();   // 名字 → { target, shown, timer }
         function raidRecoProgSet(name, t) {
-            const m = /(\d+)%/.exec(String(t || '')); const v = m ? Math.min(99, Number(m[1])) : 0;
+            const m = /(\d+)%/.exec(String(t || '')); const v = m ? Math.min(100, Number(m[1])) : 0;
             let g = raidRecoProg.get(name);
             if (!g) { g = { target: 0, shown: 0, timer: null }; raidRecoProg.set(name, g); }
             g.target = Math.max(g.target, v);
             if (!g.timer) g.timer = setInterval(() => {
-                if (g.shown < g.target) g.shown++;
+                if (g.shown < g.target) g.shown = Math.min(g.target, g.shown + Math.max(1, Math.ceil((g.target - g.shown) / 6)));   // 落後越多追越快（算得快時也會走到 100%）
                 const bx = raidLogRecoBox(name);
                 if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) pct.textContent = `計算中 ${Math.max(1, g.shown)}%`; else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
             }, 50);
         }
-        function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); }
+        const raidRecoDoneAt = new Map();
+        function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); const bx = raidLogRecoBox(name); const pct = bx && bx.querySelector('[data-prog]'); if (pct) pct.textContent = '計算中 100%'; }   // 算完：先顯示 100%，結果接著蓋上
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
@@ -12770,7 +12771,7 @@
                     let simPick, normRows = null; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidGo, voidNow: voidGo && sixNow }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                         // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
                         if (voidGo && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
-                    } finally { raidRecoProgDone(r.player); }
+                    } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }   // 有顯示進度的：100% 停 0.25 秒再出結果（同時接著算的幾份都等）
                     if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
                     // 留瘋狂沒有比一般推薦多（多一個「一定要留一組」的限制，最多打平）：直接照一般推薦
                     const sumOf = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
@@ -13663,7 +13664,7 @@
             if (!n) return [];
             // 進度分段：原本的候選、換卡、瘋狂無效各占一段（不然換卡那十幾秒會停在 99%）
             const seg = (a, b) => (t) => { const m = /(\d+)%/.exec(String(t || '')); return progress ? progress(`計算中 ${Math.round(a + (m ? Number(m[1]) : 0) * (b - a) / 100)}%`) : undefined; };
-            const VZ = info.voidMode ? 16 : 0, P0 = VZ, P1 = VZ + (info.voidMode ? 34 : 45);   // 瘋狂模式：0～16 瘋狂無效候選，接著原本候選、換卡
+            const VZ = info.voidMode ? 16 : 0, P0 = VZ, P1 = RAID_SIM_SWAP_ON ? VZ + (info.voidMode ? 34 : 45) : 90;   // 沒有換卡：初篩＋精算占 0～90%   // 瘋狂模式：0～16 瘋狂無效候選，接著原本候選、換卡
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
@@ -13737,6 +13738,7 @@
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
             } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
+            if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {
@@ -13775,6 +13777,7 @@
             pick.forEach(scaleShow); if (voidO) scaleShow(voidO);
             rows.sort((x, y) => (y.simDmg.avg || 0) - (x.simDmg.avg || 0));   // 乘完校正再照應打排
             if (voidO) rows.push({ cards: byPartOrderCards(voidO.cards), rawCards: voidO.cards, targets: voidO.tg.map(k => ({ part: k, layer: 'body', cursed: false })), allParts: voidO.tg.length >= 2 && voidO.tg.length >= env.open.length, simDmg: voidO, voidLater: true, voidNow: !!info.voidNow, normalSum });
+            if (progress) progress('計算中 100%');
             raidSimPickCache.set(key, rows);
             if (kvKey && rows.length) { const slim = { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) }; raidRecoKvMem.set(kvKey, slim); kvSet(kvKey, slim); }
             return rows;

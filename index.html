@@ -12600,9 +12600,11 @@
                 raidLogRenderPlayerReco(r);
             });
         }
+        const raidRecoGen = new Map();   // 每次重畫推薦加 1：只有最新那一次算完才寫畫面
         async function raidLogRenderPlayerReco(r) {
             let box = raidLogRecoBox(r.player);
             if (!box) return;
+            const wantVoid = raidRecoVoid.has(r.player), gen = (raidRecoGen.get(r.player) || 0) + 1; raidRecoGen.set(r.player, gen);
             box.style.display = 'block';
             box.innerHTML = raidLogRecoHtml.get(r.player) || (raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
             if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
@@ -12662,11 +12664,15 @@
                     // 組數一樣時盡量包含最佳那幾組，再比前 15 名使用次數
                     // 有官方帳號資料、模擬器載得到：直接用模擬挑（這個人的等級和研究、目前部位狀態，依應打傷害高低，卡片不重複）
                     const simFns = raidSimPartFns(scene);
-                    let simPick; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: raidRecoVoid.has(r.player) }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t)); } finally { raidRecoProgDone(r.player); }
+                    let simPick, normRows = null; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: wantVoid }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
+                        // 留瘋狂無效：上面寫的「一般推薦」要跟按推薦看到的 6 組加總一樣（同一份傷害表，只多挑一次）
+                        if (wantVoid && simPick && simPick.some(x => x.voidLater)) normRows = await raidSimPlayerPick(r.player, { ...info, voidMode: false }, data, simFns.playable, simFns.hitParts, () => {});
+                    } finally { raidRecoProgDone(r.player); }
+                    if (raidRecoVoid.has(r.player) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;   // 算的期間切換了模式：舊的結果不要蓋掉新的
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         const vr = all.find(x => x.voidLater);
-                        const voidLine = !raidRecoVoid.has(r.player) ? '' : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), d = tot - (vr.normalSum || 0); return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留一組瘋狂無效：整輪 ${formatNumAlwaysM(tot)}（一般推薦 ${formatNumAlwaysM(vr.normalSum || 0)}，${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}）</div>`; })()
+                        const voidLine = !raidRecoVoid.has(r.player) ? '' : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留一組瘋狂無效：整輪 ${formatNumAlwaysM(tot)}（一般推薦 ${formatNumAlwaysM(nSum)}，${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}）</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
                         html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
@@ -12750,6 +12756,7 @@
             }
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
             if (!raidLogRecoOpen.has(r.player)) return;
+            if (raidRecoVoid.has(r.player) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
             raidLogRecoHtml.set(r.player, html);
             raidLogUiSave();
             box = raidLogRecoBox(r.player);
@@ -12758,6 +12765,13 @@
         /* 攻擊紀錄的玩家推薦：用模擬挑牌組。候選＝公會前 15 名打過的牌組，這個人三張卡都有、這一波還沒用過、現在打得到；
            每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
         const raidSimPickCache = new Map();
+        // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
+        const raidSimPoolMemo = new Map();
+        async function raidSimPoolGetOrEval(pk, P, env, me, all, n, progress, topN) {
+            let m = raidSimPoolMemo.get(pk);   // 存的是 Promise：兩種模式同時在算也只算一次
+            if (!m) { m = raidSimEvalPool(P, env, me, all, n, progress, topN); raidSimPoolMemo.set(pk, m); m.catch(() => raidSimPoolMemo.delete(pk)); if (raidSimPoolMemo.size > 12) raidSimPoolMemo.delete(raidSimPoolMemo.keys().next().value); }
+            return (await m).map(o => ({ ...o }));
+        }
         // 首頁推薦用的「標準玩家」：卡片等級、死靈熊研究、突襲等級都取全公會中位數（卡片只算有這張卡的人，一半以上的人有才算），忠誠度 12 級
         // 首頁推薦用的「標準玩家」（虛擬玩家）：卡片等級、死靈熊研究、突襲等級都用「突襲均傷加權平均」——
         // 每個人的權重＝最近 3 場的平均每刀傷害（500M 的人權重 500、10M 的人權重 10），結果比較接近主力；
@@ -13501,6 +13515,7 @@
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const key = (info.voidMode ? 'void|' : '') + 'r30|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
+            const poolKey = key.replace(/^void\|/, '') + '|' + raidDeckCalAt;   // 傷害表跟模式無關；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
             if (inf) { inf.progress = progress; return inf.p; }
@@ -13537,7 +13552,7 @@
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
                 const vpool = vlist.length ? (await raidSimEvalPool(P, envF, me, vlist, 1, null, 20)).filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8) : [];
-                const all = await raidSimEvalPool(P, env, me, list.concat(extra), n, progress, null);
+                const all = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, progress, null);
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -13547,7 +13562,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else pick0 = await raidSimRank(P, env, me, list, n, progress, extra, fast ? 12 : null);
+            } else { raidSimRankBusy++; try { pick0 = await raidSimPickPool(P, env, me, await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, progress, fast ? 12 : null), n); } finally { raidSimRankBusy--; } }
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {

@@ -8217,7 +8217,7 @@
                     // 盤面是這刀打完的狀態（打破的盔甲已經變肉體）：用這刀自己記錄的部位層別修正（追風 左肩盔甲被打破，被當成打肉體，防空高砲沒算到）
                     (a.parts || []).forEach(pp => { if (pp && board[pp.part] && pp.layer === 'armor' && board[pp.part].layer === 'body') board[pp.part] = { layer: 'armor', cursed: false }; });
                     let tgs = sx.tg; if (a.cards.some(c => c.name === 'FlakShot') && tgs.length > 1) { const ar = tgs.filter(k => board[k] && board[k].layer === 'armor'); if (ar.length && ar.length < tgs.length) tgs = ar; }
-                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: tgs, seed: 11 }, 60, { ...P, k: raidCardKBase || P.k, deckK: {} });   // 存原始應打（不含牌組滾動校正），顯示時再乘
+                    const r = RaidSim.simMean({ ...raidSimBase(env, me, a.cards.map(c => c.name)), targets: tgs, seed: 11 }, 60, { ...P, k: raidCardKBase || P.k, deckK: {}, tapK: 1 });   // 存原始應打（不含牌組滾動校正），顯示時再乘
                     raidCsExpMem.set(k, r.total > 0 ? r.total : null);
                     if (r.total > 0) raidCsExpBy.set(k, { t: Math.round(r.tap), b: Object.fromEntries(Object.entries(r.by || {}).filter(([, x]) => x > 0).map(([c, x]) => [c, Math.round(x)])) });
                     if (r.total > 0 && typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown() && !raidCsExpRedraw) raidCsExpRedraw = setTimeout(() => { raidCsExpRedraw = null; try { if (raidLogPanelShown()) renderRaidLogQueryResult(); } catch (e) {} }, 1500);
@@ -13630,7 +13630,7 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
-            const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {}, lowPri: !!fast };   // 首頁推薦（fast）讓個人推薦先算
+            const deckKShow = {}; P = { ...P, lowPri: !!fast };   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
@@ -14059,7 +14059,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=22'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=23'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -14077,7 +14077,7 @@
         let raidDeckCalAt = 0, raidDeckCalBase = null, raidDeckCal = null;
         const raidDeckKeyOf = (cards) => (cards || []).map(c => c.name || c).slice().sort().join('+');
         // 每張卡的滾動校正：這場每張卡最近 40 刀「實際卡片傷害 ÷ 原始公式模擬的卡片傷害」中位數（至少 10 刀、偏差 3% 以上、0.8～1.25），乘進那張卡的係數（挑牌組時照樣照個人等級比）
-        let raidCardKBase = null, raidCardCal = {};
+        let raidCardKBase = null, raidCardCal = {}, raidTapCal = 1;   // raidTapCal：點擊傷害的滾動校正（實際點擊 ÷ 公式點擊，最近 100 刀中位數）
         function raidDeckCalCompute() {
             const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const atks = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === latest && a.cards && a.cards.length === 3 && !a.imported)
@@ -14086,33 +14086,35 @@
             atks.forEach(a => { const eb = raidCsExpBy.get(raidSimExpKey(a)); if (!eb) return; n++;
                 Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (!(sim > 0) || !(act > 0)) return; const x = cr[c] || (cr[c] = []); if (x.length < 40) x.push(act / sim); }); });
             if (n < 50) return null;   // 這場的應打還沒算夠就先不換
+            const tr = []; atks.forEach(a => { if (tr.length >= 100) return; const eb = raidCsExpBy.get(raidSimExpKey(a)); const act = Number(a.tapDamage); if (eb && eb.t > 0 && act > 0) tr.push(act / eb.t); });
+            tr.sort((a, b) => a - b); let tap = tr.length >= 20 ? tr[tr.length >> 1] : 1; tap = Math.abs(tap - 1) >= 0.02 ? Math.round(Math.max(0.85, Math.min(1.2, tap)) * 1000) / 1000 : 1;
             const card = {}; Object.entries(cr).forEach(([c, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) card[c] = Math.round(Math.max(0.8, Math.min(1.25, m)) * 1000) / 1000; });
             // 剩下的整組偏差（卡片校正之後）：只乘在顯示的應打
             const g = {};
-            atks.forEach(a => { const eb = raidCsExpBy.get(raidSimExpKey(a)); if (!eb) return; const adj = (eb.t || 0) + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(adj > 0)) return;
+            atks.forEach(a => { const eb = raidCsExpBy.get(raidSimExpKey(a)); if (!eb) return; const adj = (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(adj > 0)) return;
                 const k = raidDeckKeyOf(a.cards); const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) x.push(a.totalDamage / adj); });
             const deck = {}; Object.entries(g).forEach(([k, x]) => { if (x.length < RAID_DECK_CAL_MIN) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
-            return { card, deck };
+            return { card, deck, tap };
         }
         // 攻擊紀錄某一刀顯示的應打：原始公式的分卡模擬，乘上每張卡的校正，再乘剩下的整組偏差
         function raidExpAdjusted(a, w) {
             const eb = raidCsExpBy.get(raidSimExpKey(a));
-            const base = eb ? (eb.t || 0) + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (raidCardCal[c] || 1), 0) : w;
+            const base = eb ? (eb.t || 0) * raidTapCal + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (raidCardCal[c] || 1), 0) : w;
             return base * raidDeckFactorOf(a.cards);
         }
         // 推薦快取要跟著校正換（舊的校正算的推薦不能再用）：卡片校正＋剩下的整組偏差，取到小數兩位
-        function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase); }
+        function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase) + '/t' + raidTapCal; }
         function raidDeckFactorOf(cards) { const k = raidDeckKeyOf(cards); const t = raidDeckCal || raidDeckCalBase || {}; return t[k] || 1; }
         function raidDeckCalApply(P) {
             if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };
             if (!raidCardKBase) raidCardKBase = { ...(P.k || {}) };
-            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidDeckCalAt = Date.now(); } }
-            const k = { ...raidCardKBase }; Object.entries(raidCardCal).forEach(([c, f]) => { k[c] = (k[c] || 1) * f; }); P.k = k;
+            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidTapCal = c.tap || 1; raidDeckCalAt = Date.now(); } }
+            const k = { ...raidCardKBase }; Object.entries(raidCardCal).forEach(([c, f]) => { k[c] = (k[c] || 1) * f; }); P.k = k; P.tapK = raidTapCal;
             P.deckK = { ...(raidDeckCal || raidDeckCalBase) };
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
-        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 推薦不用天體靜態、宇宙激光（模擬已經準了，牌組頁照樣能算）
+        const RAID_SIM_EXCLUDE = new Set(['Haymaker']);   // 天體靜態放行；宇宙激光照樣不推薦   // 推薦不用天體靜態、宇宙激光（模擬已經準了，牌組頁照樣能算）
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
         function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
@@ -14326,7 +14328,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=24');
+                    const w = new Worker('raid-sim/simworker.js?v=25');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

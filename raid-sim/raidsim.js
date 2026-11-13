@@ -134,7 +134,7 @@ function simAttack(opt, P = P0) {
   const doTap = (i, loc, bonus) => {
     const t = i * dt;
     const layer = layerOf(loc);
-    out.tap += opt.tau * mult('tap', loc, t);
+    out.tap += opt.tau * mult('tap', loc, t) * (P.tapK || 1);   // tapK：網頁用攻擊紀錄滾動校正的點擊傷害係數
     tapCount++;
     if (!bonus) hitHistory.push(loc);
     const chMul = bonus ? 0.5 : 1;

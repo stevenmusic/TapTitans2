@@ -12571,11 +12571,32 @@
                 if (pst) per = perRound(log.filter(a => a && !a.placeholder && a.raidStartedAt === prev.startedAt && a.ts > 0), pst, 99); }
             if (per == null) per = RAID_ATTACKS_PER_CYCLE * 40;
             const doneNow = L.filter(a => roundOf(a, st) === cyc).length;
-            const leftNow = Math.max(0, Math.round(per - doneNow));
+            let leftNow = Math.max(0, Math.round(per - doneNow)), nextAdd = Math.round(per);
+            // 即時（不是回測）：用全公會這輪實際還剩幾刀＝這場有出過刀的每個人目前的剩餘次數加總；下一輪每人再多 6 刀
+            if (!opt.now && Array.isArray(raidLogLastRanked) && raidLogLastRanked.length) {
+                let left = 0, active = 0;
+                raidLogLastRanked.forEach(r => { if (!r || !r.attacks || !r.attacks.some(a => a && a.raidStartedAt === sa)) return; const ci = raidPlayerCycleInfo(r.player, r.attacks); active++; left += Math.max(0, ci.remaining || 0); });
+                if (active) { leftNow = left; nextAdd = active * RAID_ATTACKS_PER_CYCLE; }
+            }
             const rec = L.slice().sort((a, b) => b.ts - a.ts).slice(0, 100), avg = rec.length ? rec.reduce((t, a) => t + (a.totalDamage || 0), 0) / rec.length : 0;
             if (!(avg > 0)) return null;
-            // 一刀一刀往前推：下一輪的話，先把這輪剩下的刀打完（不算），再打下一輪的刀（算）
-            const total = leftNow + (nextRound ? Math.round(per) : 0), skip = nextRound ? leftNow : 0;
+            // 四階段規則下大家先拆詛咒甲、再拆盔甲，傷害集中在盔甲上：全公會還能打的傷害 ≥ 開到 6 個肉體要拆的盔甲，就等得到
+            // 要拆的盔甲：還差幾個肉體部位，就照四階段的順序（詛咒甲剩血少的先，再來厚的盔甲；最厚的部位留給凱旋行軍時排最後）取那幾個部位的盔甲加總
+            if (!opt.now) {
+                if (bodyN() >= 6 && !nextRound) return { ok: true, n: bodyN(), need: 0, left: leftNow };
+                const open = Object.keys(P).filter(k => !banned.includes(k) && (P[k].a > 0 || P[k].b > 0));
+                const armorParts = open.filter(k => P[k].a > 0), needN = Math.max(0, 6 - open.filter(k => P[k].a <= 0 && P[k].b > 0).length);
+                if (open.length < 6) return { ok: false, n: open.length, left: leftNow };   // 能打的部位不到 6 個：永遠湊不到 6 肉體
+                const cu = raidCurseInfoNow(), cursedSet = new Set(cu ? armorParts.filter(k => (parts0[k] || {}).cursed) : []);
+                const big = banned.length <= 1 ? open.slice().sort((a, b) => (P[b].a + P[b].b) - (P[a].a + P[a].b))[0] : null;
+                const order = armorParts.slice().sort((a, b) => (cursedSet.has(b) - cursedSet.has(a)) || (cursedSet.has(a) ? P[a].a - P[b].a : ((a === big) - (b === big)) || P[b].a - P[a].a));
+                const needArmor = order.slice(0, needN).reduce((t, k) => t + P[k].a, 0);
+                const dmg = (leftNow + (nextRound ? nextAdd : 0)) * avg;
+                const need = needArmor > 0 ? Math.ceil(needArmor / avg) : 0;
+                return dmg >= needArmor ? { ok: true, n: 6, need: nextRound ? Math.max(0, need - leftNow) : need, left: nextRound ? nextAdd : leftNow, needArmor } : { ok: false, n: 6 - needN, left: nextRound ? nextAdd : leftNow, needArmor, dmg };
+            }
+            // （回測用：一刀一刀往前推）下一輪的話，先把這輪剩下的刀打完（不算），再打下一輪的刀（算）
+            const total = leftNow + (nextRound ? nextAdd : 0), skip = nextRound ? leftNow : 0;
             let maxN = nextRound ? 0 : bodyN();
             for (let i = 0; i < total; i++) {
                 const open = Object.keys(P).filter(k => !banned.includes(k) && (P[k].a > 0 || P[k].b > 0));
@@ -12588,6 +12609,7 @@
             }
             return { ok: false, n: maxN, left: total - skip };
         }
+        function raidCurseInfoNow() { const c = (typeof raidCurseInfo !== 'undefined' && raidCurseInfo) || null; const t = Array.isArray(c) ? c[0] : c; const ty = t && (t.type || t.curseType); return ty === 'Burst' || ty === 'Afflicted' || /Burst|Afflict/.test(String(ty || '')) ? t : null; }
         function raidRecoVoidOwned(r) { const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null; return !!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0); }
         function raidRecoVoidBtnRefresh() {}
         // 推薦框右上角的開關：切換瘋狂無效開／關，框不收合，直接換內容
@@ -12784,7 +12806,7 @@
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
-                        const voidLine = hasVoid && !sixNow && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，照一般推薦</div>` : '';
+                        const voidLine = hasVoid && !sixNow && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '到下一輪結束' : '這輪'}等不到 6 肉體（全公會${nextRound ? '下一輪有' : '還剩'} ${vReach.left} 刀，約 ${formatNumAlwaysM(vReach.dmg || 0)}，還要拆 ${formatNumAlwaysM(vReach.needArmor || 0)} 盔甲），照一般推薦</div>` : '';
                         html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
                     } else {

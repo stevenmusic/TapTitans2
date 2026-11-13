@@ -12692,11 +12692,8 @@
             raidLogRecoOpen.forEach(name => {
                 const r = raidLogLastRanked.find(x => x.player === name);
                 if (!r || !raidLogIsLatestSession(r)) { raidLogRecoOpen.delete(name); return; }
-                // 不自動重算（不在背景吃 CPU）：狀態沒變就放回存好的畫面；變了（有人出刀、換王）就收起來，要看再按推薦
-                const h = raidLogRecoHtml.get(name), box = raidLogRecoBox(name);
-                if (h && h.startsWith(`<!--${raidRecoStateSig(r)}-->`) && box) { box.style.display = 'block'; box.innerHTML = h; }
-                else if (raidRecoProg.has(name) || (!h && raidRecoClicked.has(name))) raidLogRenderPlayerReco(r);   // 剛按下、還在算：保持打開接著算（同一份計算，不會重算第二次）
-                else { raidLogRecoOpen.delete(name); if (box) box.style.display = 'none'; }
+                // 打開推薦是使用者主動的：有人出刀、換王也保持打開，照新的狀態更新（只有血量變時沿用上次的計算，幾乎不花時間）
+                raidLogRenderPlayerReco(r);
             });
         }
         function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+')].join('|'); }
@@ -14357,7 +14354,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=28');
+                    const w = new Worker('raid-sim/simworker.js?v=29');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

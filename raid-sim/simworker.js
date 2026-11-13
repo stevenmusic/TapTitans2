@@ -44,12 +44,18 @@ async function quickPick(P, base, plans, caps) {
   for (let i = 0; i < plans.length; i++) { const tg = plans[i]; await tick(); const x = Math.min(RaidSim.simAttack({ ...base, targets: tg, seed: 3 }, P).total, caps[i] == null ? Infinity : caps[i]); if (!b || x > b.x) b = { x, tg }; }
   return b;
 }
+// 極速初篩：每種打法只跑 1 次（跟 screen 第一段一樣的種子），回傳最好的打法
+async function rough1(P, base, cards, plans) {
+  const capOf = (pl) => pl.cap > 0 ? pl.cap : Infinity; let best = null;
+  for (const pl of plans) { const raw = (await simMeanT({ ...base, targets: pl.tg, seed: 7 }, 1, P)).total; const v = Math.min(raw, capOf(pl)); if (!best || v > best.avg) best = { cards, plan: pl.label, tg: pl.tg, cap: pl.cap, raw, avg: v }; }
+  return best;
+}
 async function meanOf(P, j) { return Math.min((await simMeanT({ ...j.base, targets: j.tg, seed: j.seed }, j.runs, P)).total, j.cap == null ? Infinity : j.cap); }
 onmessage = async (e) => {
   const { id, P, jobs } = e.data; if (e.data.busy > 0) BUSY_MS = e.data.busy; if (e.data.rest > 0) REST_MS = e.data.rest;
   try {
     await ready;
-    const out = []; for (const j of jobs) out.push(await (j.kind === 's' ? screen(P, j.base, j.cards, j.plans, j.lite) : j.kind === 'q' ? quickPick(P, j.base, j.plans, j.caps) : j.kind === 'm' ? meanOf(P, j) : j.kind === 'e' ? simMeanT(j.opt, j.runs, P) : final(P, j.base, j.o, j.runs)));
+    const out = []; for (const j of jobs) out.push(await (j.kind === 's' ? screen(P, j.base, j.cards, j.plans, j.lite) : j.kind === 'q' ? quickPick(P, j.base, j.plans, j.caps) : j.kind === 'm' ? meanOf(P, j) : j.kind === 'e' ? simMeanT(j.opt, j.runs, P) : j.kind === 'r' ? rough1(P, j.base, j.cards, j.plans) : final(P, j.base, j.o, j.runs)));
     postMessage({ id, out });
   } catch (err) { postMessage({ id, error: String(err && err.message || err) }); }
 };

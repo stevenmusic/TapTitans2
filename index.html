@@ -12831,6 +12831,7 @@
            每組照能打的部位挑傷害最高的打法，依應打傷害排序，挑這一輪剩下刀數的組數（卡片不重複）。拿不到帳號資料或模擬器時回傳 null（用原本的算法） */
         const raidSimPickCache = new Map();
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
+        let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
         const raidSimPoolMemo = new Map();
         async function raidSimPoolGetOrEval(pk, P, env, me, all, n, progress, topN, post) {   // post：算完再擴充候選（換卡），回傳 { pool, add }
             let m = raidSimPoolMemo.get(pk);   // 存的是 Promise：兩種模式同時在算也只算一次
@@ -13573,7 +13574,7 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
-            const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {} };
+            const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {}, lowPri: !!fast };   // 首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
@@ -13612,8 +13613,12 @@
             const avail = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c));
             const expand = async (pool, E, ok, hitF, keep, K, topN) => {
                 const sig = (c) => c.slice().sort().join('+'), seen = new Set(pool.map(o => sig(o.cards))), add = [];
+                // 換進來的卡只用有潛力的：每張卡在目前候選裡最好那組的傷害排名前 RAID_SIM_SWAP_CARDS 張（沒出現在任何候選的卡也試，因為可能從沒人打過）
+                let swapIn = avail;
+                if (RAID_SIM_SWAP_CARDS) { const best = {}; pool.forEach(o => o.cards.forEach(c => { if ((best[c] || 0) < o.avg) best[c] = o.avg; }));
+                    const seenC = avail.filter(c => best[c] > 0).sort((a, b) => best[b] - best[a]); swapIn = seenC.slice(0, RAID_SIM_SWAP_CARDS).concat(avail.filter(c => !(best[c] > 0))); }
                 pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K).forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
-                    avail.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (it) add.push(it); }); }));
+                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (it) add.push(it); }); }));
                 if (!add.length) return { pool, add };
                 const ev = await raidSimEvalPool(P, E, me, add, 1, null, topN);
                 return { pool: pool.concat(ev), add };
@@ -14260,15 +14265,23 @@
         }
         // 平行算一批工作（順序跟輸入一樣）；失敗回傳 null，呼叫的地方改回主畫面算
         let raidSimWorkerLimit = 0;   // 背景配卡時只用 1 個核心（0＝全部）
+        let raidSimHiBusy = 0;   // 個人推薦正在用 Worker：首頁推薦每一批先等它
         async function raidSimParallel(P, jobs, onProgress) {
             const pool = raidSimPoolGet();
             if (!pool || !jobs.length) return pool ? [] : null;
+            const lo = !!(P && P.lowPri);
+            if (!lo) raidSimHiBusy++;
+            try { return await raidSimParallelInner(P, jobs, onProgress, pool, lo); } finally { if (!lo) raidSimHiBusy--; }
+        }
+        async function raidSimParallelInner(P, jobs, onProgress, pool, lo) {
             const CH = 3, chunks = [];
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
                 await Promise.all(pool.ws.slice(0, raidSimWorkerLimit || pool.ws.length).map(async (w) => {
                     while (next < chunks.length && !stopped) {
+                        while (lo && raidSimHiBusy > 0) await new Promise(r => setTimeout(r, 150));
+                        if (next >= chunks.length || stopped) break;
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
                         const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part }); });

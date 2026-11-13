@@ -14333,7 +14333,7 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = Math.max(1, Math.min(8, navigator.hardwareConcurrency || 2));   // 主畫面等結果時是閒的：核心全部用上（最多 8 個）
+                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 留一個核心給畫面（全部用上會 CPU 100%、手機發燙卡頓）
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
                     const w = new Worker('raid-sim/simworker.js?v=25');

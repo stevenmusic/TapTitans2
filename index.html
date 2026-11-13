@@ -12801,7 +12801,7 @@
                         const why = sixTag ? '現在 6 肉體，瘋狂無效直接打' : voidUsed ? '瘋狂無效這輪已經用過' : noGain ? '留瘋狂無效不會比較多，不用留' : `${nextRound ? '下一輪' : '這輪'}等不到 6 肉體，不用留`;
                         const voidLine = !wantVoid ? '' : (!voidGo || noGain || sixTag || voidUsed) ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${why}</div>` : vr ? (() => { const tot = all.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0), nSum = normRows ? normRows.reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0) : (vr.normalSum || 0), d = tot - nSum; return `<div style="font-size:12px; font-weight:800; color:#5e35b1; margin:0 0 4px;">留 1 組瘋狂無效，${vReach && vReach.newBoss ? '等下一隻王 6 肉體' : vReach && vReach.need > 0 ? `約再 ${vReach.need} 刀到 6 肉體` : '等 6 肉體再打'}（整輪${d >= 0 ? '多' : '少'} ${formatNumAlwaysM(Math.abs(d))}）</div>`; })()
                             : '<div style="font-size:12px; color:#8a7a6a; margin:0 0 4px;">沒有能留的瘋狂無效牌組（沒有這張卡、這輪已經用過，或湊不出牌組）</div>';
-                        html = head + voidLine + (all.length ? raidSimStrategyLine(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
+                        html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         raidLogRecoRows.set(r.player, all);
                     } else {
                     const top = recoWith(info.used, Math.min(left, RAID_ATTACKS_PER_CYCLE));
@@ -13574,7 +13574,8 @@
         function raidSimPartFns(scene, loose) {
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
-            const hitParts = (cards) => attackable.filter(k => (loose || scene[k] !== 'cursed' || cards.some(n => RAID_CURSE_BREAKERS.has(n))) && cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
@@ -13649,9 +13650,10 @@
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
-            const key = (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r36|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r37|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
-            const poolKey = key.replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
+            const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
             if (inf) { inf.progress = progress; return inf.p; }
@@ -13736,21 +13738,27 @@
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
             } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
+            const phaseNow = phaseK;
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {
                 const it = items.find(x => x.cards === o.cards || x.cards.join() === o.cards.join());
-                // 傷害不變（差 2% 以內）就照順序改目標：詛咒甲（爆裂、苦痛詛咒時）→ 盔甲（先拆甲）→ 原本的
+                // 打王四階段：照這一段的優先部位改打（少不到容忍值才改），優先部位從第一個開始試
                 let best = o;
-                for (const cp of [it && it.cplans || [], it && it.aplans || []]) {
-                    if (!cp.length) continue;
-                    if (cp.some(pl => pl.tg.join() === o.tg.join())) break;
-                    await new Promise(r => setTimeout(r, 0));
-                    // 也交給 Worker（有節流），不在主畫面直接跑
-                    const base = raidSimBase(env, me, o.cards), sc = await raidSimParallel(P, [{ kind: 's', base, cards: o.cards, plans: cp }]);
-                    const fr = sc && sc[0] ? await raidSimParallel(P, [{ kind: 'f', base, o: sc[0] }]) : null;
-                    const c2 = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, raidSimScreen(P, env, me, o.cards, cp));
-                    if (c2.avg >= o.avg * RAID_SIM_CURSE_KEEP) { best = c2; break; }
+                const ph = phaseNow;
+                if (ph && ph.order.length && ph.tol > 0 && !(o.tg || []).every(k => k === ph.order[0])) {
+                    const pls = it ? it.plans : [];
+                    for (const k of ph.order.slice(0, 3)) {
+                        if ((o.tg || []).length && o.tg.every(x => ph.ok(x)) && ph.order.indexOf(o.tg[0]) <= ph.order.indexOf(k)) break;   // 原本就打在更優先（或一樣）的部位
+                        const cp = pls.filter(pl => pl.tg.includes(k) && pl.tg.every(x => ph.ok(x)));
+                        if (!cp.length) continue;   // 這組打不到這個部位（卡片限定部位）：試下一個
+                        const roughMax = Math.max(0, ...((o.alts || []).filter(a => cp.some(pl => pl.tg.join() === a.tg.join())).map(a => Math.min(a.raw, a.tg.reduce((t, x) => t + (env.hp && env.hp[x] || Infinity), 0)))));
+                        if (o.alts && o.alts.length && roughMax < o.avg * (1 - ph.tol - 0.08)) continue;   // 粗算就差太多：不用精算
+                        const base = raidSimBase(env, me, o.cards), sc = await raidSimParallel(P, [{ kind: 's', base, cards: o.cards, plans: cp }]);
+                        const fr = sc && sc[0] ? await raidSimParallel(P, [{ kind: 'f', base, o: sc[0] }]) : null;
+                        const c2 = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, raidSimScreen(P, env, me, o.cards, cp));
+                        if (c2.avg >= o.avg * (1 - ph.tol)) { best = c2; break; }
+                    }
                 }
                 pick.push(best);
             }
@@ -14146,6 +14154,72 @@
         function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
         // 爆裂詛咒、苦痛詛咒：詛咒甲會拖累全公會的傷害。牌組照最高傷害挑，挑好之後打得到詛咒甲的就改打詛咒甲
         const RAID_SIM_CURSE_KEEP = 0.98;   // 改打詛咒甲傷害不變（差 2% 以內）才改，不犧牲傷害
+        /* 打王四階段（每一刀都照最新盤面判斷）：
+           1 拆詛咒甲（爆裂、苦痛詛咒）：剩血最少的詛咒甲先拆；容忍＝2×詛咒懲罰×這場受影響傷害占比（最多 15%）
+           2 拆盔甲（肉體不到 6 個）：厚的盔甲先拆；禁打 0～1 個時最厚的部位留給凱旋行軍，其他全開還湊不到 6 肉體才拆；容忍 5%
+           3 瘋狂無效時段（肉體 ≥6、還有人沒用瘋狂無效、小部位撐得住）：剩血多的肉體部位先打（不先把小部位打成骨架）；最厚的部位不打到低於凱旋行軍保留量；容忍 5%
+           4 凱旋行軍時段（禁打 0～1 個）：還不到 6 骨架時剩血最少的小部位先打、不打最厚的部位；容忍 10%
+           容忍：改打優先部位後那一刀少不到這個比例就改，少更多照原本傷害最高的打法 */
+        function raidPhaseGuild() {
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.cards);
+            const med = (x) => { x = x.slice().sort((a, b) => a - b); return x.length ? x[x.length >> 1] : 0; };
+            const cat = {}; L.forEach(a => Object.entries(a.cardDamage || {}).forEach(([c, v]) => { const k = window.RaidSim && RaidSim.SK && RaidSim.SK[c] ? RaidSim.SK[c].cat : ''; cat[k] = (cat[k] || 0) + v; }));
+            const allDmg = L.reduce((t, a) => t + (a.totalDamage || 0), 0) || 1;
+            const avgAll = med(L.map(a => a.totalDamage || 0)) || 5e8;
+            const avgWith = (c) => med(L.filter(a => a.cards.some(x => (x.name || x) === c)).map(a => a.totalDamage || 0)) || avgAll;
+            let voidLeft = 0, finLeft = 0;
+            (raidLogLastRanked || []).forEach(r => {
+                const v = raidClanData && r.identity ? raidClanData.byCode.get(r.identity) : null; if (!v || !v.raw) return;
+                const ci = raidPlayerCycleInfo(r.player, r.attacks); if (!(ci.remaining > 0)) return;
+                if (raidSimBaseLevel(v.raw, 'CrushingVoid') > 0 && !ci.used.has('CrushingVoid')) voidLeft++;
+                if (raidSimBaseLevel(v.raw, 'FinisherAttack') > 0 && !ci.used.has('FinisherAttack')) finLeft++;
+            });
+            return { burstShare: L.length > 30 ? (cat.Burst || 0) / allDmg : 0.75, affShare: L.length > 30 ? (cat.Affliction || 0) / allDmg : 0.2, voidLeft, finLeft, voidDmg: avgWith('CrushingVoid'), finDmg: avgWith('FinisherAttack') };
+        }
+        function raidPhaseLineHtml(env) { const ph = raidPhaseInfo(env); return ph && ph.line ? `<div style="font-size:12px; font-weight:800; color:#6b5a4a; margin:0 0 4px;">${ph.line}</div>` : ''; }
+        function raidPhaseInfo(env) {
+            if (!env || !env.board || !raidState || !raidState.parts) return null;
+            const parts = raidState.parts, B = env.board, LOCS = Object.keys(B);
+            const armorOf = (k) => Math.max(0, Number((parts[k] || {}).armor) || 0), bodyOf = (k) => Math.max(0, Number((parts[k] || {}).body) || 0), hpOf = (k) => armorOf(k) + bodyOf(k);
+            const banned = LOCS.filter(k => B[k].layer === 'banned');
+            const open = LOCS.filter(k => B[k].layer === 'armor' || B[k].layer === 'body');
+            const body = open.filter(k => B[k].layer === 'body'), armor = open.filter(k => B[k].layer === 'armor');
+            const nSkel = LOCS.filter(k => B[k].layer === 'skeleton').length;
+            const g = raidPhaseGuild();
+            const finOK = banned.length <= 1;   // 凱旋行軍要 6 骨架＋一個留著打的部位：禁打最多 1 個
+            const big = finOK ? open.slice().sort((a, b) => hpOf(b) - hpOf(a))[0] || null : null;
+            const reserve = big ? g.finLeft * g.finDmg : 0;
+            const cu = env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted') ? env.curse : null;
+            const cursed = cu ? armor.filter(k => B[k].cursed) : [];
+            const lbl = (k) => raidPartLabel(k), M = (x) => formatNumAlwaysM(x);
+            if (cursed.length) {
+                const share = cu.type === 'Burst' ? g.burstShare : g.affShare;
+                const tol = Math.min(0.15, 2 * (cu.per || 0.06) * share);
+                const order = cursed.slice().sort((a, b) => armorOf(a) - armorOf(b));
+                return { phase: 1, order, ok: (k) => cursed.includes(k), tol, big, reserve, g, line: `拆詛咒甲：先打${order.map(lbl).join('→')}（剩血少的先拆）` };
+            }
+            if (body.length < 6 && armor.length) {
+                let cand = armor.slice();
+                if (big && cand.includes(big) && body.length + cand.length - 1 >= 6) cand = cand.filter(k => k !== big);   // 其他全開就夠 6 肉體：最厚的留給凱旋行軍
+                const order = cand.sort((a, b) => armorOf(b) - armorOf(a));
+                return { phase: 2, order, ok: (k) => order.includes(k), tol: 0.05, big, reserve, g, line: `拆盔甲：先打${order.map(lbl).join('→')}（厚的先拆）${big && !order.includes(big) ? `，${lbl(big)}留給凱旋行軍` : ''}` };
+            }
+            const small = open.filter(k => k !== big), smallBody = small.filter(k => B[k].layer === 'body').reduce((t, k) => t + bodyOf(k), 0);
+            if (body.length >= 6 && g.voidLeft > 0 && smallBody > g.voidLeft * g.voidDmg) {
+                const bigOk = big && hpOf(big) > reserve * 1.2;
+                const order = open.filter(k => k !== big || bigOk).sort((a, b) => hpOf(b) - hpOf(a));
+                return { phase: 3, order, ok: (k) => order.includes(k), tol: 0.05, big, reserve, g, line: `瘋狂無效時段（還有 ${g.voidLeft} 人沒用）：剩血多的先打，別把小部位打成骨架${big ? `；${lbl(big)}保留 ${M(reserve)} 給凱旋行軍` : ''}` };
+            }
+            if (finOK && big) {
+                if (nSkel < 6) {
+                    const order = small.sort((a, b) => hpOf(a) - hpOf(b));
+                    return { phase: 4, order, ok: (k) => order.includes(k), tol: 0.10, big, reserve, g, line: `凱旋行軍時段：先清小部位湊 6 個骨架（${order.map(lbl).join('→')}），${lbl(big)}留給凱旋行軍` };
+                }
+                return { phase: 4, order: [big], ok: () => true, tol: 0, big, reserve, g, line: `凱旋行軍時段：已經 ${nSkel} 個骨架，凱旋行軍打${lbl(big)}` };
+            }
+            return { phase: 0, order: [], ok: () => true, tol: 0, big, reserve, g, line: '' };
+        }
         function raidSimCursedPlans(plans, env) {
             const cur = env && env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted');
             if (!cur) return [];

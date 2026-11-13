@@ -14351,7 +14351,7 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = 1;   // 只用 1 個 Worker，而且 Worker 算 50ms 就休息 50ms（單核最多 50%，低階筆電也不會滿載）
+                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
                     const w = new Worker('raid-sim/simworker.js?v=28');
@@ -14399,13 +14399,13 @@
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
-                await Promise.all(pool.ws.slice(0, raidSimWorkerLimit || pool.ws.length).map(async (w) => {
+                await Promise.all(pool.ws.slice(0, bg ? 1 : (raidSimWorkerLimit || pool.ws.length)).map(async (w) => {   // 背景只用 1 個 Worker
                     while (next < chunks.length && !stopped) {
                         while ((lo && raidSimHiBusy > 0) || document.hidden || (bg && !raidBgWindowOpen())) await new Promise(r => setTimeout(r, 500));   // 網頁在背景（切走、縮小）就暫停；背景作業只在每分鐘前 30 秒算、前景在算就讓
                         if (next >= chunks.length || stopped) break;
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
-                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 50, rest: bg ? 35 : 50 }); });   // 前景算 50 休 50；背景算 35 休 35
+                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 1e9, rest: bg ? 35 : 1 }); });   // 前景全速；背景算 35 休 35
                         res.forEach((r, k) => { out[start + k] = r; });
                         done += part.length;
                         if (onProgress && onProgress(done / jobs.length) === 'stop') { stopped = true; throw new Error('cancelled'); }   // 呼叫的地方說不用算了（狀態已經變了）

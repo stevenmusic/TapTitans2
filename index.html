@@ -12689,7 +12689,10 @@
             raidLogRecoOpen.forEach(name => {
                 const r = raidLogLastRanked.find(x => x.player === name);
                 if (!r || !raidLogIsLatestSession(r)) { raidLogRecoOpen.delete(name); return; }
-                raidLogRenderPlayerReco(r);
+                // 不自動重算（不在背景吃 CPU）：狀態沒變就放回存好的畫面；變了（有人出刀、換王）就收起來，要看再按推薦
+                const h = raidLogRecoHtml.get(name), box = raidLogRecoBox(name);
+                if (h && h.startsWith(`<!--${raidRecoStateSig(r)}-->`) && box) { box.style.display = 'block'; box.innerHTML = h; }
+                else { raidLogRecoOpen.delete(name); if (box) box.style.display = 'none'; }
             });
         }
         function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+')].join('|'); }

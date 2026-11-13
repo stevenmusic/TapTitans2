@@ -12895,6 +12895,14 @@
         const raidSimPickCache = new Map();
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
+        // 推薦只用打過幾次以上的牌組（公會歷史＋這場），沒驗證過的組合不推（0＝不限制）
+        let RAID_SIM_MIN_USES = 10;   // 8 人回測：≥10 次比不限制少 0.53%（≥3 也一樣），時間 9 秒→3 秒；≥30 次少 1.65%
+        function raidDeckUsesMap() {
+            const m = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), d.uses || 0]));
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa || !a.cards || a.cards.length !== 3) return; const k = a.cards.map(c => c.name || c).sort().join('+'); m.set(k, (m.get(k) || 0) + 1); });
+            return m;
+        }
         let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false;   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
         let RAID_SIM_SWAP_MODE = 'pick', RAID_SIM_SWAP_ROUNDS = 3;   // 照挑出來的 6 組換卡（回測 8 人都 ≥ 舊法，多 1.5～3%）
         let RAID_SIM_SWAP_K = 10, RAID_SIM_SWAP_TOP = 24, RAID_SIM_SWAP_LITE = false;   // 換卡：前幾組、精算幾組、初篩用輕量
@@ -13651,7 +13659,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r37|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r38|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13675,7 +13683,8 @@
                 const remote = await kvGet(kvKey);
                 if (remote && remote.sig === key && okRows(remote.rows)) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
             }
-            const cands = (await raidSimCandidateDecks(data, fast)).filter(d => {
+            const usesM = RAID_SIM_MIN_USES > 0 ? raidDeckUsesMap() : null, usedEnough = (cards) => !usesM || (usesM.get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES;
+            const cands = (await raidSimCandidateDecks(data, fast)).filter(d => usedEnough(d.cards)).filter(d => {
                 return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
@@ -13697,7 +13706,7 @@
                 const seeds = (RAID_SIM_SWAP_MODE === 'both' && !keep ? (await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n)).concat(round ? [] : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)) : RAID_SIM_SWAP_MODE === 'pick' && !keep ? await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n) : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)).filter(o => !done.has(sig(o.cards)));   // 換過的組不再換
                 seeds.forEach(o => done.add(sig(o.cards)));
                 seeds.forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
-                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (!it) return;
+                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards) || !usedEnough(cards)) return; const it = build(cards, E, hitF); if (!it) return;
                         // 只試原本那組的打法＋打最多部位的打法（換一張卡，最好的打法通常差不多；全部打法都試太慢）
                         if (RAID_SIM_SWAP_FEW) { const keepPl = it.plans.filter(pl => pl.tg.join() === (o.tg || []).join()); const wide = it.plans.slice().sort((a, b) => b.tg.length - a.tg.length)[0]; const pl = keepPl.concat(wide && !keepPl.includes(wide) ? [wide] : []); if (pl.length) it.plans = pl; }
                         add.push(it); }); }));

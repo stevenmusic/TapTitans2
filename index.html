@@ -12601,7 +12601,8 @@
         function raidRecoVoidSwitchHtml(r) {
             if (!raidRecoVoidOwned(r)) return '';
             const img = raidCardImage('CrushingVoid');
-            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidVoidTopShow(this.dataset.p)" title="瘋狂無效能配的最高傷害牌組（6 肉體時）" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; box-shadow:0 0 0 2px #8e5cc0;">` : ''}<span style="font-size:10px; font-weight:800; color:#5e35b1;">牌組</span></button>`;
+            const inReco = (raidLogRecoRows.get(r.player) || []).some(x => (x.rawCards || x.cards || []).includes('CrushingVoid'));   // 推薦已經排了瘋狂無效：按鈕變暗
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidVoidTopShow(this.dataset.p)" title="${inReco ? '推薦已經有瘋狂無效' : '瘋狂無效能配的最高傷害牌組（6 肉體時）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;${inReco ? ' opacity:.4; filter:grayscale(1);' : ''}">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; box-shadow:0 0 0 2px #8e5cc0;">` : ''}<span style="font-size:10px; font-weight:800; color:#5e35b1;">牌組</span></button>`;
         }
         // 瘋狂無效小視窗：這個人（這輪還沒用過的卡）用瘋狂無效能配的牌組，照 6 肉體以上（能打的部位全部是肉體）算傷害，只列最高的一組
         const raidVoidTopCache = new Map();

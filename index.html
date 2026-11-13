@@ -12542,7 +12542,7 @@
         // 預設：現在已經 6 個以上肉體才開（瘋狂無效那組要在 6 肉體打）；不到 6 個預設關（不是每個人都等得到，一般推薦裡的瘋狂無效不一定是 6 肉體打）。手動切過就照手動的
         const raidRecoVoidPref = new Map();
         function raidBodyNow() { const P = (raidState && raidState.parts) || {}, bn = raidBannedParts || []; return Object.entries(P).filter(([k, v]) => !bn.includes(k) && !(v.armor > 0) && v.body > 0).length; }
-        function raidRecoVoidOn(r) { return raidRecoVoidOwned(r) && (raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : raidBodyNow() >= 6); }
+        function raidRecoVoidOn(r) { return false; }   // 推薦不再做「留一組瘋狂無效」的 6 組最佳化（太複雜）：改成右上角按鈕打開小視窗，列瘋狂無效能配的最高傷害牌組
         /* 留瘋狂無效：估這一輪（剩 0 次就是下一輪）結束前，能打的肉體部位會不會到 6 個以上。
            還能打多少傷害＝這輪公會還會出幾刀 × 每刀平均傷害：
              還會出幾刀＝前幾輪每輪實際出的刀數（沒有就用上一場）− 這輪已經出的刀數；每刀平均＝最近 100 刀。
@@ -12600,8 +12600,48 @@
         function raidRecoWrap(r, html) { const sw = raidRecoVoidSwitchHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             if (!raidRecoVoidOwned(r)) return '';
-            const on = raidRecoVoidOn(r), img = raidCardImage('CrushingVoid');
-            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidRecoVoidToggle(this.dataset.p)" title="瘋狂無效：${on ? '開（按一下關掉）' : '關（按一下打開）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${on ? 'box-shadow:0 0 0 2px #8e5cc0;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${on ? '#5e35b1' : '#8a7a6a'};">${on ? 'ON' : 'OFF'}</span></button>`;
+            const img = raidCardImage('CrushingVoid');
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidVoidTopShow(this.dataset.p)" title="瘋狂無效能配的最高傷害牌組（6 肉體時）" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; box-shadow:0 0 0 2px #8e5cc0;">` : ''}<span style="font-size:10px; font-weight:800; color:#5e35b1;">牌組</span></button>`;
+        }
+        // 瘋狂無效小視窗：這個人（這輪還沒用過的卡）用瘋狂無效能配的牌組，照 6 肉體以上（能打的部位全部是肉體）算傷害，列前 6 名
+        const raidVoidTopCache = new Map();
+        async function raidVoidTopShow(name) {
+            const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
+            let ov = document.getElementById('raid-void-top');
+            if (!ov) { ov = document.createElement('div'); ov.id = 'raid-void-top'; ov.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; padding:16px;'; ov.onclick = (e) => { if (e.target === ov) ov.remove(); }; document.body.appendChild(ov); }
+            const card = (body) => `<div style="background:#fff; border-radius:12px; padding:12px; width:100%; max-width:440px; max-height:80vh; overflow:auto; box-shadow:0 6px 24px rgba(0,0,0,.25);"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;"><b style="font-size:14px; color:#5e35b1;">${escapeHtml(raidShortName(name))}・瘋狂無效最佳牌組（6 肉體）</b><button onclick="document.getElementById('raid-void-top').remove()" style="border:none; background:none; font-size:18px; cursor:pointer; color:#8a7a6a;">✕</button></div>${body}</div>`;
+            ov.innerHTML = card('<div style="font-size:12px; color:#5a4a3a;">計算中…</div>');
+            let body;
+            try { body = await raidVoidTopHtml(r); } catch (e) { console.error(e); body = '<div style="font-size:12px; color:#c0392b;">算不出來，請稍後再試。</div>'; }
+            if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
+        }
+        async function raidVoidTopHtml(r) {
+            const VOID = 'CrushingVoid';
+            const info0 = raidPlayerCycleInfo(r.player, r.attacks), nextRound = info0.remaining <= 0;
+            const used = nextRound ? new Set() : new Set(info0.used || []);
+            if (used.has(VOID)) return '<div style="font-size:12px; color:#8a7a6a;">瘋狂無效這輪已經用過。</div>';
+            const v = raidAccountInfo(r.player); if (!v) return '<div style="font-size:12px; color:#8a7a6a;">沒有這個人的帳號資料。</div>';
+            const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
+            let P = await raidSimLoad(); const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {} };
+            const showF = (cards) => deckKShow[cards.slice().sort().join('+')] || 1;
+            const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
+            if (!(me.lv[VOID] > 0)) return '<div style="font-size:12px; color:#8a7a6a;">沒有瘋狂無效這張卡。</div>';
+            const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
+            const envF = { ...env, board: boardF }, sceneF = {}; Object.keys(boardF).forEach(k => { sceneF[k] = boardF[k].layer; });
+            const key = r.player + '|' + [...used].sort().join() + '|' + raidCalSig() + '|' + JSON.stringify(sceneF) + '|' + raidHpBuckets(env);
+            if (raidVoidTopCache.has(key)) return raidVoidTopCache.get(key);
+            const fF = raidSimPartFns(sceneF);
+            const vlist = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(VOID) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
+                const hp = fF.hitParts(d.cards), plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
+                const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
+            if (!vlist.length) return '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出瘋狂無效的牌組。</div>';
+            const pool = (await raidSimEvalPool(P, envF, me, vlist, 1, null, 20)).filter(o => o.final);
+            pool.forEach(o => { const f = showF(o.cards); o.avg *= f; if (o.lo != null) o.lo *= f; if (o.hi != null) o.hi *= f; });
+            pool.sort((a, b) => b.avg - a.avg);
+            const rows = pool.slice(0, 6).map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: 'body', cursed: false })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
+            const html = `<div style="font-size:12px; color:#6b5a4a; margin-bottom:6px;">${nextRound ? '下一輪・' : ''}能打的部位全部變肉體（6 肉體以上）時的應打，只排名不配其他組${used.size ? '；這輪已經用過的卡不算' : ''}</div><div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">${rows.map((x, i) => `<div style="padding:2px; border-radius:7px; background:${i ? '#fbf2e2' : '#ede3f7'};"><div style="font-size:12px; font-weight:800; color:#8a7a6a; margin:0 0 1px 3px;">第 ${i + 1} 名</div>${renderByPartRow(x)}<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div><div style="text-align:center; font-size:13px; font-weight:800; color:#2e5d32; line-height:1.2;">應打 ${formatNumAlwaysM(x.simDmg.avg)}</div>${x.simDmg.lo != null ? `<div style="text-align:center; font-size:11px; color:#8a7a6a;">(${formatNumAlwaysM(x.simDmg.lo)}～${formatNumAlwaysM(x.simDmg.hi)})</div>` : ''}</div>`).join('')}</div>`;
+            raidVoidTopCache.set(key, html);
+            return html;
         }
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉

@@ -13592,6 +13592,10 @@
             const prog = (t) => entry.progress ? entry.progress(t) : undefined;
             entry.p = (async (progress) => {
             if (!n) return [];
+            // 進度分段：原本的候選、換卡、瘋狂無效各占一段（不然換卡那十幾秒會停在 99%）
+            const seg = (a, b) => (t) => { const m = /(\d+)%/.exec(String(t || '')); return progress ? progress(`計算中 ${Math.round(a + (m ? Number(m[1]) : 0) * (b - a) / 100)}%`) : undefined; };
+            const VZ = info.voidMode ? 16 : 0, P0 = VZ, P1 = VZ + (info.voidMode ? 34 : 45);   // 瘋狂模式：0～16 瘋狂無效候選，接著原本候選、換卡
+            const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
             const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v3_${code}` : null;
@@ -13620,15 +13624,15 @@
                 if (RAID_SIM_SWAP_CARDS) { const best = {}; pool.forEach(o => o.cards.forEach(c => { if ((best[c] || 0) < o.avg) best[c] = o.avg; }));
                     const seenC = avail.filter(c => best[c] > 0).sort((a, b) => best[b] - best[a]); swapIn = seenC.slice(0, RAID_SIM_SWAP_CARDS).concat(avail.filter(c => !(best[c] > 0))); }
                 // 起點：照「挑出來的組合」換（RAID_SIM_SWAP_MODE='pick'，6 組互相搭配才是重點），或單組傷害前 K 名
-                const seeds = (RAID_SIM_SWAP_MODE === 'pick' && !keep ? await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n) : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)).filter(o => !done.has(sig(o.cards)));   // 換過的組不再換
+                const seeds = (RAID_SIM_SWAP_MODE === 'both' && !keep ? (await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n)).concat(round ? [] : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)) : RAID_SIM_SWAP_MODE === 'pick' && !keep ? await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n) : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)).filter(o => !done.has(sig(o.cards)));   // 換過的組不再換
                 seeds.forEach(o => done.add(sig(o.cards)));
                 seeds.forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
                     swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards)) return; const it = build(cards, E, hitF); if (it) add.push(it); }); }));
                 if (!add.length) return { pool, add };
-                const ev = await raidSimEvalPool(P, E, me, add, 1, null, topN, RAID_SIM_SWAP_LITE);
+                const ev = await raidSimEvalPool(P, E, me, add, 1, keep ? seg(8, 16) : segX(round), topN, RAID_SIM_SWAP_LITE);
                 const out = { pool: pool.concat(ev), add };
                 // 換完挑出來的組合變了：從新的組合再換一輪（最多 RAID_SIM_SWAP_ROUNDS 輪）
-                if (RAID_SIM_SWAP_MODE === 'pick' && !keep && round + 1 < RAID_SIM_SWAP_ROUNDS) {
+                if ((RAID_SIM_SWAP_MODE === 'pick' || RAID_SIM_SWAP_MODE === 'both') && !keep && round + 1 < RAID_SIM_SWAP_ROUNDS) {
                     const p1 = await raidSimPickPool(P, E, me, out.pool.map(o => ({ ...o })), n);
                     if (p1.some(o => !done.has(sig(o.cards)))) { const r2 = await expand(out.pool, E, ok, hitF, keep, K, topN, round + 1, done); return { pool: r2.pool, add: add.concat(r2.add) }; }
                 }
@@ -13644,10 +13648,10 @@
                 const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
-                let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, null, 20) : [];
+                let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20) : [];
                 if (vpool0.length) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 5, 12)).pool;   // 瘋狂無效的組也換卡找沒人打過的
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
-                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, progress, null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = got.pool;
+                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = got.pool;
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -13657,7 +13661,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, progress, fast ? 12 : null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
             const items = list.concat(extra);
             const pick = [];
             for (const o of pick0) {

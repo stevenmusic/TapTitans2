@@ -81,8 +81,8 @@ function createSimExp(deps) {
     // 打法：實際牌組、實際等級、實際打的部位
     const deckAct = a.cards.map(c => [c.name, Number(c.level) || 0]);
     const tgAct = inferTargets(a, env.board);
-    // 跟網頁攻擊紀錄重算一樣：60 次、種子 11
-    const sm = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 60, P) : null;
+    // 跟網頁推薦、牌組頁的精算一樣：100 次、種子 1000～1099（simMean 種子＝seed×1000＋r＋1，seed 0.999 → 1000 起），同樣條件算出一樣的應打
+    const sm = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 0.999 }, 100, P) : null;
     let exp = sm ? sm.total : null;
     // 打的部位剩下的血比期望還少：打完部位就破了，多的打不出來（期望不能超過目標部位剩下的血）
     const hpOf = (tg) => env.hp ? tg.reduce((x, l) => x + (Number(env.hp[l]) || 0), 0) : Infinity;
@@ -94,7 +94,8 @@ function createSimExp(deps) {
     const c = env.curse ? [env.curse.type, env.curse.per] : null;
     const u = LOCS.map(l => { const x = env.board[l] || {}; return x.layer !== 'banned' ? '-' : x.under === 'body' ? 'B' : x.under === 'skeleton' ? 'S' : 'A'; }).join('');   // 禁打部位實際的狀態（帶刺的晨星、瘋狂無效、凱旋行軍會算）
     const h = env.hp ? LOCS.map(l => Math.round((Number(env.hp[l]) || 0) / 1e6)) : null;   // 每個部位剩多少血（百萬），網頁算配卡用
-    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, t: tTap, by, cap, tg: tgAct, b, u, c, h, v: SIM_VER };   // v2：模擬器含瘟疫＋無效、電擊＋沙、整組修正（網頁看到 v2 就不再補修正）   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
+    const ha = env.hpAB ? LOCS.map(l => Math.round((Number((env.hpAB[l] || [])[0]) || 0) / 1e6)) : null;   // 其中盔甲剩多少（百萬）：網頁算配卡時照剩的盔甲模擬（一刀之內破甲）
+    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, t: tTap, by, cap, tg: tgAct, b, u, c, h, ha, v: SIM_VER };   // v2：模擬器含瘟疫＋無效、電擊＋沙、整組修正（網頁看到 v2 就不再補修正）   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
     // 配卡：他能用的牌組（這一輪之前用過的卡不能用）
     const season = seasonBonus(sessionAttacks, byCode);
     const lv = {}; (p.cards || []).forEach(c => { const l = baseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + (season[c.skill_name] || 0); });

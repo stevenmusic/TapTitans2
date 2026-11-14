@@ -14659,7 +14659,7 @@
         }
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
         const RAID_MIRROR_CARD = 'MirrorForce';
-        let RAID_SIM_DFS_TOP = 1e9, RAID_SIM_DFS_STEPS = 2e6;   // 挑 6 組的搜尋範圍、步數上限
+        let RAID_SIM_DFS_TOP = 250, RAID_SIM_DFS_STEPS = 3e5;   // 挑 6 組只在價值前 250 名、最多 30 萬步（6 人回測：35 秒→12 秒，合計只差 0.3%，4/6 人 6 組完全一樣；前 100 名會少 1 成）
         async function raidSimPickPool(P, env, me, pool, n) {
             // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
             // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位

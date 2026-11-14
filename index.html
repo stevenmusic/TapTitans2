@@ -12770,7 +12770,9 @@
             rows.slice(0, RAID_ATTACKS_PER_CYCLE).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
             const P = (raidState && raidState.parts) || {};
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; })
-                || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0));   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
+                || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0))   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
+                // 別人把盔甲打掉：某個部位從「盔甲夠打完整刀」變成「打到一半會破甲」（或反過來），模擬出來的傷害會變，要重算
+                || Object.entries(need).some(([k, d]) => { const a0 = (L.armorAt || {})[k] || 0, a1 = Math.max(0, Number((P[k] || {}).armor) || 0); return a0 > 0 && (d > a0) !== (d > a1); });
             if (short) return null;
             if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) return null;   // 要沿用的組，卡片等級變了
             return rows;
@@ -12936,7 +12938,7 @@
                             }
                         }
                       }
-                      if (simPick) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow } });
+                      if (simPick) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) });   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {

@@ -13289,13 +13289,18 @@
                 const VS = V(S);
                 const picks = {}; Object.keys(slotInfo).forEach(cat => { picks[cat] = (byCat[cat] || []).filter(id => S.has(id)).map(id => { const T = new Set(S); T.delete(id); return { id, gain: Math.round((VS - V(T)) / V0 * 1000) / 10 }; }).sort((a, b) => b.gain - a.gain); });
                 const curSet = new Set((p.boosted_cards || []).map(b => b.skill_name).filter(id => isCand.has(id)));
+                // 換掉的卡：放回對應的格子（取代同類別換上的那張）能貢獻幾 %，跟換上的卡「拿掉少打幾 %」同一個比法
+                const outsG = {}; Object.keys(slotInfo).forEach(cat => {
+                    const ins = (picks[cat] || []).filter(x => !curNow.has(x.id)).sort((a, b) => a.gain - b.gain), outs = [...curNow].filter(id => crystalSkills[id] && crystalSkills[id].cat === cat && !S.has(id));
+                    outs.forEach((x, i) => { const y = (ins[i] || ins[0] || {}).id; const T = new Set(S); if (y) T.delete(y); const g = isCand.has(x) ? Math.round((V(new Set([...T, x])) - V(T)) / V0 * 1000) / 10 : 0; (outsG[cat] = outsG[cat] || {})[x] = g; });
+                });
                 // 下一場預計用幾次：照最後放法每個情境挑中的 6 組
                 const uses = {}; let steps = 0;
                 ctxs.forEach(c => { pick6(c, S).forEach(([d]) => d.cards.forEach(x => { uses[x] = (uses[x] || 0) + c.w; })); steps += c.w * 6; });
                 Object.keys(uses).forEach(c => { uses[c] = Math.round(uses[c] / Math.max(1, steps) * 24 * 10) / 10; });
                 // 每隻王每個狀態：照建議放法挑中的 6 組（給人對照看邏輯）
                 const decksShow = ctxs.map(c => ({ n: c.n, label: c.label, d: pick6(c, S).map(([d, v, x]) => [d.cards, Math.round(v / 1e6) / 1000, Math.round(((x / ((d.val[''] || x) || 1)) - 1) * 1000) / 10]) }));
-                const res = { ver: CRYSTAL_DATA_VER, uses, picks, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
+                const res = { ver: CRYSTAL_DATA_VER, uses, picks, outsG, slotSig, decks: decksShow, gain: Math.round((VS / V0 - 1) * 1000) / 10, gainCur: Math.round((V(curSet) / V0 - 1) * 1000) / 10, lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
                 crystalUpRes[key] = res; kvSet(kvKey, res); crystalBuffLibPut(raid, p.player_code, res);
             } catch (e) { crystalUpRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
             renderCrystalReco();
@@ -13365,7 +13370,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 11;
+        const CRYSTAL_DATA_VER = 12;   // 12：加換掉的卡放回去能貢獻幾 %
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
         const crystalBuffKey = (raid) => 'crystalbuff_' + ((raid.buffs || []).map(b => b[0] + '_' + Math.round((Number(b[1]) || 0) * 100)).sort().join('-') || 'none');
@@ -13379,7 +13384,7 @@
         }
         async function crystalBuffLibPut(raid, code, res) {
             const k = crystalBuffKey(raid), season = crystalSeasonSig();
-            const entry = { ver: res.ver, uses: res.uses, picks: res.picks, slotSig: res.slotSig, gain: res.gain, gainCur: res.gainCur, lvl: res.lvl, seed: res.seed };
+            const entry = { ver: res.ver, uses: res.uses, picks: res.picks, outsG: res.outsG, slotSig: res.slotSig, gain: res.gain, gainCur: res.gainCur, lvl: res.lvl, seed: res.seed };
             for (let t = 0; t < 4; t++) {   // 很多人同時存：伺服器同一個名稱 2 秒只收一次，失敗就等一下再合併重存
                 let lib = await kvGet(k); if (!lib || lib.season !== season) lib = { season, players: {} };
                 lib.players[code] = entry; lib.buffLabel = (raid.buffs || []).map(b => b[0]).join('、');
@@ -13413,7 +13418,7 @@
                 // 能升級的卡不夠填滿格子時：空出來的格子保留現在放的卡（放了也不虧），不要留空（時間之沙、強酸侵蝕除外）
                 if (up && up.picks && pick.length < slots) cur.forEach(b => { if (pick.length < slots && !pick.some(x => x.id === b.skill_name) && !CRYSTAL_SKIP.has(b.skill_name)) pick.push({ id: b.skill_name, gain: Math.max(0, L - (own[b.skill_name] || 0)), nxt: upUses[b.skill_name] || 0, mine: mine[b.skill_name] || 0, dmg: 0 }); });
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
-                plan[cat] = { cur, L, slots, pick, curIds, pickIds, outs: cur.filter(b => !pickIds.has(b.skill_name)), ins: pick.filter(x => !curIds.has(x.id)) };
+                plan[cat] = { cur, L, slots, pick, curIds, pickIds, outs: cur.filter(b => !pickIds.has(b.skill_name)), ins: pick.filter(x => !curIds.has(x.id)), outG: (up && up.outsG && up.outsG[cat]) || {} };
             });
             return { plan, own, simLv };
         }
@@ -13659,7 +13664,7 @@
                         <span style="font-size:12px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${slots}格 Lv.${L}</span>
                         <span style="flex:1; min-width:0; text-align:right; font-size:12px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${status}</span>
                     </div>
-                    <div style="padding:5px 6px 6px; ${grid(slots)}">${cells}</div>${!waiting && pick.length && outs.length ? `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:0 8px 7px; font-size:12px; color:#c0392b; font-weight:800;">換掉${outs.map(b => `<span style="display:inline-flex; align-items:center; gap:2px; color:#6b5a4a; font-weight:700;">${raidCardImage(b.skill_name) ? `<img src="${raidCardImage(b.skill_name)}" alt="" title="${escapeHtml(raidCardLabel(b.skill_name))}" style="width:26px; height:26px; border-radius:5px; display:block; opacity:.85;">` : ''}${escapeHtml(raidCardLabel(b.skill_name))}</span>`).join('')}</div>` : ''}</div>`;
+                    <div style="padding:5px 6px 6px; ${grid(slots)}">${cells}</div>${!waiting && pick.length && outs.length ? `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:0 8px 7px; font-size:12px; color:#c0392b; font-weight:800;">換掉${outs.map(b => { const g = (plan[cat].outG || {})[b.skill_name]; return `<span style="display:inline-flex; align-items:center; gap:3px; color:#6b5a4a; font-weight:700;">${raidCardImage(b.skill_name) ? `<img src="${raidCardImage(b.skill_name)}" alt="" title="${escapeHtml(raidCardLabel(b.skill_name))}" style="width:26px; height:26px; border-radius:5px; display:block; opacity:.85;">` : ''}<span style="display:inline-flex; flex-direction:column; line-height:1.2;"><span>${escapeHtml(raidCardLabel(b.skill_name))}</span><span style="font-size:11.5px; color:#6b5a4a; font-weight:600; white-space:nowrap;">Lv.${own[b.skill_name] || 0}→${L}${g != null ? (g < 0.1 ? ' 沒差' : ` <b style="color:#2e7d32;">+${g}%</b>`) : ''}</span></span></span>`; }).join('')}</div>` : ''}</div>`;
             }).join('');
             let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);

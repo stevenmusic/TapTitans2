@@ -13666,7 +13666,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r40|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r41|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13742,7 +13742,7 @@
                 expand.partners = new Set(vlist.flatMap(d => d.cards).filter(c => c !== VOID));
                 if (vpool0.length && RAID_SIM_SWAP_ON) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
-                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = got.pool;
+                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidPhaseWeights(got.pool, phaseK);
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -13752,7 +13752,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, got.pool, n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, raidPhaseWeights(got.pool, phaseK), n); } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -14193,6 +14193,17 @@
             });
             return { burstShare: L.length > 30 ? (cat.Burst || 0) / allDmg : 0.75, affShare: L.length > 30 ? (cat.Affliction || 0) / allDmg : 0.2, voidLeft, finLeft, voidDmg: avgWith('CrushingVoid'), finDmg: avgWith('FinisherAttack') };
         }
+        // 挑牌組時就照打王階段：打優先部位（掉不到容忍值）的組照打優先部位的傷害比；打不到或會掉太多的組價值 ×(1−容忍值)。顯示的應打不變
+        function raidPhaseWeights(pool, ph) {
+            if (!ph || !(ph.tol > 0) || !ph.order || !ph.order.length) return pool;
+            return pool.map(o0 => {
+                const o = { ...o0 }, base = o.raw || o.avg || 0; if (!(base > 0)) return o;
+                if ((o.tg || []).length && o.tg.every(k => ph.ok(k))) { o.selW = 1; return o; }
+                const pref = (o.alts || []).filter(a => a.tg.length && a.tg.every(k => ph.ok(k))).reduce((m, a) => Math.max(m, a.raw || 0), 0);
+                o.selW = pref >= base * (1 - ph.tol) ? Math.min(1, pref / base) : 1 - ph.tol;
+                return o;
+            });
+        }
         function raidPhaseLineHtml(env) { const ph = raidPhaseInfo(env); return ph && ph.line ? `<div style="font-size:12px; font-weight:800; color:#6b5a4a; margin:0 0 4px;">${ph.line}</div>` : ''; }
         function raidPhaseInfo(env) {
             if (!env || !env.board || !raidState || !raidState.parts) return null;
@@ -14549,14 +14560,14 @@
                 return Math.max(...ok.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害
             };
             const valMemo = new Map();   // 同一組的價值只算一次（搜尋時會被問上百萬次）；補精算後物件換新，自然重算
-            const val = (o) => { let v = valMemo.get(o); if (v === undefined) { v = budVal(o) * raidSimDeckFactor(o.cards); valMemo.set(o, v); } return v; };
+            const val = (o) => { let v = valMemo.get(o); if (v === undefined) { v = budVal(o) * raidSimDeckFactor(o.cards) * (o.selW || 1); valMemo.set(o, v); } return v; };   // selW：打王階段的挑選權重（沒打優先部位的組打折）
             pool.sort((a, b) => val(b) - val(a));
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
             let best = [], bestSum = -1, steps = 0;
             const used = new Set(), cur = [];
             // 傷害效率：6 組合計，每個部位最多只算到它剩下的血（好幾組打同一個快沒血的部位，多的打不出來）
             const left = env && env.hp ? { ...env.hp } : null;
-            const take = (o) => { if (!left) return { g: val(o), d: null }; const tg = o.tg && o.tg.length ? o.tg : []; const per = (o.raw || o.avg || 0) * raidSimDeckFactor(o.cards) / Math.max(1, tg.length); let g = 0; const d = {};
+            const take = (o) => { if (!left) return { g: val(o), d: null }; const tg = o.tg && o.tg.length ? o.tg : []; const per = (o.raw || o.avg || 0) * raidSimDeckFactor(o.cards) * (o.selW || 1) / Math.max(1, tg.length); let g = 0; const d = {};
                 tg.forEach(k => { const u = Math.min(per, left[k] || 0); g += u; d[k] = u; left[k] = (left[k] || 0) - u; }); return { g, d }; };
             const untake = (t) => { if (t.d) Object.entries(t.d).forEach(([k, u]) => { left[k] += u; }); };
             const dfs = (i, sum) => {

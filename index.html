@@ -7388,7 +7388,7 @@
         if (raidLogUiLoaded) { (raidLogUiLoaded.expanded || []).forEach(x => raidLogExpandedPlayers.add(x)); (raidLogUiLoaded.details || []).forEach(x => raidLogOpenDetails.add(x)); }
         function raidLogUiSave() {
             try {
-                const html = {}; (typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : []).forEach(n => { const h = raidLogRecoHtml.get(n); if (h && h.length < 60000) html[n] = h; });
+                const html = {}; (typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : []).forEach(n => { const h = raidLogRecoHtml.get(n) || (typeof raidLogRecoStale !== 'undefined' && raidLogRecoStale.get(n)); if (h && h.length < 60000) html[n] = h; });
                 localStorage.setItem(RAID_LOG_UI_KEY, JSON.stringify({ expanded: [...raidLogExpandedPlayers], details: [...raidLogOpenDetails].slice(-300), recos: typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : [], html }));
             } catch (e) {}
         }
@@ -12621,7 +12621,7 @@
         function raidRecoVoidToggle(name) {
             const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
             raidRecoVoidPref.set(name, !raidRecoVoidOn(r));
-            raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
+            raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
             raidLogRecoOpen.add(name); raidLogUiSave();
             return raidLogRenderPlayerReco(r);
         }
@@ -12659,7 +12659,7 @@
             const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
             const on = (raidLogRecoRows.get(name) || []).some(x => x.finLater);
             raidRecoFinPref.set(name, !on);
-            raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
+            raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
             raidLogRecoOpen.add(name); raidRecoClicked.add(name); raidLogUiSave();
             return raidLogRenderPlayerReco(r);
         }
@@ -12753,6 +12753,14 @@
             return html;
         }
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
+        // 重新計算時先顯示上一次的推薦（變淡、上面標「舊的推薦・重新計算中 x%」），算好再換掉，不會清空
+        const raidLogRecoStale = new Map(), raidRecoWritten = new Map();   // raidRecoWritten：玩家 → 最後寫上畫面的是第幾次計算   // 玩家 → 上一次算好的內容（狀態變了、正在重算）
+        function raidRecoStaleKeep(name) { const h = raidLogRecoHtml.get(name); if (h) raidLogRecoStale.set(name, h); }
+        function raidRecoStaleHtml(name, pct) {
+            const h = raidLogRecoStale.get(name); if (!h) return null;
+            return `<div data-prog data-stale="1" style="font-size:12px; font-weight:800; color:#b9770e; margin-bottom:4px;">舊的推薦・重新計算中 ${Math.max(1, pct || 1)}%</div><div style="opacity:.45; filter:grayscale(.6); pointer-events:none;">${h.replace(/^<!--[^>]*-->/, '')}</div>`;
+        }
+        const raidRecoProgText = (el, n) => { el.textContent = (el.dataset.stale ? '舊的推薦・重新計算中 ' : '計算中 ') + n + '%'; };
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
         const raidRecoProg = new Map();   // 名字 → { target, shown, timer }
         function raidRecoProgSet(name, t) {
@@ -12763,11 +12771,11 @@
             if (!g.timer) g.timer = setInterval(() => {
                 if (g.shown < g.target) g.shown = Math.min(g.target, g.shown + Math.max(1, Math.ceil((g.target - g.shown) / 6)));   // 落後越多追越快（算得快時也會走到 100%）
                 const bx = raidLogRecoBox(name);
-                if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) pct.textContent = `計算中 ${Math.max(1, g.shown)}%`; else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
+                if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) raidRecoProgText(pct, Math.max(1, g.shown)); else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
             }, 50);
         }
         const raidRecoDoneAt = new Map();
-        function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); const bx = raidLogRecoBox(name); const pct = bx && bx.querySelector('[data-prog]'); if (pct) pct.textContent = '計算中 100%'; }   // 算完：先顯示 100%，結果接著蓋上
+        function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); const bx = raidLogRecoBox(name); const pct = bx && bx.querySelector('[data-prog]'); if (pct) raidRecoProgText(pct, 100); }   // 算完：先顯示 100%，結果接著蓋上
         function raidLogRecoBox(name) {
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
@@ -12811,9 +12819,11 @@
             box.style.display = 'block';
             // 存的畫面只在「同一隻王、同一輪、同樣剩幾刀和用過的卡」時先顯示；狀態變了（換王、出過刀）就不放舊的，等新的算好
             const sig0 = raidRecoStateSig(r);
-            if (raidLogRecoHtml.get(r.player) && !raidLogRecoHtml.get(r.player).startsWith(`<!--${sig0}-->`)) raidLogRecoHtml.delete(r.player);
-            box.innerHTML = raidLogRecoHtml.get(r.player) || raidRecoWrap(r, raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
-            if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
+            if (raidLogRecoHtml.get(r.player) && !raidLogRecoHtml.get(r.player).startsWith(`<!--${sig0}-->`)) { raidRecoStaleKeep(r.player); raidLogRecoHtml.delete(r.player); }   // 狀態變了：舊的先留著顯示
+            box.innerHTML = raidLogRecoHtml.get(r.player) || raidRecoStaleHtml(r.player, raidRecoProg.get(r.player) && raidRecoProg.get(r.player).shown) || raidRecoWrap(r, raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
+            if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);
+            { const shown = raidLogRecoHtml.get(r.player);   // 顯示的是上次算好的、正在重算：0.4 秒還沒算好就變淡、標「舊的推薦・重新計算中」
+              if (shown) setTimeout(() => { if (raidRecoGen.get(r.player) !== gen || raidRecoWritten.get(r.player) === gen || !raidLogRecoOpen.has(r.player)) return; const bx = raidLogRecoBox(r.player); if (!bx) return; raidLogRecoStale.set(r.player, shown); bx.innerHTML = raidRecoStaleHtml(r.player, (raidRecoProg.get(r.player) || {}).shown); }, 400); }   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
             const nextRound = info0.remaining <= 0;
@@ -12986,7 +12996,7 @@
             if (!raidLogRecoOpen.has(r.player)) return;
             if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
             html = `<!--${sig0}-->` + raidRecoWrap(r, html);
-            raidLogRecoHtml.set(r.player, html);
+            raidLogRecoHtml.set(r.player, html); raidLogRecoStale.delete(r.player); raidRecoWritten.set(r.player, gen);
             raidLogUiSave();
             box = raidLogRecoBox(r.player);
             if (box) { box.style.display = 'block'; box.innerHTML = html; raidSimFillRecoDamage(r.player, box); }
@@ -13427,7 +13437,11 @@
             });
             return { plan, own, simLv };
         }
-        let crystalTab = 'me', crystalAllOpen = new Set(), crystalAllLoadedLv = null;
+        // 水晶頁預設：全公會、上次看的關卡（這支手機記住；沒記過才照預告／目前這場）
+        const CRYSTAL_LAST_KEY = 'tt2_crystal_last';
+        const crystalLast = (() => { try { return JSON.parse(localStorage.getItem(CRYSTAL_LAST_KEY) || 'null') || {}; } catch (e) { return {}; } })();
+        function crystalLastSave() { try { localStorage.setItem(CRYSTAL_LAST_KEY, JSON.stringify({ lv: crystalLevel, tab: crystalTab })); } catch (e) {} }
+        let crystalTab = crystalLast.tab === 'me' ? 'me' : 'all', crystalAllOpen = new Set(), crystalAllLoadedLv = null;
         function crystalAllToggle(code) { crystalAllOpen.has(code) ? crystalAllOpen.delete(code) : crystalAllOpen.add(code); renderCrystalReco(); }
         // 全公會展開：一個人一橫排，三欄的建議放圖示（綠框＝換上，右上紅點旁小圖＝換掉的）
         function crystalAllRow(plan, maxSlots) {   // maxSlots：全公會每一類最多幾格；用比例欄寬，圖示照螢幕寬撐滿，大家三個類別上下對齊
@@ -13640,7 +13654,8 @@
             const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
             const { own, simLv } = crystalPlanOf(p, null, logs, sessions);
             // 下一場：預告的關卡，沒有就用門票試算選的關卡
-            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (serverSessionsSummary && serverSessionsSummary[0] && (raidLiveInfo ? (raidLiveInfo.startedAt === serverSessionsSummary[0].startedAt && !raidLiveInfo.ended) : Date.now() - parseRaidSessionTs(serverSessionsSummary[0].startedAt) < 60 * 3600 * 1000) && serverSessionsSummary[0].levelTier) || (ticketCalc && ticketCalc.level) || null;   // 預告的下一場 ＞ 現在在打的這場 ＞ 禁打頁選的
+            if (!crystalLevel && Number(crystalLast.lv) > 0) crystalLevel = Number(crystalLast.lv);   // 上次看的關卡（例如算好的 M-46）
+            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (serverSessionsSummary && serverSessionsSummary[0] && (raidLiveInfo ? (raidLiveInfo.startedAt === serverSessionsSummary[0].startedAt && !raidLiveInfo.ended) : Date.now() - parseRaidSessionTs(serverSessionsSummary[0].startedAt) < 60 * 3600 * 1000) && serverSessionsSummary[0].levelTier) || (ticketCalc && ticketCalc.level) || (serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier) || null;   // （最後：剛打完的那場，例如 M-46）預告的下一場 ＞ 現在在打的這場 ＞ 禁打頁選的
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
             if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, simLv); }, 0);
@@ -13673,10 +13688,10 @@
             }).join('');
             let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);
-            const lvSelect = `<select onchange="crystalLevel = Number(this.value) || null; renderCrystalReco();" style="font:inherit; font-size:13px; padding:3px 6px; border:1px solid #e2d7c5; border-radius:7px; background:#fff;"><option value="">不看下一場</option>${seedLvls.map(l => `<option value="${l}" ${l === crystalLevel ? 'selected' : ''}>M-${l}</option>`).join('')}</select>`;
+            const lvSelect = `<select onchange="crystalLevel = Number(this.value) || null; crystalLastSave(); renderCrystalReco();" style="font:inherit; font-size:13px; padding:3px 6px; border:1px solid #e2d7c5; border-radius:7px; background:#fff;"><option value="">不看下一場</option>${seedLvls.map(l => `<option value="${l}" ${l === crystalLevel ? 'selected' : ''}>M-${l}</option>`).join('')}</select>`;
             const lvInfo = (up ? (up.uses ? `<div style="font-size:12px; color:#6b5a4a; line-height:1.4; margin-top:3px;">M-${crystalLevel}：${(up.seq || []).join('、')}｜加成 ${(up.buffs || []).map(b => ({ BurstDamage: '爆裂傷害', BurstChance: '爆裂機率', AfflictedDamage: '苦痛傷害', AfflictedChance: '苦痛機率', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' })[b[0]] || b[0]).join('、') || '無'}<br>禁打 ${upRaid ? [...new Set(upRaid.seq)].map(n => { const t = upRaid.titans.find(x => x.n === n); const b = t ? crystalBansOf(upRaid, t) : []; const zh = { Head: '頭', ChestUpper: '肚', ArmUpperLeft: '左肩', ArmUpperRight: '右肩', HandLeft: '左手', HandRight: '右手', LegUpperLeft: '左腳', LegUpperRight: '右腳' }; return n + (b.length ? b.map(x => zh[x] || x).join('') : '不禁'); }).join('、') : ''}</div>` : `<div style="font-size:12px; color:#8a7a6a;">${escapeHtml(up.busy || '')}</div>`) : (crystalLevel && crystalBanBusy ? `<div id="crystal-ban-busy" style="font-size:12px; color:#8a7a6a;">${escapeHtml(crystalBanBusy)}</div>` : ''));
             const lvSel = `<div style="display:flex; align-items:center; gap:6px; margin:6px 0 2px; font-size:12.5px; font-weight:700; color:#4a3728;">下一場${lvSelect}</div>` + lvInfo;
-            const tabBtn = (k, label) => `<button onclick="crystalTab = '${k}'; renderCrystalReco();" style="flex:1; font:inherit; font-size:14px; font-weight:900; padding:8px 0; border:none; border-radius:9px; cursor:pointer; ${crystalTab === k ? 'background:#1565c0; color:#fff;' : 'background:transparent; color:#1565c0;'}">${label}</button>`;
+            const tabBtn = (k, label) => `<button onclick="crystalTab = '${k}'; crystalLastSave(); renderCrystalReco();" style="flex:1; font:inherit; font-size:14px; font-weight:900; padding:8px 0; border:none; border-radius:9px; cursor:pointer; ${crystalTab === k ? 'background:#1565c0; color:#fff;' : 'background:transparent; color:#1565c0;'}">${label}</button>`;
             const tabs = `<div style="display:flex; gap:4px; padding:3px; background:#e3ecf8; border-radius:11px; margin-bottom:8px;">${tabBtn('me', '個人')}${tabBtn('all', '全公會')}</div>`;
             if (crystalTab === 'all') { await renderCrystalAll(box, players, logs, sessions, upRaid, tabs + lvSel); return; }
             const deckBox = up && up.decks ? `<details style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; padding:8px 10px;"><summary style="font-size:13px; font-weight:800; color:#4a3728; cursor:pointer;">看模擬用的牌組（每隻王、每個狀態最強 6 組）</summary>${up.decks.map(c => `<div style="margin-top:8px;"><div style="font-size:12px; font-weight:800; color:#6b5a4a;">${escapeHtml(c.n)}・${escapeHtml(c.label)}</div>${c.d.map(([cards, b, g]) => `<div style="display:flex; align-items:center; gap:4px; margin-top:3px;">${cards.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" style="width:26px; height:26px; border-radius:5px; ${up.picks && Object.values(up.picks).some(a => a.some(x => x.id === id)) ? 'outline:2px solid #2e7d32; outline-offset:-1px;' : ''}">` : '').join('')}<span style="flex:1; font-size:12px; color:#4a3728; margin-left:4px;">${cards.map(id => escapeHtml(raidCardLabel(id))).join('、')}</span><span style="font-size:12px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${b}B${g > 0 ? ` <span style="color:#2e7d32;">+${g}%</span>` : ''}</span></div>`).join('')}</div>`).join('')}<div style="font-size:12px; color:#857a6b; margin-top:6px;">綠框＝建議放水晶的卡；+% ＝這組因為水晶升級多打的</div></details>` : '';

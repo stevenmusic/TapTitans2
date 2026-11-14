@@ -13475,10 +13475,10 @@
             });
             return { plan, own, simLv };
         }
-        // 水晶頁預設：全公會、上次看的關卡（這支手機記住；沒記過才照預告／目前這場）
+        // 水晶頁預設：全公會（記住上次的分頁）；關卡照預告的下一場 ＞ 正在打的 ＞ 剛打完的
         const CRYSTAL_LAST_KEY = 'tt2_crystal_last';
         const crystalLast = (() => { try { return JSON.parse(localStorage.getItem(CRYSTAL_LAST_KEY) || 'null') || {}; } catch (e) { return {}; } })();
-        function crystalLastSave() { try { localStorage.setItem(CRYSTAL_LAST_KEY, JSON.stringify({ lv: crystalLevel, tab: crystalTab })); } catch (e) {} }
+        function crystalLastSave() { try { localStorage.setItem(CRYSTAL_LAST_KEY, JSON.stringify({ tab: crystalTab })); } catch (e) {} }   // 只記分頁（個人／全公會），關卡每次照預設
         let crystalTab = crystalLast.tab === 'me' ? 'me' : 'all', crystalAllOpen = new Set(), crystalAllLoadedLv = null;
         function crystalAllToggle(code) { crystalAllOpen.has(code) ? crystalAllOpen.delete(code) : crystalAllOpen.add(code); renderCrystalReco(); }
         // 全公會展開：一個人一橫排，三欄的建議放圖示（綠框＝換上，右上紅點旁小圖＝換掉的）
@@ -13692,8 +13692,7 @@
             const logs = sessions.map(sa => sa === (serverSessionsSummary[0] || {}).startedAt ? (serverAttackLogCache || []) : (sessionAttacksCache.get(sa) || [])).flat().filter(a => a && !a.placeholder && a.cards);
             const { own, simLv } = crystalPlanOf(p, null, logs, sessions);
             // 下一場：預告的關卡，沒有就用門票試算選的關卡
-            if (!crystalLevel && Number(crystalLast.lv) > 0) crystalLevel = Number(crystalLast.lv);   // 上次看的關卡（例如算好的 M-46）
-            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (serverSessionsSummary && serverSessionsSummary[0] && (raidLiveInfo ? (raidLiveInfo.startedAt === serverSessionsSummary[0].startedAt && !raidLiveInfo.ended) : Date.now() - parseRaidSessionTs(serverSessionsSummary[0].startedAt) < 60 * 3600 * 1000) && serverSessionsSummary[0].levelTier) || (ticketCalc && ticketCalc.level) || (serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier) || null;   // （最後：剛打完的那場，例如 M-46）預告的下一場 ＞ 現在在打的這場 ＞ 禁打頁選的
+            if (!crystalLevel) crystalLevel = (raidPreview && raidPreview.level) || (serverSessionsSummary && serverSessionsSummary[0] && (raidLiveInfo ? (raidLiveInfo.startedAt === serverSessionsSummary[0].startedAt && !raidLiveInfo.ended) : Date.now() - parseRaidSessionTs(serverSessionsSummary[0].startedAt) < 60 * 3600 * 1000) && serverSessionsSummary[0].levelTier) || (serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].levelTier) || null;   // 預設：預告的下一場 ＞ 正在打的這場 ＞ 剛打完的那場（例如 M-46）；不記上次看的、不跟禁打頁預告的下一場 ＞ 現在在打的這場 ＞ 禁打頁選的
             let upRaid = null; try { const sd = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); upRaid = sd && sd.raids.find(r => r.t === 9999 && r.l === crystalLevel); } catch (e) {}
             const up = crystalLevel && upRaid ? crystalUpRes[`${crystalLevel}|${p.player_code}|${crystalBanSig(upRaid)}`] : null;
             if (crystalLevel && !up && crystalTab === 'me') setTimeout(async () => { await crystalEnsureBans(crystalLevel); crystalUpcoming(p, crystalLevel, simLv); }, 0);

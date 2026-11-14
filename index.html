@@ -14659,6 +14659,7 @@
         }
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
         const RAID_MIRROR_CARD = 'MirrorForce';
+        let RAID_SIM_DFS_TOP = 250;
         async function raidSimPickPool(P, env, me, pool, n) {
             // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
             // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位
@@ -14678,7 +14679,7 @@
             const val = (o) => { let v = valMemo.get(o); if (v === undefined) { v = budVal(o) * raidSimDeckFactor(o.cards) * (o.selW || 1); valMemo.set(o, v); } return v; };   // selW：打王階段的挑選權重（沒打優先部位的組打折）
             pool.sort((a, b) => val(b) - val(a));
             // 搜尋：先求組數最多，再求加總最高（依傷害排序，剩下的格子最多再加 現在這組 × 剩餘組數，超不過目前最佳就剪掉）
-            let best = [], bestSum = -1, steps = 0;
+            let best = [], bestSum = -1, steps = 0, poolD = pool;
             const used = new Set(), cur = [];
             // 傷害效率：6 組合計，每個部位最多只算到它剩下的血（好幾組打同一個快沒血的部位，多的打不出來）
             const left = env && env.hp ? { ...env.hp } : null;
@@ -14689,8 +14690,8 @@
                 if (++steps > 2e6) return;
                 if (cur.length > best.length || (cur.length === best.length && sum > bestSum)) { best = cur.slice(); bestSum = sum; }
                 if (cur.length >= n) return;
-                for (let j = i; j < pool.length; j++) {
-                    const o = pool[j];
+                for (let j = i; j < poolD.length; j++) {
+                    const o = poolD[j];
                     if (best.length === n && sum + (n - cur.length) * val(o) <= bestSum) return;
                     if (o.cards.some(c => used.has(c))) continue;
                     o.cards.forEach(c => used.add(c)); cur.push(o); const tk = take(o);
@@ -14702,6 +14703,8 @@
             for (let round = 0; round < 6; round++) {
                 best = []; bestSum = -1; steps = 0;
                 pool.sort((a, b) => val(b) - val(a));
+                // 只在價值前 RAID_SIM_DFS_TOP 名裡搜尋（加上帶鏡子力的前 5 組）：候選很多時（換卡後 600～950 組）全部搜尋一次要好幾秒，又在主畫面跑
+                poolD = pool.length > RAID_SIM_DFS_TOP ? pool.slice(0, RAID_SIM_DFS_TOP).concat(pool.slice(RAID_SIM_DFS_TOP).filter(o => o.cards.includes(RAID_MIRROR_CARD)).slice(0, 5)) : pool;
                 dfs(0, 0);
                 // 鏡子力一定要用：每人每輪用一次，下一輪全公會加成 +1%（最多 35%），沒人用下一輪加成就掉。
                 // 有鏡子力的牌組就強制 6 組裡要有一組帶鏡子力：從帶鏡子力的前 5 組各當第一組再搜尋，挑加總最高的

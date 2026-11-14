@@ -27,17 +27,23 @@ function simAttack(opt, P = P0) {
   let deck = opt.deck.filter(([id]) => SK[id]);
   const has = new Set(deck.map(d => d[0]));
   const lvl = Object.fromEntries(deck);
-  const board = opt.board, buff = opt.buff || {};
+  const buff = opt.buff || {};
+  // opt.hp：{ 部位: [盔甲剩多少, 肉體剩多少] }（沒給的部位當作打不完）。一刀之內盔甲打完就變肉體（盔甲卡失效、帶刺的晨星等部位數跟著變），肉體打完變骨架（之後打在上面是 0）
+  const hpL = opt.hp ? {} : null;
+  const board = opt.hp ? Object.fromEntries(Object.entries(opt.board).map(([l, b]) => [l, { ...b }])) : opt.board;
+  if (hpL) for (const l in opt.hp) { const h = opt.hp[l]; if (h && board[l] && (board[l].layer === 'armor' || board[l].layer === 'body')) { hpL[l] = [Math.max(0, +h[0] || 0), Math.max(0, +h[1] || 0)];
+    if (board[l].layer === 'armor' && !(hpL[l][0] > 0)) board[l] = { layer: hpL[l][1] > 0 ? 'body' : 'skeleton', cursed: false };   // 盔甲已經打光（例如前面的組打掉了）：一開始就是肉體
+    else if (board[l].layer === 'body' && !(hpL[l][1] > 0)) board[l] = { layer: 'skeleton', cursed: false }; } }
   const targets = (opt.targets && opt.targets.length) ? opt.targets : LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton');
   const layerOf = (l) => board[l] ? board[l].layer : 'body';
-  const cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面一刀內不變：算一次
-  const openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
+  let cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面只在部位打破時變：重算一次
+  let openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
   // 禁打只是公會標記：遊戲照部位實際的狀態數（under），帶刺的晨星、瘋狂無效、凱旋行軍都算進去
   // （M-46：打肉體、盤面 0 盔甲但禁打的頭還有盔甲，帶刺的晨星實際 1.15～1.30 倍＝1＋0.15×禁打部位數）
   const realLayer = (l) => board[l] ? (board[l].layer === 'banned' ? board[l].under : board[l].layer) : null;
-  const nBody = LOCS.filter(l => realLayer(l) === 'body').length;
-  const nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length;
-  const nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
+  let nBody = LOCS.filter(l => realLayer(l) === 'body').length;
+  let nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length;
+  let nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
   const hasBurstCard = deck.some(([id]) => SK[id].cat === 'Burst'), hasAffCard = deck.some(([id]) => SK[id].cat === 'Affliction');
   const dt = opt.dur / opt.taps;
   const out = { tap: 0, by: {} }; deck.forEach(([id]) => { out.by[id] = 0; });
@@ -114,6 +120,21 @@ function simAttack(opt, P = P0) {
     if (v === undefined) { v = multRaw(kind, loc, t, self); multMemo.set(key, v); }
     return v;
   };
+  // 傷害打到部位上：扣這個部位剩的血；盔甲打完變肉體、肉體打完變骨架（倍率、部位數重算）。回傳實際算進去的傷害（骨架、打不到的部分是 0）
+  const hit = (loc, d) => {
+    if (!hpL || !hpL[loc] || !(d > 0)) return board[loc] && board[loc].layer === 'skeleton' && hpL ? 0 : d;
+    const h = hpL[loc], b = board[loc];
+    if (b.layer === 'skeleton') return 0;
+    const i = b.layer === 'armor' ? 0 : 1;
+    if (d < h[i]) { h[i] -= d; return d; }
+    const got = h[i]; h[i] = 0;
+    board[loc] = { layer: i === 0 ? (h[1] > 0 ? 'body' : 'skeleton') : 'skeleton', cursed: false };   // 這一下剩下的部分不再往下打（下一下才照新的層算）
+    nBody = LOCS.filter(l => realLayer(l) === 'body').length; nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length; nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
+    cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length;
+    openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
+    multMemo.clear();
+    return got;
+  };
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));
   // 苦痛觸發機率加成：變質氣體 ×1.3、靈魂之火 ×1.1 同時帶時只取最高（P.affChanceMax；攻擊紀錄：兩張都帶時毀了雨、電擊都比只帶變質氣體少約 9%＝1.3÷1.43）
   let affChanceMult = (P.affChanceMax ? Math.max(has.has('MentalFocus') ? 1.3 : 1, has.has('InnerTruth') ? 1.1 : 1) : (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1)) * (1 + (buff.affChance || 0));
@@ -141,14 +162,15 @@ function simAttack(opt, P = P0) {
     arr.push({ end: t + dur, start: t });
     stacks[loc][id] = arr;
     if (id === 'PowerBubble' && arr.length >= 5) { // 爆開
-      out.by.PowerBubble += 26 * P.aff * A(id, effLv(id, t, loc)) * opt.tau * mult('aff', loc, t);
+      out.by.PowerBubble += hit(loc, 26 * P.aff * A(id, effLv(id, t, loc)) * opt.tau * mult('aff', loc, t));
       stacks[loc][id] = [];
     }
   };
   const doTap = (i, loc, bonus) => {
     const t = i * dt;
     const layer = layerOf(loc);
-    out.tap += opt.tau * mult('tap', loc, t) * (P.tapK || 1);   // tapK：網頁用攻擊紀錄滾動校正的點擊傷害係數
+    if (hpL && board[loc] && board[loc].layer === 'skeleton') return;   // 打到骨架：沒傷害、也不會觸發卡片
+    out.tap += hit(loc, opt.tau * mult('tap', loc, t) * (P.tapK || 1));   // tapK：網頁用攻擊紀錄滾動校正的點擊傷害係數
     tapCount++;
     if (!bonus) hitHistory.push(loc);
     const chMul = bonus ? 0.5 : 1;
@@ -184,9 +206,9 @@ function simAttack(opt, P = P0) {
       if (id === 'ChainLightning') { const n = Math.min(6, new Set(hitHistory).size || 1); m = Math.pow(1.027, n - 1); }
       if (id === 'Purify') { let n = 0; for (const c in stacks[loc]) { n += liveCount(loc, c, t); stacks[loc][c] = []; } m = 1 + n; }
       const d0 = P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * m * mult('burst', loc, t, id);
-      if (!(id === 'FlakShot' && P.flakRedirect && layer === 'armor')) out.by[id] += d0;
+      if (!(id === 'FlakShot' && P.flakRedirect && layer === 'armor')) out.by[id] += hit(loc, d0);
       // 防空高砲：打到盔甲時再彈射一次（×1）到隨機部位
-      if (id === 'FlakShot' && layer === 'armor' && P.flakRicochet !== false) { const o = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); const rl = o[Math.floor(R() * o.length)] || loc; out.by[id] += P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id); }
+      if (id === 'FlakShot' && layer === 'armor' && P.flakRicochet !== false) { const o = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); const rl = o[Math.floor(R() * o.length)] || loc; out.by[id] += hit(rl, P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id)); }
       if (id === 'Weaken') weakenEnd[loc] = t + P.weakenDur;
     }
     // 苦痛：加層
@@ -215,7 +237,7 @@ function simAttack(opt, P = P0) {
         const liveN = liveCount(l, id, t);
         if (id === 'Fuse') { // 時間到才爆：已到期的爆開
           const done = stacks[l][id].filter(x => x.end <= t && !x.boom);
-          done.forEach(x => { x.boom = true; const other = P.fuseStack ? Object.keys(stacks[l]).filter(c => c !== 'Fuse').reduce((n, c) => n + liveCount(l, c, t), 0) : 0; out.by.Fuse += P.aff * (P.k.Fuse || 1) * A('Fuse', effLv('Fuse', t, l)) * opt.tau * (1 + 0.5 * (x.end - x.start)) * (1 + (P.fuseStack || 0) * other) * mult('aff', l, t, 'Fuse'); });
+          done.forEach(x => { x.boom = true; const other = P.fuseStack ? Object.keys(stacks[l]).filter(c => c !== 'Fuse').reduce((n, c) => n + liveCount(l, c, t), 0) : 0; out.by.Fuse += hit(l, P.aff * (P.k.Fuse || 1) * A('Fuse', effLv('Fuse', t, l)) * opt.tau * (1 + 0.5 * (x.end - x.start)) * (1 + (P.fuseStack || 0) * other) * mult('aff', l, t, 'Fuse')); });
           stacks[l][id] = stacks[l][id].filter(x => !x.boom);
           continue;
         }
@@ -233,7 +255,8 @@ function simAttack(opt, P = P0) {
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
         if (id === 'Disease') dmg = liveN * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = liveN;
-        out.by[id] += P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
+        if (hpL && board[l] && board[l].layer === 'skeleton') continue;   // 變骨架的部位：苦痛沒傷害
+        out.by[id] += hit(l, P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id));
       }
     }
   }

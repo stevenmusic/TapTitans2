@@ -12770,7 +12770,7 @@
             rows.slice(0, RAID_ATTACKS_PER_CYCLE).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
             const P = (raidState && raidState.parts) || {};
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; })
-                || Object.entries(needA).some(([k, d]) => d * RAID_ARMOR_FIT > Math.max(0, Number((P[k] || {}).armor) || 0));   // 盔甲卡的組：盔甲不夠就重算
+                || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0));   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
             if (short) return null;
             if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) return null;   // 要沿用的組，卡片等級變了
             return rows;
@@ -13775,8 +13775,7 @@
             return b;
         }
         // 一組打好幾個部位時傷害平均分配，每個部位最多吃到它剩的血
-        // 盔甲卡（只能打盔甲：防空高砲、撼地破甲、稜角裂痕、骨骼粉碎、毀了雨）：打的部位剩的「盔甲」要吃得下這一刀，不夠就不排（盔甲破了這些卡就沒傷害）
-        const RAID_ARMOR_FIT = 0.9;   // 盔甲只比整刀少一點也可以（盔甲夠 9 成：最後一小段打到肉體，損失很小）
+        // 盔甲卡（只能打盔甲：防空高砲、撼地破甲、稜角裂痕、骨骼粉碎、毀了雨）：沿用推薦時用來判斷盔甲夠不夠（傷害本身由模擬器照剩的盔甲算）
         function raidArmorDeck(cards) { return (cards || []).some(c => c === 'RuinousRust' || (CARD_LIMITS[c] && CARD_LIMITS[c].kind === 'armor')); }
         function raidSimCapParts(x, leftAt) { const ks = Object.keys(leftAt || {}); if (!ks.length) return x; const per = x / ks.length; return ks.reduce((t, k) => t + Math.min(per, leftAt[k]), 0); }
         function raidSimDeplete(pick, env) {
@@ -13795,18 +13794,16 @@
                 // 只能換到每張卡都打得到的部位（例如破碎本能只能打頭、肚子）
                 const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
                 let best = null;
-                // 部位剩的血吃不下這一刀（例如剩 200M、這組打 500M）：多出來的打到骨架是 0，有其他吃得下的部位就不打這裡
-                const armorDeck = raidArmorDeck(o.cards), H = armorDeck ? leftA : left;   // 盔甲卡：看剩的盔甲
-                const fits = (a) => { const per = a.raw * scale / a.tg.length * (armorDeck ? RAID_ARMOR_FIT : 1); return a.tg.every(k => (H[k] || 0) >= per); };
-                const okAlts = alts.filter(a => a.tg.join() === o.tg.join() || a.tg.every(partOk)), fitAlts = okAlts.filter(fits);
-                if (armorDeck && !fitAlts.length) { o.avg = 0; o.lo = 0; o.hi = 0; o.noArmor = true; return; }   // 每個部位的盔甲都不夠：這組不推（之後去掉）
-                (fitAlts.length ? fitAlts : okAlts).forEach(a => { const est = a.raw * scale, v = capOf(a.tg, est), isCur = a.tg.join() === o.tg.join();
+                alts.filter(a => a.tg.join() === o.tg.join() || a.tg.every(partOk)).forEach(a => { const est = a.raw * scale, v = capOf(a.tg, est), isCur = a.tg.join() === o.tg.join();
                     if (!best || v > best.v * 1.02 || (isCur && v >= best.v * 0.98)) best = { a, est, v }; });   // 差 2% 內維持原本的打法
                 if (!best) return;
                 const f = raw0 > 0 ? best.est / raw0 : 1;
                 if (best.a.tg.join() !== o.tg.join()) { o.tg = best.a.tg; o.plan = best.a.plan; o.reFinal = true; }   // 換了部位：之後在新部位重新精算
                 // 顯示：每個部位各自算到扣掉前面幾組之後剩下的血為止（傷害平均分到各部位，血少的部位吃不下的不算）；應打、上下限各自套
                 const leftAt = {}; best.a.tg.forEach(k => { leftAt[k] = left[k] || 0; }); o.leftAt = leftAt;
+                // 前面的組先打過這個部位、剩的盔甲／肉體這一刀會打破：照剩下的血重新模擬（破甲後改打肉體、打成骨架就沒傷害）
+                { const per0 = best.est / best.a.tg.length, hit0 = best.a.tg.filter(k => ((leftA[k] || 0) < ((env.hpA || {})[k] || 0) || (left[k] || 0) < (env.hp[k] || 0)) && ((((env.hpA || {})[k] || 0) > 0 && per0 > (leftA[k] || 0)) || per0 > (left[k] || 0)));
+                  if (hit0.length) { o.hpAt = {}; Object.keys(env.hp).forEach(k => { o.hpAt[k] = [leftA[k] || 0, Math.max(0, (left[k] || 0) - (leftA[k] || 0))]; }); o.leftAll = { ...left }; o.reFinal = true; o.rePlan = true; } }   // 整個盤面（前面的組打完後）：重新挑部位、重新模擬
                 o.cap = best.a.tg.reduce((t, k) => t + leftAt[k], 0);   // 精算的上限：部位剩的血（不是這組的傷害）
                 o.avg = raidSimCapParts(best.est, leftAt); if (o.lo != null) o.lo = raidSimCapParts(o.lo * f, leftAt); if (o.hi != null) o.hi = raidSimCapParts(o.hi * f, leftAt);
                 const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); leftA[k] = Math.max(0, (leftA[k] || 0) - per); });   // 先扣盔甲
@@ -13825,9 +13822,9 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r50|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r51|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
-            const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
+            const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
             if (inf) { inf.progress = progress; return inf.p; }
@@ -13887,7 +13884,7 @@
                 return out;
             };
             // 留一組瘋狂無效等肉體多再打：瘋狂無效的組用「能打的部位全部變肉體」算，其他 n−1 組照現在的狀態，6 組合計最高（每一組瘋狂無效的候選都試，其他組照樣找最佳解）
-            let pick0, voidO = null, normalSum = null, poolAll = null;   // poolAll：挑的時候用的傷害表（盔甲不夠拿掉一組時，從這裡補）
+            let pick0, voidO = null, normalSum = null;
             const VOID = 'CrushingVoid';
             if (info.voidMode && me.lv[VOID] > 0 && !used.has(VOID)) {
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
@@ -13902,7 +13899,7 @@
                 if (vpool0.length && RAID_SIM_SWAP_ON) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
                 const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(got.pool, phaseK));
-                poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
+                const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
                     const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
@@ -13911,7 +13908,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = raidVerifyWeights(raidPhaseWeights(got.pool, phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, raidVerifyWeights(raidPhaseWeights(got.pool, phaseK)), n); } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -13942,23 +13939,22 @@
             // 換過部位的組：在新部位重新跑 200 次精算，顯示的應打一定是精算的（算到部位剩下的血為止）
             const re = pick.filter(o => o.reFinal);
             if (re.length) {
-                const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
-                const fr = (await raidSimParallel(P, jobs)) || jobs.map(j => raidSimFinal(P, env, me, j.o));
+                const envOf = (o) => o.hpAt ? { ...env, hpSim: o.hpAt } : env;   // 前面的組打過的部位：照剩下的血模擬
+                // 前面的組把這組要打的部位打掉了（盔甲打光、血不夠）：用打完後的盤面把這組每個能打的部位都粗算一次，挑傷害最高的部位
+                for (const o of re.filter(x => x.rePlan)) {
+                    const it = items.find(x => x.cards === o.cards || x.cards.join() === o.cards.join()); if (!it || !it.plans || it.plans.length < 2) continue;
+                    const sc = await raidSimParallel(P, [{ kind: 's', base: raidSimBase(envOf(o), me, o.cards), cards: o.cards, plans: it.plans.map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (o.leftAll[k] || 0), 0) })) }]);
+                    const b0 = sc && sc[0]; if (b0 && b0.tg && b0.tg.join() !== o.tg.join()) { o.tg = b0.tg; o.plan = b0.plan; const L = {}; o.tg.forEach(k => { L[k] = o.leftAll[k] || 0; }); o.leftAt = L; o.cap = o.tg.reduce((t, k) => t + L[k], 0); }
+                }
+                const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(envOf(o), me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
+                const fr = (await raidSimParallel(P, jobs)) || jobs.map((j, i) => raidSimFinal(P, envOf(re[i]), me, j.o));
                 re.forEach((o, i) => { const f = fr[i]; if (f) { const L = o.leftAt; o.avg = L ? raidSimCapParts(f.raw, L) : f.avg; o.lo = L ? raidSimCapParts(f.lo, L) : f.lo; o.hi = L ? raidSimCapParts(f.hi, L) : f.hi; o.raw = f.raw; } delete o.reFinal; });
                 pick.sort((a, b) => b.avg - a.avg);
             }
             // 防呆：精算出來是 0（Worker 出錯或部位剩血算錯）就在主畫面重算一次，還是 0 就不推薦這組
-            let dropArmor = false; for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue; if (o.noArmor) { pick.splice(i, 1); dropArmor = true; continue; }   // 盔甲卡、盔甲不夠：直接拿掉，不重算
+            for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue;   // 盔甲卡、盔甲不夠：直接拿掉，不重算
                 try { const oo = { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }; const fr = await raidSimParallel(P, [{ kind: 'f', base: raidSimBase(env, me, o.cards), o: oo }]); const f = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, oo); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
                 pick.splice(i, 1); }
-            // 盔甲卡因為盔甲不夠被拿掉、組數不夠：從傷害表補（卡片不重複、不用盔甲卡，照挑選的權重取最高的），補完重新分配部位
-            if (dropArmor && pick.length < n && poolAll) {
-                const usedC = new Set([...pick.flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
-                const cand = poolAll.filter(o => o.avg > 0 && !o.noArmor && !raidArmorDeck(o.cards) && !o.cards.some(c => usedC.has(c))).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1));
-                for (const o of cand) { if (pick.length >= n) break; if (o.cards.some(c => usedC.has(c))) continue; pick.push({ ...o }); o.cards.forEach(c => usedC.add(c)); }
-                if (voidO && raidBodyNow() >= 6) raidSimDeplete(pick.concat([voidO]), env); else raidSimDeplete(pick, env);
-                for (let i = pick.length - 1; i >= 0; i--) if (!(pick[i].avg > 0)) pick.splice(i, 1);
-            }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };
@@ -14276,7 +14272,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=26'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=28'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -14581,7 +14577,12 @@
             const mirror = cyc >= 2 ? 0.35 : 0;
             // 每個部位現在剩多少血（盔甲＋肉體）：一刀的應打不能超過目標部位剩下的血，推薦好幾組時也照這個分配
             const hp = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hp[key] = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); });
-            const hpA = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hpA[key] = Math.max(0, Number(pt.armor) || 0); });   // 盔甲剩多少（帶盔甲卡的組要盔甲吃得下）
+            const hpA = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hpA[key] = Math.max(0, Number(pt.armor) || 0); });   // 盔甲剩多少
+            // 給模擬器的部位剩血（只給剩不多的部位：盔甲或肉體 3B 以下）：一刀之內盔甲打完變肉體、肉體打完變骨架，照實際算傷害
+            //   取整（1B 以下 50M、以上 250M）：血量小變不會一直重算（每刀本來就上下差 50～100M）
+            const hpQ = (x) => { if (!(x > 0)) return 0; const st = x < 1e9 ? 5e7 : 2.5e8; return Math.max(st, Math.round(x / st) * st); };
+            const hpSim = {}; RAID_PARTS.forEach(({ key }) => { if ((raidBannedParts || []).includes(key)) return; const pt = raidState.parts[key] || {}; const a = Math.max(0, Number(pt.armor) || 0), bo = Math.max(0, Number(pt.body) || 0);
+                if (a > 0 ? a < 3e9 : (bo > 0 && bo < 3e9)) hpSim[key] = [hpQ(a), a > 0 && bo >= 3e9 ? 1e13 : hpQ(bo)]; });
             plans.forEach(pl => { pl.cap = pl.tg.reduce((t, k) => t + (hp[k] || 0), 0); });
             // 打法策略：血最厚的部位佔能打部位的血 6 成以上、而且其他部位清完骨架能到 6 個（凱旋行軍最大傷害）→ 先清其他部位；不然照血量比例平均打
             const openHp = open.reduce((t, k) => t + hp[k], 0);
@@ -14601,7 +14602,7 @@
             // 等全公會這一輪剩下的刀打得完血最厚的部位時，才一起收掉其他部位、再用凱旋行軍（收尾）
             const smallHp0 = small.reduce((t, k) => t + hp[k], 0);
             if (strategy === 'clear' && openHp > 0 && smallHp0 / openHp <= 0.2) strategy = guildCap > 0 && guildCap >= openHp ? 'sweep' : 'park';
-            const envOut = { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, hpA, strategy, bigPart, bigShare, armorLeft, nBody, guildCap };
+            const envOut = { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, hpA, hpSim, strategy, bigPart, bigShare, armorLeft, nBody, guildCap };
             raidSimEnvLast = envOut;
             return envOut;
         }
@@ -14614,7 +14615,7 @@
             const pot = !me.fromAttack && cards.includes('MagicPotion') ? raidSimPotionBonus(me.lv.MagicPotion || 0) : 0;
             const deck = cards.map(c => [c, (me.lv[c] || 0) + (pot && c !== 'MagicPotion' ? pot : 0)]);
             const drums = deck.some(d => d[0] === 'BattleDrums');
-            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: env.mirror || 0, curse: env.curse, buff: env.buff, necro: me.necro };
+            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: env.mirror || 0, curse: env.curse, buff: env.buff, necro: me.necro, hp: env.hpSim && Object.keys(env.hpSim).length ? env.hpSim : undefined };   // hp：剩不多的部位，模擬照實際破甲／打成骨架
         }
         function raidSimScreen(P, env, me, cards, plans) {
             const base = raidSimBase(env, me, cards);
@@ -14654,7 +14655,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=31');
+                    const w = new Worker('raid-sim/simworker.js?v=33');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -14672,14 +14673,9 @@
         function raidSimRecap(o0, env) {
             const o = { ...o0 }; if (!env || !env.hp) return o;
             const capOf = (tg) => tg.reduce((t, k) => t + (env.hp[k] || 0), 0), W = 0.08;
-            const armorDeck = raidArmorDeck(o.cards), H = armorDeck ? (env.hpA || env.hp) : env.hp;   // 盔甲卡：看剩的盔甲
-            const fits = (raw, tg) => tg.every(k => (H[k] || 0) >= raw / tg.length * (armorDeck ? RAID_ARMOR_FIT : 1));   // 每個目標部位都吃得下這一刀（多的打到骨架是 0）
-            if (armorDeck && !(o.alts && o.alts.length ? o.alts : [o]).some(a => (a.tg || []).length && fits(a.raw || 0, a.tg))) { o.avg = 0; o.lo = 0; o.hi = 0; o.noArmor = true; return o; }   // 盔甲都不夠吃下這一刀：這組不推
             if (o.alts && o.alts.length > 1) {   // 血量變了，最好的打法可能換：照粗算重挑，換了就當成沒精算過（被挑中時會補精算）
-                const fitA = o.alts.filter(a => a.tg.length && fits(a.raw, a.tg)), useA = fitA.length ? fitA : o.alts;   // 有吃得下的部位就只在這些裡面挑
-                const best = useA.reduce((b, a) => { const v = Math.min(a.raw, capOf(a.tg)); return !b || v > b.v ? { a, v } : b; }, null);
-                const curFits = (o.tg || []).length && fits(o.raw || 0, o.tg);
-                if (best && best.a.tg.join() !== (o.tg || []).join() && (best.v > Math.min(o.raw || 0, capOf(o.tg || [])) * 1.02 || (fitA.length && !curFits))) {
+                const best = o.alts.reduce((b, a) => { const v = Math.min(a.raw, capOf(a.tg)); return !b || v > b.v ? { a, v } : b; }, null);
+                if (best && best.a.tg.join() !== (o.tg || []).join() && best.v > Math.min(o.raw || 0, capOf(o.tg || [])) * 1.02) {
                     const c = capOf(best.a.tg); return { cards: o.cards, alts: o.alts, plan: best.a.plan, tg: best.a.tg, cap: c, raw: best.a.raw, avg: Math.min(best.a.raw, c) };
                 }
             }

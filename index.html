@@ -13202,6 +13202,7 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
+        let CRYSTAL_ROUGH_N = 60;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 30;   // 測過 30 和 40 結果幾乎一樣，30 快兩成
         const CRYSTAL_RUNS = 32;     // 每個升級組合精算幾次（固定亂數，只差等級，32 次就夠分出差別）
         const CRYSTAL_MIRROR = 0.35 * 5 / 6;   // 鏡子力：第 1 輪沒有，第 2 輪起 +35%（推薦牌組同規則）；一場約 6 輪，平均下來   // 每個情境精算幾組候選牌組（沒放水晶、全部升級各取前幾名）
@@ -13225,7 +13226,8 @@
               if (e && e.ver === CRYSTAL_DATA_VER && crystalSlotClose(e.slotSig, slotSig)) { crystalUpRes[key] = { ...e, fromBuff: lib.buffLabel || true, seq: raid.seq, buffs: raid.buffs || [] }; renderCrystalReco(); return; } }
             try {
                 const P = await raidSimLoad();
-                const cands = await raidSimCandidateDecks(null, true);
+                const cands = await (async () => { const um = raidDeckUsesMap(); return (await raidSimCandidateDecks(null, false)).filter(d => (um.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES); })();   // 跟推薦一樣的候選（公會打過 3 次以上），不用快速模式的前 100 組（帶刺的晨星等牌組會被漏掉）
+                await crystalStatesLoad();   // 盤面照公會實際打過的（攻擊紀錄）
                 const buff = {}; let extraSec = 0;
                 (raid.buffs || []).forEach(([type, amt]) => { const a = Number(amt) || 0; if (type === 'BurstChance') buff.burstChance = a > 1 ? a - 1 : a; else if (type === 'AfflictedChance') buff.affChance = a > 1 ? a - 1 : a; else if (type === 'BurstDamage') buff.burstDamage = a; else if (type === 'AfflictedDamage') buff.affDamage = a; else if (type === 'AllRaidDamage') buff.all = a; else if (type === 'SupportEffect' || type === 'SupportDamage') buff.supportEffect = a; else if (type === 'RaidAttackDuration') extraSec = a; });
                 const names = [...new Set(raid.seq)], cnt = (n) => raid.seq.filter(x => x === n).length;
@@ -13239,7 +13241,7 @@
                 const v = raidClanData.byCode.get(p.player_code);
                 for (const n of names) {
                     const t = raid.titans.find(x => x.n === n); if (!t) continue;
-                    const states = raidPhaseStates(t, crystalBansOf(raid, t));
+                    const states = crystalStatesOf(t, crystalBansOf(raid, t));   // 公會實際打過的常見盤面（攻擊紀錄），資料不夠才用公式（攻擊紀錄在開始算之前讀進來：crystalStatesLoad）
                     const me = raidSimPlayer(v, 0.3, {}, { boss: n }); Object.keys(simLv).forEach(c => { me.lv[c] = simLv[c]; });   // 沒放水晶的等級（本身＋賽季加成）
                     const meUp = meWith(me, candIds);
                     for (const st of states) {
@@ -13255,7 +13257,18 @@
                         cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                         if (!all.length) continue;
                         const scr = async (m) => (await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || all.map(a => raidSimScreen(P, env, m, a.cards, a.plans));
-                        const s0 = await scr(me), s1 = candIds.length ? await scr(meUp) : s0;
+                        // 兩段篩：全部候選先粗算 1 次（升／不升水晶各一次），留前 CRYSTAL_ROUGH_N 名再照原本的篩法（候選跟推薦一樣完整，計算量少很多）
+                        const rough = async (m) => await raidSimParallel(P, all.map(a => ({ kind: 'r', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans })));
+                        let s0, s1;
+                        const r0 = all.length > CRYSTAL_ROUGH_N ? await rough(me) : null, r1 = r0 && candIds.length ? await rough(meUp) : r0;
+                        if (r0 && r1) {
+                            const keep = all.map((a, i) => [i, Math.max(r0[i] ? r0[i].avg : 0, r1[i] ? r1[i].avg : 0) * raidSimDeckFactor(a.cards)]).sort((x, y) => y[1] - x[1]).slice(0, CRYSTAL_ROUGH_N).map(x => x[0]);
+                            const sub = keep.map(i => all[i]);
+                            const scrSub = async (m) => (await raidSimParallel(P, sub.map(a => ({ kind: 's', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || sub.map(a => raidSimScreen(P, env, m, a.cards, a.plans));
+                            const q0 = await scrSub(me), q1 = candIds.length ? await scrSub(meUp) : q0;
+                            s0 = r0.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 }); s1 = r1.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 });   // 沒進細算的：分數壓低，不會被挑進前 30
+                            keep.forEach((i, j) => { s0[i] = q0[j]; s1[i] = q1[j]; });
+                        } else { s0 = await scr(me); s1 = candIds.length ? await scr(meUp) : s0; }
                         const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, CRYSTAL_SHORT_N).map(x => x[0]);
                         const short = [...new Set([...rank(s0), ...rank(s1)])];
                         // 部位份額（跟推薦牌組一樣）：這個狀態每個部位剩多少血，照血量比例分這個人 6 組的傷害；只打得到小部位（例如四肢）的牌組，
@@ -13424,7 +13437,8 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 12;   // 12：加換掉的卡放回去能貢獻幾 %
+        const CRYSTAL_DATA_VER = 14;   // 14：候選牌組跟推薦一樣（打過 3 次以上）；13：盤面改用攻擊紀錄裡公會實際打過的常見狀態（照傷害比重）
+        const CRYSTAL_DATA_VER_12 = 12;   // 12：加換掉的卡放回去能貢獻幾 %
         const CRYSTAL_ALL_MIN_VER = 11;   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
@@ -15924,6 +15938,45 @@
            1 開場全盔甲（詛咒甲照 seed）2 拆了一半：盔甲少的部位先拆成肉體，大的還是盔甲 3 全部肉體
            4 收尾：肉體少的部位先打死（變骨頭），剩大部位；凱旋行軍要肉體 6 個、有的卡要骨頭 6 個，狀態不同能用的卡就不同
            權重＝那個狀態大約要打掉的量（盔甲各一半；斬殺線前後各一半） */
+        // 水晶模擬的盤面：攻擊紀錄裡這隻王實際出現過的盤面（照當時打出的傷害當比重），取最多 6 種、涵蓋 85% 傷害；
+        //   換到下一場的禁打：下一場禁打的部位設成禁打，紀錄裡禁打、下一場沒禁的部位當作沒人打（有盔甲就是盔甲）
+        //   這隻王紀錄不到 100 刀：退回公式（全盔甲／拆一半／全肉體／收尾）
+        // 水晶模擬要用的攻擊紀錄：最近 3 場的攻擊和每刀的盤面（只讀，不動收攻擊紀錄）
+        async function crystalStatesLoad() {
+            try { raidSimExpAt = 0; await raidSimExpLoad(); } catch (e) {}
+            const ss = (serverSessionsSummary || []).slice(0, 3).map(x => x.startedAt).filter(Boolean);
+            await Promise.all(ss.map(sa => ensureSessionAttacksLoaded(sa).catch(() => [])));
+        }
+        function crystalStatesOf(t, bans) {
+            const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+            const ban = new Set(bans || []), arm = (k) => Number((t.p[k] || [])[1]) || 0, cur = (k) => !!(t.p[k] || [])[3];
+            const seen = new Set(), log = [];
+            [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...[...sessionAttacksCache.values()].flat()].forEach(a => {
+                if (!a || a.placeholder || a.boss !== t.n || !(a.totalDamage > 0)) return; const k = raidSimExpKey(a); if (seen.has(k)) return; seen.add(k);
+                const b = a.simB || ((raidSimExpMap.get(k) || {}).b); if (b && b.length === 8) log.push({ simB: b, totalDamage: a.totalDamage }); });
+            if (log.length < 100) return raidPhaseStates(t, bans);
+            const tot = log.reduce((x, a) => x + a.totalDamage, 0), killAmt = Number(t.k) || 0, armorAmt = LOCS.filter(k => !ban.has(k)).reduce((x, k) => x + arm(k), 0);
+            const W = (armorAmt + killAmt) || 1;   // 這隻王整體的份量（跟公式版一樣：盔甲＋血量），各盤面照傷害比重分
+            const agg = new Map();
+            log.forEach(a => {
+                const lay = LOCS.map((k, i) => { if (ban.has(k)) return 'X'; const c = a.simB[i]; if (c === 'X' || c === 'x') return arm(k) > 0 ? 'A' : 'B'; if ((c === 'A' || c === 'a') && !(arm(k) > 0)) return 'B'; return c === 'a' || c === 'A' ? 'A' : c === 'S' ? 'S' : 'B'; }).join('');
+                if (!/[AB]/.test(lay)) return;   // 能打的部位都沒有了
+                agg.set(lay, (agg.get(lay) || 0) + a.totalDamage);
+            });
+            const top = [...agg.entries()].sort((x, y) => y[1] - x[1]); const pick = []; let cum = 0;
+            for (const [lay, v] of top) { if (pick.length >= 6 || (cum / tot >= 0.85 && pick.length)) break; pick.push([lay, v]); cum += v; }
+            const zh = { A: '甲', B: '肉', S: '骨', X: '禁' }, nm = ['頭', '肚', '左肩', '右肩', '左手', '右手', '左腳', '右腳'];
+            return pick.map(([lay, v]) => {
+                const board = {}, scene = {};
+                LOCS.forEach((k, i) => { const c = lay[i];
+                    if (c === 'X') { board[k] = { layer: 'banned', cursed: cur(k), under: 'armor' }; scene[k] = 'banned'; return; }
+                    const L = c === 'A' ? 'armor' : c === 'S' ? 'skeleton' : 'body';
+                    board[k] = { layer: L, cursed: L === 'armor' && cur(k) }; scene[k] = L === 'armor' ? (cur(k) ? 'cursed' : 'armor') : L; });
+                const label = (() => { const A = LOCS.filter((k, i) => lay[i] === 'A'), S = LOCS.filter((k, i) => lay[i] === 'S'); const open = LOCS.filter((k, i) => lay[i] === 'A' || lay[i] === 'B');
+                    return !A.length ? (S.length ? nm.filter((x, i) => lay[i] === 'S').join('') + '骨架、其他肉體' : '全肉體') : A.length === open.length ? '全盔甲' : nm.filter((x, i) => lay[i] === 'A').join('') + '盔甲、其他肉體'; })();
+                return { label: label + ' ' + Math.round(v / cum * 100) + '%', w: W * v / cum, board, scene };
+            });
+        }
         function raidPhaseStates(t, bans) {
             const ban = new Set(bans || []), locs = Object.keys(t.p), open = locs.filter(k => !ban.has(k));
             const arm = (k) => Number(t.p[k][1]) || 0, body = (k) => Number(t.p[k][2]) || 0;

@@ -12991,7 +12991,7 @@
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
         // 推薦只用打過幾次以上的牌組（公會歷史＋這場），沒驗證過的組合不推（0＝不限制）
-        let RAID_SIM_MIN_USES = 10;   // 8 人回測：≥10 次比不限制少 0.53%（≥3 也一樣），時間 9 秒→3 秒；≥30 次少 1.65%
+        let RAID_SIM_MIN_USES = 0;   // 不設門檻（傷害優先：合計比較高就推，沒人打過的組合也算）
         // 推薦只用驗證過的牌組：公會累計（伺服器紀錄＋這場）打過 RAID_SIM_MIN_USES 刀以上
         function raidDeckUsesMap() {
             const m = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), d.uses || 0]));
@@ -13755,7 +13755,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r42|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r44|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13831,7 +13831,7 @@
                 expand.partners = new Set(vlist.flatMap(d => d.cards).filter(c => c !== VOID));
                 if (vpool0.length && RAID_SIM_SWAP_ON) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
-                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidPhaseWeights(got.pool, phaseK);
+                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(got.pool, phaseK));
                 const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -13841,7 +13841,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, raidPhaseWeights(got.pool, phaseK), n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, raidVerifyWeights(raidPhaseWeights(got.pool, phaseK)), n); } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -14292,6 +14292,14 @@
                 o.selW = pref >= base * (1 - ph.tol) ? Math.min(1, pref / base) : 1 - ph.tol;
                 return o;
             });
+        }
+        // 沒驗證過的牌組（公會累計打過不到 RAID_SIM_VERIFY_USES 刀）挑選時打折：明顯比較強才選，差不多時優先用驗證過的（顯示的應打不變）
+        const RAID_SIM_VERIFY_USES = 10;
+        let RAID_SIM_UNVERIFIED_W = 0.95;   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
+        function raidVerifyWeights(pool) {
+            if (!(RAID_SIM_UNVERIFIED_W < 1)) return pool;
+            const m = raidDeckUsesMap();
+            return pool.map(o => (m.get(o.cards.slice().sort().join('+')) || 0) >= RAID_SIM_VERIFY_USES ? o : { ...o, selW: (o.selW || 1) * RAID_SIM_UNVERIFIED_W });
         }
         function raidPhaseLineHtml(env) { const ph = raidPhaseInfo(env); return ph && ph.line ? `<div style="font-size:12px; font-weight:800; color:#6b5a4a; margin:0 0 4px;">${ph.line}</div>` : ''; }
         // 凱旋行軍可不可行：清完其他部位（變骨架）的時候，最厚的部位還剩不剩夠凱旋行軍打的血

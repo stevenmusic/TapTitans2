@@ -13785,7 +13785,7 @@
             const left = {}; Object.keys(env.hp).forEach(k => { left[k] = env.hp[k] || 0; });
             const leftA = {}; Object.keys(env.hp).forEach(k => { leftA[k] = (env.hpA || {})[k] || 0; });
             const capOf = (tg, est) => { const per = est / tg.length; return tg.reduce((t, k) => t + Math.min(per, left[k] || 0), 0); };
-            pick.sort((a, b) => (b.raw || b.avg || 0) - (a.raw || a.avg || 0));
+            pick.sort((a, b) => (b.raw || b.avg || 0) - (a.raw || a.avg || 0)); pick.forEach((o, j) => { o.depOrder = j; });   // 打的順序：強的先打（前面的組先扣部位的血），畫面也照這個順序列
             pick.forEach(o => {
                 const raw0 = o.raw || o.avg; o.preAvg = o.avg;
                 const alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
@@ -13808,7 +13808,7 @@
                 o.avg = raidSimCapParts(best.est, leftAt); if (o.lo != null) o.lo = raidSimCapParts(o.lo * f, leftAt); if (o.hi != null) o.hi = raidSimCapParts(o.hi * f, leftAt);
                 const per = best.est / o.tg.length; o.tg.forEach(k => { left[k] = Math.max(0, (left[k] || 0) - per); leftA[k] = Math.max(0, (leftA[k] || 0) - per); });   // 先扣盔甲
             });
-            pick.sort((a, b) => b.avg - a.avg);
+            pick.sort((a, b) => (a.depOrder ?? 99) - (b.depOrder ?? 99) || b.avg - a.avg);   // 照打的順序（第 1 組先打），不照扣血後的傷害重排：順序一變，前面的組先扣掉的血就不一樣
         }
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
             const v = vOverride || raidAccountInfo(name);
@@ -13822,7 +13822,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r52|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r53|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13949,7 +13949,7 @@
                 const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(envOf(o), me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
                 const fr = (await raidSimParallel(P, jobs)) || jobs.map((j, i) => raidSimFinal(P, envOf(re[i]), me, j.o));
                 re.forEach((o, i) => { const f = fr[i]; if (f) { const L = o.leftAt; o.avg = L ? raidSimCapParts(f.raw, L) : f.avg; o.lo = L ? raidSimCapParts(f.lo, L) : f.lo; o.hi = L ? raidSimCapParts(f.hi, L) : f.hi; o.raw = f.raw; } delete o.reFinal; });
-                pick.sort((a, b) => b.avg - a.avg);
+                pick.sort((a, b) => (a.depOrder ?? 99) - (b.depOrder ?? 99) || b.avg - a.avg);   // 照打的順序（第 1 組先打），不照扣血後的傷害重排：順序一變，前面的組先扣掉的血就不一樣
                 // 最佳解：被前面的組打掉部位、掉分超過 5% 的組，換成其他牌組會不會更高——照「前面的組打完後」的盤面模擬卡片不重複的前 6 名，比較高就換
                 for (const g of pick.filter(o => o.hpAt && o.preAvg > 0 && o.avg < o.preAvg * 0.95)) {
                     if (!poolAll) break;
@@ -13966,9 +13966,9 @@
                         const L = {}; f.tg.forEach(k => { L[k] = g.leftAll[k] || 0; }); const v = raidSimCapParts(f.raw, L);
                         if (v * (c.selW || 1) > (bestC ? bestC.v * (bestC.c.selW || 1) : g.avg * (g.selW || 1))) bestC = { c, f, v, L };
                     }
-                    if (bestC) { const { c, f, v, L } = bestC; Object.keys(g).forEach(k => delete g[k]); Object.assign(g, { ...c, ...f, cards: c.cards, tg: f.tg, plan: f.plan, avg: v, lo: raidSimCapParts(f.lo, L), hi: raidSimCapParts(f.hi, L), raw: f.raw, leftAt: L, swapped: true }); }
+                    if (bestC) { const { c, f, v, L } = bestC; const ord = g.depOrder; Object.keys(g).forEach(k => delete g[k]); Object.assign(g, { ...c, ...f, cards: c.cards, tg: f.tg, plan: f.plan, avg: v, lo: raidSimCapParts(f.lo, L), hi: raidSimCapParts(f.hi, L), raw: f.raw, leftAt: L, swapped: true, depOrder: ord }); }
                 }
-                pick.sort((a, b) => b.avg - a.avg);
+                pick.sort((a, b) => (a.depOrder ?? 99) - (b.depOrder ?? 99) || b.avg - a.avg);   // 照打的順序（第 1 組先打），不照扣血後的傷害重排：順序一變，前面的組先扣掉的血就不一樣
             }
             // 防呆：精算出來是 0（Worker 出錯或部位剩血算錯）就在主畫面重算一次，還是 0 就不推薦這組
             for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue;   // 盔甲卡、盔甲不夠：直接拿掉，不重算
@@ -13978,7 +13978,7 @@
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };
             pick.forEach(scaleShow); if (voidO) scaleShow(voidO);
-            rows.sort((x, y) => (y.simDmg.avg || 0) - (x.simDmg.avg || 0));   // 乘完校正再照應打排
+            rows.sort((x, y) => (x.simDmg.depOrder ?? 99) - (y.simDmg.depOrder ?? 99) || (y.simDmg.avg || 0) - (x.simDmg.avg || 0));   // 照打的順序（扣部位剩血時假設的順序），同順序再照應打
             if (voidO) rows.push({ cards: byPartOrderCards(voidO.cards), rawCards: voidO.cards, targets: voidO.tg.map(k => ({ part: k, layer: 'body', cursed: false })), allParts: voidO.tg.length >= 2 && voidO.tg.length >= env.open.length, simDmg: voidO, voidLater: true, voidNow: !!info.voidNow, normalSum });
             if (progress) progress('計算中 100%');
             raidSimPickCache.set(key, rows);

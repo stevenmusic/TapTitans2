@@ -1,6 +1,6 @@
 // 推薦牌組的計算：主畫面把「快速篩選」「精算 100 次」的工作丟給 1 個 Worker，算 50ms 休息 50ms（單核最多約 50%）
 // 算法跟 index.html 的 raidSimScreen／raidSimFinal 完全一樣（同樣的亂數種子），結果不變，只是比較快
-importScripts('raidsim.js?v=25');
+importScripts('raidsim.js?v=26');
 const ready = fetch('skills.json?v=1').then(r => r.json()).then(sk => RaidSim.init(sk));
 const SCREEN_RUNS = 2, FINAL_RUNS = 100;
 // 節流：連續算 50ms 就休息 50ms（單一核心最多約 50%，低階筆電不會滿載）

@@ -32,9 +32,12 @@ function simAttack(opt, P = P0) {
   const layerOf = (l) => board[l] ? board[l].layer : 'body';
   const cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面一刀內不變：算一次
   const openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
-  const nBody = LOCS.filter(l => board[l] && board[l].layer === 'body').length;
-  const nSkel = LOCS.filter(l => board[l] && board[l].layer === 'skeleton').length;
-  const nArmor = LOCS.filter(l => board[l] && board[l].layer === 'armor').length;
+  // 禁打只是公會標記：遊戲照部位實際的狀態數（under），帶刺的晨星、瘋狂無效、凱旋行軍都算進去
+  // （M-46：打肉體、盤面 0 盔甲但禁打的頭還有盔甲，帶刺的晨星實際 1.15～1.30 倍＝1＋0.15×禁打部位數）
+  const realLayer = (l) => board[l] ? (board[l].layer === 'banned' ? board[l].under : board[l].layer) : null;
+  const nBody = LOCS.filter(l => realLayer(l) === 'body').length;
+  const nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length;
+  const nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
   const hasBurstCard = deck.some(([id]) => SK[id].cat === 'Burst'), hasAffCard = deck.some(([id]) => SK[id].cat === 'Affliction');
   const dt = opt.dur / opt.taps;
   const out = { tap: 0, by: {} }; deck.forEach(([id]) => { out.by[id] = 0; });

@@ -8057,7 +8057,7 @@
             const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
             if (!a.cards.some(x => x.name === 'MagicPotion')) a.cards.forEach(c => { if (me.lv[c.name]) me.lv[c.name] = Math.max(me.lv[c.name], Number(c.level) || 0); });   // 有放大的那刀等級是加成過的，不拿來更新
             const board = {}, scene = {};
-            LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
+            LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
             const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
             const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
             open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
@@ -8155,7 +8155,7 @@
                     // 分母＝「照推薦打能打多少」：重現他出這刀之前按推薦會看到的那幾組（出刀前部位狀態、這輪還沒用的卡、剩下刀數、他的等級），
                     // 取這幾組模擬平均傷害的平均。完全照推薦打就會接近 100%（以前是跟「每刀當下最好的一組」比，一輪卡片不能重複用，誰都到不了 100%）
                     const board = {}, scene = {};
-                    LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
+                    LOCS.forEach((l, k) => { const ch = a.simB[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; scene[l] = ch === 'X' || ch === 'x' ? 'banned' : ch === 'a' ? 'cursed' : ch === 'A' ? 'armor' : ch === 'B' ? 'body' : 'skeleton'; });
                     const open = LOCS.filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                     const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
@@ -8205,7 +8205,7 @@
                     if (!bossHpSnapshot || !bossHpSnapshot.raid) { raidCsExpMem.delete(k); return; }   // 場次加成、門票還沒載好：先不算（不然少算爆裂傷害加成），下次重畫再算
                     const v = raidClanData && raidClanData.byCode.get(a.playerCode); if (!v || !sx.b) return;
                     const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
-                    const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
                     const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
                     if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
                     const env = { ...env0, board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
@@ -13762,7 +13762,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r45|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r46|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -14205,7 +14205,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=25'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=26'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -14466,7 +14466,7 @@
             RAID_PARTS.forEach(({ key }) => {
                 const pt = raidState.parts[key] || {};
                 const layer = raidBannedParts.includes(key) ? 'banned' : (pt.armor > 0 ? 'armor' : pt.body > 0 ? 'body' : 'skeleton');
-                board[key] = { layer, cursed: !!pt.cursed && (pt.armor > 0 || layer === 'banned') };
+                board[key] = { layer, cursed: !!pt.cursed && (pt.armor > 0 || layer === 'banned'), ...(layer === 'banned' ? { under: pt.armor > 0 ? 'armor' : pt.body > 0 ? 'body' : 'skeleton' } : {}) };   // under：禁打部位實際的狀態（帶刺的晨星、瘋狂無效、凱旋行軍照實際狀態數）
             });
             const c0 = raidCurseInfo && raidCurseInfo[0];
             const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;
@@ -14576,7 +14576,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=30');
+                    const w = new Worker('raid-sim/simworker.js?v=31');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -14962,7 +14962,7 @@
                     const v = (raidClanData && raidClanData.byCode.get(r.identity)) || raidAccountInfo(r.player); if (!v) continue;
                     const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Math.max(me.lv[c.name] || 0, Number(c.level) || 0); }); me.fromAttack = true;
-                    const board = {}; LOCS.forEach((l, i) => { const ch = a.simB[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
+                    const board = {}; LOCS.forEach((l, i) => { const ch = a.simB[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
                     const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
                     const cards = a.cards.map(c => c.name);
                     jobs.push({ kind: 'f', base: raidSimBase(env, me, cards), o: { cards, tg: a.simTg } }); keys.push(k);
@@ -15821,7 +15821,7 @@
             const armorAmt = open.reduce((x, k) => x + arm(k), 0), killAmt = Number(t.k) || 0;
             const mk = (lay) => { const board = {}, scene = {};
                 locs.forEach(k => { const cur = !!t.p[k][3];
-                    if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur }; scene[k] = 'banned'; return; }
+                    if (ban.has(k)) { board[k] = { layer: 'banned', cursed: cur, under: 'armor' }; scene[k] = 'banned'; return; }   // 禁打的部位沒人打：盔甲都還在
                     const L = lay(k);
                     board[k] = { layer: L, cursed: L === 'armor' && cur };
                     scene[k] = L === 'armor' ? (cur ? 'cursed' : 'armor') : L; });

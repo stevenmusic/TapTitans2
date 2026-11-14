@@ -2693,8 +2693,11 @@ function buildRaidReport(attacks, meta) {
 
   const attackCountByPlayer = new Map();
   const groups = new Map(); // `${player}\u0000${boss}` -> 累計列
+  // 改過名字的玩家：同一個玩家編號算同一個人，名字用這場最後一刀的名字
+  const latestName = new Map();
+  attacks.forEach((a) => { if (a.playerCode && a.player) { const x = latestName.get(a.playerCode); if (!x || (a.ts || 0) >= x.ts) latestName.set(a.playerCode, { name: a.player, ts: a.ts || 0 }); } });
   attacks.forEach((a) => {
-    const player = a.player || '?';
+    const player = (a.playerCode && latestName.get(a.playerCode) ? latestName.get(a.playerCode).name : a.player) || '?';
     attackCountByPlayer.set(player, (attackCountByPlayer.get(player) || 0) + 1);
     const boss = a.boss || '?';
     const key = `${player}\u0000${boss}`;

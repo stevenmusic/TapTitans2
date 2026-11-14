@@ -10,7 +10,8 @@ const SIM_VER = 3;   // v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ �
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
 const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };
-const EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 不推薦的卡（天體靜態、宇宙激光）
+const EXCLUDE = new Set(['CelestialStatic']);   // 不推薦的卡（天體靜態）；宇宙激光＋圖騰之力同一組不推（跟網頁一樣）
+const DECK_BAN = [['Haymaker', 'TotemFairySkill']];
 const yieldLoop = () => new Promise(r => setImmediate(r));
 const sigOf = (cards) => cards.slice().sort().join('+');
 
@@ -27,14 +28,14 @@ function createSimExp(deps) {
     ready = true;
   })().catch(e => console.error('[simexp] 建立 attack_sim 失敗（不影響攻擊紀錄）:', e && e.message ? e.message : e));
 
-  // 全部紀錄用過 10 次以上的牌組（1 小時重算一次）
+  // 全部紀錄用過 3 次以上的牌組（1 小時重算一次；網頁推薦門檻 3 次，3～9 次挑選時打折）
   let deckList = null, deckListAt = 0;
   async function getDeckList() {
     if (deckList && Date.now() - deckListAt < 3600 * 1000) return deckList;
     const all = await getAllAttacks();
     const cnt = new Map();
     all.forEach(a => { if (a.cards && a.cards.length === 3) { const k = sigOf(a.cards.map(c => c.name)); cnt.set(k, (cnt.get(k) || 0) + 1); } });
-    deckList = [...cnt.entries()].filter(([, n]) => n >= 10).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ cards: k.split('+'), uses: n }));
+    deckList = [...cnt.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ cards: k.split('+'), uses: n }));
     deckListAt = Date.now();
     return deckList;
   }
@@ -107,7 +108,7 @@ function createSimExp(deps) {
     addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'));
     addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'));
     addPlan(open);
-    const decks = (await getDeckList()).filter(d => d.cards.every(c => lv[c] > 0 && !used.has(c) && !EXCLUDE.has(c)));
+    const decks = (await getDeckList()).filter(d => !DECK_BAN.some(b => b.every(c => d.cards.includes(c))) && d.cards.every(c => lv[c] > 0 && !used.has(c) && !EXCLUDE.has(c)));
     const screen = [];
     for (const d of decks) {
       const deck = d.cards.map(c => [c, lv[c]]);

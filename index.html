@@ -12621,7 +12621,7 @@
             return raidLogRenderPlayerReco(r);
         }
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
-        function raidRecoWrap(r, html) { const sw = raidRecoVoidSwitchHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
+        function raidRecoWrap(r, html) { const sw = raidRecoFinBtnHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
             if (!raidRecoVoidOwned(r)) return '';
@@ -12640,6 +12640,83 @@
             let body;
             try { body = await raidVoidTopHtml(r); } catch (e) { console.error(e); body = '<div style="font-size:12px; color:#c0392b;">算不出來，請稍後再試。</div>'; }
             if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
+        }
+        // 凱旋行軍按鈕（推薦框右上角）：有這張卡的人才有；推薦已經留了凱旋行軍那組就變暗
+        function raidRecoFinBtnHtml(r) {
+            const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
+            if (!(v && v.raw && raidSimBaseLevel(v.raw, 'FinisherAttack') > 0)) return '';
+            const img = raidCardImage('FinisherAttack'), inReco = (raidLogRecoRows.get(r.player) || []).some(x => x.finLater);
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidRecoFinToggle(this.dataset.p)" title="凱旋行軍：${inReco ? '開（推薦留一組，按一下關掉）' : '關（按一下留一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="凱旋行軍" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #b08a2e;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#8a6414' : '#8a7a6a'};">${inReco ? 'ON' : 'OFF'}</span></button>`;
+        }
+        // 凱旋行軍開關：手動切過就照手動的（ON 強制留一組、OFF 不留）；沒切過照自動判斷（清得到 6 骨架、留了合計比較高）
+        const raidRecoFinPref = new Map();
+        function raidRecoFinToggle(name) {
+            const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
+            const on = (raidLogRecoRows.get(name) || []).some(x => x.finLater);
+            raidRecoFinPref.set(name, !on);
+            raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
+            raidLogRecoOpen.add(name); raidRecoClicked.add(name); raidLogUiSave();
+            return raidLogRenderPlayerReco(r);
+        }
+        async function raidFinTopShow(name) {
+            const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
+            let ov = document.getElementById('raid-void-top');
+            if (!ov) { ov = document.createElement('div'); ov.id = 'raid-void-top'; ov.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; padding:16px;'; ov.onclick = (e) => { if (e.target === ov) ov.remove(); }; document.body.appendChild(ov); }
+            const card = (body) => `<div style="background:#fff; border-radius:12px; padding:12px; width:100%; max-width:440px; max-height:80vh; overflow:auto; box-shadow:0 6px 24px rgba(0,0,0,.25);"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;"><b style="font-size:14px; color:#8a6414;">${escapeHtml(raidShortName(name))}・凱旋行軍</b><button onclick="document.getElementById('raid-void-top').remove()" style="border:none; background:none; font-size:18px; cursor:pointer; color:#8a7a6a;">✕</button></div>${body}</div>`;
+            ov.innerHTML = card('<div style="font-size:12px; color:#5a4a3a;">計算中…</div>');
+            let body;
+            try {
+                const msg = (t) => `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`;
+                const ci = raidPlayerCycleInfo(r.player, r.attacks), nextRound = ci.remaining <= 0, info = nextRound ? { ...ci, used: new Set(), remaining: 6 } : ci;
+                if ((raidBannedParts || []).length > 1) body = msg('禁打 2 個以上，湊不到 6 骨架，這隻王用不到凱旋行軍。');
+                else if (info.used.has('FinisherAttack')) body = msg('凱旋行軍這輪已經用過。');
+                else {
+                    const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
+                    const F = await raidSimFinisherBest(r, info, data);
+                    if (!F) body = msg('剩下的卡湊不出凱旋行軍的牌組（或公會打過不到 10 次）。');
+                    else {
+                        const sk = raidSkelReach(nextRound), env = await raidSimEnv();
+                        const row = { cards: byPartOrderCards(F.cards), rawCards: F.cards, targets: [{ part: F.big, layer: 'body', cursed: false }], allParts: false, simDmg: F };
+                        body = `<div style="font-size:12px; color:#6b5a4a; margin-bottom:6px;">6 骨架時打${raidPartLabel(F.big)}${nextRound ? '（下一輪）' : ''}${sk ? (sk.ok ? '' : `；${nextRound ? '到下一輪結束' : '這輪'}全公會的傷害可能清不完其他部位`) : ''}</div><div style="display:flex; justify-content:center;"><div style="padding:4px 10px; border-radius:7px; background:#f6ecd2; min-width:160px;">${renderByPartRow(row)}<div style="text-align:center; font-size:13px; font-weight:800; color:#2e5d32; line-height:1.2;">應打 ${formatNumAlwaysM(F.avg)}</div>${F.lo != null ? `<div style="text-align:center; font-size:11px; color:#8a7a6a;">(${formatNumAlwaysM(F.lo)}～${formatNumAlwaysM(F.hi)})</div>` : ''}</div></div>`;
+                    }
+                }
+            } catch (e) { console.error(e); body = '<div style="font-size:12px; color:#c0392b;">算不出來，請稍後再試。</div>'; }
+            if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
+        }
+        // 凱旋行軍：禁打 0～1 個時，其他部位清成骨架（≥6 個）後打最厚的部位。算這個人「凱旋行軍那組在 6 骨架時打最厚部位」最好的一組
+        async function raidSimFinisherBest(r, info, data) {
+            const FIN = 'FinisherAttack', used = new Set(info.used || []);
+            if (used.has(FIN)) return null;
+            const v = raidAccountInfo(r.player); if (!v) return null;
+            let P = await raidSimLoad(); P = { ...P, fg: true };
+            const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
+            if (!(me.lv[FIN] > 0)) return null;
+            const B = env.board, keys = Object.keys(B), banned = keys.filter(k => B[k].layer === 'banned');
+            if (banned.length > 1) return null;
+            const open = keys.filter(k => B[k].layer === 'armor' || B[k].layer === 'body'); if (!open.length) return null;
+            const big = open.slice().sort((a, b) => (env.hp[b] || 0) - (env.hp[a] || 0))[0];
+            const boardS = {}; keys.forEach(k => { boardS[k] = k === big ? { layer: 'body' } : B[k].layer === 'banned' ? B[k] : { layer: 'skeleton' }; });
+            if (keys.filter(k => boardS[k].layer === 'skeleton').length < 6) return null;
+            const envS = { ...env, board: boardS, curse: null }, sceneS = {}; keys.forEach(k => { sceneS[k] = boardS[k].layer; });
+            const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
+            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(FIN) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fS.hitParts(d.cards).includes(big))
+                .map(d => ({ cards: d.cards, plans: [{ tg: [big], label: '', cap: env.hp ? env.hp[big] : undefined }] }));
+            if (!list.length) return null;
+            const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
+            return pool[0] ? { ...pool[0], big } : null;
+        }
+        // 這輪（或到下一輪結束）全公會剩下的傷害，夠不夠把最厚以外的部位清成骨架
+        function raidSkelReach(nextRound) {
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts).slice(0, 100);
+            const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0) || !raidState || !raidState.parts) return null;
+            let left = 0, active = 0;
+            (raidLogLastRanked || []).forEach(r => { if (!r || !r.attacks || !r.attacks.some(a => a && a.raidStartedAt === sa)) return; active++; left += Math.max(0, raidPlayerCycleInfo(r.player, r.attacks).remaining || 0); });
+            if (nextRound) left += active * RAID_ATTACKS_PER_CYCLE;
+            const bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((raidState.parts[k] || {}).armor) || 0) + Math.max(0, Number((raidState.parts[k] || {}).body) || 0);
+            const open = Object.keys(raidState.parts).filter(k => !bn.includes(k) && hp(k) > 0), big = open.slice().sort((a, b) => hp(b) - hp(a))[0];
+            const need = open.filter(k => k !== big).reduce((t, k) => t + hp(k), 0);
+            return { ok: left * avg >= need, left, dmg: left * avg, need };
         }
         async function raidVoidTopHtml(r) {
             const VOID = 'CrushingVoid';
@@ -12719,7 +12796,7 @@
                 raidLogRenderPlayerReco(r);
             });
         }
-        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+')].join('|'); }
+        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
         const raidRecoGen = new Map();   // 每次重畫推薦加 1：只有最新那一次算完才寫畫面
         async function raidLogRenderPlayerReco(r) {
             let box = raidLogRecoBox(r.player);
@@ -12740,8 +12817,8 @@
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
-                    const later = i >= RAID_ATTACKS_PER_CYCLE && !x.voidLater;
-                    return `<div style="padding:2px; border-radius:7px; background:${x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.voidTag ? '瘋狂無效・現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效・現在打' : '瘋狂無效・6 肉體再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
+                    const later = i >= RAID_ATTACKS_PER_CYCLE && !x.voidLater && !x.finLater;
+                    return `<div style="padding:2px; border-radius:7px; background:${x.finLater ? '#f6ecd2' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.finLater ? '#8a6414' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.finLater ? '凱旋行軍・6 骨架再打' : x.voidTag ? '瘋狂無效・現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效・現在打' : '瘋狂無效・6 肉體再打') : `第 ${i + 1} 組${later ? '・之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -12800,6 +12877,17 @@
                             if (!simPick.some(x => x.voidTag)) {   // 一般推薦沒排到：強制排一組（照現在的盤面打）
                                 const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
                                 if (forced && forced.some(x => x.voidLater)) simPick = forced.map(x => x.voidLater ? { ...x, voidLater: false, voidTag: true } : x);
+                            }
+                        }
+                        // 凱旋行軍：適合的人（照他自己的卡片等級，留一組後整輪合計比較高）留一組，等 6 骨架打最厚的部位
+                        const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
+                        const finPref = raidRecoFinPref.has(r.player) ? raidRecoFinPref.get(r.player) : null;   // null＝自動
+                        if (simPick && finPref !== false && n0 >= 2 && (raidBannedParts || []).length <= 1 && (finPref === true || (skel && skel.ok))) {
+                            const F = await raidSimFinisherBest(r, info, data).catch(() => null);
+                            if (F) {
+                                const others = await raidSimPlayerPick(r.player, { ...info, used: new Set([...(info.used || []), ...F.cards]), remaining: n0 - 1, voidMode: voidLaterGo && !F.cards.includes('CrushingVoid') }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
+                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
+                                if (others && (finPref === true || sum(others) + F.avg >= sum(simPick))) simPick = others.concat([{ cards: byPartOrderCards(F.cards), rawCards: F.cards, targets: [{ part: F.big, layer: 'body', cursed: false }], allParts: false, simDmg: F, finLater: true }]);
                             }
                         }
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }

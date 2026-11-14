@@ -4,7 +4,9 @@
    結果存在獨立的 attack_sim 表，完全不動攻擊紀錄本身；模擬放在背景佇列慢慢算，算的時候會讓出事件迴圈 */
 const RaidSim = require('./sim/raidsim');
 const CAL = require('./sim/calibration.json');
-const P = { ...RaidSim.P0, ...CAL, k: { ...(CAL.k || {}) } };
+// 跟網頁攻擊紀錄重算同一套：卡片係數用 calibration.json，整組修正（deckK）、點擊校正不在這裡乘——網頁拿每張卡的傷害（by）套最新的滾動校正
+const P = { ...RaidSim.P0, ...CAL, k: { ...(CAL.k || {}) }, deckK: {}, tapK: 1 };
+const SIM_VER = 3;   // v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
 const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };
@@ -78,15 +80,20 @@ function createSimExp(deps) {
     // 打法：實際牌組、實際等級、實際打的部位
     const deckAct = a.cards.map(c => [c.name, Number(c.level) || 0]);
     const tgAct = inferTargets(a, env.board);
-    let exp = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 40, P).total : null;
+    // 跟網頁攻擊紀錄重算一樣：60 次、種子 11
+    const sm = tgAct.length ? RaidSim.simMean({ ...baseOpt(deckAct), targets: tgAct, seed: 11 }, 60, P) : null;
+    let exp = sm ? sm.total : null;
     // 打的部位剩下的血比期望還少：打完部位就破了，多的打不出來（期望不能超過目標部位剩下的血）
     const hpOf = (tg) => env.hp ? tg.reduce((x, l) => x + (Number(env.hp[l]) || 0), 0) : Infinity;
-    if (exp != null && env.hp) exp = Math.min(exp, Math.max(hpOf(tgAct), a.totalDamage));
+    const cap = env.hp && tgAct.length ? Math.round(Math.max(hpOf(tgAct), a.totalDamage)) : null;
+    if (exp != null && cap != null) exp = Math.min(exp, cap);
+    const by = sm ? Object.fromEntries(Object.entries(sm.by || {}).filter(([, x]) => x > 0).map(([c, x]) => [c, Math.round(x)])) : null, tTap = sm ? Math.round(sm.tap) : null;
     // b：打之前的部位狀態（8 個部位各一個字母：A 盔甲、a 詛咒甲、B 肉體、S 骨架、X 禁打、x 禁打的詛咒甲），c：詛咒；網頁算「配卡」用
     const b = LOCS.map(l => { const x = env.board[l] || { layer: 'armor' }; return x.layer === 'banned' ? (x.cursed ? 'x' : 'X') : x.layer === 'armor' ? (x.cursed ? 'a' : 'A') : x.layer === 'body' ? 'B' : 'S'; }).join('');
     const c = env.curse ? [env.curse.type, env.curse.per] : null;
+    const u = LOCS.map(l => { const x = env.board[l] || {}; return x.layer !== 'banned' ? '-' : x.under === 'body' ? 'B' : x.under === 'skeleton' ? 'S' : 'A'; }).join('');   // 禁打部位實際的狀態（帶刺的晨星、瘋狂無效、凱旋行軍會算）
     const h = env.hp ? LOCS.map(l => Math.round((Number(env.hp[l]) || 0) / 1e6)) : null;   // 每個部位剩多少血（百萬），網頁算配卡用
-    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, tg: tgAct, b, c, h, v: 2 };   // v2：模擬器含瘟疫＋無效、電擊＋沙、整組修正（網頁看到 v2 就不再補修正）   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
+    if (!deps.withBest) return { exp: exp ? Math.round(exp) : null, t: tTap, by, cap, tg: tgAct, b, u, c, h, v: SIM_VER };   // v2：模擬器含瘟疫＋無效、電擊＋沙、整組修正（網頁看到 v2 就不再補修正）   // 配卡太花 CPU（一刀約 4,000 次模擬），伺服器只算打法；配卡在網頁展開玩家時才算
     // 配卡：他能用的牌組（這一輪之前用過的卡不能用）
     const season = seasonBonus(sessionAttacks, byCode);
     const lv = {}; (p.cards || []).forEach(c => { const l = baseLevel(p, c.skill_name); if (l > 0) lv[c.skill_name] = l + (season[c.skill_name] || 0); });
@@ -126,7 +133,7 @@ function createSimExp(deps) {
         const job = queue.shift();
         try {
           const key = attackDedupKey(job.a);
-          if (results.has(key) && results.get(key).h) continue;
+          if (results.has(key) && results.get(key).v >= SIM_VER) continue;
           const sessionAttacks = deps.withBest ? (await getAllAttacks()).filter(x => x.raidStartedAt === job.a.raidStartedAt) : [];
           const r = await compute(job.a, job.env, sessionAttacks);
           if (!r) continue;
@@ -142,7 +149,7 @@ function createSimExp(deps) {
   function enqueue(a, env) {
     try {
       const key = attackDedupKey(a);
-      if (!env || (results.has(key) && results.get(key).h) || queued.has(key)) return;
+      if (!env || (results.has(key) && results.get(key).v >= SIM_VER) || queued.has(key)) return;
       queued.add(key); queue.push({ a, env }); setImmediate(worker);
     } catch (e) {}
   }
@@ -160,7 +167,7 @@ function createSimExp(deps) {
       const bans = (bansByName && bansByName[name]) || [];
       const board = {};
       Object.entries(t.p).forEach(([l, e]) => {
-        if (bans.includes(l)) board[l] = { layer: 'banned', cursed: !!(e[3] && st[l][0] > 0) };
+        if (bans.includes(l)) board[l] = { layer: 'banned', cursed: !!(e[3] && st[l][0] > 0), under: st[l][0] > 0 ? 'armor' : st[l][1] > 0 ? 'body' : 'skeleton' };
         else if (st[l][0] > 0) board[l] = { layer: 'armor', cursed: !!e[3] };
         else if (st[l][1] > 0) board[l] = { layer: 'body' };
         else board[l] = { layer: 'skeleton' };
@@ -169,7 +176,7 @@ function createSimExp(deps) {
       const curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
       const old = results.get(attackDedupKey(a));
       const hp = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, Math.max(0, v[0]) + Math.max(0, v[1])]));
-      if (!old || !old.h) { enqueue(a, { ...env0, board, curse, hp }); n++; }
+      if (!old || !(old.v >= SIM_VER)) { enqueue(a, { ...env0, board, curse, hp }); n++; }   // 舊版（v2）的這一場全部用新版重算
       (a.parts || []).forEach(p => { if (st[p.part]) st[p.part][p.layer === 'armor' ? 0 : 1] -= Number(p.damage) || 0; });
     }
     return n;

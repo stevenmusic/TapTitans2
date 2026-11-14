@@ -6,7 +6,9 @@ const isHead = (l) => l === 'Head', isTorso = (l) => l === 'ChestUpper';
 const isLimb = (l) => !isHead(l) && !isTorso(l);
 const isArm = (l) => /^Arm|^Hand/.test(l), isLeg = (l) => /^Leg/.test(l);
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
-function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+const LOC_I = Object.fromEntries(LOCS.map((l, i) => [l, i])), KIND_I = { tap: 0, burst: 1, aff: 2 };
+// 亂數：種子先打散（xorshift 直接吃 1000、1001… 這種連號的小數字，前面幾百個數字會偏，整批結果差到 5%）
+function rng(seed) { let s = seed >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = (s ^ (s >>> 16)) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
 const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, cbSands1: 0.68, cbSands4: 1.85, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, burstJitter: 0.9, k: {} };
@@ -28,10 +30,14 @@ function simAttack(opt, P = P0) {
   const board = opt.board, buff = opt.buff || {};
   const targets = (opt.targets && opt.targets.length) ? opt.targets : LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton');
   const layerOf = (l) => board[l] ? board[l].layer : 'body';
-  const cursedOpen = () => LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length;
-  const nBody = LOCS.filter(l => board[l] && board[l].layer === 'body').length;
-  const nSkel = LOCS.filter(l => board[l] && board[l].layer === 'skeleton').length;
-  const nArmor = LOCS.filter(l => board[l] && board[l].layer === 'armor').length;
+  const cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面一刀內不變：算一次
+  const openN = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length;
+  // 禁打只是公會標記：遊戲照部位實際的狀態數（under），帶刺的晨星、瘋狂無效、凱旋行軍都算進去
+  // （M-46：打肉體、盤面 0 盔甲但禁打的頭還有盔甲，帶刺的晨星實際 1.15～1.30 倍＝1＋0.15×禁打部位數）
+  const realLayer = (l) => board[l] ? (board[l].layer === 'banned' ? board[l].under : board[l].layer) : null;
+  const nBody = LOCS.filter(l => realLayer(l) === 'body').length;
+  const nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length;
+  const nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
   const hasBurstCard = deck.some(([id]) => SK[id].cat === 'Burst'), hasAffCard = deck.some(([id]) => SK[id].cat === 'Affliction');
   const dt = opt.dur / opt.taps;
   const out = { tap: 0, by: {} }; deck.forEach(([id]) => { out.by[id] = 0; });
@@ -46,12 +52,15 @@ function simAttack(opt, P = P0) {
   };
   // 苦痛層：stacks[loc][id] = [{ end, start }]
   const stacks = {}; LOCS.forEach(l => { stacks[l] = {}; });
-  const liveCount = (l, id, t) => (stacks[l][id] || []).filter(s => s.end > t).length;
-  const afflictedParts = (t) => LOCS.filter(l => Object.keys(stacks[l]).some(id => liveCount(l, id, t) > 0)).length;
+  const liveCount = (l, id, t) => { const a = stacks[l][id]; if (!a) return 0; let n = 0; for (let i = 0; i < a.length; i++) if (a[i].end > t) n++; return n; };   // 不建新陣列（效能）
+  const afflictedParts = (t) => { let n = 0; for (const l of LOCS) { for (const id in stacks[l]) if (liveCount(l, id, t) > 0) { n++; break; } } return n; };
   const diseaseSince = {};
   const weakenEnd = {}; LOCS.forEach(l => { weakenEnd[l] = -1; });
   // 支援、加成：回傳這一下打在 loc 的倍率
-  const mult = (kind, loc, t, self) => {
+  const multRaw = (kind, loc, t, self) => {
+    // 圖騰之力的精靈只出現在一個部位：同時打好幾個部位時，精靈的額外加成只有第一個部位有（基本加成照算）（攻擊紀錄：帶圖騰打兩個部位只有單打的 7 成左右）
+    // 只打一個部位時，防空高砲彈射、瘟疫擴散到其他部位的傷害也不在精靈那個部位，不吃圖騰加成（快來加入！防空高砲＋先祖加護＋圖騰之力：模擬 865M、實際約 685M）
+    const totemHere = has.has('TotemFairySkill') && (!P.totemOnePart || !opt.targets || !opt.targets.length || loc === opt.targets[0]);
     const layer = layerOf(loc);
     const parts = [];
     const add = (v) => parts.push(v);
@@ -77,9 +86,9 @@ function simAttack(opt, P = P0) {
     const addB = (v) => { if (P.boostAdd) parts.push(v); else boost *= 1 + v; };
     if (has.has('Weaken') && weakenEnd[loc] > t) addB(1.439 * A('Weaken', effLv('Weaken', t, loc)));
     if (has.has('RuneAttack')) { const n = liveCount(loc, 'RuneAttack', t) - (self === 'RuneAttack' && !P.runeSelf ? 1 : 0); if (n > 0) addB(3.421 * A('RuneAttack', effLv('RuneAttack', t, loc)) * n); }
-    const totemA = has.has('TotemFairySkill') ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
-    const totemX = has.has('TotemFairySkill') && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
-    if (has.has('TotemFairySkill') && P.totemExtra && P.totemMode === 'add') parts.push(((0.55 + 0.25 * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
+    const totemA = totemHere ? A('TotemFairySkill', effLv('TotemFairySkill', t, loc)) : 0;
+    const totemX = totemHere && P.totemExtra && P.totemMode !== 'add' ? 1.55 + 0.25 * totemA : 1;
+    if (totemHere && P.totemExtra && P.totemMode === 'add') parts.push((((P.totemC0 != null ? P.totemC0 : 0.55) + (P.totemC1 != null ? P.totemC1 : 0.25) * totemA) * (1 + totemA) * (P.totemAddC || 1) + totemA) * totemLuck - totemA);   // 精靈隨機出現：這一刀的圖騰效果×(精靈數／平均)
     let m = totemX * (P.additive ? 1 + parts.reduce((a, b) => a + b, 0) : parts.reduce((a, b) => a * (1 + b), 1)) * boost;
     // 場次加成
     if (kind === 'burst' && buff.burstDamage) m *= 1 + buff.burstDamage;
@@ -97,18 +106,30 @@ function simAttack(opt, P = P0) {
     if (nc) m *= (1 + (layer === 'armor' ? nc.armor : nc.body)) * (1 + (isHead(loc) ? nc.head : isTorso(loc) ? nc.chest : nc.limb)) * (1 + nc.enemy);
     return m;
   };
+  // 倍率只跟這幾件事有關：種類、部位、虛弱有沒有在、這個部位的漩渦層數、放大層數（一刀之內其他都固定）→ 同樣條件只算一次（結果完全一樣，效能）
+  const multMemo = new Map(), hasWeaken = has.has('Weaken'), hasRune = has.has('RuneAttack'), hasPotion = has.has('MagicPotion');
+  const mult = (kind, loc, t, self) => {
+    const key = (((((KIND_I[kind] * 8 + LOC_I[loc]) * 2 + (hasWeaken && weakenEnd[loc] > t ? 1 : 0)) * 64 + (hasRune ? liveCount(loc, 'RuneAttack', t) : 0)) * 2 + (hasRune && self === 'RuneAttack' && !P.runeSelf ? 1 : 0)) * 64) + (hasPotion ? liveCount(loc, 'MagicPotion', t) : 0);   // 數字當索引（比字串快）
+    let v = multMemo.get(key);
+    if (v === undefined) { v = multRaw(kind, loc, t, self); multMemo.set(key, v); }
+    return v;
+  };
   let burstChanceMult = (has.has('BurstBoost') ? 1.3 : 1) * (has.has('ExecutionersAxe') ? 1.1 : 1) * (1 + (buff.burstChance || 0));
-  let affChanceMult = (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1) * (1 + (buff.affChance || 0));
+  // 苦痛觸發機率加成：變質氣體 ×1.3、靈魂之火 ×1.1 同時帶時只取最高（P.affChanceMax；攻擊紀錄：兩張都帶時毀了雨、電擊都比只帶變質氣體少約 9%＝1.3÷1.43）
+  let affChanceMult = (P.affChanceMax ? Math.max(has.has('MentalFocus') ? 1.3 : 1, has.has('InnerTruth') ? 1.1 : 1) : (has.has('MentalFocus') ? 1.3 : 1) * (has.has('InnerTruth') ? 1.1 : 1)) * (1 + (buff.affChance || 0));
   let burstCount = 0, haymaker = 0, charge = 0, tapCount = 0;
   const acc = {}, thr = {};
   const hitHistory = [];
-  const addStack = (loc, id, t) => {
+  const addStack = (loc, id, t, inherit) => {
     const s = SK[id];
     let dur = s.dur;
-    if (has.has('SandsOfTime') && id !== 'SandsOfTime' && !(P.sandsSkip || []).includes(id) && liveCount(loc, 'SandsOfTime', t)) dur *= 2;
+    // 時間之沙（卡片說明：其他苦痛持續時間 +100%）：有時間之沙在的時候（P.sandsGlobal：任何部位），新套上的苦痛持續時間加倍，電擊也算；P.sandsNoExt：不回頭延長已經在的苦痛
+    // （M-44、M-46 帶沙 169 刀：整體誤差 0.217→0.073，電擊單打／多部位都 1.0，原本電擊＋沙漏的補丁拿掉）
+    const sandsOn = inherit || (P.sandsGlobal ? LOCS.some(l => liveCount(l, 'SandsOfTime', t)) : liveCount(loc, 'SandsOfTime', t));
+    if (has.has('SandsOfTime') && id !== 'SandsOfTime' && !(P.sandsSkip || []).includes(id) && sandsOn && !P.sandsNoNew) dur *= (P.sandsMul || 2);
     const arr = (stacks[loc][id] || []).filter(x => x.end > t);
     if (id === 'SandsOfTime') { // 時間之沙：套上去時，這個部位其他苦痛延長
-      for (const o in stacks[loc]) if (o !== 'SandsOfTime') stacks[loc][o].forEach(x => { if (x.end > t) x.end += (x.end - t); });
+      if (!P.sandsNoExt) for (const l2 of (P.sandsGlobal ? LOCS : [loc])) for (const o in stacks[l2]) if (o !== 'SandsOfTime' && !(P.sandsExtSkip && o === 'CosmicBarb')) stacks[l2][o].forEach(x => { if (x.end > t) x.end += (x.end - t) * (P.sandsMul ? P.sandsMul - 1 : 1); });
     }
     if (id === 'PoisonAttack' || id === 'PowerBubble' || id === 'Fuse') arr.forEach(x => { x.end = t + dur; x.start = id === 'Fuse' ? x.start : x.start; });
     if (id === 'Fuse' && arr.length) { arr[0].end = t + dur; if (P.fuseReset) arr[0].start = t; stacks[loc][id] = arr; return; }
@@ -127,7 +148,7 @@ function simAttack(opt, P = P0) {
   const doTap = (i, loc, bonus) => {
     const t = i * dt;
     const layer = layerOf(loc);
-    out.tap += opt.tau * mult('tap', loc, t);
+    out.tap += opt.tau * mult('tap', loc, t) * (P.tapK || 1);   // tapK：網頁用攻擊紀錄滾動校正的點擊傷害係數
     tapCount++;
     if (!bonus) hitHistory.push(loc);
     const chMul = bonus ? 0.5 : 1;
@@ -137,9 +158,11 @@ function simAttack(opt, P = P0) {
       if (s.cat !== 'Burst') continue;
       let fire = false;
       if (id === 'Haymaker') { if (!bonus || P.haymakerBonus) { haymaker++; if (haymaker >= 70) { haymaker = 0; fire = true; } } }
-      else if (id === 'CelestialStatic') { if (isLimb(loc)) charge = Math.min(100, charge + 1); else if (charge >= 8) { charge -= 8; fire = true; } }
+      else if (id === 'CelestialStatic') { charge = Math.min(100, charge + 1); if (charge >= 8) { charge -= 8; fire = true; } }   // 每下點擊 +1 充能（不分部位），滿 8 放一次（攻擊紀錄：只打肚子、頭也有約 100M，舊的「只有四肢充能」會算成 0）
       else if (id === 'WhipOfLightning') { const n = P.whipStacks ? Object.keys(stacks[loc]).reduce((x, c) => x + liveCount(loc, c, t), 0) : P.whipOpen ? Math.max(afflictedParts(t), LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton').length) : afflictedParts(t); fire = R() < (0.02 + Math.min(0.10, 0.02 * n)) * burstChanceMult * chMul; }
-      else if (P.burstJitter != null && !bonus) {   // 觸發比較平均（類似保底）：累積機率，超過門檻才觸發，門檻在 1±jitter 之間隨機
+      // P.burstRandom（淨化爆裂）：真正隨機觸發（每下獨立機率）。規律觸發時苦痛平均只活半個間隔就被清掉，隨機觸發（無記憶性）平均活一整個間隔——
+      // 攻擊紀錄：強酸侵蝕 1.47→0.99、暴食蜂擁 1.66→1.21（再加係數）、淨化爆裂本身不變，不用補丁
+      else if (P.burstJitter != null && !bonus && !(P.burstRandom || []).includes(id)) {   // 觸發比較平均（類似保底）：累積機率，超過門檻才觸發，門檻在 1±jitter 之間隨機
         acc[id] = (acc[id] || 0) + s.ch * burstChanceMult;
         if (thr[id] == null) thr[id] = 1 + P.burstJitter * (2 * R() - 1) - R();   // 第一次的門檻：起點隨機
         if (acc[id] >= thr[id]) { acc[id] -= thr[id]; thr[id] = 1 + P.burstJitter * (2 * R() - 1); fire = true; }
@@ -174,8 +197,10 @@ function simAttack(opt, P = P0) {
       if (id === 'BurningAttack') ch += 0.02 * Math.min(6, LOCS.filter(l => liveCount(l, 'BurningAttack', t)).length);
       if (R() < ch * affChanceMult * chMul) {
         addStack(loc, id, t);
+        // 電擊（說明：對受影響的部位造成苦痛傷害）：P.cbAffected＝所有身上有苦痛的部位都套一層
+        if (id === 'CosmicBarb' && P.cbAffected) LOCS.forEach(l => { if (l !== loc && board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton' && Object.keys(stacks[l] || {}).some(c => c !== 'CosmicBarb' && liveCount(l, c, t))) addStack(l, id, t); });
         // 肆虐瘟疫擴散：同時傳到另一個隨機部位（禁打、骨架除外）
-        if (id === 'PlagueAttack' && P.plagueSpread && R() < (P.plagueSpreadP ?? 1)) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t); }
+        if (id === 'PlagueAttack' && P.plagueSpread && R() < (P.plagueSpreadP ?? 1)) { const o = LOCS.filter(x => x !== loc && board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); if (o.length) addStack(o[Math.floor(R() * o.length)], id, t, P.plagueSpreadInherit && liveCount(loc, 'SandsOfTime', t) > 0); }
       }
     }
   };
@@ -187,27 +212,27 @@ function simAttack(opt, P = P0) {
     const ap = afflictedParts(t);
     for (const l of LOCS) {
       for (const id in stacks[l]) {
-        const live = stacks[l][id].filter(x => x.end > t);
+        const liveN = liveCount(l, id, t);
         if (id === 'Fuse') { // 時間到才爆：已到期的爆開
           const done = stacks[l][id].filter(x => x.end <= t && !x.boom);
           done.forEach(x => { x.boom = true; const other = P.fuseStack ? Object.keys(stacks[l]).filter(c => c !== 'Fuse').reduce((n, c) => n + liveCount(l, c, t), 0) : 0; out.by.Fuse += P.aff * (P.k.Fuse || 1) * A('Fuse', effLv('Fuse', t, l)) * opt.tau * (1 + 0.5 * (x.end - x.start)) * (1 + (P.fuseStack || 0) * other) * mult('aff', l, t, 'Fuse'); });
           stacks[l][id] = stacks[l][id].filter(x => !x.boom);
           continue;
         }
-        if (!live.length || id === 'PowerBubble' && false) continue;
+        if (!liveN || id === 'PowerBubble' && false) continue;
         const lv = effLv(id, t, l);
         let m = 1;
-        if (id === 'Shadow') m = Math.pow(1.2, live.length);
+        if (id === 'Shadow') m = Math.pow(1.2, liveN);
         if (id === 'RuinousRust' && board[l] && board[l].cursed && board[l].layer === 'armor') m = 1.5;
         if (id === 'PlagueAttack') {
-          let n = P.plagueOpen ? Math.max(ap, LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton').length) : ap;
+          let n = P.plagueOpen ? Math.max(ap, openN) : ap;
           if (P.plagueMode === 'stacks') n = Object.keys(stacks[l]).reduce((x, c) => x + liveCount(l, c, t), 0);
           if (P.plagueMode === 'otherStacks') n = Object.keys(stacks[l]).filter(c => c !== 'PlagueAttack').reduce((x, c) => x + liveCount(l, c, t), 0) + ap;
           m = 1 + 0.1467 * Math.min(P.plagueCap || 6, n);
         }
         if (id === 'DecayingAttack') m = P.decayMissing;
         let dmg = 0;
-        if (id === 'Disease') dmg = live.length * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = live.length;
+        if (id === 'Disease') dmg = liveN * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = liveN;
         out.by[id] += P.aff * (P.k[id] || 1) * (id === 'CosmicBarb' && has.has('SandsOfTime') ? (targets.length === 1 ? (P.cbSands1 ?? 1) : targets.length >= 4 ? (P.cbSands4 ?? 1) : 1) : 1) * A(id, lv) * opt.tau * dmg * m * dt * mult('aff', l, t, id);
       }
     }
@@ -219,10 +244,13 @@ function simAttack(opt, P = P0) {
     const k = P.cbsK[third]; const f = k ? (targets.length === 1 ? k[0] : k[1]) : 1;
     if (f && f !== 1) { out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f; }
   }
-  // 肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.91 倍、5 個 1.07 倍、4 個以下 1.1 倍）
+  // （舊補丁，calibration 已拿掉 pcK：時間之沙改成「只延長已經在的苦痛、新套上的不加倍」後不需要）肆虐瘟疫＋瘋狂無效同一組：兩張卡單獨都準，一起用時照肉體部位數會偏（攻擊紀錄：肉體 6 個以上實際約 0.91 倍、5 個 1.07 倍、4 個以下 1.1 倍）
   if (P.pcK && has.has('PlagueAttack') && has.has('CrushingVoid')) {
     const nb = Math.min(6, LOCS.filter(x => board[x] && board[x].layer === 'body').length);
-    const f = P.pcK[nb] || 1;
+    // 瘟疫＋瘋狂無效：部位剛好 6 個（能打的全部是肉體、不多不少）就是最高傷害，原本的修正（肉體 6 個以上 0.91）在這時偏低
+    // （攻擊紀錄：肉體 6、能打的也只有 6 個：5 刀中位 1.08，Steven 11/12 重打兩次都約 1.09）
+    const nOpen = LOCS.filter(x => board[x] && (board[x].layer === 'armor' || board[x].layer === 'body')).length;
+    const f = (P.pcK[nb] || 1) * (nb >= 6 && nOpen === 6 ? (P.pc6 ?? 1.08) : 1);
     out.tap *= f; out.total *= f; for (const id in out.by) out.by[id] *= f;
   }
   // 整組修正：攻擊紀錄驗證過固定偏高／偏低的組合（至少 2 人、4 刀，偏差 7% 以上）

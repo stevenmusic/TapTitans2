@@ -1932,7 +1932,7 @@ function simEnvLive(ctx) {
   const board = {};
   Object.keys(ctx.layers).forEach(l => {
     const cursed = (ctx.cursedParts || []).includes(l) || !!(status[l] && status[l].cursed && status[l].armor > 0);
-    board[l] = bans.includes(l) ? { layer: 'banned', cursed } : { layer: ctx.layers[l], cursed };
+    board[l] = bans.includes(l) ? { layer: 'banned', cursed, under: ctx.layers[l] } : { layer: ctx.layers[l], cursed };   // 禁打部位實際的狀態（模擬器算帶刺的晨星等部位數用）
   });
   const c0 = ctx.curse && ctx.curse[0];
   const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;

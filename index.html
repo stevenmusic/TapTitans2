@@ -13686,7 +13686,8 @@
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
             // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
-            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            // 帶刺的晨星不套「其中一種只剩 1～2 個才能用」的使用規則：模擬器照部位數算加成，攻擊紀錄各種盤面都準（1.01～1.04），划不划算交給傷害決定
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar').ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
@@ -13762,7 +13763,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r46|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r47|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算

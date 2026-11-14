@@ -12756,7 +12756,7 @@
         // 重新計算時先顯示上一次的推薦（變淡、上面標「舊的推薦・重新計算中 x%」），算好再換掉，不會清空
         // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
         const raidRecoLast = new Map();
-        function raidRecoReuse(name, sig, used, n) {
+        function raidRecoReuse(name, sig, used, n, lvNow) {
             const L = raidRecoLast.get(name); if (!L || L.sig !== sig) return null;
             const now = new Set(used || []); let rows;
             if (n === L.n && now.size === L.used.size && [...L.used].every(c => now.has(c))) rows = L.rows;   // 他沒出刀（別人出刀、血量小變）
@@ -12770,7 +12770,9 @@
             rows.slice(0, RAID_ATTACKS_PER_CYCLE).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; }); });
             const P = (raidState && raidState.parts) || {};
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; });
-            return short ? null : rows;
+            if (short) return null;
+            if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) return null;   // 要沿用的組，卡片等級變了
+            return rows;
         }
         const raidLogRecoStale = new Map(), raidRecoWritten = new Map();   // raidRecoWritten：玩家 → 最後寫上畫面的是第幾次計算   // 玩家 → 上一次算好的內容（狀態變了、正在重算）
         function raidRecoStaleKeep(name) { const h = raidLogRecoHtml.get(name); if (h) raidLogRecoStale.set(name, h); }
@@ -12910,8 +12912,9 @@
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
-                    const reuseSig = JSON.stringify([raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player)]);
-                    const reuse = raidRecoReuse(r.player, reuseSig, info.used, n0);
+                    const reuseSig = JSON.stringify([raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
+                    const reuse = raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                       if (!reuse) {
                         if (hasVoid && sixNow && simPick) {
@@ -12932,7 +12935,7 @@
                             }
                         }
                       }
-                      if (simPick) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick });
+                      if (simPick) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow } });
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
@@ -13038,7 +13041,10 @@
         function raidDeckUsesMap() {
             const m = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), d.uses || 0]));
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa || !a.cards || a.cards.length !== 3) return; const k = a.cards.map(c => c.name || c).sort().join('+'); m.set(k, (m.get(k) || 0) + 1); });
+            // 伺服器的次數已經含這一場（每小時更新）：這一場另外數，兩個取大的，不要重複加（門檻 3 次時，這場打 2 次會被算成 4 次）
+            const cur = new Map();
+            (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder || a.raidStartedAt !== sa || !a.cards || a.cards.length !== 3) return; const k = a.cards.map(c => c.name || c).sort().join('+'); cur.set(k, (cur.get(k) || 0) + 1); });
+            cur.forEach((n, k) => { if (n > (m.get(k) || 0)) m.set(k, n); });
             return m;
         }
         let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false;   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組

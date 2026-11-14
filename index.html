@@ -12753,7 +12753,7 @@
             return html;
         }
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
-        // 重新計算時先顯示上一次的推薦（變淡、上面標「舊的推薦・重新計算中 x%」），算好再換掉，不會清空
+        // 重新計算時先顯示上一次的推薦（清楚顯示，上面標「舊的推薦・重新計算中 x%」、左邊橘色線），算好再換掉，不會清空
         // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
         const raidRecoLast = new Map();
         function raidRecoReuse(name, sig, used, n, lvNow) {
@@ -12779,7 +12779,7 @@
         function raidRecoStaleKeep(name) { const h = raidLogRecoHtml.get(name); if (h) raidLogRecoStale.set(name, h); }
         function raidRecoStaleHtml(name, pct) {
             const h = raidLogRecoStale.get(name); if (!h) return null;
-            return `<div data-prog data-stale="1" style="font-size:12px; font-weight:800; color:#b9770e; margin-bottom:4px;">舊的推薦・重新計算中 ${Math.max(1, pct || 1)}%</div><div style="opacity:.45; filter:grayscale(.6); pointer-events:none;">${h.replace(/^<!--[^>]*-->/, '')}</div>`;
+            return `<div data-prog data-stale="1" style="font-size:12px; font-weight:800; color:#b9770e; margin-bottom:4px;">舊的推薦・重新計算中 ${Math.max(1, pct || 1)}%</div><div style="border-left:3px solid #e0a040; padding-left:6px;">${h.replace(/^<!--[^>]*-->/, '')}</div>`;
         }
         const raidRecoProgText = (el, n) => { el.textContent = (el.dataset.stale ? '舊的推薦・重新計算中 ' : '計算中 ') + n + '%'; };
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
@@ -12843,7 +12843,7 @@
             if (raidLogRecoHtml.get(r.player) && !raidLogRecoHtml.get(r.player).startsWith(`<!--${sig0}-->`)) { raidRecoStaleKeep(r.player); raidLogRecoHtml.delete(r.player); }   // 狀態變了：舊的先留著顯示
             box.innerHTML = raidLogRecoHtml.get(r.player) || raidRecoStaleHtml(r.player, raidRecoProg.get(r.player) && raidRecoProg.get(r.player).shown) || raidRecoWrap(r, raidRecoProg.get(r.player) ? `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, raidRecoProg.get(r.player).shown)}%</div>` : '<div style="font-size:12px; color:#5a4a3a;">計算中 1%</div>');   // 重畫時接著顯示目前的進度，不閃回「計算中…」
             if (raidLogRecoHtml.get(r.player)) raidSimFillRecoDamage(r.player, box);
-            { const shown = raidLogRecoHtml.get(r.player);   // 顯示的是上次算好的、正在重算：0.4 秒還沒算好就變淡、標「舊的推薦・重新計算中」
+            { const shown = raidLogRecoHtml.get(r.player);   // 顯示的是上次算好的、正在重算：0.4 秒還沒算好就標「舊的推薦・重新計算中」
               if (shown) setTimeout(() => { if (raidRecoGen.get(r.player) !== gen || raidRecoWritten.get(r.player) === gen || !raidLogRecoOpen.has(r.player)) return; const bx = raidLogRecoBox(r.player); if (!bx) return; raidLogRecoStale.set(r.player, shown); bx.innerHTML = raidRecoStaleHtml(r.player, (raidRecoProg.get(r.player) || {}).shown); }, 400); }   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
@@ -13787,7 +13787,7 @@
             const capOf = (tg, est) => { const per = est / tg.length; return tg.reduce((t, k) => t + Math.min(per, left[k] || 0), 0); };
             pick.sort((a, b) => (b.raw || b.avg || 0) - (a.raw || a.avg || 0));
             pick.forEach(o => {
-                const raw0 = o.raw || o.avg;
+                const raw0 = o.raw || o.avg; o.preAvg = o.avg;
                 const alts = (o.alts && o.alts.length ? o.alts : [{ plan: o.plan, tg: o.tg, raw: raw0 }]);
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
@@ -13822,7 +13822,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r51|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r52|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13884,7 +13884,7 @@
                 return out;
             };
             // 留一組瘋狂無效等肉體多再打：瘋狂無效的組用「能打的部位全部變肉體」算，其他 n−1 組照現在的狀態，6 組合計最高（每一組瘋狂無效的候選都試，其他組照樣找最佳解）
-            let pick0, voidO = null, normalSum = null;
+            let pick0, voidO = null, normalSum = null, poolAll = null;   // poolAll：挑 6 組用的傷害表（被前面的組打掉部位、掉分的組，從這裡找替換）
             const VOID = 'CrushingVoid';
             if (info.voidMode && me.lv[VOID] > 0 && !used.has(VOID)) {
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
@@ -13899,7 +13899,7 @@
                 if (vpool0.length && RAID_SIM_SWAP_ON) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
                 const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(got.pool, phaseK));
-                const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
+                poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
                     const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
@@ -13908,7 +13908,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); pick0 = await raidSimPickPool(P, env, me, raidVerifyWeights(raidPhaseWeights(got.pool, phaseK)), n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = raidVerifyWeights(raidPhaseWeights(got.pool, phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -13949,6 +13949,25 @@
                 const jobs = re.map(o => ({ kind: 'f', base: raidSimBase(envOf(o), me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } }));
                 const fr = (await raidSimParallel(P, jobs)) || jobs.map((j, i) => raidSimFinal(P, envOf(re[i]), me, j.o));
                 re.forEach((o, i) => { const f = fr[i]; if (f) { const L = o.leftAt; o.avg = L ? raidSimCapParts(f.raw, L) : f.avg; o.lo = L ? raidSimCapParts(f.lo, L) : f.lo; o.hi = L ? raidSimCapParts(f.hi, L) : f.hi; o.raw = f.raw; } delete o.reFinal; });
+                pick.sort((a, b) => b.avg - a.avg);
+                // 最佳解：被前面的組打掉部位、掉分超過 5% 的組，換成其他牌組會不會更高——照「前面的組打完後」的盤面模擬卡片不重複的前 6 名，比較高就換
+                for (const g of pick.filter(o => o.hpAt && o.preAvg > 0 && o.avg < o.preAvg * 0.95)) {
+                    if (!poolAll) break;
+                    const usedC = new Set([...pick.filter(o => o !== g).flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
+                    const gs = g.cards.slice().sort().join('+');
+                    const cand = poolAll.filter(o => o.avg > 0 && !o.cards.some(c => usedC.has(c)) && o.cards.slice().sort().join('+') !== gs).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1)).slice(0, 6);
+                    let bestC = null;
+                    for (const c of cand) {
+                        const it = items.find(x => x.cards === c.cards || x.cards.join() === c.cards.join()); const pls = it && it.plans && it.plans.length ? it.plans : [{ tg: c.tg, label: c.plan }];
+                        const capPl = pls.map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (g.leftAll[k] || 0), 0) }));
+                        const base = raidSimBase(envOf(g), me, c.cards), sc = await raidSimParallel(P, [{ kind: 's', base, cards: c.cards, plans: capPl }]);
+                        const s0 = sc && sc[0]; if (!s0 || !s0.tg) continue;
+                        const ff = await raidSimParallel(P, [{ kind: 'f', base, o: s0 }]); const f = ff && ff[0]; if (!f) continue;
+                        const L = {}; f.tg.forEach(k => { L[k] = g.leftAll[k] || 0; }); const v = raidSimCapParts(f.raw, L);
+                        if (v * (c.selW || 1) > (bestC ? bestC.v * (bestC.c.selW || 1) : g.avg * (g.selW || 1))) bestC = { c, f, v, L };
+                    }
+                    if (bestC) { const { c, f, v, L } = bestC; Object.keys(g).forEach(k => delete g[k]); Object.assign(g, { ...c, ...f, cards: c.cards, tg: f.tg, plan: f.plan, avg: v, lo: raidSimCapParts(f.lo, L), hi: raidSimCapParts(f.hi, L), raw: f.raw, leftAt: L, swapped: true }); }
+                }
                 pick.sort((a, b) => b.avg - a.avg);
             }
             // 防呆：精算出來是 0（Worker 出錯或部位剩血算錯）就在主畫面重算一次，還是 0 就不推薦這組

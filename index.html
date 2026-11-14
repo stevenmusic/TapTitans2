@@ -12716,7 +12716,8 @@
             const bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((raidState.parts[k] || {}).armor) || 0) + Math.max(0, Number((raidState.parts[k] || {}).body) || 0);
             const open = Object.keys(raidState.parts).filter(k => !bn.includes(k) && hp(k) > 0), big = open.slice().sort((a, b) => hp(b) - hp(a))[0];
             const need = open.filter(k => k !== big).reduce((t, k) => t + hp(k), 0);
-            return { ok: left * avg >= need, left, dmg: left * avg, need };
+            const fv = raidFinViable();
+            return { ok: left * avg >= need && fv.ok, left, dmg: left * avg, need, bigLeft: fv.bigLeft, reserve: fv.reserve };
         }
         async function raidVoidTopHtml(r) {
             const VOID = 'CrushingVoid';
@@ -13754,7 +13755,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r41|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r42|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -14293,6 +14294,23 @@
             });
         }
         function raidPhaseLineHtml(env) { const ph = raidPhaseInfo(env); return ph && ph.line ? `<div style="font-size:12px; font-weight:800; color:#6b5a4a; margin:0 0 4px;">${ph.line}</div>` : ''; }
+        // 凱旋行軍可不可行：清完其他部位（變骨架）的時候，最厚的部位還剩不剩夠凱旋行軍打的血
+        //   大家打在最厚部位的比例 s（這隻王最近 100 刀）：清掉其他部位 X 的同時，最厚部位會被打掉 X×s÷(1−s)
+        //   （M-46 Klonk：肚子吃 51～62% 的傷害，清完其他 47B 時肚子會被打掉 50～75B，只剩 26.8B → 不可行）
+        function raidFinViable() {
+            if (!raidState || !raidState.parts) return { ok: false };
+            const P = raidState.parts, bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((P[k] || {}).armor) || 0) + Math.max(0, Number((P[k] || {}).body) || 0);
+            if (bn.length > 1) return { ok: false, why: 'banned' };
+            const open = Object.keys(P).filter(k => !bn.includes(k) && hp(k) > 0); if (open.length < 7) return { ok: false, why: 'parts' };
+            const big = open.slice().sort((a, b) => hp(b) - hp(a))[0], smallHp = open.filter(k => k !== big).reduce((t, k) => t + hp(k), 0);
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
+            const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.boss === raidState.bossName).sort((a, b) => b.ts - a.ts).slice(0, 100);
+            let tb = 0, tt = 0; L.forEach(a => (a.parts || []).forEach(x => { tt += x.damage || 0; if (x.part === big) tb += x.damage || 0; }));
+            const sh = L.length >= 20 && tt > 0 ? tb / tt : hp(big) / (hp(big) + smallHp);   // 這隻王刀數還少：先照血量比例
+            const g = raidPhaseGuild(), reserve = g.finLeft * g.finDmg;
+            const bigLeft = sh >= 0.99 ? -Infinity : hp(big) - smallHp * sh / (1 - sh);
+            return { ok: bigLeft >= reserve && reserve > 0, big, share: sh, bigLeft, reserve };
+        }
         function raidPhaseInfo(env) {
             if (!env || !env.board || !raidState || !raidState.parts) return null;
             const parts = raidState.parts, B = env.board, LOCS = Object.keys(B);
@@ -14302,7 +14320,7 @@
             const body = open.filter(k => B[k].layer === 'body'), armor = open.filter(k => B[k].layer === 'armor');
             const nSkel = LOCS.filter(k => B[k].layer === 'skeleton').length;
             const g = raidPhaseGuild();
-            const finOK = banned.length <= 1;   // 凱旋行軍要 6 骨架＋一個留著打的部位：禁打最多 1 個
+            const finOK = banned.length <= 1 && raidFinViable().ok;   // 凱旋行軍要 6 骨架＋一個留著打的部位（禁打最多 1 個），而且清完其他部位時最厚的部位還剩夠打的血
             const big = finOK ? open.slice().sort((a, b) => hpOf(b) - hpOf(a))[0] || null : null;
             const reserve = big ? g.finLeft * g.finDmg : 0;
             const cu = env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted') ? env.curse : null;

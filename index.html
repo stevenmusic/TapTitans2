@@ -12872,7 +12872,9 @@
                     //   估計這輪等不到 → 照一般推薦
                     const usedVoid = !!(info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid')));
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
-                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, voidLaterGo = hasVoid && !sixNow && !(vReach && !vReach.ok);
+                    const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
+                    // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, voidLaterGo = hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // 活著的部位 ≥6 才會先經過 6 肉體
                     let simPick; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                         if (hasVoid && sixNow && simPick) {
                             simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
@@ -12882,7 +12884,6 @@
                             }
                         }
                         // 凱旋行軍：適合的人（照他自己的卡片等級，留一組後整輪合計比較高）留一組，等 6 骨架打最厚的部位
-                        const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                         const finPref = raidRecoFinPref.has(r.player) ? raidRecoFinPref.get(r.player) : null;   // null＝自動
                         if (simPick && finPref !== false && n0 >= 2 && (raidBannedParts || []).length <= 1 && (finPref === true || (skel && skel.ok))) {
                             const F = await raidSimFinisherBest(r, info, data).catch(() => null);

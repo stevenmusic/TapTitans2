@@ -8070,7 +8070,7 @@
                 const seen = new Set(), all = [];
                 data.decks.filter(d => d.cards && d.cards.length === 3).sort((x, y) => (y.attacks || 0) - (x.attacks || 0)).forEach(d => {
                     const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return; seen.add(k);
-                    if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) || !playable(d.cards)) return;   // 這裡不扣用過的卡，挑的時候再扣
+                    if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c)) || !playable(d.cards)) return;   // 這裡不扣用過的卡，挑的時候再扣
                     const hp = hitParts(d.cards);
                     const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
                     if (pl.length) all.push({ cards: d.cards, plans: pl });
@@ -8167,7 +8167,7 @@
                         const { hitParts } = raidSimPartFns(scene);
                         const all = [];
                         if (!raidPickCands) raidPickCands = await raidSimCandidateDecks(await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff())));
-                        raidPickCands.filter(d => d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c))).forEach(d => {
+                        raidPickCands.filter(d => !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))).forEach(d => {
                             const hp = hitParts(d.cards); if (!hp.length) return;
                             const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
                             if (pl.length) all.push({ cards: d.cards, plans: pl });
@@ -12699,7 +12699,7 @@
             if (keys.filter(k => boardS[k].layer === 'skeleton').length < 6) return null;
             const envS = { ...env, board: boardS, curse: null }, sceneS = {}; keys.forEach(k => { sceneS[k] = boardS[k].layer; });
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
-            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(FIN) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fS.hitParts(d.cards).includes(big))
+            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(FIN) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && fS.hitParts(d.cards).includes(big))
                 .map(d => ({ cards: d.cards, plans: [{ tg: [big], label: '', cap: env.hp ? env.hp[big] : undefined }] }));
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -12735,7 +12735,7 @@
             const key = r.player + '|' + [...used].sort().join() + '|' + raidCalSig() + '|' + JSON.stringify(sceneF) + '|' + raidHpBuckets(env);
             if (raidVoidTopCache.has(key)) return raidVoidTopCache.get(key);
             const fF = raidSimPartFns(sceneF);
-            const vlist = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(VOID) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
+            const vlist = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(VOID) && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
                 const hp = fF.hitParts(d.cards), plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                 const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
             if (!vlist.length) return '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出瘋狂無效的牌組。</div>';
@@ -12839,7 +12839,7 @@
                     const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
                     const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
                     const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
-                    const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+                    const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
                     // 這位玩家的卡片等級（所有攻擊紀錄裡最近一次的）：跟公會中位數比，強的卡組合往前排
                     const [allLv] = await Promise.all([loadAllCardLevels(), cardCsvLoad()]);
                     const pLv = (allLv && allLv[r.player]) || {};
@@ -13197,7 +13197,7 @@
                         const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };
                         const { hitParts } = raidSimPartFns(scene);
                         const all = [];
-                        cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                        cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                         if (!all.length) continue;
                         const scr = async (m) => (await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || all.map(a => raidSimScreen(P, env, m, a.cards, a.plans));
                         const s0 = await scr(me), s1 = candIds.length ? await scr(meUp) : s0;
@@ -13688,7 +13688,7 @@
             // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
             // 帶刺的晨星不套「其中一種只剩 1～2 個才能用」的使用規則：模擬器照部位數算加成，攻擊紀錄各種盤面都準（1.01～1.04），划不划算交給傷害決定
             const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar').ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
-            const playable = (cards) => cards.every(n => !BY_PART_RECO_EXCLUDE.has(n)) && hitParts(cards).length > 0;
+            const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
         const raidSimPickInflight = new Map();
@@ -13763,7 +13763,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r47|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r48|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt;   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -13789,7 +13789,7 @@
             }
             const usesM = RAID_SIM_MIN_USES > 0 ? raidDeckUsesMap() : null, usedEnough = (cards) => !usesM || (usesM.get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES;
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => usedEnough(d.cards)).filter(d => {
-                return d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && playable(d.cards);
+                return !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(d.cards);
             });
             const list = [], extra = [];
             const build = (cards, E, hitF) => {
@@ -13799,7 +13799,7 @@
             };
             cands.forEach((d, i) => { const it = build(d.cards); if (it) (i < 40 ? list : extra).push(it); });
             // 沒人打過的組合也要算：前幾名的牌組，每張卡輪流換成手上其他能用的卡，全部模擬，高的加進候選
-            const avail = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c));
+            const avail = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c));
             const expand = async (pool, E, ok, hitF, keep, K, topN, round = 0, done = new Set()) => {
                 const sig = (c) => c.slice().sort().join('+'), seen = new Set(pool.map(o => sig(o.cards))), add = [];
                 // 換進來的卡只用有潛力的：每張卡在目前候選裡最好那組的傷害排名前 RAID_SIM_SWAP_CARDS 張（沒出現在任何候選的卡也試，因為可能從沒人打過）
@@ -13831,7 +13831,7 @@
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
                 const envF = { ...env, board: boardF }; const sceneF = {}; Object.keys(boardF).forEach(k => { sceneF[k] = boardF[k].layer; });
                 const fF = raidSimPartFns(sceneF);
-                const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && usedEnough(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
+                const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && usedEnough(d.cards) && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {
                     const hp = fF.hitParts(d.cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                     const pl2 = raidSimPlansFor(d.cards, plans); return pl2.length ? { cards: d.cards, plans: pl2 } : null; }).filter(Boolean);
                 let vpool0 = vlist.length ? await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20) : [];
@@ -14261,7 +14261,10 @@
         }
         // 攻擊紀錄裡最近幾場很少人打、沒辦法驗證準不準的組合
         const RAID_SIM_LOW_DATA = new Set(['BurstBoost+Fragmentize+SuperheatMetal', 'BurningAttack+TriangleSupport+Weaken', 'Haymaker+PowerBubble+TotemFairySkill', 'InnerTruth+MoonBeam+Shadow']);
-        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic', 'Haymaker']);   // 推薦不用天體靜態、宇宙激光（牌組頁照樣能算）   // 推薦不用天體靜態、宇宙激光（模擬已經準了，牌組頁照樣能算）
+        const RAID_SIM_EXCLUDE = new Set(['CelestialStatic']);   // 推薦不用天體靜態
+        // 不推薦的組合：宇宙激光＋圖騰之力（難打）；宇宙激光沒跟圖騰同一組就照常參加推薦（使用者 11/14 決定）
+        const RAID_SIM_DECK_BAN = [['Haymaker', 'TotemFairySkill']];
+        function raidSimDeckBanned(cards) { return RAID_SIM_DECK_BAN.some(b => b.every(c => cards.includes(c))); }
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
         function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
@@ -14757,7 +14760,7 @@
             const me = raidSimPlayer(v, morale, season);
             // 候配卡組：公會實際打過的牌組（前 15 名的統計），這個人三張卡都有、不含不推薦的卡
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff()));
-            const cands = (await raidSimCandidateDecks(data)).filter(d => d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c) && !BY_PART_RECO_EXCLUDE.has(c)));
+            const cands = (await raidSimCandidateDecks(data)).filter(d => !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c)));
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
             const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })));
@@ -15854,7 +15857,7 @@
                 const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: 0, buff: {}, extraSec: 0, morale: 0.3, season: {}, hp: null };
                 const { hitParts } = raidSimPartFns(scene);
                 const all = [];
-                cands.forEach(d => { if (!d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                 const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
                 const pick = await raidSimPickPool(P, env, me, pool, 6);
                 out.push([st.w, pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0]);

@@ -6,7 +6,7 @@ const RaidSim = require('./sim/raidsim');
 const CAL = require('./sim/calibration.json');
 // 跟網頁攻擊紀錄重算同一套：卡片係數用 calibration.json，整組修正（deckK）、點擊校正不在這裡乘——網頁拿每張卡的傷害（by）套最新的滾動校正
 const P = { ...RaidSim.P0, ...CAL, k: { ...(CAL.k || {}) }, deckK: {}, tapK: 1 };
-const SIM_VER = 3;   // v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
+const SIM_VER = 4;   // v4：模擬照打之前每個部位剩的盔甲／肉體（一刀之內破甲、打成骨架）；v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
 const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };
@@ -77,7 +77,7 @@ function createSimExp(deps) {
     const rl = Number(a.raidLevel) || Number(p.player_raid_level) || 0;
     const tau = 4.002 * Math.pow(rl, 0.884) * LOY[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))] * (1 + env.morale);
     const mirror = (Number(a.cycle) || 1) >= 2 ? 0.35 : 0;
-    const baseOpt = (deck) => { const drums = deck.some(d => d[0] === 'BattleDrums'); return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau, mirror, curse: env.curse, buff: env.buff, necro }; };
+    const baseOpt = (deck) => { const drums = deck.some(d => d[0] === 'BattleDrums'); return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau, mirror, curse: env.curse, buff: env.buff, necro, hp: env.hpAB || undefined }; };   // hp：打之前每個部位剩的盔甲、肉體（一刀之內破甲、打成骨架照實際算）
     // 打法：實際牌組、實際等級、實際打的部位
     const deckAct = a.cards.map(c => [c.name, Number(c.level) || 0]);
     const tgAct = inferTargets(a, env.board);
@@ -177,7 +177,8 @@ function createSimExp(deps) {
       const curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
       const old = results.get(attackDedupKey(a));
       const hp = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, Math.max(0, v[0]) + Math.max(0, v[1])]));
-      if (!old || !(old.v >= SIM_VER)) { enqueue(a, { ...env0, board, curse, hp }); n++; }   // 舊版（v2）的這一場全部用新版重算
+      const hpAB = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, [Math.max(0, v[0]), Math.max(0, v[1])]]));
+      if (!old || !(old.v >= SIM_VER)) { enqueue(a, { ...env0, board, curse, hp, hpAB }); n++; }   // 舊版（v2）的這一場全部用新版重算
       (a.parts || []).forEach(p => { if (st[p.part]) st[p.part][p.layer === 'armor' ? 0 : 1] -= Number(p.damage) || 0; });
     }
     return n;

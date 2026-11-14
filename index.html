@@ -14767,10 +14767,18 @@
                     <div style="text-align:right; white-space:nowrap;"><b style="font-size:13px;">${formatNumAlwaysM(o.avg)}</b><div style="font-size:12px; color:#8a7a6a;">${formatNumAlwaysM(o.lo)}～${formatNumAlwaysM(o.hi)}</div></div></div>`).join('')
                 + `<button class="tt-btn2" onclick="raidSimRecoRun(${escapeHtml(JSON.stringify(name)).replace(/"/g, '&quot;')})" style="font-size:12px; padding:5px 10px; margin-top:6px;">重新計算</button>`;
         }
+        // 帳號資料：先用名字找；改過名字（帳號資料 12 小時才更新一次）就用攻擊紀錄裡的玩家編號找，再不行用去掉前後符號的名字比
+        const raidAccountMemo = new Map(); let raidAccountMemoOf = null;
         function raidAccountInfo(name) {
             if (!raidClanData) return null;
-            for (const v of raidClanData.byCode.values()) if (v.raw && v.raw.name === name) return v;
-            return null;
+            if (raidAccountMemoOf !== raidClanData) { raidAccountMemo.clear(); raidAccountMemoOf = raidClanData; }
+            const hit = raidAccountMemo.get(name); if (hit) return hit;
+            let found = null;
+            for (const v of raidClanData.byCode.values()) if (v.raw && v.raw.name === name) { found = v; break; }
+            if (!found) { const log = Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []; for (let i = log.length - 1; i >= 0; i--) { const a = log[i]; if (a && a.player === name && a.playerCode && raidClanData.byCode.has(a.playerCode)) { found = raidClanData.byCode.get(a.playerCode); break; } } }
+            if (!found) { const norm = (x) => raidShortName(String(x || '')).replace(/^[.\s・·]+|[.\s・·]+$/g, ''); const n0 = norm(name); if (n0) for (const v of raidClanData.byCode.values()) if (v.raw && norm(v.raw.name) === n0) { found = v; break; } }
+            if (found) raidAccountMemo.set(name, found);
+            return found;
         }
         function raidAccountSummary(v) {
             const p = v.raw, t = p.raid_research_tree || {}, g = (k) => Number(t[k]) || 0;

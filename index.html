@@ -12754,6 +12754,24 @@
         }
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         // 重新計算時先顯示上一次的推薦（變淡、上面標「舊的推薦・重新計算中 x%」），算好再換掉，不會清空
+        // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
+        const raidRecoLast = new Map();
+        function raidRecoReuse(name, sig, used, n) {
+            const L = raidRecoLast.get(name); if (!L || L.sig !== sig) return null;
+            const now = new Set(used || []); let rows;
+            if (n === L.n && now.size === L.used.size && [...L.used].every(c => now.has(c))) rows = L.rows;   // 他沒出刀（別人出刀、血量小變）
+            else if (n === L.n - 1 && now.size === L.used.size + 3 && [...L.used].every(c => now.has(c))) {   // 他照推薦打了其中一組
+                const add = [...now].filter(c => !L.used.has(c)).sort().join('+');
+                const k = L.rows.findIndex(x => (x.rawCards || x.cards).slice().sort().join('+') === add); if (k < 0) return null;   // 打的不是推薦裡的組：重算
+                rows = L.rows.filter((x, i) => i !== k);
+            } else return null;
+            // 部位吃不吃得下：這一輪的組（前 6 組、不含留給之後的瘋狂無效／凱旋行軍）打同一個部位的加起來，超過部位剩的血 1 成以上就重算
+            const need = {};
+            rows.slice(0, RAID_ATTACKS_PER_CYCLE).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; }); });
+            const P = (raidState && raidState.parts) || {};
+            const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; });
+            return short ? null : rows;
+        }
         const raidLogRecoStale = new Map(), raidRecoWritten = new Map();   // raidRecoWritten：玩家 → 最後寫上畫面的是第幾次計算   // 玩家 → 上一次算好的內容（狀態變了、正在重算）
         function raidRecoStaleKeep(name) { const h = raidLogRecoHtml.get(name); if (h) raidLogRecoStale.set(name, h); }
         function raidRecoStaleHtml(name, pct) {
@@ -12889,7 +12907,13 @@
                     const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
                     const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, voidLaterGo = hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // 活著的部位 ≥6 才會先經過 6 肉體
-                    let simPick; try { simPick = await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
+                    // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
+                    //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
+                    //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
+                    const reuseSig = JSON.stringify([raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player)]);
+                    const reuse = raidRecoReuse(r.player, reuseSig, info.used, n0);
+                    let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
+                      if (!reuse) {
                         if (hasVoid && sixNow && simPick) {
                             simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
                             if (!simPick.some(x => x.voidTag)) {   // 一般推薦沒排到：強制排一組（照現在的盤面打）
@@ -12907,6 +12931,8 @@
                                 if (others && (finPref === true || sum(others) + F.avg >= sum(simPick))) simPick = others.concat([{ cards: byPartOrderCards(F.cards), rawCards: F.cards, targets: [{ part: F.big, layer: 'body', cursed: false }], allParts: false, simDmg: F, finLater: true }]);
                             }
                         }
+                      }
+                      if (simPick) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick });
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {

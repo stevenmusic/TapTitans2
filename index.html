@@ -13243,7 +13243,7 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
-        let CRYSTAL_RECO = true, CRYSTAL_RECO_ITER = 3, CRYSTAL_RECO_TOPN = 40, CRYSTAL_COUNT_N = 10, CRYSTAL_W_ALPHA = 0.5, CRYSTAL_FAST = true, CRYSTAL_FAST_STATES = 2, CRYSTAL_NOCAND_N = 0, CRYSTAL_LATEBUD = true, CRYSTAL_UPONLY = true, CRYSTAL_MULT_K = 2, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
+        let CRYSTAL_RECO_CACHE = true, CRYSTAL_RECO = true, CRYSTAL_RECO_ITER = 3, CRYSTAL_RECO_TOPN = 40, CRYSTAL_COUNT_N = 10, CRYSTAL_W_ALPHA = 0.5, CRYSTAL_FAST = true, CRYSTAL_FAST_STATES = 2, CRYSTAL_NOCAND_N = 0, CRYSTAL_LATEBUD = true, CRYSTAL_UPONLY = true, CRYSTAL_MULT_K = 2, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
         let CRYSTAL_TOPC_EXTRA = 2;   // 水晶：每個盤面每類試（格數＋幾）張卡
         let CRYSTAL_ROUGH_N = 200;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 80;   // 整輪分配會用到各盤面名次較後的牌組，名單短了會失準（30 最多少打 2.7%）
@@ -13350,13 +13350,26 @@
                     // 照推薦牌組：下一場每隻王最常見的盤面，用推薦牌組同一套方法各挑 6 組（現在等級、水晶全部升級各挑一次）
                     //   權重＝這張卡出現在這些推薦裡的比例 × 10；卡片＝推薦裡有這張卡的那一組，升級這張卡多打幾 %；分數＝卡片 × 權重
                     const ctxR = []; let totW = 0;
+                    // 跟 raidSimEvalPool（lite）一樣的篩法，只是記住算過的：同一個盤面、同一組卡、同樣等級，模擬結果一定一樣（固定亂數），不用重算
+                    const evalCached = async (env, m2, list, cache) => {
+                        const sig = (a) => a.cards.map(c => c + ':' + m2.lv[c]).join('|');
+                        const need = list.filter(a => !cache.scr.has(sig(a)));
+                        if (need.length) { const q = (await raidSimParallel(P, need.map(a => ({ kind: 's', base: raidSimBase(env, m2, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || need.map(a => raidSimScreen(P, env, m2, a.cards, a.plans)); need.forEach((a, i) => cache.scr.set(sig(a), q[i])); }
+                        const quick = list.map(a => cache.scr.get(sig(a)));
+                        const ord = quick.map((o, i) => i).sort((x, y) => quick[y].avg * raidSimDeckFactor(quick[y].cards) - quick[x].avg * raidSimDeckFactor(quick[x].cards));
+                        const sorted = ord.map(i => quick[i]), sigs = ord.map(i => sig(list[i]));
+                        const nTop = Math.min(sorted.length, CRYSTAL_RECO_TOPN || 80);
+                        const needF = []; for (let i = 0; i < nTop; i++) if (!cache.fin.has(sigs[i])) needF.push(i);
+                        if (needF.length) { const f = (await raidSimParallel(P, needF.map(i => ({ kind: 'f', base: raidSimBase(env, m2, sorted[i].cards), o: sorted[i], runs: 100 })))); needF.forEach((i, k) => cache.fin.set(sigs[i], f ? f[k] : raidSimFinal(P, env, m2, sorted[i]))); }
+                        return sorted.map((o, i) => i < nTop ? cache.fin.get(sigs[i]) : o);
+                    };
                     const tops = [];
                     for (const n of names) { const t = raid.titans.find(x => x.n === n); if (!t) continue;
                         const me = raidSimPlayer(v, 0.3, {}, { boss: n }); Object.keys(simLv).forEach(c => { me.lv[c] = simLv[c]; });
                         const c0 = t.c && t.c[0];
                         crystalStatesOf(t, crystalBansOf(raid, t)).slice().sort((a, b) => b.w - a.w).slice(0, CRYSTAL_FAST_STATES).forEach(st => tops.push({ n, t, me, c0, st })); }
-                    for (let qi = 0; qi < tops.length; qi++) { const { n, me, c0, st } = tops[qi];
-                        crystalUpRes[key] = busyAs(`計算下一場 ${Math.round(qi / tops.length * 80)}%`); renderCrystalReco();
+                    let doneQ = 0; crystalUpRes[key] = busyAs('計算下一場 5%'); renderCrystalReco();
+                    const ctxSlot = []; await Promise.all(tops.map(async (tq, qi) => { const { n, me, c0, st } = tq;   // 各盤面同時算（背景執行緒不會閒著）
                         const { board, scene } = st;
                         const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                         const plans = []; const add = (tg) => { if (tg.length && !plans.some(q => q.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
@@ -13365,11 +13378,14 @@
                         const { hitParts } = raidSimPartFns(scene);
                         const list = []; cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return;
                             const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) list.push({ cards: d.cards, plans: pl }); });
-                        if (!list.length) continue;
+                        if (!list.length) return;
                         const meUp = meWith(me, candIds), picks2 = {};
-                        for (const [k2, m2] of [['cur', me], ['up', meUp]]) { const pool = await raidSimEvalPool(P, env, m2, list, 6, null, CRYSTAL_RECO_TOPN, true); picks2[k2] = await raidSimPickPool(P, env, m2, pool, 6); }
-                        ctxR.push({ n, w: cnt(n) * st.w, env, me, list, picks: picks2, label: st.label }); totW += cnt(n) * st.w;
-                    }
+                        const cache = { scr: new Map(), fin: new Map() };
+                        for (const [k2, m2] of [['cur', me], ['up', meUp]]) { const pool = CRYSTAL_RECO_CACHE ? await evalCached(env, m2, list, cache) : await raidSimEvalPool(P, env, m2, list, 6, null, CRYSTAL_RECO_TOPN, true); picks2[k2] = await raidSimPickPool(P, env, m2, pool, 6); }
+                        ctxSlot[qi] = { n, w: cnt(n) * st.w, env, me, list, cache, picks: picks2, label: st.label };
+                        crystalUpRes[key] = busyAs(`計算下一場 ${Math.round(++doneQ / tops.length * 80)}%`); renderCrystalReco();
+                    }));
+                    ctxSlot.forEach(c => { if (c) { ctxR.push(c); totW += c.w; } });   // 照原本的順序
                     crystalUpRes[key] = busyAs('計算下一場 85%'); renderCrystalReco();
                     const freq = {}; ctxR.forEach(c => ['cur', 'up'].forEach(k2 => c.picks[k2].forEach(o => o.cards.forEach(id => { freq[id] = (freq[id] || 0) + c.w / 2; }))));
                     let freqS = null, Sfix = null;   // 收斂用：照這組水晶放法升級後重跑的推薦，放了的卡權重照它算
@@ -13397,7 +13413,8 @@
                     let Scur = choose();
                     for (let it = 0; it < CRYSTAL_RECO_ITER; it++) {
                         crystalUpRes[key] = busyAs(`計算下一場 ${88 + it * 4}%`); renderCrystalReco();
-                        const fq = {}; for (const c of ctxR) { const m2 = meWith(c.me, [...Scur]); const pool = await raidSimEvalPool(P, c.env, m2, c.list, 6, null, CRYSTAL_RECO_TOPN, true); c.picks.fin = await raidSimPickPool(P, c.env, m2, pool, 6); c.picks.fin.forEach(o => o.cards.forEach(id => { fq[id] = (fq[id] || 0) + c.w; })); }
+                        const fq = {}; await Promise.all(ctxR.map(async c => { const m2 = meWith(c.me, [...Scur]); const pool = CRYSTAL_RECO_CACHE ? await evalCached(c.env, m2, c.list, c.cache) : await raidSimEvalPool(P, c.env, m2, c.list, 6, null, CRYSTAL_RECO_TOPN, true); c.picks.fin = await raidSimPickPool(P, c.env, m2, pool, 6); }));
+                        ctxR.forEach(c => c.picks.fin.forEach(o => o.cards.forEach(id => { fq[id] = (fq[id] || 0) + c.w; })));
                         freqS = fq; Sfix = new Set(Scur);
                         const Snew = choose(); const same = Snew.size === Scur.size && [...Snew].every(x => Scur.has(x));
                         if (same || it === CRYSTAL_RECO_ITER - 1) break; Scur = Snew; freqS = null; Sfix = null;
@@ -15113,7 +15130,7 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
+                const n = window.RAID_SIM_WORKERS || Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // RAID_SIM_WORKERS：後台批次用滿全部核心   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
                     const w = new Worker('raid-sim/simworker.js?v=34');

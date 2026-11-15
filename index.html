@@ -13366,7 +13366,7 @@
                         });
                         const fr = await raidSimParallel(P, jobs.map(j => j.job));
                         jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, env, meWith(me, j.ids), j.job.o); j.d.val[j.k] = (r.avg || 0) * raidSimDeckFactor(j.d.cards); });
-                        ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label, bud: bud || null, alloc });
+                        ctxs.push({ w: cnt(n) * st.w, decks, n, label: st.label, bud: bud || null, alloc, env, all, s0, me });
                     }
                 }
                 // 一種放法的價值：每個情境挑 6 組卡片不重複、傷害最高的（貪心），照權重加總
@@ -13433,6 +13433,23 @@
                 const cardPct = (id, SS) => { let num = 0, den = 0; ctxs.forEach(c => pick6(c, SS).forEach(([d]) => { if (!d.kc.includes(id) || !SS.has(id)) return; const kin = d.kc.filter(x => SS.has(x)).sort().join('+'), kout = d.kc.filter(x => SS.has(x) && x !== id).sort().join('+'); const vi = d.val[kin], vo = d.val[kout]; if (vi > 0 && vo > 0) { num += c.w * (vi - vo); den += c.w * vo; } })); return den > 0 ? Math.round(num / den * 1000) / 10 : 0; };
                 Object.keys(picks).forEach(cat => picks[cat].forEach(x => { x.card = cardPct(x.id, S); }));
                 const outsCard = {}; Object.keys(outsG).forEach(cat => Object.keys(outsG[cat]).forEach(x => { const ins = (picks[cat] || []).filter(y => !curNow.has(y.id)).sort((a, b) => a.gain - b.gain); const y = (ins[0] || {}).id; const T = new Set(S); if (y) T.delete(y); T.add(x); (outsCard[cat] = outsCard[cat] || {})[x] = isCand.has(x) ? cardPct(x, T) : 0; }));
+                // 最佳 6 組沒用到的卡：照「有這張卡的最強一組」單升這張多打幾 %（已經精算過就直接用，沒有就補算）
+                const need = new Set(); Object.keys(picks).forEach(cat => picks[cat].forEach(x => { if (!(x.card > 0) && isCand.has(x.id)) need.add(x.id); })); Object.keys(outsCard).forEach(cat => Object.keys(outsCard[cat]).forEach(x => { if (!(outsCard[cat][x] > 0) && isCand.has(x)) need.add(x); }));
+                const anyPct = {};
+                if (need.size) {
+                    const acc = {}, jobs2 = [];
+                    need.forEach(id => ctxs.forEach(c => {
+                        const ds = c.decks.filter(d => d.kc.includes(id) && d.val[id] > 0 && d.val[''] > 0).sort((a, b) => b.val[id] - a.val[id]);
+                        if (ds.length) { (acc[id] = acc[id] || []).push([c.w, ds[0].val[id] / ds[0].val[''] - 1]); return; }
+                        let bi = -1, bv = 0; c.all.forEach((a, i) => { if (!a.cards.includes(id) || !c.s0[i] || !c.s0[i].tg) return; const v = c.s0[i].avg * raidSimDeckFactor(a.cards); if (v > bv) { bv = v; bi = i; } });
+                        if (bi < 0) return; const a = c.all[bi], o = c.s0[bi];
+                        jobs2.push({ id, w: c.w, env: c.env, me: c.me, job: { kind: 'f', base: raidSimBase(c.env, c.me, a.cards), o, runs: CRYSTAL_RUNS } }, { id, w: c.w, up: true, job: { kind: 'f', base: raidSimBase(c.env, meWith(c.me, [id]), a.cards), o, runs: CRYSTAL_RUNS } });
+                    }));
+                    if (jobs2.length) { const fr = await raidSimParallel(P, jobs2.map(j => j.job)); for (let i = 0; i < jobs2.length; i += 2) { const r0 = fr ? fr[i] : raidSimFinal(P, jobs2[i].env, jobs2[i].me, jobs2[i].job.o), r1 = fr ? fr[i + 1] : raidSimFinal(P, jobs2[i].env, meWith(jobs2[i].me, [jobs2[i].id]), jobs2[i].job.o); const a0 = r0 && r0.avg, a1 = r1 && r1.avg; if (a0 > 0 && a1 > 0) (acc[jobs2[i].id] = acc[jobs2[i].id] || []).push([jobs2[i].w, a1 / a0 - 1]); } }
+                    Object.keys(acc).forEach(id => { const W = acc[id].reduce((t, x) => t + x[0], 0); anyPct[id] = W > 0 ? Math.round(acc[id].reduce((t, x) => t + x[0] * x[1], 0) / W * 1000) / 10 : 0; });
+                    Object.keys(picks).forEach(cat => picks[cat].forEach(x => { if (!(x.card > 0) && anyPct[x.id] > 0) x.card = anyPct[x.id]; }));
+                    Object.keys(outsCard).forEach(cat => Object.keys(outsCard[cat]).forEach(x => { if (!(outsCard[cat][x] > 0) && anyPct[x] > 0) outsCard[cat][x] = anyPct[x]; }));
+                }
                 // 下一場預計用幾次：照最後放法每個情境挑中的 6 組
                 const uses = {}; let steps = 0;
                 ctxs.forEach(c => { pick6(c, S).forEach(([d]) => d.cards.forEach(x => { uses[x] = (uses[x] || 0) + c.w; })); steps += c.w * 6; });
@@ -13510,7 +13527,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 22;   // 22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
+        const CRYSTAL_DATA_VER = 23;   // 23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
         const CRYSTAL_ALL_MIN_VER = 20;   // v20 沒有卡片差異，照樣顯示（只少卡片 %）   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
@@ -13535,7 +13552,8 @@
             }
         }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
-        function crystalHowTxt(card, dmg) { const r = Math.min(100, Math.round(dmg / card * 100)); return `這組 +${card}% × ${r < 1 ? '不到 1' : r}%`; }
+        function crystalTot(g, card) { if (g == null) return g; if (!(card > 0)) return g; return Math.round(Math.min(card, Math.max(g, card * 0.1)) * 10) / 10; }   // 整場＝這組 % × 出場比例，出場比例算在 10%～100%（再少用也當作 1 成）
+        function crystalHowTxt(card, dmg) { const r = Math.min(100, Math.max(10, Math.round(dmg / card * 100))); return `這組 +${card}% × ${r}%`; }
         function crystalHow(card, dmg) { return card > 0 && dmg >= 0.1 ? `<br><span style="font-size:10.5px; color:#8a7a6a;">${crystalHowTxt(card, dmg)}</span>` : ''; }
         function crystalPlanOf(p, up, logs, sessions) {
             const upUses = up && up.uses ? up.uses : null;
@@ -13557,7 +13575,7 @@
                     return { id, gain, use, mine: mine[id] || 0, nxt, score: gain * use };
                 }).filter(x => x.gain > 0 && x.use > 0).sort((a, b) => b.score - a.score || b.gain - a.gain);
                 // 有照牌組交叉比對的結果就用它（dmg＝這張拿掉，整場傷害少幾 %）
-                const pick = up && up.picks ? (up.picks[cat] || []).map(x => ({ id: x.id, gain: L - (own[x.id] || 0), nxt: upUses[x.id] || 0, mine: mine[x.id] || 0, dmg: x.gain, card: x.card })) : cands.slice(0, slots);
+                const pick = up && up.picks ? (up.picks[cat] || []).map(x => ({ id: x.id, gain: L - (own[x.id] || 0), nxt: upUses[x.id] || 0, mine: mine[x.id] || 0, dmg: crystalTot(x.gain, x.card), card: x.card })) : cands.slice(0, slots);
                 // 能升級的卡不夠填滿格子時：空出來的格子保留現在放的卡（放了也不虧），不要留空（時間之沙、強酸侵蝕除外）
                 if (up && up.picks && pick.length < slots) cur.forEach(b => { if (pick.length < slots && !pick.some(x => x.id === b.skill_name) && !CRYSTAL_SKIP.has(b.skill_name)) pick.push({ id: b.skill_name, gain: Math.max(0, L - (own[b.skill_name] || 0)), nxt: upUses[b.skill_name] || 0, mine: mine[b.skill_name] || 0, dmg: 0 }); });
                 const curIds = new Set(cur.map(b => b.skill_name)), pickIds = new Set(pick.map(x => x.id));
@@ -13818,7 +13836,7 @@
                         <span style="font-size:12px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${slots}格 Lv.${L}</span>
                         <span style="flex:1; min-width:0; text-align:right; font-size:12px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${status}</span>
                     </div>
-                    <div style="padding:5px 6px 6px; ${grid(slots)}">${cells}</div>${!waiting && pick.length && outs.length ? `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:0 8px 7px; font-size:12px; color:#c0392b; font-weight:800;">換掉${outs.map(b => { const g = (plan[cat].outG || {})[b.skill_name], cc = (plan[cat].outC || {})[b.skill_name]; return `<span style="display:inline-flex; align-items:center; gap:3px; color:#6b5a4a; font-weight:700;">${raidCardImage(b.skill_name) ? `<img src="${raidCardImage(b.skill_name)}" alt="" title="${escapeHtml(raidCardLabel(b.skill_name))}" style="width:26px; height:26px; border-radius:5px; display:block; opacity:.85;">` : ''}<span style="display:inline-flex; flex-direction:column; line-height:1.2;"><span>${escapeHtml(raidCardLabel(b.skill_name))}</span><span style="font-size:11.5px; color:#6b5a4a; font-weight:600; white-space:nowrap;">Lv.${own[b.skill_name] || 0}→${L}${g != null ? `｜整場 ${g < 0.1 ? '沒差' : `<b style="color:#2e7d32;">+${g}%</b>`}` : ''}${cc > 0 && g >= 0.1 ? `（${crystalHowTxt(cc, g)}）` : ''}</span></span></span>`; }).join('')}</div>` : ''}</div>`;
+                    <div style="padding:5px 6px 6px; ${grid(slots)}">${cells}</div>${!waiting && pick.length && outs.length ? `<div style="display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:0 8px 7px; font-size:12px; color:#c0392b; font-weight:800;">換掉${outs.map(b => { const cc = (plan[cat].outC || {})[b.skill_name], g = crystalTot((plan[cat].outG || {})[b.skill_name], cc); return `<span style="display:inline-flex; align-items:center; gap:3px; color:#6b5a4a; font-weight:700;">${raidCardImage(b.skill_name) ? `<img src="${raidCardImage(b.skill_name)}" alt="" title="${escapeHtml(raidCardLabel(b.skill_name))}" style="width:26px; height:26px; border-radius:5px; display:block; opacity:.85;">` : ''}<span style="display:inline-flex; flex-direction:column; line-height:1.2;"><span>${escapeHtml(raidCardLabel(b.skill_name))}</span><span style="font-size:11.5px; color:#6b5a4a; font-weight:600; white-space:nowrap;">Lv.${own[b.skill_name] || 0}→${L}${g != null ? `｜整場 ${g < 0.1 ? '沒差' : `<b style="color:#2e7d32;">+${g}%</b>`}` : ''}${cc > 0 && g >= 0.1 ? `（${crystalHowTxt(cc, g)}）` : ''}</span></span></span>`; }).join('')}</div>` : ''}</div>`;
             }).join('');
             let cseed = null; try { cseed = (ticketCalc && ticketCalc.seed) || await ticketSeedFetch(); } catch (e) {}
             const seedLvls = (cseed ? cseed.raids.filter(r => r.t === 9999).map(r => r.l) : []).sort((a, b) => a - b);
@@ -13833,7 +13851,7 @@
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}`;
             box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
-                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜半透明＝沒差｜整場＝升級後整場突襲多打幾 %｜這組＝有用到這張卡的牌組多打幾 %，× 後面是有幾 % 的刀會用到這種牌組（乘起來就是整場）（照每個人會打的最佳 6 組、公會常見盤面模擬）</div>`;
+                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜半透明＝沒差｜整場＝升級後整場突襲多打幾 %｜這組＝有用到這張卡的牌組多打幾 %，× 後面是有幾 % 的刀會用到這種牌組（最少算 10%，乘起來就是整場）（照每個人會打的最佳 6 組、公會常見盤面模擬）</div>`;
         }
         const RAID_CURSE_BREAKERS = new Set(['Fragmentize', 'RuinousRust']);   // 撼地破甲、毀了雨
         function raidSimPartFns(scene, loose) {

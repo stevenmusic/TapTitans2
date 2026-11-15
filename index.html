@@ -13303,9 +13303,12 @@
                 const me = raidSimPlayer(v, 0.3, {}, { boss: raid.seq[0] }); Object.keys(simLv || {}).forEach(c => { me.lv[c] = simLv[c]; });
                 const { buff, extraSec } = raidBuffsOfRaid(raid);
                 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
-                const pct = {}, deckShow = [];
+                const pct = {}, gainOf = {}, deckShow = [];
+                // 出場率換成 0.1～1（最常用＝1、最少用＝0.1，中間照比例）：出場率不會差上萬倍，等級差多、升級打得多的卡要能贏過只升一點點的熱門卡
+                const uv = Object.values(U.use).filter(x => x > 0), uMax = Math.max(...uv, 1e-9), uMin = Math.min(...uv, uMax);
+                const w = (id) => { const u = U.use[id] || 0; return u > 0 ? 0.1 + 0.9 * (uMax > uMin ? (u - uMin) / (uMax - uMin) : 1) : 0.1; };
                 for (const id of candIds) {
-                    const u = U.use[id] || 0; if (!(u > 0)) { pct[id] = 0; continue; }
+                    const u = U.use[id] || 0;
                     const rep = U.rep[id]; if (!rep || !rep.cards.every(c => me.lv[c] > 0)) { pct[id] = 0; continue; }
                     const board = {}; LOCS.forEach((l, k) => { const ch = (rep.b || 'BBBBBBBB')[k]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'S' ? { layer: 'skeleton' } : { layer: 'body' }; });
                     const tg = (rep.tg || []).filter(k => board[k] && (board[k].layer === 'armor' || board[k].layer === 'body')); const tgs = tg.length ? tg : LOCS.filter(k => board[k].layer === 'body' || board[k].layer === 'armor');
@@ -13313,12 +13316,12 @@
                     const sim = (m) => RaidSim.simMean({ ...raidSimBase(env, m, rep.cards), targets: tgs, seed: 0.999 }, 30, P).total;
                     const meUp = { ...me, lv: { ...me.lv, [id]: Math.max(me.lv[id] || 0, upLv(id)) } };
                     const b0 = sim(me), b1 = sim(meUp), g = b0 > 0 ? b1 / b0 - 1 : 0;
-                    pct[id] = Math.round(u * g * 1000) / 10;
+                    gainOf[id] = g; pct[id] = Math.round(g * 1000) / 10;   // 每張卡顯示：用到這張卡的那一刀，升到水晶等級多打幾 %
                     deckShow.push([rep.cards, Math.round(b1 / 1e6) / 1000, Math.round(g * 1000) / 10]);
                     await new Promise(r => setTimeout(r, 0));
                 }
                 const curNow = new Set((p.boosted_cards || []).map(b => b.skill_name));
-                const score = (id) => (U.use[id] || 0) * Math.max(0, slotInfo[crystalSkills[id].cat].L - (base[id] || 0));
+                const score = (id) => w(id) * (gainOf[id] || 0);   // 分數＝出場率權重（0.1～1）× 升到水晶等級那一刀多打幾 %（等級差越多、這張卡越吃等級，提升越多）
                 const picks = {}, S = new Set();
                 Object.keys(slotInfo).forEach(cat => {
                     const list = candIds.filter(id => crystalSkills[id].cat === cat && score(id) > 0).sort((a, b) => (score(b) * (curNow.has(b) ? 1.05 : 1)) - (score(a) * (curNow.has(a) ? 1.05 : 1)));   // 分數差 5% 內保留現在放的
@@ -13326,7 +13329,7 @@
                 });
                 const outsG = {}; Object.keys(slotInfo).forEach(cat => { [...curNow].filter(id => crystalSkills[id] && crystalSkills[id].cat === cat && !S.has(id)).forEach(id => { (outsG[cat] = outsG[cat] || {})[id] = isCand.has(id) ? (pct[id] || 0) : 0; }); });
                 const uses = {}; Object.keys(U.use).forEach(c => { uses[c] = Math.round(U.use[c] * 24 * 10) / 10; });   // 一場約 24 刀會用到幾次
-                const sum = (ids) => Math.round(ids.reduce((t, id) => t + (pct[id] || 0), 0) * 10) / 10;
+                const sum = (ids) => Math.round(ids.reduce((t, id) => t + (U.use[id] || 0) * (gainOf[id] || 0), 0) * 1000) / 10;   // 建議／現在：整場大約多打幾 %（出場率 × 那一刀多打幾 %）
                 const res = { ver: CRYSTAL_DATA_VER, method: 'usage', uses, picks, outsG, slotSig, decks: [{ n: '公會常用牌組（' + U.label + '，' + U.n + ' 刀）', label: '升到水晶等級那一刀多打幾 %', d: deckShow.sort((a, b) => b[2] - a[2]).slice(0, 12) }],
                     gain: sum([...S]), gainCur: sum([...curNow].filter(id => isCand.has(id))), lvl, seed: seed.valid_from, buffs: raid.buffs || [], seq: raid.seq };
                 crystalUpRes[key] = res; kvSet(kvKey, res);
@@ -13400,8 +13403,8 @@
         function crystalBanSig(raid) { return 'usage'; }   // 出場率法跟禁打無關：結果的名稱不再帶禁打（禁打改了也不用重算）
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 15;   // 15：改用出場率法（出場率×能升幾級）   // 14：候選牌組跟推薦一樣（打過 3 次以上）；13：盤面改用攻擊紀錄裡公會實際打過的常見狀態（照傷害比重）
-        const CRYSTAL_ALL_MIN_VER = 15;   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
+        const CRYSTAL_DATA_VER = 17;   // 16：出場率換成 0.1～1 的權重 × 升級多打幾 %；15：   // 15：改用出場率法（出場率×能升幾級）   // 14：候選牌組跟推薦一樣（打過 3 次以上）；13：盤面改用攻擊紀錄裡公會實際打過的常見狀態（照傷害比重）
+        const CRYSTAL_ALL_MIN_VER = 17;   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */
         const crystalBuffKey = (raid) => 'crystalbuff_' + ((raid.buffs || []).map(b => b[0] + '_' + Math.round((Number(b[1]) || 0) * 100)).sort().join('-') || 'none');
@@ -13721,7 +13724,7 @@
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}`;
             box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
-                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜半透明＝沒差｜%＝拿掉這張整場少打多少</div>`;
+                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜半透明＝沒差｜卡片的 %＝用到這張卡的那一刀，升到水晶等級多打幾 %｜上面的建議／現在＝整場大約多打幾 %（照公會同加成場次的出場率）</div>`;
         }
         const RAID_CURSE_BREAKERS = new Set(['Fragmentize', 'RuinousRust']);   // 撼地破甲、毀了雨
         function raidSimPartFns(scene, loose) {

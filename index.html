@@ -12621,8 +12621,7 @@
             let leftNow = Math.max(0, Math.round(per - doneNow)), nextAdd = Math.round(per);
             // 即時（不是回測）：用全公會這輪實際還剩幾刀＝這場有出過刀的每個人目前的剩餘次數加總；下一輪每人再多 6 刀
             if (!opt.now && Array.isArray(raidLogLastRanked) && raidLogLastRanked.length) {
-                let left = 0, active = 0;
-                raidLogLastRanked.forEach(r => { if (!r || !r.attacks || !r.attacks.some(a => a && a.raidStartedAt === sa)) return; const ci = raidPlayerCycleInfo(r.player, r.attacks); active++; left += Math.max(0, ci.remaining || 0); });
+                const { left, active } = raidGuildRoundLeft(sa);
                 if (active) { leftNow = left; nextAdd = active * RAID_ATTACKS_PER_CYCLE; }
             }
             const rec = L.slice().sort((a, b) => b.ts - a.ts).slice(0, 100), avg = rec.length ? rec.reduce((t, a) => t + (a.totalDamage || 0), 0) / rec.length : 0;
@@ -12753,12 +12752,24 @@
             return pool[0] ? { ...pool[0], big } : null;
         }
         // 這輪（或到下一輪結束）全公會剩下的傷害，夠不夠把最厚以外的部位清成骨架
+        // 全公會這一輪還剩幾刀：這場出過刀的人照各自剩幾刀；還沒出刀、但上一場有打的人當作這輪還有 6 刀（剛開打時大部分人都還沒出刀）
+        function raidGuildRoundLeft(sa) {
+            const prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
+            const prevWho = new Set(); const prevAtk = prevSa && sessionAttacksCache.get(prevSa);
+            if (prevSa && !prevAtk && !raidGuildRoundLeft.loading) { raidGuildRoundLeft.loading = true; ensureSessionAttacksLoaded(prevSa).catch(() => {}).finally(() => { raidGuildRoundLeft.loading = false; }); }   // 上一場的紀錄背景載入，下次就能排除上一場沒來打的人
+            [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...(prevAtk || [])].forEach(a => { if (a && !a.placeholder && a.raidStartedAt === prevSa) { if (a.playerCode) prevWho.add(a.playerCode); if (a.player) prevWho.add(a.player); } });
+            let left = 0, active = 0;
+            (raidLogLastRanked || []).forEach(r => { if (!r) return;
+                if (r.attacks && r.attacks.some(a => a && a.raidStartedAt === sa)) { active++; left += Math.max(0, raidPlayerCycleInfo(r.player, r.attacks).remaining || 0); return; }
+                const codes = (r.attacks || []).map(a => a && a.playerCode).filter(Boolean);
+                if (!prevWho.size || prevWho.has(r.player) || codes.some(c => prevWho.has(c))) { active++; left += RAID_ATTACKS_PER_CYCLE; } });
+            return { left, active };
+        }
         function raidSkelReach(nextRound) {
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts).slice(0, 100);
             const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0) || !raidState || !raidState.parts) return null;
-            let left = 0, active = 0;
-            (raidLogLastRanked || []).forEach(r => { if (!r || !r.attacks || !r.attacks.some(a => a && a.raidStartedAt === sa)) return; active++; left += Math.max(0, raidPlayerCycleInfo(r.player, r.attacks).remaining || 0); });
+            let { left, active } = raidGuildRoundLeft(sa);
             if (nextRound) left += active * RAID_ATTACKS_PER_CYCLE;
             const bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((raidState.parts[k] || {}).armor) || 0) + Math.max(0, Number((raidState.parts[k] || {}).body) || 0);
             const open = Object.keys(raidState.parts).filter(k => !bn.includes(k) && hp(k) > 0), big = open.slice().sort((a, b) => hp(b) - hp(a))[0];

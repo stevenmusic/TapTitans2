@@ -6,7 +6,7 @@
 //   POST /kv/:key  { data } → { ok, at }
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const MAX_BYTES = 512 * 1024;   // 單筆最多 512KB
-const MAX_KEYS = 300;           // 最多 300 個名稱
+const MAX_KEYS = 500;           // 最多 500 個名稱（滿了就刪最久沒更新的，新的一定寫得進去）
 const MIN_WRITE_MS = 2000;      // 同一個名稱 2 秒內只收一次寫入（避免很多人同時打開網頁一直覆寫）
 
 function createKvStore({ app, db, dbReady }) {
@@ -43,7 +43,10 @@ function createKvStore({ app, db, dbReady }) {
     const text = JSON.stringify(req.body.data);
     if (Buffer.byteLength(text) > MAX_BYTES) return res.status(413).json({ error: 'too large' });
     await ready;
-    if (!mem.has(key) && mem.size >= MAX_KEYS) return res.status(507).json({ error: 'too many keys' });
+    if (!mem.has(key) && mem.size >= MAX_KEYS) {   // 滿了：刪掉最久沒更新的那一筆（舊場次的水晶、推薦暫存），不再拒絕新的
+      let oldK = null, oldAt = Infinity; mem.forEach((v, k) => { if (v.at < oldAt) { oldAt = v.at; oldK = k; } });
+      if (oldK) { mem.delete(oldK); try { await db.execute({ sql: 'DELETE FROM kv_store WHERE key = ?', args: [oldK] }); } catch (e) { console.error('[kv] 刪除舊資料失敗:', e && e.message ? e.message : e); } }
+    }
     const now = Date.now();
     if (now - (lastWrite.get(key) || 0) < MIN_WRITE_MS) return res.status(429).json({ error: 'too fast' });
     lastWrite.set(key, now);

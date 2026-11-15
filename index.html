@@ -13227,7 +13227,7 @@
            放進水晶的卡，等級＝自己等級和水晶等級取高的。價值＝能提升幾級 × 他攻擊時用這張卡的次數（這場＋前一場攻擊紀錄）；
            自己用得少的，用全公會這場常用的程度補（權重低）。每一類照插槽數挑分數最高的 */
         const CRYSTAL_CAT = { Burst: '爆裂', Affliction: '苦痛', Support: '支援' };
-        const CRYSTAL_SKIP = new Set(['PoisonAttack', 'SandsOfTime']);   // 不放進突襲水晶的卡（強酸侵蝕、時間之沙）
+        const CRYSTAL_SKIP = new Set(['PoisonAttack', 'SandsOfTime', 'SpinalTap']);   // 不放進突襲水晶的卡（強酸侵蝕、時間之沙、骨骼粉碎）
         let crystalSkills = null, crystalPlayer = null;
         // 下一場會用到哪些卡：用這個人的卡片等級（自己等級＋賽季，不含水晶），對下一場每隻王（照禁打、詛咒、場次加成）
         // 每隻王打下來的各種部位狀態（全盔甲、拆一半、全肉體、收尾）各挑最好的 6 組，照要打的量加權，每張卡出現的比例 × 24 刀 ＝ 下一場預計用幾次
@@ -13390,23 +13390,8 @@
                     const freq = {}; ctxR.forEach(c => ['cur', 'up'].forEach(k2 => c.picks[k2].forEach(o => o.cards.forEach(id => { freq[id] = (freq[id] || 0) + c.w / 2; }))));
                     let freqS = null, Sfix = null;   // 收斂用：照這組水晶放法升級後重跑的推薦，放了的卡權重照它算
                     const uOf = (id) => totW > 0 ? ((freqS && Sfix.has(id) ? freqS[id] : freq[id]) || 0) / totW * 10 : 0;   // 0～10：每一輪都在推薦裡＝10
-                    // 卡片增傷：推薦裡有這張卡的那一組（先找全部升級時的推薦，沒有就用現在等級的推薦）
-                    const jobs = []; ctxR.forEach(c => candIds.forEach(id => { const o = c.picks.up.find(x => x.cards.includes(id)) || c.picks.cur.find(x => x.cards.includes(id)); if (!o) return; jobs.push({ id, w: c.w, o, env: c.env, me: c.me, n: c.n, label: c.label }); }));
-                    // 推薦裡都沒有的卡（權重 0）：卡片增傷照樣算，用自己最常搭的那一組（沒用過就用全公會最常見的），在用得到的盤面模擬
-                    { const inJobs = new Set(jobs.map(j => j.id)), miss = candIds.filter(id => !inJobs.has(id));
-                      if (miss.length) { const ru = await crystalRecentUsage(p).catch(() => null); let gu = null; try { gu = await crystalUsageOf(raid); } catch (e) {}
-                        const sj = [];
-                        miss.forEach(id => { const cards = (ru && ru.deck[id]) || (gu && gu.rep && gu.rep[id] && gu.rep[id].cards); if (!cards) return;
-                            const tryCtx = (loose) => ctxR.forEach(c => { if (!cards.every(x => c.me.lv[x] > 0)) return; const hp = raidSimPartFns(c.scene, loose).hitParts(cards); if (!hp.length) return;
-                                const pl = raidSimPlansFor(cards, c.env.plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) sj.push({ id, c, cards, pl }); });
-                            const before = sj.length; tryCtx(false); if (sj.length === before) tryCtx(true); });   // 一般盤面都用不到（例如要骨架 6 個）就放寬條件照算
-                        const sc = (await raidSimParallel(P, sj.map(j => ({ kind: 's', base: raidSimBase(j.c.env, meWith(j.c.me, [j.id]), j.cards), cards: j.cards, plans: j.pl, lite: true })))) || sj.map(j => raidSimScreen(P, j.c.env, meWith(j.c.me, [j.id]), j.cards, j.pl));
-                        sj.forEach((j, i) => { if (sc[i] && sc[i].tg) jobs.push({ id: j.id, w: j.c.w, o: sc[i], env: j.c.env, me: j.c.me, n: j.c.n, label: j.c.label }); }); } }
-                    const fj = jobs.flatMap(j => [{ kind: 'f', base: raidSimBase(j.env, j.me, j.o.cards), o: j.o, runs: CRYSTAL_RUNS }, { kind: 'f', base: raidSimBase(j.env, meWith(j.me, [j.id]), j.o.cards), o: j.o, runs: CRYSTAL_RUNS }]);
-                    const fr = (await raidSimParallel(P, fj)) || jobs.flatMap(j => [raidSimFinal(P, j.env, j.me, j.o), raidSimFinal(P, j.env, meWith(j.me, [j.id]), j.o)]);
-                    const acc = {}, repD = {};
-                    jobs.forEach((j, i) => { const a0 = fr[2 * i] && fr[2 * i].avg, a1 = fr[2 * i + 1] && fr[2 * i + 1].avg; if (!(a0 > 0 && a1 > 0)) return; const A = acc[j.id] = acc[j.id] || { num: 0, den: 0 }; A.num += j.w * (a1 - a0); A.den += j.w * a0; if (!repD[j.id] || j.w > repD[j.id].w) repD[j.id] = { w: j.w, cards: j.o.cards, b: a0, g: a1 / a0 - 1, n: j.n, label: j.label }; });
-                    const cardP = (id) => acc[id] && acc[id].den > 0 ? Math.round(acc[id].num / acc[id].den * 1000) / 10 : 0;
+                    // 卡片：查卡片屬性表，水晶等級比現在等級屬性多幾 %（不模擬，每張卡不到 1 毫秒）
+                    const cardP = (id) => { const a0 = RaidSim.A(id, simLv[id] || 0), a1 = RaidSim.A(id, upLv(id)); return a0 > 0 ? Math.round((a1 / a0 - 1) * 1000) / 10 : 0; };
                     const tot = (id) => Math.round(cardP(id) * uOf(id) * 10) / 10;
                     const curNow = new Set((p.boosted_cards || []).map(b => b.skill_name));
                     const byCat = {}; candIds.forEach(id => (byCat[crystalSkills[id].cat] = byCat[crystalSkills[id].cat] || []).push(id));
@@ -13820,7 +13805,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 34;   // 34：推薦裡沒有的卡也照算卡片增傷；33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
+        const CRYSTAL_DATA_VER = 35;   // 35：卡片改查屬性表（水晶等級比現在多幾 %）、骨骼粉碎排除；34：推薦裡沒有的卡也照算卡片增傷；33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
         const CRYSTAL_ALL_MIN_VER = 20;   // v20 沒有卡片差異，照樣顯示（只少卡片 %）   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */

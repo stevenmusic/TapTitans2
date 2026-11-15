@@ -12864,7 +12864,9 @@
                 }).join('')}
             </div>`;
             let html;
-            if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">攻擊次數已經用完。</div>';
+            const bossDead = raidState && typeof raidState.currentHp === 'number' && raidState.currentHp <= 0;   // 王已經打死（突襲結束、或等下一隻出來）：剩下的部位血量不能拿來推薦
+            if (bossDead) html = '<div style="font-size:12px; color:#8a7a6a;">這隻王已經打死了，推薦等下一隻王（或下一場突襲）出來再算。</div>';
+            else if (info.remaining <= 0) html = head + '<div style="font-size:12px; color:#8a7a6a;">攻擊次數已經用完。</div>';
             else {
                 const buff = raidSimActive ? simBuffKey() : currentSessionBuff();
                 const data = await loadByPartStats(byPartTop, byPartStatsGroup(buff));

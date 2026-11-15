@@ -13243,7 +13243,7 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
-        let CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
+        let CRYSTAL_LATEBUD = false, CRYSTAL_UPONLY = false, CRYSTAL_MULT_K = 3, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
         let CRYSTAL_TOPC_EXTRA = 2;   // 水晶：每個盤面每類試（格數＋幾）張卡
         let CRYSTAL_ROUGH_N = 60;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 30;   // 測過 30 和 40 結果幾乎一樣，30 快兩成
@@ -13326,7 +13326,16 @@
                         // 兩段篩：全部候選先粗算 1 次（升／不升水晶各一次），留前 CRYSTAL_ROUGH_N 名再照原本的篩法（候選跟推薦一樣完整，計算量少很多）
                         const rough = async (m) => await raidSimParallel(P, all.map(a => ({ kind: 'r', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans })));
                         let s0, s1;
-                        tp = Date.now(); const r0 = all.length > CRYSTAL_ROUGH_N ? await rough(me) : null, r1 = r0 && candIds.length ? await rough(meUp) : r0; lap('rough');
+                        tp = Date.now();
+                        if (CRYSTAL_UPONLY) {   // 只用「全部升級」篩：沒有候選卡的牌組升不升一樣，有候選卡的升了只會更強，不升那次用不到
+                            const r1 = all.length > CRYSTAL_ROUGH_N ? await rough(meUp) : null; lap('rough');
+                            if (r1) { const keep = all.map((a, i) => [i, (r1[i] ? r1[i].avg : 0) * raidSimDeckFactor(a.cards)]).sort((x, y) => y[1] - x[1]).slice(0, CRYSTAL_ROUGH_N).map(x => x[0]);
+                                const sub = keep.map(i => all[i]); const q1 = (await raidSimParallel(P, sub.map(a => ({ kind: 's', base: raidSimBase(env, meUp, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || sub.map(a => raidSimScreen(P, env, meUp, a.cards, a.plans));
+                                s1 = r1.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 }); keep.forEach((i, j) => { s1[i] = q1[j]; }); }
+                            else s1 = await scr(meUp);
+                            s0 = s1;
+                        } else {
+                        const r0 = all.length > CRYSTAL_ROUGH_N ? await rough(me) : null, r1 = r0 && candIds.length ? await rough(meUp) : r0; lap('rough');
                         if (r0 && r1) {
                             const keep = all.map((a, i) => [i, Math.max(r0[i] ? r0[i].avg : 0, r1[i] ? r1[i].avg : 0) * raidSimDeckFactor(a.cards)]).sort((x, y) => y[1] - x[1]).slice(0, CRYSTAL_ROUGH_N).map(x => x[0]);
                             const sub = keep.map(i => all[i]);
@@ -13335,13 +13344,14 @@
                             s0 = r0.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 }); s1 = r1.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 });   // 沒進細算的：分數壓低，不會被挑進前 30
                             keep.forEach((i, j) => { s0[i] = q0[j]; s1[i] = q1[j]; });
                         } else { s0 = await scr(me); s1 = candIds.length ? await scr(meUp) : s0; }
+                        }
                         lap('scr'); const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, CRYSTAL_SHORT_N).map(x => x[0]);
                         const short = [...new Set([...rank(s0), ...rank(s1)])];
                         // 部位份額（跟推薦牌組一樣）：這個狀態每個部位剩多少血，照血量比例分這個人 6 組的傷害；只打得到小部位（例如四肢）的牌組，
                         // 價值只算到那些部位分到的份額，超過的只算 3 成——不然會一直配打四肢的卡，實際上四肢很快就沒血了
                         const hp = {}; Object.keys(board).forEach(k => { const L = board[k].layer; hp[k] = L === 'armor' ? (Number(t.p[k][1]) || 0) : L === 'body' ? (Number(t.p[k][2]) || 0) : 0; });
                         const T0 = (() => { const used = new Set(); let t2 = 0, n2 = 0; s0.slice().sort((a, b) => b.avg - a.avg).forEach(o => { if (n2 >= 6 || o.cards.some(c => used.has(c))) return; o.cards.forEach(c => used.add(c)); t2 += o.avg; n2++; }); return t2; })();   // 6 組不撞卡的傷害加總
-                        const bud = raidSimBudgets({ open, hp }, T0);
+                        let bud = raidSimBudgets({ open, hp }, T0);
                         // alloc：x＝這組（某個升級組合）的傷害，R＝各部位還剩多少份額；照這組的各種打法挑份額內最多的，回傳價值和用掉的份額
                         const alloc = (o, x, R) => {
                             if (!bud) return { v: x, take: null };
@@ -13357,7 +13367,7 @@
                         // 加速（只在不用相乘估算時）：這個盤面每張候選卡「升級後最多讓某一組多打多少」，每一類只留前（格數＋2）張去試組合
                         const imp = {}; short.forEach(i => { const d0 = s0[i] ? s0[i].avg : 0, d1 = s1[i] ? s1[i].avg : 0; all[i].cards.forEach(c => { if (isCand.has(c)) imp[c] = Math.max(imp[c] || 0, d1 - d0); }); });
                         const topC = new Set(); Object.keys(slotInfo).forEach(cat => candIds.filter(id => crystalSkills[id].cat === cat).sort((a, b) => (imp[b] || 0) - (imp[a] || 0)).slice(0, slotInfo[cat].n + CRYSTAL_TOPC_EXTRA).forEach(id => topC.add(id)));
-                        pend.push({ st, all, s0, s1, short, env, bud: bud || null, alloc, topC });   // 精算等這隻王所有盤面都篩完再一起做
+                        pend.push({ st, all, s0, s1, short, env, bud: bud || null, alloc, topC, open, hp, setBud: (x) => { bud = x; } });   // 精算等這隻王所有盤面都篩完再一起做
                     }
                     // 這隻王各盤面的精算名單合併：每組在每個盤面都精算（整輪分配會把牌組排到它最適合的盤面，也可能排到別的盤面）
                     const dk = (cards) => cards.slice().sort().join('+');
@@ -13369,7 +13379,7 @@
                         const o = o0.alts ? o0 : { ...o0, avg: Math.min(o0.raw || o0.avg, o0.cap > 0 ? o0.cap : Infinity) };   // 只有初算的：分數不要打折
                         // 相乘估算：候選卡 3 張以上，只算「都不升」和「單升一張」，其他組合用單升的倍數相乘（不用跑全部 2^n 種）
                         const kc = a.cards.filter(c => isCand.has(c) && (CRYSTAL_MULT || q.topC.has(c)));
-                        const d = { cards: a.cards, kc, val: {}, o, mult: CRYSTAL_MULT && kc.length >= 3 }; q.decks.push(d);
+                        const d = { cards: a.cards, kc, val: {}, o, mult: CRYSTAL_MULT && kc.length >= CRYSTAL_MULT_K }; q.decks.push(d);
                         const subs = d.mult ? [[], ...kc.map(c => [c])] : [...Array(1 << kc.length).keys()].map(mask => kc.filter((c, b) => mask >> b & 1));
                         subs.forEach(ids => jobs.push({ q, d, ids, k: ids.slice().sort().join('+'), job: { kind: 'f', base: raidSimBase(q.env, meWith(me, ids), a.cards), o, runs: CRYSTAL_RUNS } }));
                     }); });
@@ -13377,6 +13387,10 @@
                     jobs.forEach((j, i) => { const r = fr ? fr[i] : raidSimFinal(P, j.q.env, meWith(me, j.ids), j.job.o); j.d.val[j.k] = (r.avg || 0) * raidSimDeckFactor(j.d.cards); });
                     pend.forEach(q => q.decks.forEach(d => { if (!d.mult) return; const v0 = d.val[''] || 0;
                         for (let mask = 0; mask < (1 << d.kc.length); mask++) { const ids = d.kc.filter((c, b) => mask >> b & 1); if (ids.length < 2) continue; d.val[ids.slice().sort().join('+')] = v0 > 0 ? ids.reduce((t, c) => t * (d.val[c] || v0) / v0, v0) : 0; } }));
+                    // 部位份額改用精算完「都不升」的 6 組（不撞卡）總傷害來分（比篩選的數字準，也不受篩選方式影響）
+                    if (CRYSTAL_LATEBUD) pend.forEach(q => { if (!q.bud) return; const used = new Set(); let t2 = 0, n2 = 0;
+                        q.decks.map(d => [d, d.val[''] || 0]).sort((x, y) => y[1] - x[1]).forEach(([d, v]) => { if (n2 >= 6 || d.cards.some(c => used.has(c))) return; d.cards.forEach(c => used.add(c)); t2 += v; n2++; });
+                        const nb = raidSimBudgets({ open: q.open, hp: q.hp }, t2); q.bud = nb || null; q.setBud(nb); });
                     pend.forEach(q => ctxs.push({ w: cnt(n) * q.st.w, decks: q.decks, n, label: q.st.label, bud: q.bud, alloc: q.alloc, env: q.env, all: q.all, s0: q.s0, me }));
                 }
                 // 一種放法的價值：每個情境挑 6 組卡片不重複、傷害最高的（貪心），照權重加總

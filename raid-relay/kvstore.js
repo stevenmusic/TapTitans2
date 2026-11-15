@@ -6,7 +6,7 @@
 //   POST /kv/:key  { data } → { ok, at }
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const MAX_BYTES = 512 * 1024;   // 單筆最多 512KB
-const MAX_KEYS = 500;           // 最多 500 個名稱（滿了就刪最久沒更新的，新的一定寫得進去）
+const MAX_KEYS = 300;           // 最多 300 個名稱（不再往上加：舊資料啟動時清掉；萬一還是滿了就刪最久沒更新的，新的一定寫得進去）
 const MIN_WRITE_MS = 2000;      // 同一個名稱 2 秒內只收一次寫入（避免很多人同時打開網頁一直覆寫）
 
 function createKvStore({ app, db, dbReady }) {

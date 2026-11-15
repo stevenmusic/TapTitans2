@@ -13228,7 +13228,7 @@
               if (e && e.ver === CRYSTAL_DATA_VER && crystalSlotClose(e.slotSig, slotSig)) { crystalUpRes[key] = { ...e, fromBuff: lib.buffLabel || true, seq: raid.seq, buffs: raid.buffs || [] }; renderCrystalReco(); return; } }
             try {
                 const P = await raidSimLoad();
-                const cands = await (async () => { const um = raidDeckUsesMap(); return (await raidSimCandidateDecks(null, false)).filter(d => (um.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES); })();   // 跟推薦一樣的候選（公會打過 3 次以上），不用快速模式的前 100 組（帶刺的晨星等牌組會被漏掉）
+                const cands = await raidSimCandsFull();   // 跟推薦一樣的候選（公會打過 3 次以上），不用快速模式的前 100 組（帶刺的晨星等牌組會被漏掉）
                 await crystalStatesLoad();   // 盤面照公會實際打過的（攻擊紀錄）
                 const buff = {}; let extraSec = 0;
                 (raid.buffs || []).forEach(([type, amt]) => { const a = Number(amt) || 0; if (type === 'BurstChance') buff.burstChance = a > 1 ? a - 1 : a; else if (type === 'AfflictedChance') buff.affChance = a > 1 ? a - 1 : a; else if (type === 'BurstDamage') buff.burstDamage = a; else if (type === 'AfflictedDamage') buff.affDamage = a; else if (type === 'AllRaidDamage') buff.all = a; else if (type === 'SupportEffect' || type === 'SupportDamage') buff.supportEffect = a; else if (type === 'RaidAttackDuration') extraSec = a; });
@@ -15927,9 +15927,18 @@
             renderTicketCalc();
         }
         /* 依傷害效率確認禁打：只看血量會叫你多禁（例如 Klonk 禁 5 個只剩 3 個部位），但部位太少瘋狂無效、瘟疫、防空高砲、凱旋行軍都用不了，每刀打得少。
-           每種候選禁法用標準玩家模擬最好的 6 組牌組（全盔甲、拆一半、全肉體、收尾各狀態照要打的量加權平均），有效血量 ÷ 每刀平均 ＝ 大約幾刀，刀數最少的最好。
-           候選：打得死的禁法裡有效血量最少的 6 種，加上不禁、只禁一個部位；算好的存伺服器暫存，全公會只算一次 */
+           每種候選禁法用標準玩家模擬最好的 6 組牌組（全盔甲、拆一半〔詛咒甲先拆、再拆厚的〕、全肉體、收尾），每個狀態「這段要打的血 ÷ 這段每刀平均」加起來＝大約幾刀，刀數最少的最好。
+           模擬照這一關的場次加成、鏡子力（一場平均）、詛咒（只在模擬裡算一次，不再另外換算有效血量），候選牌組跟推薦一樣（打過 3 次以上）。
+           候選禁法：打得死的禁法裡有效血量最少的 10 種，加上不禁、只禁一個部位；算好的存伺服器暫存（v3），全公會只算一次 */
         const ticketBanEvalRes = {};   // `${週}|${關}|${王}` -> { busy, rows, best }
+        // 場次加成（seed 的 area_buffs）→ 模擬用的 buff／多幾秒（水晶、禁打共用）
+        function raidBuffsOfRaid(raid) {
+            const buff = {}; let extraSec = 0;
+            (raid.buffs || []).forEach(([type, amt]) => { const a = Number(amt) || 0; if (type === 'BurstChance') buff.burstChance = a > 1 ? a - 1 : a; else if (type === 'AfflictedChance') buff.affChance = a > 1 ? a - 1 : a; else if (type === 'BurstDamage') buff.burstDamage = a; else if (type === 'AfflictedDamage') buff.affDamage = a; else if (type === 'AllRaidDamage') buff.all = a; else if (type === 'SupportEffect' || type === 'SupportDamage') buff.supportEffect = a; else if (type === 'RaidAttackDuration') extraSec = a; });
+            return { buff, extraSec };
+        }
+        // 跟推薦一樣的候選牌組：公會打過 RAID_SIM_MIN_USES 次以上（水晶、禁打共用；不用快速模式的前 100 組）
+        async function raidSimCandsFull() { const um = raidDeckUsesMap(); return (await raidSimCandidateDecks(null, false)).filter(d => (um.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES); }
         function ticketBanCandidates(t, sh) {
             const locs = Object.keys(t.p), bodyAll = locs.reduce((x, l) => x + t.p[l][2], 0), all = [];
             for (let m = 0; m < (1 << locs.length); m++) {
@@ -15938,7 +15947,7 @@
                 all.push({ list, eff: ticketEffHp(t, list, sh).eff });
             }
             all.sort((a, b) => a.eff - b.eff);
-            const pick = all.slice(0, 6);
+            const pick = all.slice(0, 10);   // 有效血量最少的 10 種（原本 6 種：有效血量稍高、但能打的部位多、每刀打得多的禁法會被漏掉）
             all.filter(x => x.list.length <= 1).forEach(x => { if (!pick.some(y => y.list.join() === x.list.join())) pick.push(x); });
             return pick;
         }
@@ -16001,7 +16010,7 @@
             const hasArmor = open.filter(k => arm(k) > 0);
             if (armorAmt > 0) {
                 out.push({ label: '全盔甲', w: armorAmt * 0.5, ...mk(k => arm(k) > 0 ? 'armor' : 'body') });
-                const byArm = hasArmor.slice().sort((a, b) => arm(a) - arm(b)); let broke = 0; const brk = new Set();
+                const byArm = hasArmor.slice().sort((a, b) => (!!t.p[b][3] - !!t.p[a][3]) || arm(b) - arm(a)); let broke = 0; const brk = new Set();   // 照推薦的打法：詛咒甲先拆，再拆厚的
                 for (const k of byArm) { if (broke + arm(k) > armorAmt * 0.5 && brk.size) break; broke += arm(k); brk.add(k); }
                 if (brk.size < hasArmor.length) out.push({ label: '拆一半', w: armorAmt * 0.5, ...mk(k => arm(k) > 0 && !brk.has(k) ? 'armor' : 'body') });
                 else out[0].w = armorAmt;
@@ -16013,15 +16022,17 @@
             else out[out.length - 1].w = killAmt;
             return out;
         }
-        async function ticketBanSimAvg(t, bans, P, me, cands) {
+        // 每個狀態：這段要打的血量 w、標準玩家最好 6 組的每刀平均 avg → 回傳 [[w, avg], ...]（刀數＝Σ w÷avg）
+        async function ticketBanSimAvg(t, bans, P, me, cands, raid) {
             const out = [];
+            const { buff, extraSec } = raid ? raidBuffsOfRaid(raid) : { buff: {}, extraSec: 0 };   // 場次加成也算（例如苦痛機率，苦痛牌組比較強）
             for (const st of raidPhaseStates(t, bans)) {
                 const { board, scene } = st;
                 const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body');
                 const plans = []; const add = (tg) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
                 open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
                 const c0 = t.c && t.c[0];
-                const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: 0, buff: {}, extraSec: 0, morale: 0.3, season: {}, hp: null };
+                const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };   // 詛咒只在模擬裡算一次（有效血量不再另外換算）；鏡子力照一場平均
                 const { hitParts } = raidSimPartFns(scene);
                 const all = [];
                 cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
@@ -16029,15 +16040,14 @@
                 const pick = await raidSimPickPool(P, env, me, pool, 6);
                 out.push([st.w, pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0]);
             }
-            const W = out.reduce((a, b) => a + b[0], 0) || 1;
-            return out.reduce((a, b) => a + b[0] * b[1], 0) / W;   // 照每個狀態要打的量加權
+            return out;
         }
         async function ticketBanEval(n, lv) {
             const raid = ticketCalc.seed && ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === (lv || ticketCalc.level));
             const t = raid && raid.titans.find(x => x.n === n); if (!t) return;
             const key = `${ticketCalc.seed.valid_from}|${raid.l}|${n}`;
             if (ticketBanEvalRes[key] && (ticketBanEvalRes[key].busy || ticketBanEvalRes[key].rows)) return;
-            const kvKey = `ban_eval_v2_${String(ticketCalc.seed.valid_from).replace(/[^0-9]/g, '').slice(0, 8)}_${raid.l}_${n}`.slice(0, 64);
+            const kvKey = `ban_eval_v3_${String(ticketCalc.seed.valid_from).replace(/[^0-9]/g, '').slice(0, 8)}_${raid.l}_${n}`.slice(0, 64);
             ticketBanEvalRes[key] = { busy: '讀取中…' }; renderTicketCalc();
             const remote = await kvGet(kvKey);
             if (remote && Array.isArray(remote.rows)) { ticketBanEvalRes[key] = remote; renderTicketCalc(); return; }
@@ -16046,14 +16056,16 @@
                 if (!raidClanData) await raidLoadClanData();
                 const v = raidSimStandardAccount(); if (!v) throw new Error('沒有公會資料');
                 const me = raidSimPlayer(v, 0.3, {}, { boss: n });
-                const cands = await raidSimCandidateDecks(null, true);
+                const cands = await raidSimCandsFull();   // 跟推薦一樣的候選
                 const sh = ticketSharesOf(raid);
                 const list = ticketBanCandidates(t, sh);
                 const rows = [];
                 for (let i = 0; i < list.length; i++) {
                     ticketBanEvalRes[key] = { busy: `計算中 ${i + 1}/${list.length}` }; renderTicketCalc();
-                    const avg = await ticketBanSimAvg(t, list[i].list, P, me, cands);
-                    rows.push({ bans: list[i].list, eff: list[i].eff, avg, atk: avg > 0 ? list[i].eff / avg : Infinity });
+                    // 刀數＝每個狀態「這段的血量 ÷ 這段每刀平均」加起來（原本用平均傷害去除總血量，打得慢的狀態會被低估）
+                    const segs = await ticketBanSimAvg(t, list[i].list, P, me, cands, raid);
+                    const hp = segs.reduce((x, [w]) => x + w, 0), atk = segs.reduce((x, [w, a]) => x + (a > 0 ? w / a : Infinity), 0);
+                    rows.push({ bans: list[i].list, eff: hp, avg: atk > 0 && isFinite(atk) ? hp / atk : 0, atk });
                 }
                 rows.sort((a, b) => a.atk - b.atk);
                 const res = { rows, best: rows[0] ? rows[0].bans : null };
@@ -16077,8 +16089,8 @@
             const curKey = (curBans || []).slice().sort().join();
             const fmtB = (x) => (x / 1e9).toFixed(1) + 'B';
             return `<div style="margin-top:6px; font-size:12px;">
-                <div style="font-weight:800; color:#5a3a2a; margin-bottom:2px;">依傷害效率（標準玩家每刀平均，刀數越少越好）</div>
-                <table style="width:100%; border-collapse:collapse;"><tr style="color:#8a7a6a;"><td>禁打</td><td style="text-align:right;">有效血量</td><td style="text-align:right;">每刀</td><td style="text-align:right;">約幾刀</td><td></td></tr>
+                <div style="font-weight:800; color:#5a3a2a; margin-bottom:2px;">依傷害效率（標準玩家照場次加成、詛咒模擬，每個階段的血量÷每刀加起來＝約幾刀，越少越好）</div>
+                <table style="width:100%; border-collapse:collapse;"><tr style="color:#8a7a6a;"><td>禁打</td><td style="text-align:right;">要打的血</td><td style="text-align:right;">平均每刀</td><td style="text-align:right;">約幾刀</td><td></td></tr>
                 ${r.rows.map((x, i) => `<tr style="border-top:1px solid #f0e6d4; ${i === 0 ? 'font-weight:800; color:#2e7d32;' : 'color:#4a3728;'}"><td>${x.bans.length ? x.bans.map(zh).join('、') : '不禁'}${x.bans.slice().sort().join() === curKey ? '（目前）' : ''}</td><td style="text-align:right;">${fmtB(x.eff)}</td><td style="text-align:right;">${Math.round(x.avg / 1e6)}M</td><td style="text-align:right;">${Math.round(x.atk)}</td><td style="text-align:right;">${x.bans.slice().sort().join() === curKey ? '' : `<a onclick="ticketBanApply(${nm}, ${escapeHtml(JSON.stringify(x.bans)).replace(/"/g, '&quot;')})" style="color:#6a3d9a; text-decoration:underline; cursor:pointer;">套用</a>`}</td></tr>`).join('')}</table></div>`;
         }
         function renderTicketCalc() {

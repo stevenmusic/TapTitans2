@@ -13720,7 +13720,8 @@
                 const open = crystalAllOpen.has(p.player_code);
                 const none = !Object.keys(crystalSlotsOf(p)).length;
                 const badge = none ? '<span style="color:#c0392b;">沒有水晶</span>' : !ready ? '<span style="color:#8a7a6a;">還沒算</span>' : !Object.values(plan).some(x => x.pick.length) ? '<span style="color:#8a7a6a;">沒有適合的卡</span>' : n ? `<span style="color:#c0392b;">換 ${n} 張</span>` : '<span style="color:#2e7d32;">不用換</span>';
-                const detail = none ? '' : !ready ? `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`
+                const planCur = Object.fromEntries(Object.entries(plan).map(([c, x]) => [c, { ...x, pick: (x.cur || []).map(b => ({ id: b.skill_name })), curIds: new Set((x.cur || []).map(b => b.skill_name)), outs: [] }]));   // 只有目前放的水晶（還沒算：不顯示換卡建議）
+                const detail = none ? '' : !ready ? crystalAllRow(planCur, maxSlots) + `<div style="padding:0 12px 9px; font-size:12px; color:#8a7a6a;">上面是目前放的水晶；這一關還沒算好，<a href="javascript:void(0)" onclick="crystalPlayer = ${js(p.player_code)}; crystalTab = 'me'; renderCrystalReco();" style="color:#1565c0;">到個人頁算</a></div>`   // 還沒算也照樣列出目前的水晶（不會整個不見）
                     : crystalAllRow(plan, maxSlots);
                 return [none ? 99 : ready ? n : -1, `<div class="crystal-all-row" data-name="${escapeHtml(raidShortName(p.name).toLowerCase())}" style="border-bottom:1px solid #f0e6d6;"><div style="display:flex; align-items:center; gap:8px; padding:8px 10px 5px;">
                     <span style="flex:1; min-width:0; font-size:14px; font-weight:800; color:#4a3728; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(raidShortName(p.name))}</span>

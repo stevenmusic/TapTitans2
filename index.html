@@ -13382,7 +13382,7 @@
                         const meUp = meWith(me, candIds), picks2 = {};
                         const cache = { scr: new Map(), fin: new Map() };
                         for (const [k2, m2] of [['cur', me], ['up', meUp]]) { const pool = CRYSTAL_RECO_CACHE ? await evalCached(env, m2, list, cache) : await raidSimEvalPool(P, env, m2, list, 6, null, CRYSTAL_RECO_TOPN, true); picks2[k2] = await raidSimPickPool(P, env, m2, pool, 6); }
-                        ctxSlot[qi] = { n, w: cnt(n) * st.w, env, me, list, cache, picks: picks2, label: st.label };
+                        ctxSlot[qi] = { n, w: cnt(n) * st.w, env, me, list, cache, picks: picks2, label: st.label, scene };
                         crystalUpRes[key] = busyAs(`計算下一場 ${Math.round(++doneQ / tops.length * 80)}%`); renderCrystalReco();
                     }));
                     ctxSlot.forEach(c => { if (c) { ctxR.push(c); totW += c.w; } });   // 照原本的順序
@@ -13392,6 +13392,16 @@
                     const uOf = (id) => totW > 0 ? ((freqS && Sfix.has(id) ? freqS[id] : freq[id]) || 0) / totW * 10 : 0;   // 0～10：每一輪都在推薦裡＝10
                     // 卡片增傷：推薦裡有這張卡的那一組（先找全部升級時的推薦，沒有就用現在等級的推薦）
                     const jobs = []; ctxR.forEach(c => candIds.forEach(id => { const o = c.picks.up.find(x => x.cards.includes(id)) || c.picks.cur.find(x => x.cards.includes(id)); if (!o) return; jobs.push({ id, w: c.w, o, env: c.env, me: c.me, n: c.n, label: c.label }); }));
+                    // 推薦裡都沒有的卡（權重 0）：卡片增傷照樣算，用自己最常搭的那一組（沒用過就用全公會最常見的），在用得到的盤面模擬
+                    { const inJobs = new Set(jobs.map(j => j.id)), miss = candIds.filter(id => !inJobs.has(id));
+                      if (miss.length) { const ru = await crystalRecentUsage(p).catch(() => null); let gu = null; try { gu = await crystalUsageOf(raid); } catch (e) {}
+                        const sj = [];
+                        miss.forEach(id => { const cards = (ru && ru.deck[id]) || (gu && gu.rep && gu.rep[id] && gu.rep[id].cards); if (!cards) return;
+                            const tryCtx = (loose) => ctxR.forEach(c => { if (!cards.every(x => c.me.lv[x] > 0)) return; const hp = raidSimPartFns(c.scene, loose).hitParts(cards); if (!hp.length) return;
+                                const pl = raidSimPlansFor(cards, c.env.plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) sj.push({ id, c, cards, pl }); });
+                            const before = sj.length; tryCtx(false); if (sj.length === before) tryCtx(true); });   // 一般盤面都用不到（例如要骨架 6 個）就放寬條件照算
+                        const sc = (await raidSimParallel(P, sj.map(j => ({ kind: 's', base: raidSimBase(j.c.env, meWith(j.c.me, [j.id]), j.cards), cards: j.cards, plans: j.pl, lite: true })))) || sj.map(j => raidSimScreen(P, j.c.env, meWith(j.c.me, [j.id]), j.cards, j.pl));
+                        sj.forEach((j, i) => { if (sc[i] && sc[i].tg) jobs.push({ id: j.id, w: j.c.w, o: sc[i], env: j.c.env, me: j.c.me, n: j.c.n, label: j.c.label }); }); } }
                     const fj = jobs.flatMap(j => [{ kind: 'f', base: raidSimBase(j.env, j.me, j.o.cards), o: j.o, runs: CRYSTAL_RUNS }, { kind: 'f', base: raidSimBase(j.env, meWith(j.me, [j.id]), j.o.cards), o: j.o, runs: CRYSTAL_RUNS }]);
                     const fr = (await raidSimParallel(P, fj)) || jobs.flatMap(j => [raidSimFinal(P, j.env, j.me, j.o), raidSimFinal(P, j.env, meWith(j.me, [j.id]), j.o)]);
                     const acc = {}, repD = {};
@@ -13810,7 +13820,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 33;   // 33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
+        const CRYSTAL_DATA_VER = 34;   // 34：推薦裡沒有的卡也照算卡片增傷；33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
         const CRYSTAL_ALL_MIN_VER = 20;   // v20 沒有卡片差異，照樣顯示（只少卡片 %）   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */

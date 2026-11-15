@@ -13245,7 +13245,7 @@
         }
         // 每張卡屬性提升換算成整組傷害提升的比例（全公會 46 人模擬的中位數，一次算好查表；沒有的用 0.45）
         const CRYSTAL_ALPHA = {"Fragmentize": 0.42, "WhipOfLightning": 0.49, "LimbBurst": 0.46, "FlakShot": 0.51, "Haymaker": 0.42, "BarbedMorningstar": 0.28, "BurningAttack": 0.44, "DecayingAttack": 0.46, "Fuse": 0.37, "Disease": 0.47, "RuinousRust": 0.51, "CrushingVoid": 0.75, "ImpactAttack": 0.45, "FinisherAttack": 0.76, "SuperheatMetal": 0.44, "LimbSupport": 0.45, "TeamTactics": 0.34, "AstralEcho": 0.36, "BattleDrums": 0.81, "SkullBash": 0.44, "ChainLightning": 0.44, "Weaken": 0.51, "Swarm": 0.13, "PowerBubble": 0.46, "MagicPotion": 0.21, "InnerTruth": 0.48, "TriangleSupport": 0.72, "MoonBeam": 0.43, "MirrorForce": 0.9, "Shadow": 0.5, "PlagueAttack": 0.66, "ExecutionersAxe": 0.48, "RazorWind": 0.44, "CosmicBarb": 0.87, "MentalFocus": 0.37};
-        let CRYSTAL_HIST = true, CRYSTAL_HIST_SELF = 0.7, CRYSTAL_RECO_CACHE = true, CRYSTAL_RECO = true, CRYSTAL_RECO_ITER = 3, CRYSTAL_RECO_TOPN = 40, CRYSTAL_COUNT_N = 10, CRYSTAL_W_ALPHA = 0.5, CRYSTAL_FAST = true, CRYSTAL_FAST_STATES = 2, CRYSTAL_NOCAND_N = 0, CRYSTAL_LATEBUD = true, CRYSTAL_UPONLY = true, CRYSTAL_MULT_K = 2, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
+        let CRYSTAL_HIST = true, CRYSTAL_HIST_SELF = 0.5, CRYSTAL_RECO_CACHE = true, CRYSTAL_RECO = true, CRYSTAL_RECO_ITER = 3, CRYSTAL_RECO_TOPN = 40, CRYSTAL_COUNT_N = 10, CRYSTAL_W_ALPHA = 0.5, CRYSTAL_FAST = true, CRYSTAL_FAST_STATES = 2, CRYSTAL_NOCAND_N = 0, CRYSTAL_LATEBUD = true, CRYSTAL_UPONLY = true, CRYSTAL_MULT_K = 2, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
         let CRYSTAL_TOPC_EXTRA = 2;   // 水晶：每個盤面每類試（格數＋幾）張卡
         let CRYSTAL_ROUGH_N = 200;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 80;   // 整輪分配會用到各盤面名次較後的牌組，名單短了會失準（30 最多少打 2.7%）
@@ -13360,7 +13360,7 @@
                 if (CRYSTAL_HIST) {
                     // 快速版（每人不到 0.1 秒）：分數＝卡片 × 權重
                     //   卡片：查卡片屬性表，水晶等級比現在等級屬性多幾 %
-                    //   權重：最近 10 場，自己每張卡用了幾次（7 成）＋全公會每張卡用了幾次（3 成），都開根號換成 0～10（大家平常照推薦牌組打，過去用的卡就是推薦牌組的結果）
+                    //   權重：最近 10 場，自己每張卡用了幾次（5 成）＋全公會每張卡用了幾次（5 成），都開根號換成 0～10（大家平常照推薦牌組打，過去用的卡就是推薦牌組的結果）
                     const pc = await crystalPersonalCount(p), gc = await crystalGuildCount();
                     const sq = (cnt, id) => { const mx = Math.max(1, ...Object.values(cnt)); return Math.sqrt(cnt[id] || 0) / Math.sqrt(mx) * 10; };
                     const uOf = (id) => CRYSTAL_HIST_SELF * sq(pc, id) + (1 - CRYSTAL_HIST_SELF) * sq(gc, id);
@@ -13839,7 +13839,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 38;   // 38：卡片＝屬性差 × 傷害佔比；37：快速版（卡片＝屬性表，權重＝最近 10 場自己 7 成＋全公會 3 成）；36：權重看每隻王所有常見盤面；35：卡片改查屬性表（水晶等級比現在多幾 %）、骨骼粉碎排除；34：推薦裡沒有的卡也照算卡片增傷；33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
+        const CRYSTAL_DATA_VER = 39;   // 39：權重自己 5 成、全公會 5 成；38：卡片＝屬性差 × 傷害佔比；37：快速版（卡片＝屬性表，權重＝最近 10 場自己 7 成＋全公會 3 成）；36：權重看每隻王所有常見盤面；35：卡片改查屬性表（水晶等級比現在多幾 %）、骨骼粉碎排除；34：推薦裡沒有的卡也照算卡片增傷；33：照建議放法升級後重跑推薦、收斂；32：照推薦牌組（權重＝出現在推薦裡的比例）；31：候選卡改成全公會最近 6 場有人用過的；30：常見盤面用不到的卡（凱旋行軍等）改找其他盤面或收尾盤面；29：權重×10（最常用＝10）、排版縮成 4 行；28：分數＝卡片增傷 × 權重（全公會最近 10 場次數的平方根，最常用的＝1）；27：沒用過的卡照全公會出場率；26：快速版（整場＝卡片增傷 × 最近 6 場出場機率）；25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
         const CRYSTAL_ALL_MIN_VER = 20;   // v20 沒有卡片差異，照樣顯示（只少卡片 %）   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */

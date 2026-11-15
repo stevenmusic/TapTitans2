@@ -14472,6 +14472,11 @@
             for (let i = pick.length - 1; i >= 0; i--) { const o = pick[i]; if (o.avg > 0) continue;   // 盔甲卡、盔甲不夠：直接拿掉，不重算
                 try { const oo = { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }; const fr = await raidSimParallel(P, [{ kind: 'f', base: raidSimBase(env, me, o.cards), o: oo }]); const f = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, oo); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
                 pick.splice(i, 1); }
+            // 拿掉之後補滿：從同一批算好的牌組，挑卡片不重複、打的部位還有血、傷害最高的補上（不然會少一組）
+            { const want = n - (voidO ? 1 : 0);
+              if (pick.length < want && Array.isArray(poolAll)) { const usedC = new Set([...pick.flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
+                const alive = (o) => !env.hp || (o.tg || []).some(k => (env.hp[k] || 0) > 0);
+                for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; pick.push({ ...o }); o.cards.forEach(c => usedC.add(c)); } } }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

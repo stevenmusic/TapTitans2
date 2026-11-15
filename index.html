@@ -12550,6 +12550,8 @@
            可用的卡＝所有卡片（不限這個玩家以前用過的），扣掉這一波（每 6 刀一波）已經用過的；
            組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
         const RAID_ATTACKS_PER_CYCLE = 6;
+        // 下一場還沒開打（伺服器預告，或網頁自己估的下一場）：推薦照下一場第一輪算，卡片全部能用、6 刀，不看上一場剩幾刀
+        function raidNextRaidPending() { return !!(raidState && raidPreview); }
         function raidLogIsLatestSession(r) {
             const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             return !!(latest && r && (r.notYet || (r.attacks && r.attacks[0] && r.attacks[0].raidStartedAt === latest)) && raidState && raidState.parts);
@@ -12712,7 +12714,7 @@
             let body;
             try {
                 const msg = (t) => `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`;
-                const ci = raidPlayerCycleInfo(r.player, r.attacks), nextRound = ci.remaining <= 0, info = nextRound ? { ...ci, used: new Set(), remaining: 6 } : ci;
+                const ci = raidPlayerCycleInfo(r.player, r.attacks), nextRound = raidNextRaidPending() || ci.remaining <= 0, info = nextRound ? { ...ci, used: new Set(), remaining: 6 } : ci;
                 if ((raidBannedParts || []).length > 1) body = msg('禁打 2 個以上，湊不到 6 骨架，這隻王用不到凱旋行軍。');
                 else if (info.used.has('FinisherAttack')) body = msg('凱旋行軍這輪已經用過。');
                 else {
@@ -12766,7 +12768,7 @@
         }
         async function raidVoidTopHtml(r) {
             const VOID = 'CrushingVoid';
-            const info0 = raidPlayerCycleInfo(r.player, r.attacks), nextRound = info0.remaining <= 0;
+            const info0 = raidPlayerCycleInfo(r.player, r.attacks), nextRound = raidNextRaidPending() || info0.remaining <= 0;
             const used = nextRound ? new Set() : new Set(info0.used || []);
             if (used.has(VOID)) return '<div style="font-size:12px; color:#8a7a6a;">瘋狂無效這輪已經用過。</div>';
             const v = raidAccountInfo(r.player); if (!v) return '<div style="font-size:12px; color:#8a7a6a;">沒有這個人的帳號資料。</div>';
@@ -12873,7 +12875,7 @@
                 raidLogRenderPlayerReco(r);
             });
         }
-        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
+        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidNextRaidPending() ? 'next' : '', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
         const raidRecoGen = new Map();   // 每次重畫推薦加 1：只有最新那一次算完才寫畫面
         async function raidLogRenderPlayerReco(r) {
             let box = raidLogRecoBox(r.player);
@@ -12889,7 +12891,7 @@
               if (shown) setTimeout(() => { if (raidRecoGen.get(r.player) !== gen || raidRecoWritten.get(r.player) === gen || !raidLogRecoOpen.has(r.player)) return; const bx = raidLogRecoBox(r.player); if (!bx) return; raidLogRecoStale.set(r.player, shown); bx.innerHTML = raidRecoStaleHtml(r.player, (raidRecoProg.get(r.player) || {}).shown); }, 400); }   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
-            const predicted = !!(raidState && raidState.predicted && raidPreview);   // 上面顯示的是預估的下一場：每個人都照下一場第一輪算（卡片全部能用、6 刀）
+            const predicted = raidNextRaidPending();   // 上面顯示的是預估的下一場：每個人都照下一場第一輪算（卡片全部能用、6 刀）
             const nextRound = predicted || info0.remaining <= 0;
             const info = nextRound ? { ...info0, used: new Set(), remaining: RAID_ATTACKS_PER_CYCLE } : info0;
             const head = predicted ? `<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:2px 0 4px;">下一場 M-${raidPreview.level} 第一隻 ${escapeHtml(raidState.bossName || '')} 的推薦牌組（開打前預估）</div>`

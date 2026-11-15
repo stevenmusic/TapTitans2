@@ -3568,7 +3568,7 @@
                                 </div>
                                 <span class="raid-boss-hp-text" id="raid-boss-body-hp-text">—</span>
                             </div>
-                            <div id="raid-next-boss" style="display:none; font-size:12px; color:#6b4a2a; margin-top:4px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                            <div id="raid-next-boss" style="display:none; font-size:12px; color:#6b4a2a; margin-top:4px; line-height:1.4; white-space:normal; overflow-wrap:anywhere;"></div>
                         </div>
                     </div>
 
@@ -6860,6 +6860,39 @@
             const st = parseRaidSessionTs(startedAt);
             return st ? Math.max(1, Math.floor((Date.now() - st) / CARD_USAGE_ROUND_MS) + 1) : 0;
         }
+        // 這一場打完了沒、下一場最高可選哪一關（打死最後一隻王是第幾輪 → RAID_LEVEL_JUMP）
+        function raidNextLevelPredict() {
+            const ss = serverSessionsSummary && serverSessionsSummary[0]; const L = ss && Number(ss.levelTier); if (!L) return null;
+            const log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === ss.startedAt && a.ts);
+            const last = log.reduce((m, a) => !m || a.ts > m.ts ? a : m, null);
+            if (!last || !last.cycle || !last.bossTotal || last.bossOrdinal !== last.bossTotal) return null;
+            const j = raidLevelJump(Number(last.cycle)); if (j == null) return null;
+            return { L, next: L + j, cycle: Number(last.cycle), jump: j };
+        }
+        // 突襲打完、下一場還沒開啟：整個突襲頁（王、部位、禁打、詛咒、推薦）換成預估的下一場第一隻王（seed）；禁打照傷害效率
+        let raidPredictFor = null;
+        async function raidPredictOpening(silent) {
+            const pr = raidNextLevelPredict(); if (!pr) return false;
+            const sd = ticketCalc.seed || await ticketSeedFetch().catch(() => null); if (sd && !ticketCalc.seed) ticketCalc.seed = sd;
+            const raid = sd && sd.raids.find(r => r.t === 9999 && r.l === pr.next); const t = raid && raid.titans.find(x => x.n === raid.seq[0]);
+            if (!t) return false;
+            if (raidPredictFor === sd.valid_from + '|' + pr.next && raidState && raidState.predicted) return true;
+            raidPredictFor = sd.valid_from + '|' + pr.next;
+            const bansByName = {}; [...new Set(raid.seq)].forEach(n => { const tt = raid.titans.find(x => x.n === n); if (tt) bansByName[n] = ticketBestBansAuto(tt, raid); });
+            const BUFF = { AfflictedChance: 'afflictionChance', AfflictedDamage: 'afflictionDamage', BurstChance: 'burstChance', BurstDamage: 'burstDamage', SupportEffect: 'support', RaidAttackDuration: 'timeBoost' };
+            raidPreview = { buff: (raid.buffs || []).map(b => BUFF[b[0]]).find(Boolean) || null, startAt: null, level: pr.next, bansByName, predicted: true };
+            raidBannedParts = (bansByName[t.n] || []).slice();
+            raidCurseInfo = (t.c || []).map(c => ({ type: c[0], amount: Number(c[1]) || 0 }));
+            const parts = {}; Object.keys(t.p).forEach(k => { const e = t.p[k]; parts[k] = { armor: e[1], armorMax: e[0], body: e[2], bodyMax: e[2], cursed: !!e[3] }; });
+            apiCurrentEnemyId = RAID_ENEMY_INDEX[t.n] ? 'Enemy' + RAID_ENEMY_INDEX[t.n] : null; raidBossOrdinal = 1; apiBossTotal = raid.seq.length;
+            raidState = { bossIndex: RAID_BOSS_NAMES.indexOf(t.n), bossName: t.n, bossOrdinal: 1, parts, maxHp: t.k, currentHp: t.k, killMaxHp: t.k, updatedAt: Date.now(), fromSeed: true, predicted: true };
+            renderRaidStatus();   // 背景同步（silent）也要重畫：整頁換成下一場
+            if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
+            // 禁打先用血量估的；傷害效率的結果（伺服器暫存，沒有才在背景用 1 核心算）出來後換成傷害效率的
+            const allEff = () => [...new Set(raid.seq)].every(n => { const r = ticketBanEvalRes[`${sd.valid_from}|${pr.next}|${n}`]; return r && r.best; });
+            if (!allEff() && !raidPredictOpening.effBusy) { raidPredictOpening.effBusy = true; crystalEnsureBans(pr.next, true).then(() => { raidPredictOpening.effBusy = false; if (raidState && raidState.predicted && allEff()) { raidPredictFor = null; raidPredictOpening(); } }).catch(() => { raidPredictOpening.effBusy = false; }); }
+            return true;
+        }
         let raidSeedOpeningFor = null;
         async function raidSeedOpening(cb, silent) {
             if (raidSeedOpeningFor === cb.raidStartedAt && raidState) return;
@@ -6886,6 +6919,9 @@
             // 剛開打還沒人出刀：伺服器還沒有王的部位血量，先用 seed 的第一隻王（開場狀態）顯示，推薦按鈕才按得到；第一刀進來就換成即時資料
             if (cb && !cb.preview && cb.raidStartedAt && !cb.raidEnded && !cb.hasReceivedAttack && !apiHasReceivedAttack) { raidSeedOpening(cb, silent); return; }
             if (!cb || !cb.hasReceivedAttack || !cb.parts || Object.keys(cb.parts).length === 0) return;
+            // 最後一隻王打死了、下一場還沒開啟：換成預估的下一場（算不出來才照原本顯示打死的王）
+            if (!cb.preview && typeof cb.bossCurrentHp === 'number' && cb.bossCurrentHp <= 0 && cb.ordinal && cb.total && cb.ordinal === cb.total && raidNextLevelPredict()) { raidPredictOpening(silent); return; }
+            if (raidState && raidState.predicted && !cb.preview) raidPreview = null;   // 預估的下一場：真的資料進來就換回來
             // 如果王已經換了（enemyId 不同），或是本來就還沒有任何資料，直接套用伺服器最新狀態；
             // 就算王沒換，也定期把血量/部位更新成伺服器最新的，避免畫面卡住不動
             apiHasReceivedAttack = true;
@@ -16219,6 +16255,7 @@
         const raidLevelJump = (round) => round in RAID_LEVEL_JUMP ? RAID_LEVEL_JUMP[round] : round > 6 ? 0 : null;
         function updateNextRaidCard() {
             const el = document.getElementById('raid-next-raid'); if (!el) return;
+            el.style.display = 'none'; return;   // 不顯示這排文字：突襲打完後整個頁面直接換成下一場
             const ss = serverSessionsSummary && serverSessionsSummary[0]; const L = ss && Number(ss.levelTier);
             if (!L) { el.style.display = 'none'; return; }
             if (!ticketCalc.seed && !ticketCalc.loading) { ticketCalc.loading = true; ticketSeedFetch().then(sd => { ticketCalc.seed = sd; ticketCalc.loading = false; updateNextRaidCard(); }).catch(() => { ticketCalc.loading = false; }); }
@@ -16268,7 +16305,7 @@
                 return out.join('、');
             };
             const cursed = Object.entries(t.p).filter(([, e]) => e[3]).map(([k]) => k);
-            el.innerHTML = `下一隻 <b>${escapeHtml(nextName)}</b>｜詛 <b style="color:#6a3d9a;">${short(cursed) || '無'}</b>｜禁 <b>${short(ticketBestBans(t, ticketSharesOf(sr))) || '不禁'}</b>`;
+            el.innerHTML = `下一隻 <b>${escapeHtml(nextName)}</b>｜詛 <b style="color:#6a3d9a;">${short(cursed) || '無'}</b><br>禁 <b>${short(ticketBestBansAuto(t, sr)) || '不禁'}</b>`;   // 禁打放第二行（整齊）；照傷害效率
             el.style.display = 'block';
         }
         function refreshBossHpIfOpen() {
@@ -17928,14 +17965,14 @@
             document.getElementById('raid-boss-name').textContent = raidState.bossName;
             const unconfirmedHintEl = document.getElementById('raid-unconfirmed-hint');
             if (unconfirmedHintEl) {
-                const showHint = !raidDemoTimer && !apiHasReceivedAttack && !raidSimActive;
+                const showHint = !raidDemoTimer && !apiHasReceivedAttack && !raidSimActive && !(raidState && raidState.predicted);   // 預估的下一場：不顯示「尚未收到真實攻擊資料」
                 unconfirmedHintEl.style.display = showHint ? 'block' : 'none';
             }
             const ordinalEl = document.getElementById('raid-boss-ordinal');
             if (ordinalEl && raidState.bossOrdinal) {
                 const bossTotal = raidDemoTimer ? 6 : apiBossTotal; // 示範模式固定用 6，真實連線用偵測到的實際總數
                 const pvAt = raidPreview && raidPreview.startAt ? new Date(raidPreview.startAt) : null;
-                ordinalEl.textContent = `${raidState.bossOrdinal}/${bossTotal}` + (raidPreview ? `・預告${pvAt ? ` ${pvAt.getMonth() + 1}/${pvAt.getDate()} ${String(pvAt.getHours()).padStart(2, '0')}:${String(pvAt.getMinutes()).padStart(2, '0')}` : ''}` : '');   // 簡短：1/6・預告 11/2 10:32
+                ordinalEl.textContent = `${raidState.bossOrdinal}/${bossTotal}` + (raidPreview && raidPreview.predicted ? `・下一場 M-${raidPreview.level}` : raidPreview ? `・預告${pvAt ? ` ${pvAt.getMonth() + 1}/${pvAt.getDate()} ${String(pvAt.getHours()).padStart(2, '0')}:${String(pvAt.getMinutes()).padStart(2, '0')}` : ''}` : '');   // 簡短：1/6・預告 11/2 10:32
                 ordinalEl.className = 'raid-boss-ordinal' + (raidState.bossOrdinal === bossTotal ? ' is-last' : '');
             }
             updateRaidBossIcon(raidState.bossName);

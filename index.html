@@ -13272,7 +13272,7 @@
             const out = { use, rep, n: atk.length, label, atk };
             crystalUsageMem.set(mk, out); return out;
         }
-        // 水晶候選卡只考慮最近 CRYSTAL_RECENT_N 場自己有用過的（帶刺的晨星例外：時機限制多，照樣考慮）
+        // 水晶候選卡只考慮最近 CRYSTAL_RECENT_N 場自己有用過的（帶刺的晨星、現在水晶上放的卡例外，照樣考慮）
         const CRYSTAL_RECENT_N = 6, CRYSTAL_ALWAYS = new Set(['BarbedMorningstar']);
         async function crystalRecentUsed(p) {
             const ss = (serverSessionsSummary || []).filter(x => x.startedAt && (x.attackCount || 0) >= 300).slice(0, CRYSTAL_RECENT_N);
@@ -13310,8 +13310,9 @@
                 let season = {}; try { season = raidSimSeasonBonus() || {}; } catch (e) {}
                 const base = {}; (p.cards || []).forEach(c => { base[c.skill_name] = Number(c.level) || 0; });
                 // 候選卡：這一類有水晶插槽、自己有這張、本身等級比水晶低（放進去才會升）
-                const recent = await crystalRecentUsed(p);   // 最近幾場自己有用過的卡（沒資料就不限制）
-                const candIds = Object.keys(crystalSkills).filter(id => { const s = slotInfo[crystalSkills[id].cat]; return s && base[id] > 0 && base[id] < s.L && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id) && (!recent || recent.has(id) || CRYSTAL_ALWAYS.has(id)); });
+                const recent = await crystalRecentUsed(p);   // 最近幾場自己有用過的卡（沒資料就不限制）；現在水晶上放的卡也照樣考慮
+                const onCrystal = new Set((p.boosted_cards || []).map(b => b.skill_name));
+                const candIds = Object.keys(crystalSkills).filter(id => { const s = slotInfo[crystalSkills[id].cat]; return s && base[id] > 0 && base[id] < s.L && !RAID_SIM_EXCLUDE.has(id) && !CRYSTAL_SKIP.has(id) && (!recent || recent.has(id) || CRYSTAL_ALWAYS.has(id) || onCrystal.has(id)); });
                 const isCand = new Set(candIds), upLv = (id) => slotInfo[crystalSkills[id].cat].L + (season[id] || 0);
                 const meWith = (me, ids) => { const lv = { ...me.lv }; ids.forEach(id => { lv[id] = Math.max(lv[id] || 0, upLv(id)); }); return { ...me, lv }; };
                 const ctxs = []; let done = 0; const prof = { rough: 0, scr: 0, fin: 0, nFin: 0, search: 0, extra: 0 }; let tp = Date.now(); const lap = (k) => { const t2 = Date.now(); prof[k] += t2 - tp; tp = t2; };
@@ -13641,7 +13642,7 @@
         function crystalBanSig(raid) { return [...new Set(raid.seq)].map(n => { const t = raid.titans.find(x => x.n === n); return t ? n + ':' + crystalBansOf(raid, t).slice().sort().join('+') : ''; }).join('|'); }
         let crystalLevel = null;
         function crystalKvKey(lvl, code, banSig) { let h = 0; for (const ch of banSig) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `crystal_v9_${lvl}_${code}_${h.toString(36)}`.slice(0, 64); }   // 伺服器暫存最多 300 個名稱已經滿了：沿用舊名稱（v9），版本改看內容的 ver
-        const CRYSTAL_DATA_VER = 25;   // 25：只考慮最近 6 場自己用過的卡（帶刺的晨星例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
+        const CRYSTAL_DATA_VER = 25;   // 25：只考慮最近 6 場自己用過的卡（帶刺的晨星、水晶上放的卡例外）、分配精確解；24：整輪分配（每隻王一輪 6 組不重複，排到最適合的盤面）、每類所有組合都試；23：沒進最佳 6 組的卡也補算這組 %；22：盤面涵蓋 95%、至少一種盔甲肉體混合；21：加卡片的差異（用到那幾刀多打幾 %）；20：   // 20：回到最高傷害法（每種擺法模擬最佳 6 組），加速：每隻王 4 種常見盤面、每類只試前幾張卡
         const CRYSTAL_ALL_MIN_VER = 20;   // v20 沒有卡片差異，照樣顯示（只少卡片 %）   // 全公會頁：v11 的挑卡結果跟 v12 一樣（v12 只多換掉的卡的 %），舊結果照樣顯示；個人頁打開時才重算成新版
         /* 場次加成資料庫：每種場次加成（例如爆裂傷害 +30%）一份，記每個人算好的水晶建議；
            之後遇到同樣加成的場次直接用，除非賽季加成的卡換了（賽季簽名不同就整份重來） */

@@ -3572,6 +3572,7 @@
                         </div>
                     </div>
 
+                    <div id="raid-next-raid" style="display:none; margin:-2px 0 8px; padding:8px 12px; background:#fff; border:1px solid #eadfcc; border-radius:12px; font-size:12.5px; color:#4a3728; line-height:1.5;"></div>   <!-- 下一場突襲（最高可選的關卡） -->
                     <div class="raid-target-banner" id="raid-target-banner" style="display:none !important;"></div>   <!-- 先拆盔甲／建議集火／骨架提示：整排都不顯示 -->
 
                     <div class="raid-parts-legend">
@@ -16213,7 +16214,36 @@
         }
         function closeBossHp() { document.getElementById('panel-bosshp').style.display = 'none'; }
         // 突襲頁王卡片下面：下一隻王（照 seed）的名字、詛咒甲位置、建議禁打
+        // 下一場最高可選的關卡：這一場在第幾輪打完（打死最後一隻王）決定能往上幾關（照公會過去的場次：第 2 輪 +13、3 輪 +8、4 輪 +5、5 輪 +2、6 輪 +1；7 輪以後沒資料，先當 +0）
+        const RAID_LEVEL_JUMP = { 2: 13, 3: 8, 4: 5, 5: 2, 6: 1 };
+        const raidLevelJump = (round) => round in RAID_LEVEL_JUMP ? RAID_LEVEL_JUMP[round] : round > 6 ? 0 : null;
+        function updateNextRaidCard() {
+            const el = document.getElementById('raid-next-raid'); if (!el) return;
+            const ss = serverSessionsSummary && serverSessionsSummary[0]; const L = ss && Number(ss.levelTier);
+            if (!L) { el.style.display = 'none'; return; }
+            if (!ticketCalc.seed && !ticketCalc.loading) { ticketCalc.loading = true; ticketSeedFetch().then(sd => { ticketCalc.seed = sd; ticketCalc.loading = false; updateNextRaidCard(); }).catch(() => { ticketCalc.loading = false; }); }
+            const BZ = { BurstChance: '爆裂機率', BurstDamage: '爆裂傷害', AfflictedChance: '苦痛機率', AfflictedDamage: '苦痛傷害', SupportEffect: '支援效果', SupportDamage: '支援傷害', AllRaidDamage: '全部傷害', RaidAttackDuration: '攻擊時間' };
+            const info = (lv) => { const r = ticketCalc.seed && ticketCalc.seed.raids.find(x => x.t === 9999 && x.l === lv); return r ? `<div style="color:#6b5a4a;">${r.seq.map(escapeHtml).join('、')}｜加成 ${(r.buffs || []).map(b => BZ[b[0]] || b[0]).join('、') || '無'}</div>` : ''; };
+            const title = (t) => `<div style="font-weight:900; color:#8b263e; font-size:13.5px;">${t}</div>`;
+            // 已經開啟（遊戲有預告）：照預告
+            if (raidPreview && raidPreview.level) { el.innerHTML = title(`下一場突襲：M-${raidPreview.level}（已開啟）`) + info(Number(raidPreview.level)); el.style.display = 'block'; return; }
+            // 這一場打到第幾輪、打完了沒
+            const sa = ss.startedAt, log = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.ts);
+            const last = log.reduce((m, a) => !m || a.ts > m.ts ? a : m, null);
+            const done = !!(raidState && typeof raidState.currentHp === 'number' && raidState.currentHp <= 0 && last && last.bossTotal && last.bossOrdinal === last.bossTotal) || !!(raidLiveInfo && raidLiveInfo.ended);
+            if (done && last && last.cycle) {
+                const j = raidLevelJump(Number(last.cycle));
+                el.innerHTML = j == null ? title(`下一場突襲：M-${L} 第 ${last.cycle} 輪打完，最高可選關卡沒有資料`) : title(`下一場突襲：最高可選 M-${L + j}`) + `<div style="color:#8a7a6a;">M-${L} 第 ${last.cycle} 輪打完 → 往上 ${j} 關</div>` + info(L + j);
+                el.style.display = 'block'; return;
+            }
+            // 還在打：照這場可能在第幾輪打完，列出下一場最高可選
+            const now = Math.max(1, ...(log.map(a => Number(a.cycle) || 0)), raidLiveRoundNow(sa) || 0);
+            const opts = [2, 3, 4, 5, 6, 7].filter(r => r >= now).slice(0, 3);
+            el.innerHTML = title('下一場突襲（看這場第幾輪打完）') + `<div>${opts.map(r => `第 ${r} 輪打完 → <b>M-${L + raidLevelJump(r)}</b>`).join('　')}</div>`;
+            el.style.display = 'block';
+        }
         function updateNextBossHint() {
+            try { updateNextRaidCard(); } catch (e) {}
             const el = document.getElementById('raid-next-boss');
             if (!el) return;
             // 下一場預告期間：用最新的 seed 找預告的那一關；開打後：用這一場對應的 seed

@@ -12889,9 +12889,11 @@
               if (shown) setTimeout(() => { if (raidRecoGen.get(r.player) !== gen || raidRecoWritten.get(r.player) === gen || !raidLogRecoOpen.has(r.player)) return; const bx = raidLogRecoBox(r.player); if (!bx) return; raidLogRecoStale.set(r.player, shown); bx.innerHTML = raidRecoStaleHtml(r.player, (raidRecoProg.get(r.player) || {}).shown); }, 400); }   // 存的畫面如果應打還沒補上，馬上補（算過的有快取）
             // 這輪次數用完：照當下部位狀態推薦下一輪的 6 組（下一輪卡片全部可以重新用）
             const info0 = raidPlayerCycleInfo(r.player, r.attacks);
-            const nextRound = info0.remaining <= 0;
+            const predicted = !!(raidState && raidState.predicted && raidPreview);   // 上面顯示的是預估的下一場：每個人都照下一場第一輪算（卡片全部能用、6 刀）
+            const nextRound = predicted || info0.remaining <= 0;
             const info = nextRound ? { ...info0, used: new Set(), remaining: RAID_ATTACKS_PER_CYCLE } : info0;
-            const head = nextRound ? '<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:2px 0 4px;">這輪次數已用完，以下是照目前狀態推薦的下一輪牌組</div>' : '';   // 按「推薦」打開的，平常上面不寫字
+            const head = predicted ? `<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:2px 0 4px;">下一場 M-${raidPreview.level} 第一隻 ${escapeHtml(raidState.bossName || '')} 的推薦牌組（開打前預估）</div>`
+                : nextRound ? '<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:2px 0 4px;">這輪次數已用完，以下是照目前狀態推薦的下一輪牌組</div>' : '';   // 按「推薦」打開的，平常上面不寫字
             const deckGrid = (rows) => { byPartBadgeBanned = raidBannedParts || []; try { return deckGridInner(rows); } finally { byPartBadgeBanned = null; } };
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => {
@@ -13881,7 +13883,7 @@
             const used = new Set(info.used || []);
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
-            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r53|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r53|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -14639,6 +14641,9 @@
                 else if (b.bonus_type === 'SupportEffect') buff.supportEffect = a;
                 else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
             });
+            // 顯示的是下一場（遊戲預告或預估的）：加成照下一場的 seed，不是這一場的
+            const pvRaid = raidPreview && raidPreview.level && ticketCalc.seed ? ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === Number(raidPreview.level)) : null;
+            if (pvRaid) { Object.keys(buff).forEach(k => delete buff[k]); const x = raidBuffsOfRaid(pvRaid); Object.assign(buff, x.buff); extraSec = x.extraSec; }
             // 首頁模擬畫面：加成用模擬板選的那一種
             if (raidSimActive) {
                 Object.keys(buff).forEach(k => delete buff[k]); extraSec = 0;
@@ -14659,7 +14664,7 @@
             // 鏡子力的 +35% 只有第 2 輪起才有：照這場目前進行到第幾輪
             const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const cyc = Math.max(raidLiveRoundNow(latest) || 0, ...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !latest || a.raidStartedAt === latest).map(a => Number(a.cycle) || 0));
-            const mirror = cyc >= 2 ? 0.35 : 0;
+            const mirror = cyc >= 2 && !raidPreview ? 0.35 : 0;   // 下一場（預告／預估）是第 1 輪：沒有鏡子力
             // 每個部位現在剩多少血（盔甲＋肉體）：一刀的應打不能超過目標部位剩下的血，推薦好幾組時也照這個分配
             const hp = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hp[key] = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); });
             const hpA = {}; RAID_PARTS.forEach(({ key }) => { const pt = raidState.parts[key] || {}; hpA[key] = Math.max(0, Number(pt.armor) || 0); });   // 盔甲剩多少

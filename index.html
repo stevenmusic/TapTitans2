@@ -16068,7 +16068,9 @@
                     rows.push({ bans: list[i].list, eff: hp, avg: atk > 0 && isFinite(atk) ? hp / atk : 0, atk });
                 }
                 rows.sort((a, b) => a.atk - b.atk);
-                const res = { rows, best: rows[0] ? rows[0].bans : null };
+                // 刀數差 1% 以內算平手（模擬的隨機誤差）：選禁比較少部位的（能打的部位多，瘋狂無效、瘟疫比較好用，也好記）
+                const tie = rows.filter(x => rows[0] && x.atk <= rows[0].atk * 1.01).sort((a, b) => a.bans.length - b.bans.length || a.atk - b.atk);
+                const res = { rows, best: tie[0] ? tie[0].bans : rows[0] ? rows[0].bans : null };
                 ticketBanEvalRes[key] = res; kvSet(kvKey, res);
             } catch (e) { ticketBanEvalRes[key] = { busy: '計算失敗：' + (e && e.message || e) }; }
             renderTicketCalc();

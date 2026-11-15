@@ -14628,7 +14628,7 @@
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
-            const morale = snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;
+            const morale = raidPreview ? 0.3 : snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3;   // 顯示下一場（預估或預告、還沒開打）：照沒有用門票的最低 30%，不沿用上一場用了門票的士氣
             let season = raidSimSeasonBonus();
             if (!Object.keys(season).length && serverSessionsSummary && serverSessionsSummary[1]) {   // 還不知道賽季加成：先載上一場的攻擊紀錄算（一台裝置只會載一次）
                 try { await ensureSessionAttacksLoaded(serverSessionsSummary[1].startedAt); } catch (e) {}

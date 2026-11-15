@@ -13243,6 +13243,7 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
+        let CRYSTAL_TOPC_EXTRA = 2;   // 水晶：每個盤面每類試（格數＋幾）張卡
         let CRYSTAL_ROUGH_N = 60;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 30;   // 測過 30 和 40 結果幾乎一樣，30 快兩成
         const CRYSTAL_RUNS = 32;     // 每個升級組合精算幾次（固定亂數，只差等級，32 次就夠分出差別）
@@ -13356,7 +13357,7 @@
                         const jobs = [], decks = [];
                         // 加速：這個盤面每張候選卡「升級後最多讓某一組多打多少」，每一類只留前（格數＋2）張去試組合（其他當作不升）
                         const imp = {}; short.forEach(i => { const d0 = s0[i] ? s0[i].avg : 0, d1 = s1[i] ? s1[i].avg : 0; all[i].cards.forEach(c => { if (isCand.has(c)) imp[c] = Math.max(imp[c] || 0, d1 - d0); }); });
-                        const topC = new Set(); Object.keys(slotInfo).forEach(cat => candIds.filter(id => crystalSkills[id].cat === cat).sort((a, b) => (imp[b] || 0) - (imp[a] || 0)).slice(0, slotInfo[cat].n + 2).forEach(id => topC.add(id)));
+                        const topC = new Set(); Object.keys(slotInfo).forEach(cat => candIds.filter(id => crystalSkills[id].cat === cat).sort((a, b) => (imp[b] || 0) - (imp[a] || 0)).slice(0, slotInfo[cat].n + CRYSTAL_TOPC_EXTRA).forEach(id => topC.add(id)));
                         short.forEach(i => {
                             const o = s1[i] && s1[i].tg ? s1[i] : s0[i];
                             const kc = all[i].cards.filter(c => isCand.has(c) && topC.has(c));

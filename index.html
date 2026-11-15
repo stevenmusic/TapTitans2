@@ -13243,7 +13243,7 @@
             const A = parse(a), B = parse(b), ks = new Set([...Object.keys(A), ...Object.keys(B)]);
             return [...ks].every(k => A[k] && B[k] && A[k][0] === B[k][0] && Math.abs(A[k][1] - B[k][1]) < 5);
         }
-        let CRYSTAL_LATEBUD = false, CRYSTAL_UPONLY = false, CRYSTAL_MULT_K = 3, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
+        let CRYSTAL_NOCAND_N = 0, CRYSTAL_LATEBUD = false, CRYSTAL_UPONLY = false, CRYSTAL_MULT_K = 3, CRYSTAL_MULT = true, CRYSTAL_JOINT = true, CRYSTAL_LS_POOL = 60, CRYSTAL_LS_ROUNDS = 6;   // 水晶：整輪分配（false＝舊的每個盤面各挑 6 組，只給比對用）
         let CRYSTAL_TOPC_EXTRA = 2;   // 水晶：每個盤面每類試（格數＋幾）張卡
         let CRYSTAL_ROUGH_N = 60;   // 水晶：全部候選粗算後留幾組細算
         let CRYSTAL_SHORT_N = 30;   // 測過 30 和 40 結果幾乎一樣，30 快兩成
@@ -13329,7 +13329,9 @@
                         tp = Date.now();
                         if (CRYSTAL_UPONLY) {   // 只用「全部升級」篩：沒有候選卡的牌組升不升一樣，有候選卡的升了只會更強，不升那次用不到
                             const r1 = all.length > CRYSTAL_ROUGH_N ? await rough(meUp) : null; lap('rough');
-                            if (r1) { const keep = all.map((a, i) => [i, (r1[i] ? r1[i].avg : 0) * raidSimDeckFactor(a.cards)]).sort((x, y) => y[1] - x[1]).slice(0, CRYSTAL_ROUGH_N).map(x => x[0]);
+                            // 沒有候選卡的牌組另外留前幾名：不然會被升級後變強的牌組擠出名單（實際上可能不放那些卡）
+                            const topBy = (arr, n, only) => arr.map((x, i) => [i, x]).filter(([i]) => !only || !all[i].cards.some(c => isCand.has(c))).sort((x, y) => y[1] - x[1]).slice(0, n).map(x => x[0]);
+                            if (r1) { const sc1 = all.map((a, i) => (r1[i] ? r1[i].avg : 0) * raidSimDeckFactor(a.cards)); const keep = [...new Set([...topBy(sc1, CRYSTAL_ROUGH_N), ...(CRYSTAL_NOCAND_N ? topBy(sc1, Math.round(CRYSTAL_ROUGH_N * CRYSTAL_NOCAND_N), true) : [])])];
                                 const sub = keep.map(i => all[i]); const q1 = (await raidSimParallel(P, sub.map(a => ({ kind: 's', base: raidSimBase(env, meUp, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || sub.map(a => raidSimScreen(P, env, meUp, a.cards, a.plans));
                                 s1 = r1.map(x => x ? { ...x, avg: x.avg * 0.5 } : { avg: 0 }); keep.forEach((i, j) => { s1[i] = q1[j]; }); }
                             else s1 = await scr(meUp);
@@ -13346,7 +13348,8 @@
                         } else { s0 = await scr(me); s1 = candIds.length ? await scr(meUp) : s0; }
                         }
                         lap('scr'); const rank = (arr) => arr.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).sort((a, b) => b[1] - a[1]).slice(0, CRYSTAL_SHORT_N).map(x => x[0]);
-                        const short = [...new Set([...rank(s0), ...rank(s1)])];
+                        let short = [...new Set([...rank(s0), ...rank(s1)])];
+                        if (CRYSTAL_UPONLY && CRYSTAL_NOCAND_N) { const nc = s1.map((o, i) => [i, o.avg * raidSimDeckFactor(o.cards)]).filter(([i]) => !all[i].cards.some(c => isCand.has(c))).sort((a, b) => b[1] - a[1]).slice(0, Math.round(CRYSTAL_SHORT_N * CRYSTAL_NOCAND_N)).map(x => x[0]); short = [...new Set([...short, ...nc])]; }
                         // 部位份額（跟推薦牌組一樣）：這個狀態每個部位剩多少血，照血量比例分這個人 6 組的傷害；只打得到小部位（例如四肢）的牌組，
                         // 價值只算到那些部位分到的份額，超過的只算 3 成——不然會一直配打四肢的卡，實際上四肢很快就沒血了
                         const hp = {}; Object.keys(board).forEach(k => { const L = board[k].layer; hp[k] = L === 'armor' ? (Number(t.p[k][1]) || 0) : L === 'body' ? (Number(t.p[k][2]) || 0) : 0; });
@@ -13449,9 +13452,7 @@
                     const X = b.decks.map(D => b.ctxs.map((c, si) => { const d = D.per[si]; if (!d) return { x: 0, u: 0, o: null }; const x = d.val[d.kc.filter(q => S.has(q)).sort().join('+')] || 0; const u = x > 0 && c.bud ? c.alloc(d.o, x, c.bud).v : x; return { x, u, o: d.o }; }));
                     // 固定一組牌組：照每刀價值由高到低把各盤面的刀分下去（每組 1/6 輪），再照部位份額邊扣邊算
                     const evalSet = (set) => {
-                        const edges = []; set.forEach(i => X[i].forEach((z, si) => { if (z.u > 0) edges.push([z.u, i, si]); })); edges.sort((p, q) => q[0] - p[0]);
-                        const capD = {}; set.forEach(i => { capD[i] = 1 / 6; }); const capS = b.f.slice(), asg = [];
-                        for (const [u, i, si] of edges) { const m = Math.min(capD[i], capS[si]); if (m <= 1e-9) continue; capD[i] -= m; capS[si] -= m; asg.push({ i, si, m }); }
+                        const asg = crystalTransport(set.map(i => X[i].map(z => z.u)), b.f).map(a => ({ i: set[a.d], si: a.s, m: a.m })).sort((p, q) => X[q.i][q.si].u - X[p.i][p.si].u);
                         const R = b.ctxs.map((c, si) => c.bud ? Object.fromEntries(Object.entries(c.bud).map(([k, v]) => [k, v * b.f[si]])) : null);
                         let val = 0; asg.forEach(a => { const z = X[a.i][a.si], c = b.ctxs[a.si], amt = z.x * a.m * 6;
                             if (R[a.si] && z.o) { const al = c.alloc(z.o, amt, R[a.si]); if (al.take) Object.keys(al.take).forEach(k => { R[a.si][k] = Math.max(0, (R[a.si][k] || 0) - al.take[k]); }); a.v = al.v; } else a.v = amt;
@@ -13654,6 +13655,22 @@
             }
         }
         // 一個玩家每一欄的建議：cur 目前放、pick 建議放、outs 換掉、ins 換上
+        // 運輸問題（精確解）：U[d][s]＝第 d 組在第 s 個盤面每刀的價值，每組最多打 1/6 輪，盤面 s 有 f[s] 的刀；回傳讓總價值最高的分配
+        function crystalTransport(U, f) {
+            const nd = U.length, ns = f.length, N = nd + ns + 2, S0 = 0, T = N - 1, E = [], G = Array.from({ length: N }, () => []);
+            const add = (a, b, cap, cost) => { G[a].push(E.length); E.push({ to: b, cap, cost }); G[b].push(E.length); E.push({ to: a, cap: 0, cost: -cost }); };
+            for (let d = 0; d < nd; d++) { add(S0, 1 + d, 1 / 6, 0); for (let s = 0; s < ns; s++) if (U[d][s] > 0) add(1 + d, 1 + nd + s, 1, -U[d][s]); }
+            for (let s = 0; s < ns; s++) add(1 + nd + s, T, f[s], 0);
+            for (let it = 0; it < 4 * (nd + ns) + 4; it++) {
+                const dist = Array(N).fill(Infinity), pe = Array(N).fill(-1); dist[S0] = 0;
+                for (let r = 0; r < N; r++) { let ch = false; for (let a = 0; a < N; a++) { if (dist[a] === Infinity) continue; for (const ei of G[a]) { const e = E[ei]; if (e.cap > 1e-12 && dist[a] + e.cost < dist[e.to] - 1e-12) { dist[e.to] = dist[a] + e.cost; pe[e.to] = ei; ch = true; } } } if (!ch) break; }
+                if (dist[T] === Infinity || dist[T] >= -1e-12) break;
+                let fl = Infinity; for (let v = T; v !== S0; v = E[pe[v] ^ 1].to) fl = Math.min(fl, E[pe[v]].cap);
+                for (let v = T; v !== S0; v = E[pe[v] ^ 1].to) { E[pe[v]].cap -= fl; E[pe[v] ^ 1].cap += fl; }
+            }
+            const out = []; for (let d = 0; d < nd; d++) for (const ei of G[1 + d]) { const e = E[ei]; if (ei % 2 === 0 && e.to > nd && e.to < T) { const m = 1 - e.cap; if (m > 1e-9) out.push({ d, s: e.to - 1 - nd, m }); } }
+            return out;
+        }
         function crystalTot(g, card) { return g; }   // 整場＝照整輪分配實際用到的比例（不設下限）
         function crystalPctTxt(g) { return g == null ? '' : g < 0.1 ? '不到 0.1%' : g + '%'; }
         function crystalPlanOf(p, up, logs, sessions) {

@@ -208,7 +208,9 @@ function simAttack(opt, P = P0) {
       const d0 = P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * m * mult('burst', loc, t, id);
       if (!(id === 'FlakShot' && P.flakRedirect && layer === 'armor')) out.by[id] += hit(loc, d0);
       // 防空高砲：打到盔甲時再彈射一次（×1）到隨機部位
-      if (id === 'FlakShot' && layer === 'armor' && P.flakRicochet !== false) { const o = LOCS.filter(x => board[x] && board[x].layer !== 'banned' && board[x].layer !== 'skeleton'); const rl = o[Math.floor(R() * o.length)] || loc; out.by[id] += hit(rl, P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id)); }
+      // 防空高砲：打到盔甲時再彈射一次（×1），只會彈到肉體部位；盤面沒有肉體就沒有彈射
+      // （攻擊紀錄 230 刀：單打一個盔甲部位時，彈射到肉體 39B、到盔甲 0；0 肉體的刀原本實際÷應打 0.77）
+      if (id === 'FlakShot' && layer === 'armor' && P.flakRicochet !== false) { const o = LOCS.filter(x => board[x] && board[x].layer === 'body'); if (o.length) { const rl = o[Math.floor(R() * o.length)]; out.by[id] += hit(rl, P.burst * (P.k[id] || 1) * A(id, lv) * opt.tau * mult('burst', rl, t, id)); } }
       if (id === 'Weaken') weakenEnd[loc] = t + P.weakenDur;
     }
     // 苦痛：加層

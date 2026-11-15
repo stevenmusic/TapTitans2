@@ -8075,7 +8075,7 @@
         // 每一刀用「那一場」的場次加成（爆裂傷害、爆裂機率、支援效果、攻擊時間…）算，不是一律用現在這場的；這場用即時資料
         async function raidSimEnvForAttack(env0, a) {
             const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            if (!a || !a.raidStartedAt || a.raidStartedAt === latest) return env0;
+            if (!a || !a.raidStartedAt || (a.raidStartedAt === latest && !raidPreview)) return env0;   // 顯示下一場（預告／預估）時，env0 是下一場的加成：這一場的刀也要照這一場自己的加成
             const se = (serverSessionsSummary || []).find(x => x.startedAt === a.raidStartedAt);
             // 優先用伺服器記的「那一場實際的加成類型」（關卡資料每週換，舊場次不能用這週的表查：M-42 這週表上是支援，實際是爆裂機率）
             const BT = { burstDamage: [{ burstDamage: 0.3 }, 0], burstChance: [{ burstChance: 0.3 }, 0], afflictionDamage: [{ affDamage: 0.3 }, 0], afflictionChance: [{ affChance: 0.3 }, 0], support: [{ supportEffect: 0.15 }, 0], timeBoost: [{}, 3], allDamage: [{ all: 0.15 }, 0] };
@@ -8250,7 +8250,7 @@
                     const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: raidBannedUnder(sx.u, i) } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
                     const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
                     if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
-                    const env = { ...env0, board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };   // 這一刀那一場自己的加成（顯示下一場時 env0 是下一場的）
                     const me = raidSimPlayer(v, env0.morale, {}, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成、放大的等級加成）
                     me.fromAttack = true;   // 攻擊紀錄的等級已含放大加成，模擬時不要再加一次
@@ -14352,7 +14352,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=28'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=29'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -14743,7 +14743,7 @@
                 const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=33');
+                    const w = new Worker('raid-sim/simworker.js?v=34');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);

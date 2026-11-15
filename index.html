@@ -15558,7 +15558,7 @@
         const TC_SEED_KEY = 'tt2_raid_seed_cache';
         async function ticketSeedFetch(at) {
             if (!at) {   // 最新一份：手機上有、而且 6 小時內抓過就直接用
-                try { const c = JSON.parse(localStorage.getItem(TC_SEED_KEY)); if (c && c.seed && Date.now() - c.at < 6 * 3600 * 1000) return c.seed; } catch (e) {}
+                try { const c = JSON.parse(localStorage.getItem(TC_SEED_KEY)); const expired = c && c.seed && c.seed.expire_at && Date.parse(c.seed.expire_at + (/Z$/.test(c.seed.expire_at) ? '' : 'Z')) < Date.now(); if (c && c.seed && !expired && Date.now() - c.at < 6 * 3600 * 1000) return c.seed; } catch (e) {}   // 存的那一週已經過期（新的一週 seed 上傳了）：馬上重抓
             }
             const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
             const r = await fetch(`${relayUrl}/raid-seed${at ? `?at=${encodeURIComponent(at)}` : ''}`);
@@ -15975,7 +15975,8 @@
                     const L = c === 'A' ? 'armor' : c === 'S' ? 'skeleton' : 'body';
                     board[k] = { layer: L, cursed: L === 'armor' && cur(k) }; scene[k] = L === 'armor' ? (cur(k) ? 'cursed' : 'armor') : L; });
                 const label = (() => { const A = LOCS.filter((k, i) => lay[i] === 'A'), S = LOCS.filter((k, i) => lay[i] === 'S'); const open = LOCS.filter((k, i) => lay[i] === 'A' || lay[i] === 'B');
-                    return !A.length ? (S.length ? nm.filter((x, i) => lay[i] === 'S').join('') + '骨架、其他肉體' : '全肉體') : A.length === open.length ? '全盔甲' : nm.filter((x, i) => lay[i] === 'A').join('') + '盔甲、其他肉體'; })();
+                    const sk = S.length ? nm.filter((x, i) => lay[i] === 'S').join('') + '骨架、' : '';
+                    return !A.length ? (sk ? sk + '其他肉體' : '全肉體') : A.length === open.length ? (sk ? nm.filter((x, i) => lay[i] === 'A').join('') + '盔甲、' + sk.replace(/、$/, '') : '全盔甲') : nm.filter((x, i) => lay[i] === 'A').join('') + '盔甲、' + sk + '其他肉體'; })();
                 return { label: label + ' ' + Math.round(v / cum * 100) + '%', w: W * v / cum, board, scene };
             });
         }

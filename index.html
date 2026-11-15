@@ -13950,6 +13950,14 @@
             return out;
         }
         let crystalAllQ = '';
+        // 個人頁搜尋：只篩下拉選單；目前選的人不符合就跳到第一個符合的（重畫後游標留在輸入框）
+        let crystalMeQ = '';
+        function crystalMeFilter(q) {
+            crystalMeQ = q; const k = String(q || '').trim().toLowerCase(), s = document.getElementById('crystal-me-sel'); if (!s) return;
+            let first = null; [...s.options].forEach(o => { const ok = !k || o.textContent.toLowerCase().includes(k); o.hidden = !ok; if (ok && !first) first = o; });
+            clearTimeout(crystalMeFilter.t);   // 停止打字 0.6 秒才換人（每打一個字就重畫，輸入框會跳掉）
+            if (first && k && s.selectedOptions[0] && s.selectedOptions[0].hidden) crystalMeFilter.t = setTimeout(() => { crystalPlayer = first.value; renderCrystalReco(); }, 600);
+        }
         function crystalAllFilter(q) {   // 只藏行、不重畫（打字時輸入框不會跳掉）
             crystalAllQ = q; const k = String(q || '').trim().toLowerCase();
             document.querySelectorAll('#crystal-reco .crystal-all-row').forEach(el => { el.style.display = !k || el.dataset.name.includes(k) ? '' : 'none'; });
@@ -14011,7 +14019,7 @@
             if (!crystalPlayer) { try { const me = localStorage.getItem(CARDLV_ME_KEY); const hit = players.find(p => p.name === me); crystalPlayer = hit ? hit.player_code : null; } catch (e) {} }
             if (!crystalPlayer && players[0]) crystalPlayer = players[0].player_code;
             const p = players.find(x => x.player_code === crystalPlayer);
-            const sel = `<select onchange="crystalPlayer = this.value; renderCrystalReco();" style="width:100%; font:inherit; font-size:14px; font-weight:700; padding:7px 9px; border:1px solid #e2d7c5; border-radius:8px; background:#fff;">${players.map(x => `<option value="${escapeHtml(x.player_code)}" ${x.player_code === crystalPlayer ? 'selected' : ''}>${escapeHtml(raidShortName(x.name))}</option>`).join('')}</select>`;
+            const sel = `<select id="crystal-me-sel" onchange="crystalPlayer = this.value; renderCrystalReco();" style="width:100%; font:inherit; font-size:14px; font-weight:700; padding:7px 9px; border:1px solid #e2d7c5; border-radius:8px; background:#fff;">${players.map(x => `<option value="${escapeHtml(x.player_code)}" ${x.player_code === crystalPlayer ? 'selected' : ''}>${escapeHtml(raidShortName(x.name))}</option>`).join('')}</select>`;
             if (!p) { box.innerHTML = sel; return; }
             // 用卡次數：他自己（這場＋前一場）、全公會（這場）
             const sessions = (serverSessionsSummary || []).slice(0, 2).map(x => x.startedAt);
@@ -14069,9 +14077,11 @@
             const deckBox = up && up.decks ? `<details style="margin-top:10px; background:#fff; border:1px solid #eadfcc; border-radius:12px; padding:8px 10px;"><summary style="font-size:13px; font-weight:800; color:#4a3728; cursor:pointer;">看模擬用的牌組（每張卡用它最常搭的那一組、最常見的盤面）</summary>${up.decks.map(c => `<div style="margin-top:8px;"><div style="font-size:12px; font-weight:800; color:#6b5a4a;">${escapeHtml(c.n)}・${escapeHtml(c.label)}</div>${c.d.length ? '' : '<div style="font-size:12px; color:#857a6b;">（沒有排到）</div>'}${c.d.map(([cards, b, g, sh]) => `<div style="display:flex; align-items:center; gap:4px; margin-top:3px;">${cards.map(id => raidCardImage(id) ? `<img src="${raidCardImage(id)}" title="${escapeHtml(raidCardLabel(id))}" style="width:26px; height:26px; border-radius:5px; ${up.picks && Object.values(up.picks).some(a => a.some(x => x.id === id)) ? 'outline:2px solid #2e7d32; outline-offset:-1px;' : ''}">` : '').join('')}<span style="flex:1; font-size:12px; color:#4a3728; margin-left:4px;">${cards.map(id => escapeHtml(raidCardLabel(id))).join('、')}</span><span style="font-size:12px; font-weight:700; color:#6b5a4a; white-space:nowrap;">${b}B${g > 0 ? ` <span style="color:#2e7d32;">+${g}%</span>` : ''}${sh != null ? `<br><span style="font-weight:600; color:#857a6b;">佔 ${sh}%</span>` : ''}</span></div>`).join('')}</div>`).join('')}<div style="font-size:12px; color:#857a6b; margin-top:6px;">綠框＝建議放水晶的卡；+% ＝這組因為水晶升級多打的</div></details>` : '';
             const gainLine = up && up.picks ? (up.fromBuff ? `<div style="font-size:12px; color:#8a7a6a; text-align:center; margin-top:4px;">沿用同樣場次加成算過的結果</div>` : '') + `<div style="margin-top:5px; padding:4px 10px; background:#eef6ee; border-radius:9px; font-size:13px; font-weight:800; color:#2e7d32; text-align:center;">${up.fast === 2 ? `建議總分 ${up.gain}<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 ${up.gainCur}</span>` : `建議 +${up.gain}%<span style="font-size:12px; color:#6b5a4a; font-weight:700;">　現在 +${up.gainCur}%</span>`}</div>` : '';
             // 個人頁精簡：玩家和關卡選單同一排
-            const top = `<div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}${reBtn}`;
+            const top = `<input class="player-name-input" id="crystal-me-q" placeholder="搜尋玩家名稱" value="${escapeHtml(crystalMeQ)}" oninput="crystalMeFilter(this.value)" style="margin-bottom:6px;"><div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}${reBtn}`;
+            const hadQ = document.activeElement && document.activeElement.id === 'crystal-me-q';
             box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
-                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜紅虛線＝換掉｜分數越高越值得放水晶（升級多打的傷害，加上全公會常不常用這張卡）</div>`;
+                <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜紅虛線＝換掉｜分數越高越值得放水晶（升級多打的傷害，加上全公會常不常用這張卡）</div>`; if (crystalMeQ) { const k = crystalMeQ.trim().toLowerCase(), sl = document.getElementById('crystal-me-sel'); if (sl) [...sl.options].forEach(o => { o.hidden = !!k && !o.textContent.toLowerCase().includes(k); }); }
+            if (hadQ) { const el = document.getElementById('crystal-me-q'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
         }
         const RAID_CURSE_BREAKERS = new Set(['Fragmentize', 'RuinousRust']);   // 撼地破甲、毀了雨
         function raidSimPartFns(scene, loose) {

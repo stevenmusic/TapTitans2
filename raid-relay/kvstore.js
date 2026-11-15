@@ -20,6 +20,18 @@ function createKvStore({ app, db, dbReady }) {
     const r = await db.execute('SELECT key, data, updated_at FROM kv_store');
     r.rows.forEach(row => mem.set(row.key, { text: row.data, at: Number(row.updated_at) }));
     loaded = true;
+    // 清掉用不到的舊資料：不是這一週 seed 的水晶結果（crystal_v9_*）、舊版禁打結果（ban_eval_v2_*）
+    try {
+      const sr = await db.execute('SELECT valid_from FROM raid_seed ORDER BY valid_from DESC LIMIT 1').catch(() => ({ rows: [] }));
+      const week = sr.rows.length ? String(sr.rows[0].valid_from) : null;
+      const drop = [];
+      mem.forEach((v, k) => {
+        if (/^ban_eval_v2_/.test(k)) { drop.push(k); return; }
+        if (/^crystal_v9_/.test(k) && week) { let d = null; try { d = JSON.parse(v.text); } catch (e) {} if (!d || d.seed !== week) drop.push(k); }
+      });
+      for (const k of drop) { mem.delete(k); await db.execute({ sql: 'DELETE FROM kv_store WHERE key = ?', args: [k] }); }
+      if (drop.length) console.log(`[kv] 清掉舊的水晶／禁打資料 ${drop.length} 筆（這一週 ${week}），剩 ${mem.size} 筆`);
+    } catch (e) { console.error('[kv] 清舊資料失敗:', e && e.message ? e.message : e); }
   })().catch(e => { console.error('[kv] 初始化失敗:', e && e.message ? e.message : e); });
 
   const out = (key) => { const x = mem.get(key); return x ? { data: JSON.parse(x.text), at: x.at } : { data: null, at: null }; };

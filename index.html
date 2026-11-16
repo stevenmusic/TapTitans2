@@ -12550,6 +12550,7 @@
            可用的卡＝所有卡片（不限這個玩家以前用過的），扣掉這一波（每 6 刀一波）已經用過的；
            組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
         const RAID_ATTACKS_PER_CYCLE = 6;
+        const RAID_ATTACKS_MAX = 12;   // 上一輪沒打完的刀會留到下一輪（例如剩 7 刀）：推薦組數照實際剩幾刀，這些刀裡同一張卡只能用一次
         // 下一場還沒開打（伺服器預告，或網頁自己估的下一場）：推薦照下一場第一輪算，卡片全部能用、6 刀，不看上一場剩幾刀
         function raidNextRaidPending() { return !!(raidState && raidPreview); }
         function raidLogIsLatestSession(r) {
@@ -12820,7 +12821,7 @@
             } else return null;
             // 部位吃不吃得下：這一輪的組（前 6 組、不含留給之後的瘋狂無效／凱旋行軍）打同一個部位的加起來，超過部位剩的血 1 成以上就重算
             const need = {}, needA = {};
-            rows.slice(0, RAID_ATTACKS_PER_CYCLE).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
+            rows.slice(0, Math.max(RAID_ATTACKS_PER_CYCLE, n)).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
             const P = (raidState && raidState.parts) || {};
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; })
                 || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0))   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
@@ -12914,7 +12915,7 @@
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
-                    const later = i >= RAID_ATTACKS_PER_CYCLE && !x.voidLater && !x.finLater && !x.flakLater;
+                    const later = i >= Math.max(RAID_ATTACKS_PER_CYCLE, Math.min(info.remaining || 0, RAID_ATTACKS_MAX)) && !x.voidLater && !x.finLater && !x.flakLater;
                     return `<div style="padding:2px; border-radius:7px; background:${x.finLater ? '#f6ecd2' : x.flakLater ? '#e3eef9' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.flakLater ? ' box-shadow:inset 0 0 0 1.5px #1565c0;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.finLater ? '#8a6414' : x.flakLater ? '#1565c0' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.finLater ? '凱旋行軍丨6 骨架再打' : x.flakLater ? '防空高砲丨1肉體再打' : x.voidTag ? '瘋狂無效丨現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效丨現在打' : '瘋狂無效丨6 肉體再打') : `第 ${i + 1} 組${later ? '丨之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
@@ -12969,7 +12970,7 @@
                     //   估計這輪等不到 → 照一般推薦
                     const usedVoid = !!(info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid')));
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
-                    const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
+                    const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
                     const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, voidLaterGo = hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
@@ -13010,7 +13011,7 @@
                         else raidRecoEmptyRetry.delete(r.player);
                         raidLogRecoRows.set(r.player, all);
                     } else {
-                    const top = recoWith(info.used, Math.min(left, RAID_ATTACKS_PER_CYCLE));
+                    const top = recoWith(info.used, Math.min(left, RAID_ATTACKS_MAX));
                     const topSigs = new Map(top.map((r, i) => [sigOf(r.rawCards || r.cards), i]));
                     const dataAll = (await loadByPartStats(byPartTop)) || data;
                     const bySig = new Map();
@@ -13029,7 +13030,7 @@
                     const locked = [], lockedCards = new Set();
                     let lockedTainted = 0;
                     // 剩 6 刀以內才鎖定模擬器的組；剩超過 6 刀時以「組數最多」優先（模擬器的組仍然優先選，但可以為了多湊幾組換掉）
-                    (info.remaining <= RAID_ATTACKS_PER_CYCLE ? simRows : []).forEach(r => {
+                    (info.remaining <= RAID_ATTACKS_MAX ? simRows : []).forEach(r => {
                         const d = { cards: r.rawCards || r.cards, attacks: 0, row: r, sim: true };
                         if (locked.length >= left || d.cards.some(c => lockedCards.has(c) || BY_PART_RECO_EXCLUDE.has(c))) return;
                         const t = tainted(d) ? 1 : 0;
@@ -14309,7 +14310,7 @@
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
             const used = new Set(info.used || []);
-            const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_PER_CYCLE));
+            const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_MAX));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);

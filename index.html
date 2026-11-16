@@ -12550,7 +12550,17 @@
            可用的卡＝所有卡片（不限這個玩家以前用過的），扣掉這一波（每 6 刀一波）已經用過的；
            組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
         const RAID_ATTACKS_PER_CYCLE = 6;
-        const RAID_ATTACKS_MAX = 12;   // 上一輪沒打完的刀會留到下一輪（例如剩 7 刀）：推薦組數照實際剩幾刀，這些刀裡同一張卡只能用一次
+        const RAID_ATTACKS_MAX = 12;
+        const RAID_RECO_WEAK = 0.5;   // 推薦的組應打低於平常每刀的幾成就不列（漏了一輪、卡用掉太多時剩下的組）
+        // 這個人平常每刀傷害：這場的平均（打不到 3 刀就用上一場）
+        function raidPlayerTypicalDmg(r) {
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt, prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
+            const avgOf = (arr) => { const d = arr.filter(a => a && !a.placeholder && a.totalDamage > 0); return d.length >= 3 ? d.reduce((t, a) => t + a.totalDamage, 0) / d.length : 0; };
+            const mine = (r && r.attacks) || [];
+            let v = avgOf(mine.filter(a => a.raidStartedAt === sa));
+            if (!v && prevSa) { const codes = new Set(mine.map(a => a.playerCode).filter(Boolean)); v = avgOf([...mine.filter(a => a.raidStartedAt === prevSa), ...((sessionAttacksCache.get(prevSa) || []).filter(a => a && (a.player === r.player || codes.has(a.playerCode))))]); }
+            return v;
+        }   // 上一輪沒打完的刀會留到下一輪（例如剩 7 刀）：推薦組數照實際剩幾刀，這些刀裡同一張卡只能用一次
         // 下一場還沒開打（伺服器預告，或網頁自己估的下一場）：推薦照下一場第一輪算，卡片全部能用、6 刀，不看上一場剩幾刀
         function raidNextRaidPending() { return !!(raidState && raidPreview); }
         function raidLogIsLatestSession(r) {
@@ -13013,11 +13023,16 @@
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
+                        // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）
+                        const expPer = raidPlayerTypicalDmg(r);
+                        const weak = expPer > 0 ? simPick.filter(x => !x.voidLater && !x.finLater && !x.flakLater && x.simDmg && (x.simDmg.avg || 0) < expPer * RAID_RECO_WEAK) : [];
+                        if (weak.length) simPick = simPick.filter(x => !weak.includes(x));
+                        const weakLine = weak.length ? `<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:4px 0 0;">另外 ${weak.length} 刀剩下的卡太弱（不到平常每刀 ${formatNumAlwaysM(expPer)} 的 ${Math.round(RAID_RECO_WEAK * 100)}%），建議留到下一輪卡片重新可用再打</div>` : '';
                         simPick.forEach(x => all.push(x));
                         const aliveOpen = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length;
                         const voidLine = hasVoid && !sixNow && vPref !== true && aliveOpen < 6 ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">只剩 ${aliveOpen} 個部位能打，湊不到 6 肉體${simPick.some(x => (x.rawCards || x.cards || []).includes('CrushingVoid')) ? `（瘋狂無效照 ${raidBodyNow()} 肉體算）` : ''}</div>`
                             : hasVoid && !sixNow && vPref !== true && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '到下一輪結束' : '這輪'}等不到 6 肉體（全公會${nextRound ? '下一輪有' : '還剩'} ${vReach.left} 刀，約 ${formatNumAlwaysM(vReach.dmg || 0)}，還要拆 ${formatNumAlwaysM(vReach.needArmor || 0)} 盔甲），照一般推薦</div>` : '';
-                        html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
+                        html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : (weak.length ? '' : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>')) + weakLine;
                         // 算出來是空的（常見是剛打開網頁、這場的紀錄還沒載完）：過幾秒自動重算，最多 3 次
                         if (!all.length) { const k = (raidRecoEmptyRetry.get(r.player) || 0) + 1; raidRecoEmptyRetry.set(r.player, k); if (k <= 3) setTimeout(() => { if (!raidLogRecoOpen.has(r.player)) return; const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player) || r; raidLogRenderPlayerReco(r2); }, 4000 * k); }
                         else raidRecoEmptyRetry.delete(r.player);

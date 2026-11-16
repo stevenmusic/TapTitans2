@@ -8791,6 +8791,7 @@
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
         // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
+        const RAID_LAYER_BONUS_ONLY = new Set(['RuinousRust', 'RazorWind', 'Fragmentize', 'FlakShot']);
         function quizCardUsable(card, scene, onlyPart, ignoreParts, loose) {   // loose：牌組頁自己挑卡，不套推薦用的「只在某些情況才用」（例如帶刺的晨星）
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
@@ -8802,7 +8803,8 @@
                 return { ok: attackable.length > 0, why: '現在沒有可以打的部位' };
             }
             // 允許的狀態（卡片資料）：詛咒甲／盔甲／肉體
-            const layers = quizLayerSet(card);
+            // 只有加成的傷害卡（毀了雨、撕裂風刃、撼地破甲、防空高砲）：推薦／牌組頁任何部位都能打，加成交給模擬器照部位算；輔助卡（稜角裂痕、骨骼粉碎、振奮士氣）在別層沒效果，照樣限制
+            const layers = loose && RAID_LAYER_BONUS_ONLY.has(card) ? null : quizLayerSet(card);
             const allowedLayers = layers ? [...layers].filter(x => ['詛咒甲', '盔甲', '肉體'].includes(x)) : null;
             const parts = ignoreParts ? null : quizPartGroups(card);   // ignoreParts：模擬器推薦用，部位加成交給模擬器算，不當成限制
             let onlyLayerName = null;
@@ -14256,8 +14258,9 @@
             const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
             // 詛咒甲只給帶撼地破甲或毀了雨的牌組打（這兩張打詛咒甲有加成，其他牌組留給一般部位）
             // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
+            // 毀了雨：任何部位都能打（只是打詛咒盔甲有加成，模擬器照部位算），不套「只能打詛咒盔甲」
             // 帶刺的晨星不套「其中一種只剩 1～2 個才能用」的使用規則：模擬器照部位數算加成，攻擊紀錄各種盤面都準（1.01～1.04），划不划算交給傷害決定
-            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar').ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar' || RAID_LAYER_BONUS_ONLY.has(n)).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }

@@ -13014,7 +13014,7 @@
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
                         const aliveOpen = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length;
-                        const voidLine = hasVoid && !sixNow && vPref !== true && aliveOpen < 6 ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">能打的部位只剩 ${aliveOpen} 個（禁打 ${(raidBannedParts || []).length} 個、其他打成骨架），湊不到 6 肉體，照一般推薦</div>`
+                        const voidLine = hasVoid && !sixNow && vPref !== true && aliveOpen < 6 ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">只剩 ${aliveOpen} 個部位能打，湊不到 6 肉體${simPick.some(x => (x.rawCards || x.cards || []).includes('CrushingVoid')) ? `（瘋狂無效照 ${raidBodyNow()} 肉體算）` : ''}</div>`
                             : hasVoid && !sixNow && vPref !== true && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '到下一輪結束' : '這輪'}等不到 6 肉體（全公會${nextRound ? '下一輪有' : '還剩'} ${vReach.left} 刀，約 ${formatNumAlwaysM(vReach.dmg || 0)}，還要拆 ${formatNumAlwaysM(vReach.needArmor || 0)} 盔甲），照一般推薦</div>` : '';
                         html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         // 算出來是空的（常見是剛打開網頁、這場的紀錄還沒載完）：過幾秒自動重算，最多 3 次

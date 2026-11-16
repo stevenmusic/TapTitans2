@@ -12763,7 +12763,7 @@
             (raidLogLastRanked || []).forEach(r => { if (!r) return;
                 if (r.attacks && r.attacks.some(a => a && a.raidStartedAt === sa)) { active++; left += Math.max(0, raidPlayerCycleInfo(r.player, r.attacks).remaining || 0); return; }
                 const codes = (r.attacks || []).map(a => a && a.playerCode).filter(Boolean);
-                if (!prevWho.size || prevWho.has(r.player) || codes.some(c => prevWho.has(c))) { active++; left += RAID_ATTACKS_PER_CYCLE; } });
+                if (!prevWho.size || prevWho.has(r.player) || codes.some(c => prevWho.has(c))) { active++; const ci = raidPlayerCycleInfo(r.player, r.attacks || []); left += Math.max(RAID_ATTACKS_PER_CYCLE, Math.min(ci.remaining || 0, RAID_ATTACKS_MAX)); } });   // 沒出刀的人：照累積的刀數（第 2 輪才出刀的人有 12 刀）
             return { left, active };
         }
         function raidSkelReach(nextRound) {
@@ -12894,7 +12894,7 @@
             if (!box) return;
             // 帳號資料（卡片等級、有沒有瘋狂無效）還沒載好就先等它：不然會當成沒有這張卡，推薦少了瘋狂無效等
             if (!raidClanData) { const bx0 = raidLogRecoBox(r.player); if (bx0) { bx0.style.display = 'block'; bx0.innerHTML = raidRecoWrap(r, '<div style="font-size:12px; color:#5a4a3a;">載入帳號資料中…</div>'); }
-                await raidLoadClanData().catch(() => null); for (let i = 0; i < 60 && !raidClanData && raidClanDataLoading; i++) await new Promise(res => setTimeout(res, 300)); if (!raidClanData) return; const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player); if (r2) r = r2; }
+                await raidLoadClanData().catch(() => null); for (let i = 0; i < 60 && !raidClanData && raidClanDataLoading; i++) await new Promise(res => setTimeout(res, 300)); /* 等不到（網路問題）就照原本方式算，不要卡在載入中 */ const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player); if (r2) r = r2; }
             const wantVoid = raidRecoVoidOn(r), gen = (raidRecoGen.get(r.player) || 0) + 1; raidRecoGen.set(r.player, gen);
             box.style.display = 'block';
             // 存的畫面只在「同一隻王、同一輪、同樣剩幾刀和用過的卡」時先顯示；狀態變了（換王、出過刀）就不放舊的，等新的算好
@@ -14480,7 +14480,11 @@
             { const want = n - (voidO ? 1 : 0);
               if (pick.length < want && Array.isArray(poolAll)) { const usedC = new Set([...pick.flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
                 const alive = (o) => !env.hp || (o.tg || []).some(k => (env.hp[k] || 0) > 0);
-                for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; pick.push({ ...o }); o.cards.forEach(c => usedC.add(c)); } } }
+                // 補上的組扣掉前面各組已經分走的部位血量（平均分到打的部位），應打不會超過剩下的血
+                const took = {}; pick.forEach(o => { const tg = o.tg || []; tg.forEach(k => { took[k] = (took[k] || 0) + (o.avg || 0) / Math.max(1, tg.length); }); });
+                const capOf = (o) => env.hp ? (o.tg || []).reduce((t, k) => t + Math.max(0, (env.hp[k] || 0) - (took[k] || 0)), 0) : Infinity;
+                for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; const cap = capOf(o); if (!(cap > 0)) continue;
+                    const q = { ...o }; if (q.avg > cap) { const f = cap / q.avg; q.avg = cap; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi = Math.min(q.hi, cap * 1.08); } pick.push(q); o.cards.forEach(c => usedC.add(c)); (q.tg || []).forEach(k => { took[k] = (took[k] || 0) + q.avg / Math.max(1, q.tg.length); }); } } }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

@@ -8101,7 +8101,7 @@
             const plans = []; const addPlan = (tg, label) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label }); };
             open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
             const hpSim = a.simHA && a.simH ? raidHpSimOf(LOCS, (k) => (Number(a.simHA[LOCS.indexOf(k)]) || 0) * 1e6, (k) => Math.max(0, (Number(a.simH[LOCS.indexOf(k)]) || 0) - (Number(a.simHA[LOCS.indexOf(k)]) || 0)) * 1e6, LOCS.filter(k => board[k].layer === 'banned')) : null;   // 出刀前剩的盔甲／肉體（伺服器 v4 起）
-            const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, hpSim };
+            const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, hpSim, miss: raidMissOfAttack(a.simMs) };
             const { hitParts, playable } = raidSimPartFns(scene);
             const n = Math.max(1, Math.min(RAID_ATTACKS_PER_CYCLE, (Number(a.attacksRemaining) || 0) + 1));
             const pkey = [r.identity, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel, JSON.stringify(hpSim || {})].join('|');
@@ -8201,7 +8201,7 @@
                     open.forEach(k => addPlan([k], '')); addPlan(open.filter(k => k === 'Head' || k === 'ChestUpper'), ''); addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), ''); addPlan(open, '');
                     // 出刀前每個部位剩的盔甲／肉體（伺服器 v4 起有 ha）：跟推薦一樣，剩不多的部位交給模擬器（一刀之內破甲、打成骨架照實際算）
                     const hpSim = a.simHA && a.simH ? raidHpSimOf(LOCS, (k) => (Number(a.simHA[LOCS.indexOf(k)]) || 0) * 1e6, (k) => Math.max(0, (Number(a.simH[LOCS.indexOf(k)]) || 0) - (Number(a.simHA[LOCS.indexOf(k)]) || 0)) * 1e6, LOCS.filter(k => board[k].layer === 'banned')) : null;
-                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, hpSim };
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, open, plans, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, hpSim, miss: raidMissOfAttack(a.simMs) };
                     // 同一人、同一個部位狀態：他所有牌組的傷害表只算一次，連續幾刀共用
                     const pkey = [identity, a.raidStartedAt, a.simB, JSON.stringify(a.simC), a.cycle >= 2, a.boss, a.raidLevel, JSON.stringify(hpSim || {})].join('|');
                     let pool = raidPickPools.get(pkey);
@@ -8250,7 +8250,7 @@
                     const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: raidBannedUnder(sx.u, i) } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
                     const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
                     if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
-                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };   // 這一刀那一場自己的加成（顯示下一場時 env0 是下一場的）
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, miss: raidMissOfAttack(sx.ms) };   // 這一刀那一場自己的加成（顯示下一場時 env0 是下一場的）
                     const me = raidSimPlayer(v, env0.morale, {}, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成、放大的等級加成）
                     me.fromAttack = true;   // 攻擊紀錄的等級已含放大加成，模擬時不要再加一次
@@ -8329,7 +8329,7 @@
                     if (sx && sx.v >= 3 && sx.by && sx.exp) {   // 伺服器新版（v3）：模擬器跟網頁同一版，帶每張卡的傷害——直接套網頁最新的校正，跟推薦同一套算法，不用再背景重算
                         const k = raidSimExpKey(a); if (!raidCsExpBy.has(k)) raidCsExpBy.set(k, { t: sx.t || 0, b: sx.by });
                         const adj = raidExpAdjusted(a, sx.exp); a.simExp = sx.cap > 0 ? Math.min(adj, sx.cap) : adj;
-                    } else { const w = sx && sx.exp && sx.b ? raidCsExp(a, sx) : null; a.simExp = sx && sx.exp ? (w ? raidExpAdjusted(a, w) : csAtk ? null : raidSimExpFix(a, sx)) : null; } a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simU = sx ? sx.u : null; a.simHA = sx ? sx.ha : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;
+                    } else { const w = sx && sx.exp && sx.b ? raidCsExp(a, sx) : null; a.simExp = sx && sx.exp ? (w ? raidExpAdjusted(a, w) : csAtk ? null : raidSimExpFix(a, sx)) : null; } a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simU = sx ? sx.u : null; a.simHA = sx ? sx.ha : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null; a.simMs = sx ? sx.ms : null;
                     if (a.simExp) { simAct += a.totalDamage; simExp += a.simExp; simN++; }
                     const base = a.simExp || baseDmg;
                     a.expectedRatio = base > 0 ? a.totalDamage / base : null;
@@ -14344,7 +14344,7 @@
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
-            const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
+            const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {}) + '|' + JSON.stringify(env.miss || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
             if (inf) { inf.progress = progress; return inf.p; }
@@ -14845,7 +14845,7 @@
         function raidSimLoad() {
             if (raidSimReady) return raidSimReady.then(P => { raidDeckCalApply(P); return P; });
             raidSimReady = (async () => {
-                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=29'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
+                if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=30'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=21').then(r => r.json())]);
                 RaidSim.init(sk);
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
@@ -15106,6 +15106,20 @@
                 if (a > 0 ? a < 3e9 : (bo > 0 && bo < 3e9)) out[k] = [hpQ(a), a > 0 && bo >= 3e9 ? 1e13 : hpQ(bo)]; });
             return out;
         }
+        // 腐敗突擊用：每個部位目前盔甲、肉體各少了幾成 { 部位: [盔甲缺血比例, 肉體缺血比例] }（0～1，取到 0.05 一段，跟伺服器 simexp.js 的 missOf 一樣）
+        //   armorOf／bodyOf／maxOf(k) → [盔甲上限, 肉體上限]；沒有上限的部位不給（模擬器照舊用固定值）
+        function raidMissOf(keys, armorOf, bodyOf, maxOf) {
+            const f = (x, m) => m > 0 ? Math.round(Math.max(0, Math.min(1, 1 - (Number(x) || 0) / m)) * 20) / 20 : 0;
+            const out = {}; keys.forEach(k => { const mx = maxOf(k) || [], aM = Number(mx[0]) || 0, bM = Number(mx[1]) || 0; if (!(aM > 0 || bM > 0)) return; out[k] = [f(armorOf(k), aM), f(bodyOf(k), bM)]; });
+            return Object.keys(out).length ? out : null;
+        }
+        // 攻擊紀錄那一刀打之前的缺血比例（伺服器 v5 起有 ms：8 個部位各 [盔甲, 肉體]）；舊資料沒有就不給（模擬器照舊用固定值）
+        function raidMissOfAttack(ms) {
+            if (!Array.isArray(ms)) return null;
+            const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+            const out = {}; LOCS.forEach((l, i) => { if (Array.isArray(ms[i])) out[l] = ms[i]; });
+            return Object.keys(out).length ? out : null;
+        }
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
@@ -15165,6 +15179,8 @@
             //   取整（1B 以下 50M、以上 250M）：血量小變不會一直重算（每刀本來就上下差 50～100M）
             const hpSim = raidHpSimOf(RAID_PARTS.map(x => x.key), (k) => (raidState.parts[k] || {}).armor, (k) => (raidState.parts[k] || {}).body, raidBannedParts || []);
             plans.forEach(pl => { pl.cap = pl.tg.reduce((t, k) => t + (hp[k] || 0), 0); });
+            // 腐敗突擊：每個部位目前這一層少了幾成（跟伺服器算攻擊紀錄應打同一套）
+            const miss = raidMissOf(RAID_PARTS.map(x => x.key), (k) => (raidState.parts[k] || {}).armor, (k) => (raidState.parts[k] || {}).body, (k) => { const pt = raidState.parts[k] || {}; return [pt.armorMax, pt.bodyMax]; });
             // 打法策略：血最厚的部位佔能打部位的血 6 成以上、而且其他部位清完骨架能到 6 個（凱旋行軍最大傷害）→ 先清其他部位；不然照血量比例平均打
             const openHp = open.reduce((t, k) => t + hp[k], 0);
             const nSkel = RAID_PARTS.map(x => x.key).filter(k => board[k].layer === 'skeleton').length;
@@ -15183,7 +15199,7 @@
             // 等全公會這一輪剩下的刀打得完血最厚的部位時，才一起收掉其他部位、再用凱旋行軍（收尾）
             const smallHp0 = small.reduce((t, k) => t + hp[k], 0);
             if (strategy === 'clear' && openHp > 0 && smallHp0 / openHp <= 0.2) strategy = guildCap > 0 && guildCap >= openHp ? 'sweep' : 'park';
-            const envOut = { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, hpA, hpSim, strategy, bigPart, bigShare, armorLeft, nBody, guildCap };
+            const envOut = { board, curse, buff, extraSec, morale, season, open, plans, mirror, hp, hpA, hpSim, miss, strategy, bigPart, bigShare, armorLeft, nBody, guildCap };
             raidSimEnvLast = envOut;
             return envOut;
         }
@@ -15196,7 +15212,7 @@
             const pot = !me.fromAttack && cards.includes('MagicPotion') ? raidSimPotionBonus(me.lv.MagicPotion || 0) : 0;
             const deck = cards.map(c => [c, (me.lv[c] || 0) + (pot && c !== 'MagicPotion' ? pot : 0)]);
             const drums = deck.some(d => d[0] === 'BattleDrums');
-            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: env.mirror || 0, curse: env.curse, buff: env.buff, necro: me.necro, hp: env.hpSim && Object.keys(env.hpSim).length ? env.hpSim : undefined };   // hp：剩不多的部位，模擬照實際破甲／打成骨架
+            return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau: me.tau, mirror: env.mirror || 0, curse: env.curse, buff: env.buff, necro: me.necro, hp: env.hpSim && Object.keys(env.hpSim).length ? env.hpSim : undefined, miss: env.miss || undefined };   // miss：腐敗突擊照部位目前這一層缺血比例算（沒有血量資料就不給，照舊）   // hp：剩不多的部位，模擬照實際破甲／打成骨架
         }
         function raidSimScreen(P, env, me, cards, plans) {
             const base = raidSimBase(env, me, cards);
@@ -15236,7 +15252,7 @@
                 const n = window.RAID_SIM_WORKERS || Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));   // RAID_SIM_WORKERS：後台批次用滿全部核心   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0 };
                 for (let i = 0; i < n; i++) {
-                    const w = new Worker('raid-sim/simworker.js?v=34');
+                    const w = new Worker('raid-sim/simworker.js?v=35');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
@@ -15623,7 +15639,7 @@
                     const me = raidSimPlayer(v, env0.morale, env0.season, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Math.max(me.lv[c.name] || 0, Number(c.level) || 0); }); me.fromAttack = true;
                     const board = {}; LOCS.forEach((l, i) => { const ch = a.simB[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: 'armor' } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
-                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: a.simC ? { type: a.simC[0], per: a.simC[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, miss: raidMissOfAttack(a.simMs) };
                     const cards = a.cards.map(c => c.name);
                     jobs.push({ kind: 'f', base: raidSimBase(env, me, cards), o: { cards, tg: a.simTg } }); keys.push(k);
                 }

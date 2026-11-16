@@ -425,7 +425,9 @@ function buildAttackContext() {
     Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hp[loc] = Math.max(0, Number(p.armor) || 0) + Math.max(0, Number(p.body) || 0); });
     const hpAB = {};   // 盔甲、肉體分開（模擬一刀之內破甲、打成骨架用）
     Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hpAB[loc] = [Math.max(0, Number(p.armor) || 0), Math.max(0, Number(p.body) || 0)]; });
-    return { v: 1, curse, cursed: cursedParts.length, cursedParts, layers, hp, hpAB };
+    const hpMax = {};   // 盔甲、肉體上限（腐敗突擊照目前這一層缺血比例算）
+    Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hpMax[loc] = [Math.max(0, Number(p.armorMax) || 0), Math.max(0, Number(p.bodyMax) || 0)]; });
+    return { v: 1, curse, cursed: cursedParts.length, cursedParts, layers, hp, hpAB, hpMax };
   } catch (e) {
     return null;
   }
@@ -1938,7 +1940,7 @@ function simEnvLive(ctx) {
   });
   const c0 = ctx.curse && ctx.curse[0];
   const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;
-  return { ...simEnvBuffs(), board, curse, hp: ctx.hp || null, hpAB: ctx.hpAB || null };
+  return { ...simEnvBuffs(), board, curse, hp: ctx.hp || null, hpAB: ctx.hpAB || null, hpMax: ctx.hpMax || null };
 }
 
 function handleWatcherRaidEnd(reason) {

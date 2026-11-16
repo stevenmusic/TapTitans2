@@ -12991,7 +12991,7 @@
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
                     const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
-                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow : n0 <= 1 ? false : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
@@ -14450,7 +14450,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = raidVerifyWeights(raidPhaseWeights(mergeFlak(got.pool), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? mergeFlak(got.pool).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(mergeFlak(got.pool), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);

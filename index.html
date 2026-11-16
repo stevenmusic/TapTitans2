@@ -12662,13 +12662,14 @@
         // 推薦框右上角的開關：切換瘋狂無效開／關，框不收合，直接換內容
         function raidRecoVoidToggle(name) {
             const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
-            raidRecoVoidPref.set(name, !raidRecoVoidOn(r));
+            const on = (raidLogRecoRows.get(name) || []).some(x => x.voidLater || x.voidTag);
+            raidRecoVoidPref.set(name, !on);   // 手動切過就照手動的：ON 保留一組瘋狂無效（6 肉體再打，已經 6 肉體就現在打）、OFF 照傷害計算，不特地排
             raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name);
             raidLogRecoOpen.add(name); raidLogUiSave();
             return raidLogRenderPlayerReco(r);
         }
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
-        function raidRecoWrap(r, html) { const sw = raidRecoFinBtnHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
+        function raidRecoWrap(r, html) { const b1 = raidRecoVoidBtnHtml(r), b2 = raidRecoFinBtnHtml(r); const sw = b1 || b2 ? `<div style="display:flex; gap:6px; flex-shrink:0;">${b1}${b2}</div>` : ''; if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
             if (!raidRecoVoidOwned(r)) return '';
@@ -12689,6 +12690,13 @@
             if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
         }
         // 凱旋行軍按鈕（推薦框右上角）：有這張卡的人才有；推薦已經留了凱旋行軍那組就變暗
+        function raidRecoVoidBtnHtml(r) {
+            const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
+            if (!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0)) return '';
+            const ci = raidPlayerCycleInfo(r.player, r.attacks || []); if (!raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has('CrushingVoid')) return '';   // 這輪已經用過
+            const img = raidCardImage('CrushingVoid'), inReco = (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag);   // ON＝特地保留／排的那組（一般推薦自然排到的不算）
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidRecoVoidToggle(this.dataset.p)" title="瘋狂無效：${inReco ? '開（按一下關掉）' : '關（按一下排一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #7b4fa8;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#6a3d96' : '#8a7a6a'};">${inReco ? 'ON' : 'OFF'}</span></button>`;
+        }
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
             if (!(v && v.raw && raidSimBaseLevel(v.raw, 'FinisherAttack') > 0)) return '';
@@ -12972,7 +12980,7 @@
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
                     const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
-                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, voidLaterGo = hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // 活著的部位 ≥6 才會先經過 6 肉體
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow && aliveN >= 6 : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
@@ -12981,9 +12989,10 @@
                     const reuse = raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                       if (!reuse) {
-                        if (hasVoid && sixNow && simPick) {
+                        // 瘋狂無效現在打：已經 6 肉體、一般推薦沒排到就排一組（按鈕 OFF＝照傷害計算，不特地排）
+                        if (hasVoid && vPref !== false && (sixNow || (vPref === true && aliveN < 6)) && simPick) {   // ON 但能打的部位不到 6 個（等不到 6 肉體）：現在打
                             simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
-                            if (!simPick.some(x => x.voidTag)) {   // 一般推薦沒排到：強制排一組（照現在的盤面打）
+                            if (!simPick.some(x => x.voidTag)) {
                                 const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
                                 if (forced && forced.some(x => x.voidLater)) simPick = forced.map(x => x.voidLater ? { ...x, voidLater: false, voidTag: true } : x);
                             }
@@ -13004,7 +13013,9 @@
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
                         simPick.forEach(x => all.push(x));
-                        const voidLine = hasVoid && !sixNow && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '到下一輪結束' : '這輪'}等不到 6 肉體（全公會${nextRound ? '下一輪有' : '還剩'} ${vReach.left} 刀，約 ${formatNumAlwaysM(vReach.dmg || 0)}，還要拆 ${formatNumAlwaysM(vReach.needArmor || 0)} 盔甲），照一般推薦</div>` : '';
+                        const aliveOpen = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length;
+                        const voidLine = hasVoid && !sixNow && vPref !== true && aliveOpen < 6 ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">能打的部位只剩 ${aliveOpen} 個（禁打 ${(raidBannedParts || []).length} 個、其他打成骨架），湊不到 6 肉體，照一般推薦</div>`
+                            : hasVoid && !sixNow && vPref !== true && vReach && !vReach.ok ? `<div style="font-size:12px; font-weight:800; color:#8a5a2a; margin:0 0 4px;">${nextRound ? '到下一輪結束' : '這輪'}等不到 6 肉體（全公會${nextRound ? '下一輪有' : '還剩'} ${vReach.left} 刀，約 ${formatNumAlwaysM(vReach.dmg || 0)}，還要拆 ${formatNumAlwaysM(vReach.needArmor || 0)} 盔甲），照一般推薦</div>` : '';
                         html = head + voidLine + (all.length ? raidPhaseLineHtml(await raidSimEnv()) + deckGrid(all) : '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出現在打得到的牌組。</div>');
                         // 算出來是空的（常見是剛打開網頁、這場的紀錄還沒載完）：過幾秒自動重算，最多 3 次
                         if (!all.length) { const k = (raidRecoEmptyRetry.get(r.player) || 0) + 1; raidRecoEmptyRetry.set(r.player, k); if (k <= 3) setTimeout(() => { if (!raidLogRecoOpen.has(r.player)) return; const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player) || r; raidLogRenderPlayerReco(r2); }, 4000 * k); }

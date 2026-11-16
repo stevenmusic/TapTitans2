@@ -12981,7 +12981,7 @@
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
                     const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
-                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow && aliveN >= 6 : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
@@ -12991,7 +12991,7 @@
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                       if (!reuse) {
                         // 瘋狂無效現在打：已經 6 肉體、一般推薦沒排到就排一組（按鈕 OFF＝照傷害計算，不特地排）
-                        if (hasVoid && vPref !== false && (sixNow || (vPref === true && aliveN < 6)) && simPick) {   // ON 但能打的部位不到 6 個（等不到 6 肉體）：現在打
+                        if (hasVoid && vPref !== false && sixNow && simPick) {
                             simPick = simPick.map(x => (x.rawCards || x.cards).includes('CrushingVoid') ? { ...x, voidTag: true } : x);
                             if (!simPick.some(x => x.voidTag)) {
                                 const forced = await raidSimPlayerPick(r.player, { ...info, voidMode: true, voidNow: true }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
@@ -14402,6 +14402,10 @@
             const VOID = 'CrushingVoid';
             if (info.voidMode && me.lv[VOID] > 0 && !used.has(VOID)) {
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
+                // 6 肉體再打：一律照 6 個肉體算（這隻王能打的部位不到 6 個，就把骨架、再不夠把禁打的部位也當肉體湊滿 6 個——留到下一隻王或下一輪打）
+                if (!info.voidNow) { const nB = () => Object.values(boardF).filter(b => b.layer === 'body').length;
+                    Object.keys(boardF).filter(k => boardF[k].layer === 'skeleton').forEach(k => { if (nB() < 6) boardF[k] = { layer: 'body' }; });
+                    Object.keys(boardF).filter(k => boardF[k].layer === 'banned').forEach(k => { if (nB() < 6) boardF[k] = { layer: 'body' }; }); }
                 const envF = { ...env, board: boardF }; const sceneF = {}; Object.keys(boardF).forEach(k => { sceneF[k] = boardF[k].layer; });
                 const fF = raidSimPartFns(sceneF);
                 const vlist = (await raidSimCandidateDecks(data, fast)).filter(d => d.cards.includes(VOID) && usedEnough(d.cards) && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && fF.playable(d.cards)).map(d => {

@@ -12552,6 +12552,14 @@
            可用的卡＝所有卡片（不限這個玩家以前用過的），扣掉這一波（每 6 刀一波）已經用過的；
            組數＝他這一輪剩下的攻擊次數；排法跟首頁推薦牌組同一套（模擬器情境＋前 15 名統計），依傷害高低排 */
         const RAID_ATTACKS_PER_CYCLE = 6;
+        // 腐敗突擊暫時打折（模擬器修正上線前，只用在推薦）：遊戲照「目前這一層少了幾成血」給加成，模擬器還是固定 0.35。
+        //   攻擊紀錄（M-47）：這一層少得少時實際只有應打的 0.7 倍左右；肉體全滿時試打約 0.57 倍。腐敗突擊約佔整組 45%，加成約 0.6×缺血比例（最多 7 成）
+        function raidDecayFactor(tg) {
+            const P = (raidState && raidState.parts) || {}; const ms = (tg || []).map(k => { const x = P[k] || {}; const a = Number(x.armor) || 0, am = Number(x.armorMax) || 0, b = Number(x.body) || 0, bm = Number(x.bodyMax) || 0; return a > 0 ? (am > 0 ? 1 - a / am : null) : (bm > 0 ? 1 - b / bm : null); }).filter(v => v != null);
+            if (!ms.length) return 1; const m = ms.reduce((t, v) => t + v, 0) / ms.length;
+            return Math.min(1, 1 - 0.45 * (1 - 0.6 * Math.min(0.7, Math.max(0, m)) / 0.35));   // 只打折，不加分
+        }
+        function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || !o.cards.includes('DecayingAttack') || o.decayF) return o; const f = raidDecayFactor(o.tg); if (f >= 1) return { ...o, decayF: 1 }; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
         const RAID_ATTACKS_MAX = 12;
         const RAID_RECO_WEAK = 0.5;   // 推薦的組應打低於平常每刀的幾成就不列（漏了一輪、卡用掉太多時剩下的組）
         // 這個人平常每刀傷害：這場的平均（打不到 3 刀就用上一場）
@@ -13209,7 +13217,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v4_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v5_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14358,7 +14366,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v4_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v5_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
@@ -14443,7 +14451,7 @@
                 expand.partners = new Set(vlist.flatMap(d => d.cards).filter(c => c !== VOID));
                 if (vpool0.length && RAID_SIM_SWAP_ON) vpool0 = (await expand(vpool0, envF, fF.playable, fF.hitParts, VOID, 3, 8)).pool;
                 const vpool = vpool0.filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8);
-                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(mergeFlak(got.pool), phaseK));
+                const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK));
                 poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 for (const V of vpool) {
@@ -14453,7 +14461,7 @@
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? mergeFlak(got.pool).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(mergeFlak(got.pool), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? raidDecayAdj(mergeFlak(got.pool)).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -14528,6 +14536,7 @@
                 const capOf = (o) => env.hp ? (o.tg || []).reduce((t, k) => t + Math.max(0, (env.hp[k] || 0) - (took[k] || 0)), 0) : Infinity;
                 for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; const cap = capOf(o); if (!(cap > 0)) continue;
                     const q = { ...o }; if (q.avg > cap) { const f = cap / q.avg; q.avg = cap; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi = Math.min(q.hi, cap * 1.08); } pick.push(q); o.cards.forEach(c => usedC.add(c)); (q.tg || []).forEach(k => { took[k] = (took[k] || 0) + q.avg / Math.max(1, q.tg.length); }); } } }
+            pick.forEach((o, i) => { if (o.cards.includes('DecayingAttack') && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

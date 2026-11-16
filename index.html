@@ -12690,12 +12690,13 @@
             if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
         }
         // 凱旋行軍按鈕（推薦框右上角）：有這張卡的人才有；推薦已經留了凱旋行軍那組就變暗
-        function raidRecoVoidBtnHtml(r) {
+        function raidRecoVoidBtnHtml(r) {   // 每個人都顯示：沒有這張卡寫「沒卡」、這輪用過寫「已用」（按了沒反應）
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
-            if (!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0)) return '';
-            const ci = raidPlayerCycleInfo(r.player, r.attacks || []); if (!raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has('CrushingVoid')) return '';   // 這輪已經用過
-            const img = raidCardImage('CrushingVoid'), inReco = (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag);   // ON＝特地保留／排的那組（一般推薦自然排到的不算）
-            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidRecoVoidToggle(this.dataset.p)" title="瘋狂無效：${inReco ? '開（按一下關掉）' : '關（按一下排一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:pointer; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #7b4fa8;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#6a3d96' : '#8a7a6a'};">${inReco ? 'ON' : 'OFF'}</span></button>`;
+            const owned = !!(v && v.raw && raidSimBaseLevel(v.raw, 'CrushingVoid') > 0);
+            const ci = raidPlayerCycleInfo(r.player, r.attacks || []); const usedNow = !raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has('CrushingVoid');
+            const img = raidCardImage('CrushingVoid'), inReco = owned && !usedNow && (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag);   // ON＝特地保留／排的那組（一般推薦自然排到的不算）
+            const lab = !owned ? '沒卡' : usedNow ? '已用' : inReco ? 'ON' : 'OFF', can = owned && !usedNow;
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidRecoVoidToggle(this.dataset.p)' : ''}" title="瘋狂無效：${!owned ? '沒有這張卡' : usedNow ? '這輪已經用過' : inReco ? '開（按一下關掉）' : '關（按一下保留一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:${can ? 'pointer' : 'default'}; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #7b4fa8;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
         }
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;

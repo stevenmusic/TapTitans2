@@ -13192,7 +13192,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v3_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v4_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14340,10 +14340,10 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v3_${code}` : null;
+            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v4_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
-                const okRows = (rows) => Array.isArray(rows) && rows.length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 有 0 傷害的組：暫存不能用，重算
+                const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
                 if (pre && pre.sig === key && okRows(pre.rows)) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
                 const remote = await kvGet(kvKey);
                 if (remote && remote.sig === key && okRows(remote.rows)) { raidSimPickCache.set(key, remote.rows); return remote.rows; }
@@ -14359,6 +14359,15 @@
                 const pl2 = raidSimPlansFor(cards, plans); return pl2.length ? { cards, plans: pl2, cplans: raidSimCursedPlans(pl2, E), aplans: raidSimArmorPlans(pl2, E) } : null;
             };
             cands.forEach((d, i) => { const it = build(d.cards); if (it) (i < 40 ? list : extra).push(it); });
+            // 公會打過的牌組不夠排滿剩下的刀數（例如這輪累積很多刀、已經用掉很多卡）：用他還沒用過的卡自己組 3 張的組合來挑
+            { const seen = new Set(cands.map(d => d.cards.slice().sort().join('+'))); let disj = 0; const usedD = new Set();
+              cands.forEach(d => { if (d.cards.some(c => usedD.has(c))) return; d.cards.forEach(c => usedD.add(c)); disj++; });
+              if (disj < n) {
+                  const free = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && RAID_CARD_IMAGE[c]).sort((a, b) => (me.lv[b] || 0) - (me.lv[a] || 0)).slice(0, 18);
+                  for (let a = 0; a < free.length; a++) for (let b2 = a + 1; b2 < free.length; b2++) for (let c2 = b2 + 1; c2 < free.length; c2++) {
+                      const cards = [free[a], free[b2], free[c2]], k = cards.slice().sort().join('+'); if (seen.has(k)) continue; seen.add(k);
+                      if (raidSimDeckBanned(cards) || !playable(cards)) continue; const it = build(cards); if (it) extra.push(it); }
+              } }
             // 防空高砲：彈射只會彈到肉體，盤面還沒有肉體時打下去少很多。這時防空高砲的組改用「第一塊盔甲拆掉、有 1 個肉體」的盤面算，
             //   標「防空高砲・等 1 個肉體再打」（第一塊照推薦的打法順序，公會開打後通常很快就破）
             let flakPool = null;

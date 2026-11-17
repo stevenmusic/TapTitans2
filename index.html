@@ -13217,7 +13217,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v5_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v6_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14366,7 +14366,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v5_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v6_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
@@ -14915,7 +14915,18 @@
         function raidSimDeckBanned(cards) { return RAID_SIM_DECK_BAN.some(b => b.every(c => cards.includes(c))); }
         // 只能打單一部位的卡（圖騰之力）：有這張卡的牌組只考慮單打一個部位的打法
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
-        function raidSimPlansFor(cards, plans) { return cards.some(c => RAID_SIM_SINGLE.has(c)) ? plans.filter(p => p.tg.length === 1) : plans; }
+        // 一刀要打的部位必須相連（中間隔著打不到的部位就沒辦法連續打）：不相連就拆成各自相連的幾組，各當一種打法
+        const RAID_PART_ADJ = { Head: ['ChestUpper'], ChestUpper: ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'LegUpperLeft', 'LegUpperRight'], ArmUpperLeft: ['ChestUpper', 'HandLeft'], ArmUpperRight: ['ChestUpper', 'HandRight'], HandLeft: ['ArmUpperLeft'], HandRight: ['ArmUpperRight'], LegUpperLeft: ['ChestUpper', 'LegUpperRight'], LegUpperRight: ['ChestUpper', 'LegUpperLeft'] };
+        function raidSplitConnected(plans) {
+            const out = [], seen = new Set(), P = (raidState && raidState.parts) || {}, hpOf = (k) => Math.max(0, Number((P[k] || {}).armor) || 0) + Math.max(0, Number((P[k] || {}).body) || 0);
+            plans.forEach(pl => { const set = new Set(pl.tg), left = new Set(pl.tg), comps = [];
+                while (left.size) { const st = [...left][0], comp = []; const q = [st]; left.delete(st); while (q.length) { const k = q.shift(); comp.push(k); (RAID_PART_ADJ[k] || []).forEach(j => { if (left.has(j)) { left.delete(j); q.push(j); } }); } comps.push(pl.tg.filter(k => comp.includes(k))); }
+                if (comps.length === 1) { const key = pl.tg.join(); if (!seen.has(key)) { seen.add(key); out.push(pl); } return; }
+                const tot = pl.tg.reduce((t, k) => t + hpOf(k), 0);
+                comps.forEach(tg => { const key = tg.join(); if (seen.has(key)) return; seen.add(key); const q2 = { ...pl, tg }; if (pl.cap != null) q2.cap = tot > 0 ? pl.cap * tg.reduce((t, k) => t + hpOf(k), 0) / tot : pl.cap; out.push(q2); }); });
+            return out;
+        }
+        function raidSimPlansFor(cards, plans) { const ps = raidSplitConnected(plans); return cards.some(c => RAID_SIM_SINGLE.has(c)) ? ps.filter(p => p.tg.length === 1) : ps; }
         // 爆裂詛咒、苦痛詛咒：詛咒甲會拖累全公會的傷害。牌組照最高傷害挑，挑好之後打得到詛咒甲的就改打詛咒甲
         const RAID_SIM_CURSE_KEEP = 0.98;   // 改打詛咒甲傷害不變（差 2% 以內）才改，不犧牲傷害
         /* 打王四階段（每一刀都照最新盤面判斷）：

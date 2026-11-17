@@ -13218,7 +13218,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v7_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v9_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14367,7 +14367,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v7_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v9_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
@@ -14389,7 +14389,11 @@
             // 用他還沒用過的卡（等級最高的 16 張；公會牌組不夠排滿時 18 張）自己組 3 張的組合，一起挑（公會沒打過的高傷害組合也不會漏掉）
             { const seen = new Set(cands.map(d => d.cards.slice().sort().join('+'))); let disj = 0; const usedD = new Set();
               cands.forEach(d => { if (d.cards.some(c => usedD.has(c))) return; d.cards.forEach(c => usedD.add(c)); disj++; });
-              if (n > 0 && !window.RAID_SELF_OFF) {   // 一律加：公會沒打過的組合也可能更高（打過不到 10 次的組挑選時會打折，見 raidVerifyWeights）
+              if (disj < n) {   // 照順序挑不夠：真的搜尋看最多能排出幾組不重複（換個挑法可能就排得滿），排得滿就不用自己組
+                  const ds = cands.map(d => d.cards); let best = disj, steps = 0; const u = new Set();
+                  const dfs = (i, k) => { if (k > best) best = k; if (best >= n || ++steps > 20000) return; for (let j = i; j < ds.length; j++) { if (ds[j].some(c => u.has(c))) continue; ds[j].forEach(c => u.add(c)); dfs(j + 1, k + 1); ds[j].forEach(c => u.delete(c)); if (best >= n || steps > 20000) return; } };
+                  dfs(0, 0); disj = best; }
+              if (n > 0 && !window.RAID_SELF_OFF && disj < n) {   // 只在公會牌組排不滿剩下的刀數時才自己組（實測：一般情況、甚至一輪超過 18 張卡但公會牌組夠用時，原本的做法比較好）
                   // 兼顧效率：自己組的組合先各粗算 1 次，只留前 RAID_SELF_KEEP 名進細算（傷害高的幾乎都會留下）
                   const free = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && RAID_CARD_IMAGE[c]).sort((a, b) => (me.lv[b] || 0) - (me.lv[a] || 0)).slice(0, RAID_SELF_CARDS);
                   const self = [];

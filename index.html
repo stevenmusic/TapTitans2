@@ -12841,7 +12841,7 @@
         const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         // 重新計算時先顯示上一次的推薦（清楚顯示，上面標「舊的推薦・重新計算中 x%」、左邊橘色線），算好再換掉，不會清空
         // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
-        const raidRecoLast = new Map(), raidRecoEmptyRetry = new Map();
+        const raidRecoLast = new Map(), raidRecoEmptyRetry = new Map(), raidRecoForce = new Set();
         function raidRecoReuse(name, sig, used, n, lvNow) {
             const L = raidRecoLast.get(name); if (!L || L.sig !== sig || !(L.rows && L.rows.length)) return null;   // 空的結果不沿用
             const now = new Set(used || []); let rows;
@@ -12908,6 +12908,7 @@
             }
             raidLogRecoOpen.add(r.player);
             raidLogUiSave();
+            raidRecoForce.add(r.player);   // 手動按「推薦」：一律重新計算，不沿用任何暫存（自動重畫才沿用）
             return raidLogRenderPlayerReco(r);
         }
         // 排行榜重畫後（有人出刀、切換場次），把打開中的玩家推薦補回去並重新計算
@@ -13010,8 +13011,9 @@
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
                     const reuseSig = JSON.stringify([raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
-                    const reuse = raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
-                    let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
+                    const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
+                    const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...info, voidMode: voidLaterGo, force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                       if (!reuse) {
                         // 瘋狂無效現在打：已經 6 肉體、一般推薦沒排到就排一組（按鈕 OFF＝照傷害計算，不特地排）
                         if (hasVoid && vPref !== false && sixNow && simPick) {
@@ -14354,7 +14356,7 @@
             const n = Math.max(0, Math.min(info.remaining || 0, RAID_ATTACKS_MAX));
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const key = phaseSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
-            if (raidSimPickCache.has(key)) return raidSimPickCache.get(key);
+            if (!info.force && raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
             const inf = raidSimPickInflight.get(key);
@@ -14370,7 +14372,7 @@
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
             const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v10_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
-            if (kvKey) {
+            if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
                 if (pre && pre.sig === key && okRows(pre.rows)) { raidSimPickCache.set(key, pre.rows); return pre.rows; }

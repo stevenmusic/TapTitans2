@@ -13036,7 +13036,7 @@
                     if (simPick) {
                         // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）
                         const expPer = raidPlayerTypicalDmg(r);
-                        const weak = expPer > 0 ? simPick.filter(x => !x.voidLater && !x.finLater && !x.flakLater && x.simDmg && (x.simDmg.avg || 0) < expPer * RAID_RECO_WEAK) : [];
+                        const weak = expPer > 0 ? simPick.filter(x => !x.voidLater && !x.finLater && !x.flakLater && x.simDmg && Math.max(x.simDmg.avg || 0, x.simDmg.raw || 0) < expPer * RAID_RECO_WEAK) : [];   // 用不受部位剩血限制的傷害判斷：收尾刀（部位快沒血、應打被限制）不會被當成太弱
                         if (weak.length) simPick = simPick.filter(x => !weak.includes(x));
                         const weakLine = weak.length ? `<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:4px 0 0;">另外 ${weak.length} 刀剩下的卡太弱（不到平常每刀 ${formatNumAlwaysM(expPer)} 的 ${Math.round(RAID_RECO_WEAK * 100)}%），建議留到下一輪卡片重新可用再打</div>` : '';
                         simPick.forEach(x => all.push(x));
@@ -14397,7 +14397,8 @@
                       const cards = [free[a], free[b2], free[c2]], k = cards.slice().sort().join('+'); if (seen.has(k)) continue; seen.add(k);
                       if (raidSimDeckBanned(cards) || !playable(cards)) continue; const it = build(cards); if (it) self.push(it); }
                   if (self.length) { const rr = (await raidSimParallel(P, self.map(it => ({ kind: 'r', base: raidSimBase(env, me, it.cards), cards: it.cards, plans: it.plans })))) || null;
-                      const keep = rr ? self.map((it, i) => [it, rr[i] ? rr[i].avg * raidSimDeckFactor(it.cards) : 0]).sort((x, y) => y[1] - x[1]).slice(0, Math.max(RAID_SELF_KEEP, (disj < n ? 2 : 1) * RAID_SELF_KEEP)).map(x => x[0]) : self.slice(0, RAID_SELF_KEEP);
+                      const rw = rr ? raidPhaseWeights(rr.map((x, i) => x ? { ...x, cards: self[i].cards } : null).filter(Boolean), phaseK) : null, rwOf = new Map((rw || []).map(x => [x.cards.slice().sort().join('+'), x.selW || 1]));   // 粗篩也照打王階段的優先部位加權（打優先部位的組不會先被刷掉）
+                      const keep = rr ? self.map((it, i) => [it, rr[i] ? rr[i].avg * raidSimDeckFactor(it.cards) * (rwOf.get(it.cards.slice().sort().join('+')) || 1) : 0]).sort((x, y) => y[1] - x[1]).slice(0, Math.max(RAID_SELF_KEEP, (disj < n ? 2 : 1) * RAID_SELF_KEEP)).map(x => x[0]) : self.slice(0, RAID_SELF_KEEP);
                       keep.forEach(it => extra.push(it)); }
               } }
             // 防空高砲：彈射只會彈到肉體，盤面還沒有肉體時打下去少很多。這時防空高砲的組改用「第一塊盔甲拆掉、有 1 個肉體」的盤面算，

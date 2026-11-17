@@ -14389,7 +14389,7 @@
             // 用他還沒用過的卡（等級最高的 16 張；公會牌組不夠排滿時 18 張）自己組 3 張的組合，一起挑（公會沒打過的高傷害組合也不會漏掉）
             { const seen = new Set(cands.map(d => d.cards.slice().sort().join('+'))); let disj = 0; const usedD = new Set();
               cands.forEach(d => { if (d.cards.some(c => usedD.has(c))) return; d.cards.forEach(c => usedD.add(c)); disj++; });
-              if (n > 0) {   // 一律加：公會沒打過的組合也可能更高（打過不到 10 次的組挑選時會打折，見 raidVerifyWeights）
+              if (n > 0 && !window.RAID_SELF_OFF) {   // 一律加：公會沒打過的組合也可能更高（打過不到 10 次的組挑選時會打折，見 raidVerifyWeights）
                   // 兼顧效率：自己組的組合先各粗算 1 次，只留前 RAID_SELF_KEEP 名進細算（傷害高的幾乎都會留下）
                   const free = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && RAID_CARD_IMAGE[c]).sort((a, b) => (me.lv[b] || 0) - (me.lv[a] || 0)).slice(0, RAID_SELF_CARDS);
                   const self = [];

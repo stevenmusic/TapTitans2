@@ -4600,6 +4600,9 @@
                 const fresh = new DOMParser().parseFromString(await resp.text(), 'text/html');
                 const freshScript = getMainInlineScriptText(fresh);
                 if (!freshScript || freshScript === getMainInlineScriptText(document)) return;
+                // 剛更新時各節點不一定同步，可能拿到「比較舊」的版本：只有比現在這份新才重新整理（不然會從新版跳回舊版）
+                const freshAt = Date.parse(resp.headers.get('last-modified') || ''), curAt = Date.parse(document.lastModified || '');
+                if (freshAt > 0 && curAt > 0 && freshAt <= curAt) return;
                 const lastReload = Number(sessionStorage.getItem('tt2_version_reload_at') || 0);
                 if (Date.now() - lastReload < 5 * 60000) return;
                 sessionStorage.setItem('tt2_version_reload_at', String(Date.now()));

@@ -8010,6 +8010,7 @@
         let raidSimPickAutoBusy = false, raidSimPickRerenderTimer = null, raidSimPickRerenderAt = 0;
         // 背景配卡：每分鐘最多跑一次；算好的每一刀存到伺服器暫存（kv，每場一份），別人打開直接拿、沒變就不重算
         let raidSimPickAutoAt = 0, raidSimPickAutoTimer = null;
+        let raidSimPickRemoteAt = 0;
         async function raidSimPickAuto() {
             if (raidSimPickAutoBusy || raidLogDemoActive) return;
             const wait = 60000 - (Date.now() - raidSimPickAutoAt);
@@ -8022,7 +8023,8 @@
             let before = 0;
             try {
                 await new Promise(r => setTimeout(r, 1500));
-                if (kvKey) {   // 先拿伺服器上別人算好的
+                // 先拿伺服器上別人算好的：省流量（Render 每月 5GB），自己全部算好了就不拿，要拿也最多 5 分鐘一次
+                if (kvKey && doneCount() < sessKeys().length && Date.now() - raidSimPickRemoteAt > 5 * 60 * 1000) { raidSimPickRemoteAt = Date.now();
                     const remote = await kvGet(kvKey); let added = 0;
                     // 別人算好的新版應打（每一刀的 e）：直接用，不用自己重算
                     if (remote && typeof remote === 'object') Object.entries(remote).forEach(([k, v]) => { if (v && v.eb && v.ev === RAID_WEB_EXP_VER && !raidCsExpBy.has(k)) raidCsExpBy.set(k, v.eb); if (v && v.e > 0 && v.ev === RAID_WEB_EXP_VER && !(raidCsExpMem.get(k) > 0)) raidCsExpMem.set(k, v.e); });

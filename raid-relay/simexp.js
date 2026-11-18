@@ -12,6 +12,16 @@ const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };
 const EXCLUDE = new Set(['CelestialStatic']);   // 不推薦的卡（天體靜態）；宇宙激光＋圖騰之力同一組不推（跟網頁一樣）
 const DECK_BAN = [['Haymaker', 'TotemFairySkill']];
+// 每一版改到哪些卡：升版時只重算用到這些卡的刀，其他刀模擬結果完全一樣，直接沿用（整場重算從約 1,500 刀降到兩三百刀）
+//   v4 以前的舊資料（沒有每張卡的傷害 by 等欄位）一律重算
+const VER_CARDS = { 5: ['DecayingAttack'], 6: ['PlagueAttack'], 7: ['InnerTruth'], 8: ['TriangleSupport'] };
+function simFresh(r, a) {
+  if (!r || !(r.v >= 4)) return false;
+  if (r.v >= SIM_VER) return true;
+  const cards = new Set(((a && a.cards) || []).map(c => c && c.name));
+  for (let v = r.v + 1; v <= SIM_VER; v++) { const vc = VER_CARDS[v]; if (!vc) return false; if (vc.some(c => cards.has(c))) return false; }   // 沒登記改了哪些卡的版本：保守起見重算
+  return true;
+}
 const yieldLoop = () => new Promise(r => setImmediate(r));
 const sigOf = (cards) => cards.slice().sort().join('+');
 
@@ -147,7 +157,7 @@ function createSimExp(deps) {
         const job = queue.shift();
         try {
           const key = attackDedupKey(job.a);
-          if (results.has(key) && results.get(key).v >= SIM_VER) continue;
+          if (simFresh(results.get(key), job.a)) continue;
           const sessionAttacks = deps.withBest ? (await getAllAttacks()).filter(x => x.raidStartedAt === job.a.raidStartedAt) : [];
           const r = await compute(job.a, job.env, sessionAttacks);
           if (!r) continue;
@@ -163,7 +173,7 @@ function createSimExp(deps) {
   function enqueue(a, env) {
     try {
       const key = attackDedupKey(a);
-      if (!env || (results.has(key) && results.get(key).v >= SIM_VER) || queued.has(key)) return;
+      if (!env || simFresh(results.get(key), a) || queued.has(key)) return;
       queued.add(key); queue.push({ a, env }); setImmediate(worker);
     } catch (e) {}
   }
@@ -192,7 +202,7 @@ function createSimExp(deps) {
       const hp = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, Math.max(0, v[0]) + Math.max(0, v[1])]));
       const hpAB = Object.fromEntries(Object.entries(st).map(([l, v]) => [l, [Math.max(0, v[0]), Math.max(0, v[1])]]));
       const hpMax = Object.fromEntries(Object.entries(t.p).map(([l, e]) => [l, [Math.max(Number(e[0]) || 0, Number(e[1]) || 0), Number(e[2]) || 0]]));   // seed：e[0] 盔甲上限、e[1] 出場盔甲、e[2] 肉體上限
-      if (!old || !(old.v >= SIM_VER)) { enqueue(a, { ...env0, board, curse, hp, hpAB, hpMax }); n++; }   // 舊版（v2）的這一場全部用新版重算
+      if (!simFresh(old, a)) { enqueue(a, { ...env0, board, curse, hp, hpAB, hpMax }); n++; }   // 舊版（v2）的這一場全部用新版重算
       (a.parts || []).forEach(p => { if (st[p.part]) st[p.part][p.layer === 'armor' ? 0 : 1] -= Number(p.damage) || 0; });
     }
     return n;

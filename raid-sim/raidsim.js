@@ -75,7 +75,7 @@ function simAttack(opt, P = P0) {
     const add = (v) => parts.push(v);
     if (has.has('BurstBoost') && kind === 'burst') add(A('BurstBoost', effLv('BurstBoost', t, loc)));
     if (has.has('MentalFocus') && kind === 'aff') add(A('MentalFocus', effLv('MentalFocus', t, loc)));
-    if (has.has('TriangleSupport')) { if (kind === 'burst' && hasAffCard) add(A('TriangleSupport', effLv('TriangleSupport', t, loc))); if (kind === 'aff' && hasBurstCard) add(A('TriangleSupport', effLv('TriangleSupport', t, loc))); }
+    if (has.has('TriangleSupport') && (kind === 'burst' || kind === 'aff')) add(A('TriangleSupport', effLv('TriangleSupport', t, loc)));   // 三角支援：苦痛、爆裂傷害都加，不用另外湊爆裂／苦痛卡（謎樣人物 暗影＋氣體＋三角支援 實際 459M，舊規則只算 221M）
     if (has.has('LimbSupport') && isLimb(loc)) add(A('LimbSupport', effLv('LimbSupport', t, loc)));
     if (has.has('ExecutionersAxe') && (isHead(loc) || isTorso(loc))) add(A('ExecutionersAxe', effLv('ExecutionersAxe', t, loc)));
     if (has.has('InnerTruth') && (isHead(loc) || isTorso(loc))) add(A('InnerTruth', effLv('InnerTruth', t, loc)));

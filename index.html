@@ -12614,7 +12614,14 @@
         // 個人推薦「留一組瘋狂無效」：按推薦旁邊的瘋狂無效圖示切換（只在這支手機記住）
         // 瘋狂無效開關（推薦框右上角）：有這張卡的人預設開（網站有統計瘋狂無效的使用），按一下關掉看一般推薦。只記關掉的人（這支手機）
         // 預設：現在已經 6 個以上肉體才開（瘋狂無效那組要在 6 肉體打）；不到 6 個預設關（不是每個人都等得到，一般推薦裡的瘋狂無效不一定是 6 肉體打）。手動切過就照手動的
-        const raidRecoVoidPref = new Map();
+        // 瘋狂無效＋凱旋行軍（保留特殊牌組）共用一個開關，全公會同開同關（這支手機記住）：null＝自動、true＝保留、false＝照傷害算
+        let raidSpecialPref = (() => { try { const v = localStorage.getItem('tt2_special_pref'); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; } })();
+        const raidRecoVoidPref = { has: () => raidSpecialPref !== null, get: () => raidSpecialPref, set: (k, v) => raidSpecialSet(v) };
+        function raidSpecialSet(v) {
+            raidSpecialPref = v; try { localStorage.setItem('tt2_special_pref', v ? '1' : '0'); } catch (e) {}
+            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換
+        }
+        function raidSpecialToggle(name) { const on = (raidLogRecoRows.get(name) || []).some(x => x.voidLater || x.voidTag || x.finLater); raidSpecialSet(!on); }
         function raidBodyNow() { const P = (raidState && raidState.parts) || {}, bn = raidBannedParts || []; return Object.entries(P).filter(([k, v]) => !bn.includes(k) && !(v.armor > 0) && v.body > 0).length; }
         function raidRecoVoidOn(r) { return false; }   // 推薦不再做「留一組瘋狂無效」的 6 組最佳化（太複雜）：改成右上角按鈕打開小視窗，列瘋狂無效能配的最高傷害牌組
         /* 留瘋狂無效：估這一輪（剩 0 次就是下一輪）結束前，能打的肉體部位會不會到 6 個以上。
@@ -12693,7 +12700,7 @@
             return raidLogRenderPlayerReco(r);
         }
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
-        function raidRecoWrap(r, html) { const b1 = raidRecoVoidBtnHtml(r), b2 = raidRecoFinBtnHtml(r); const sw = b1 || b2 ? `<div style="display:flex; gap:6px; flex-shrink:0;">${b1}${b2}</div>` : ''; if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
+        function raidRecoWrap(r, html) { const sw = raidRecoSpecialBtnHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
             if (!raidRecoVoidOwned(r)) return '';
@@ -12723,6 +12730,17 @@
             const lab = !owned ? '沒卡' : usedNow ? '已用' : noSix ? '不能用' : inReco ? 'ON' : 'OFF', can = owned && !usedNow && !noSix;
             return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidRecoVoidToggle(this.dataset.p)' : ''}" title="瘋狂無效：${!owned ? '沒有這張卡' : usedNow ? '這輪已經用過' : noSix ? `禁打 ${banN} 個部位，湊不到 6 肉體` : inReco ? '開（按一下關掉）' : '關（按一下保留一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:${can ? 'pointer' : 'default'}; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #7b4fa8;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
         }
+        // 一顆開關（瘋狂無效＋凱旋行軍）：兩張都用不到（沒卡、這輪用過、禁打太多）就寫「不能用」
+        function raidRecoSpecialBtnHtml(r) {
+            const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
+            const lvOf = (c) => v && v.raw ? raidSimBaseLevel(v.raw, c) : 0; const banN = (raidBannedParts || []).length;
+            const ci = raidPlayerCycleInfo(r.player, r.attacks || []); const usedNow = (c) => !raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has(c);
+            const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack') && banN <= 1, can = voidOk || finOk;
+            const on = can && (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag || x.finLater);
+            const img = raidCardImage(voidOk || !finOk ? 'CrushingVoid' : 'FinisherAttack'), lab = !can ? '不能用' : on ? 'ON' : 'OFF';
+            const why = !can ? (banN > 2 ? `禁打 ${banN} 個部位，湊不到 6 肉體／6 骨架` : '瘋狂無效、凱旋行軍都不能用（沒卡或這輪已用）') : on ? '保留瘋狂無效／凱旋行軍（全公會一起，按一下關掉）' : '照傷害計算（全公會一起，按一下保留瘋狂無效／凱旋行軍）';
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidSpecialToggle(this.dataset.p)' : ''}" title="${why}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:${can ? 'pointer' : 'default'}; font-family:inherit;">${img ? `<img src="${img}" alt="瘋狂無效／凱旋行軍" style="width:30px; height:30px; border-radius:6px; display:block; ${on ? 'box-shadow:0 0 0 2px #7b4fa8;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${on ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
+        }
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
             if (!(v && v.raw && raidSimBaseLevel(v.raw, 'FinisherAttack') > 0)) return '';
@@ -12731,7 +12749,7 @@
             return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${noSix ? '' : 'raidRecoFinToggle(this.dataset.p)'}" title="凱旋行軍：${noSix ? `禁打 ${banN} 個部位，湊不到 6 骨架` : inReco ? '開（推薦留一組，按一下關掉）' : '關（按一下留一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:${noSix ? 'default' : 'pointer'}; font-family:inherit;">${img ? `<img src="${img}" alt="凱旋行軍" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #b08a2e;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#8a6414' : '#8a7a6a'};">${noSix ? '不能用' : inReco ? 'ON' : 'OFF'}</span></button>`;
         }
         // 凱旋行軍開關：手動切過就照手動的（ON 強制留一組、OFF 不留）；沒切過照自動判斷（清得到 6 骨架、留了合計比較高）
-        const raidRecoFinPref = new Map();
+        const raidRecoFinPref = raidRecoVoidPref;   // 跟瘋狂無效同一個開關
         function raidRecoFinToggle(name) {
             const r = raidLogLastRanked.find(x => x.player === name); if (!r) return;
             const on = (raidLogRecoRows.get(name) || []).some(x => x.finLater);

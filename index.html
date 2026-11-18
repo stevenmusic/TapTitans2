@@ -12562,7 +12562,10 @@
             if (!ms.length) return 1; const m = ms.reduce((t, v) => t + v, 0) / ms.length;
             return Math.min(1, 1 - 0.45 * (1 - 0.6 * Math.min(0.7, Math.max(0, m)) / 0.35));   // 只打折，不加分
         }
-        function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || !o.cards.includes('DecayingAttack') || o.decayF) return o; const f = raidDecayFactor(o.tg); if (f >= 1) return { ...o, decayF: 1 }; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
+        // 星體迴聲打 5 個以上部位暫時打折（模擬器修正上線前，只用在推薦）：攻擊紀錄（M-46、M-47）回聲打 5～6 個部位實際約應打的 0.94 倍（瘟疫＋氣體＋回聲 7 刀 0.89～1.00），打 4 個以下準
+        const RAID_ECHO_MULTI_F = 0.94;
+        function raidAdjFactor(o) { let f = 1; if (o.cards.includes('DecayingAttack')) f *= raidDecayFactor(o.tg); if (o.cards.includes('AstralEcho') && (o.tg || []).length >= 5) f *= RAID_ECHO_MULTI_F; return Math.min(1, f); }
+        function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || !(o.cards.includes('DecayingAttack') || o.cards.includes('AstralEcho')) || o.decayF) return o; const f = raidAdjFactor(o); if (f >= 1) return { ...o, decayF: 1 }; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
         const RAID_ATTACKS_MAX = 12;
         const RAID_SELF_CARDS = 16, RAID_SELF_KEEP = 40;   // 自己組牌組：用沒用過的卡裡等級最高的幾張、粗算後留幾組細算
         const RAID_RECO_WEAK = 0.5;   // 推薦的組應打低於平常每刀的幾成就不列（漏了一輪、卡用掉太多時剩下的組）
@@ -13267,7 +13270,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v12_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v13_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14417,7 +14420,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v12_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v13_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
@@ -14597,7 +14600,7 @@
                 const capOf = (o) => env.hp ? (o.tg || []).reduce((t, k) => t + Math.max(0, (env.hp[k] || 0) - (took[k] || 0)), 0) : Infinity;
                 for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; const cap = capOf(o); if (!(cap > 0)) continue;
                     const q = { ...o }; if (q.avg > cap) { const f = cap / q.avg; q.avg = cap; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi = Math.min(q.hi, cap * 1.08); } pick.push(q); o.cards.forEach(c => usedC.add(c)); (q.tg || []).forEach(k => { took[k] = (took[k] || 0) + q.avg / Math.max(1, q.tg.length); }); } } }
-            pick.forEach((o, i) => { if (o.cards.includes('DecayingAttack') && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
+            pick.forEach((o, i) => { if ((o.cards.includes('DecayingAttack') || o.cards.includes('AstralEcho')) && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

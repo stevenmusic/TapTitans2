@@ -6,7 +6,7 @@ const RaidSim = require('./sim/raidsim');
 const CAL = require('./sim/calibration.json');
 // 跟網頁攻擊紀錄重算同一套：卡片係數用 calibration.json，整組修正（deckK）、點擊校正不在這裡乘——網頁拿每張卡的傷害（by）套最新的滾動校正
 const P = { ...RaidSim.P0, ...CAL, k: { ...(CAL.k || {}) }, deckK: {}, tapK: 1 };
-const SIM_VER = 5;   // v5：腐敗突擊照部位目前這一層缺血比例算（env.hpMax，存 ms）； v4：模擬照打之前每個部位剩的盔甲／肉體（一刀之內破甲、打成骨架）；v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
+const SIM_VER = 6;   // v6：肆虐瘟疫擴散機率 50%（係數 0.786，拿掉氣體＋瘟疫＋漩渦整組修正）； v5：腐敗突擊照部位目前這一層缺血比例算（env.hpMax，存 ms）； v4：模擬照打之前每個部位剩的盔甲／肉體（一刀之內破甲、打成骨架）；v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
 const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };

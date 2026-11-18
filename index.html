@@ -7899,12 +7899,19 @@
         // 禁打部位實際的狀態（伺服器 v3 起有 u：A 盔甲、B 肉體、S 骨架；舊資料沒有就當盔甲）
         const raidBannedUnder = (u, i) => { const ch = u && u[i]; return ch === 'B' ? 'body' : ch === 'S' ? 'skeleton' : 'armor'; };
         const raidSimExpKey = (a) => `${a.attackDatetime || a.ts}_${a.player}`;
+        let raidSimExpFullAt = 0, raidSimExpMaxTs = 0;
         async function raidSimExpLoad() {
             if (raidSimExpLoading || raidLogDemoActive || Date.now() - raidSimExpAt < 60 * 1000) return;
             raidSimExpLoading = true;
             try {
                 const relayUrl = (localStorage.getItem(RAID_RELAY_URL_KEY) || RAID_DEFAULT_RELAY_URL).replace(/\/$/, '');
-                const j = await (await fetch(`${relayUrl}/attack-sim`)).json();
+                // 省流量（Render 每月只有 5GB）：完整的一包約 1MB（壓縮後約 170KB），只在打開網頁第一次抓；
+                //   之後只抓最近 15 分鐘的刀（since＝攻擊時間，留 15 分鐘給伺服器晚算好的刀），每次只有幾 KB。
+                //   伺服器升版重算舊刀時一定會一起更新網頁，網頁偵測到新版本重新整理，就會重抓完整的
+                const full = !raidSimExpFullAt || !(raidSimExpMaxTs > 0);
+                const j = await (await fetch(`${relayUrl}/attack-sim` + (full ? '' : `?since=${Math.max(0, raidSimExpMaxTs - 15 * 60 * 1000)}`))).json();
+                if (full) raidSimExpFullAt = Date.now();
+                Object.values((j && j.sim) || {}).forEach(v => { if (v && Number(v.ts) > raidSimExpMaxTs) raidSimExpMaxTs = Number(v.ts); });
                 const before = raidSimExpMap.size;
                 Object.entries((j && j.sim) || {}).forEach(([k, v]) => raidSimExpMap.set(k, v));
                 raidSimExpAt = Date.now();

@@ -12944,7 +12944,30 @@
         }
         function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidNextRaidPending() ? 'next' : '', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
         const raidRecoGen = new Map();   // 每次重畫推薦加 1：只有最新那一次算完才寫畫面
+        // 正在算的時候，畫面因為別人出刀、血量變而重畫：這個人自己的狀態（輪次、剩幾刀、用過的卡、開關）沒變就不從頭重算，
+        // 只把目前進度畫回新的框，記一個「待更新」；算完再補一次（血量變的部分沿用快取，很快）
+        const raidRecoBusy = new Map();
         async function raidLogRenderPlayerReco(r) {
+            const sig = raidRecoStateSig(r) + '|' + raidRecoVoidOn(r);
+            const b = raidRecoBusy.get(r.player);
+            if (b && b.sig === sig) {
+                b.pending = true;
+                const box = raidLogRecoBox(r.player);
+                if (box) box.style.display = 'block';
+                if (box && !box.innerHTML.trim()) { const pg = raidRecoProg.get(r.player);
+                    box.innerHTML = raidRecoStaleHtml(r.player, pg && pg.shown) || raidRecoWrap(r, `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, pg ? pg.shown : 1)}%</div>`); }
+                return;
+            }
+            const me = { sig, pending: false }; raidRecoBusy.set(r.player, me);
+            try { return await raidLogRenderPlayerRecoRun(r); }
+            finally {
+                if (raidRecoBusy.get(r.player) === me) {
+                    raidRecoBusy.delete(r.player);
+                    if (me.pending && raidLogRecoOpen.has(r.player)) { const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player); if (r2) setTimeout(() => raidLogRenderPlayerReco(r2), 0); }
+                }
+            }
+        }
+        async function raidLogRenderPlayerRecoRun(r) {
             let box = raidLogRecoBox(r.player);
             if (!box) return;
             // 帳號資料（卡片等級、有沒有瘋狂無效）還沒載好就先等它：不然會當成沒有這張卡，推薦少了瘋狂無效等

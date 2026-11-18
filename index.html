@@ -12564,7 +12564,7 @@
         }
         function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || !o.cards.includes('DecayingAttack') || o.decayF) return o; const f = raidDecayFactor(o.tg); if (f >= 1) return { ...o, decayF: 1 }; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
         const RAID_ATTACKS_MAX = 12;
-        const RAID_SELF_CARDS = 20, RAID_SELF_KEEP = 40;   // 自己組牌組：用沒用過的卡裡等級最高的幾張、粗算後留幾組細算
+        const RAID_SELF_CARDS = 16, RAID_SELF_KEEP = 40;   // 自己組牌組：用沒用過的卡裡等級最高的幾張、粗算後留幾組細算
         const RAID_RECO_WEAK = 0.5;   // 推薦的組應打低於平常每刀的幾成就不列（漏了一輪、卡用掉太多時剩下的組）
         // 這個人平常每刀傷害：這場的平均（打不到 3 刀就用上一場）
         function raidPlayerTypicalDmg(r) {
@@ -12911,7 +12911,7 @@
             }
             raidLogRecoOpen.add(r.player);
             raidLogUiSave();
-            raidRecoForce.add(r.player);   // 手動按「推薦」：一律重新計算，不沿用任何暫存（自動重畫才沿用）
+            // （手動按也沿用暫存：伺服器暫存每次改規則都升版本，不會拿到舊算法的結果；一律重算會讓推薦變慢）
             return raidLogRenderPlayerReco(r);
         }
         // 排行榜重畫後（有人出刀、切換場次），把打開中的玩家推薦補回去並重新計算
@@ -15352,7 +15352,7 @@
                 }
             }
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
-            const nTop = Math.min(quick.length, topN || Math.max(80, n * 12));   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
+            const nTop = Math.min(quick.length, topN || (window.RAID_NTOP_OLD ? Math.max(80, n * 12) : Math.max(30, n * 13)));   // 精算幾組照剩幾刀：6 刀 78 組、3 刀 39 組、1 刀 30 組（刀少時最佳組合都在前面）   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o, runs: lite ? 100 : undefined })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);
             if (fin) fin.forEach((o, i) => { quick[i] = o; });
             else for (let i = 0; i < nTop; i++) {

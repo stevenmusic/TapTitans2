@@ -13200,7 +13200,8 @@
                     let msRow = null, infoP = info;
                     if (!reuse && raidSpecialPref === true && n0 >= 2) {
                         const M = await raidSimMorningBest(r, info, data).catch(() => null);
-                        if (M) { msRow = { cards: byPartOrderCards(M.cards), rawCards: M.cards, targets: (M.tg || []).map(k => ({ part: k, layer: M.ms.mode === 'armor' ? 'armor' : 'body', cursed: false })), allParts: false, simDmg: M, msLater: !M.ms.now, msNow: M.ms.now, msMode: M.ms.mode };
+                        if (M && !M.ms.now) {   // 已經是時機（現在打）就不用保留：晨星組跟其他牌組一起照傷害挑（強制留會佔掉別組的卡，例如追風的防空高砲排不進去）
+                            msRow = { cards: byPartOrderCards(M.cards), rawCards: M.cards, targets: (M.tg || []).map(k => ({ part: k, layer: M.ms.mode === 'armor' ? 'armor' : 'body', cursed: false })), allParts: false, simDmg: M, msLater: !M.ms.now, msNow: M.ms.now, msMode: M.ms.mode };
                             infoP = { ...info, used: new Set([...(info.used || []), ...M.cards]), remaining: n0 - 1 }; }
                     }
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...infoP, voidMode: voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
@@ -13414,7 +13415,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v17_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v18_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14565,7 +14566,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v17_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v18_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

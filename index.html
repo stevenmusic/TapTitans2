@@ -8035,7 +8035,10 @@
             (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { const cs = (a.cards || []).map(c => c.name); if (cs.length === 3 && isVer(cs)) add(cs); });
             ((data && data.decks) || []).forEach(d => { const k = Array.isArray(d.cards) ? d.cards.slice().sort().join('+') : ''; if ((uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(d.cards); });
             // 這場有人實際打過的牌組也收（有真實紀錄，例如復仇鍊子＋炎燒地獄＋輻射萬花筒打過次數不到 30，但上班族大叔這場打出比推薦高的傷害）
-            if (!fast) (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length === 3) add(cs); });
+            // 上一場打過的也收：剛開打時這場還沒幾刀，只看這場會讓候選一下子變少（開打前是看上一場，推薦才對；開打前後要用同一批）
+            if (!fast) { const prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
+                let prev = prevSa ? sessionAttacksCache.get(prevSa) : null; if (prevSa && !prev) { try { prev = await ensureSessionAttacksLoaded(prevSa); } catch (e) {} }
+                [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...(Array.isArray(prev) ? prev : [])].forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length === 3) add(cs); }); }
             const scenCnt = new Map(), scenCards = new Map();
             (BY_PART_GAME_SCENARIOS || []).forEach(sc => new Set((sc.decks || []).filter(d => Array.isArray(d.cards) && d.cards.length === 3).map(d => { const k = d.cards.slice().sort().join('+'); scenCards.set(k, d.cards); return k; })).forEach(k => scenCnt.set(k, (scenCnt.get(k) || 0) + 1)));
             scenCnt.forEach((n, k) => { if (n >= RAID_SIM_SCEN_MIN || (uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(scenCards.get(k)); });
@@ -12907,9 +12910,7 @@
             const envS = { ...env, board: plan.board }, sceneS = {}; Object.keys(plan.board).forEach(k => { const b = plan.board[k]; sceneS[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
             const tgs = [plan.tg].concat(plan.tg.length > 1 ? plan.tg.map(k => [k]) : []);   // 全部一起打，或只打其中一塊
-            // 候選：公會打過 RAID_SIM_MIN_USES 次以上、含晨星的全部牌組（開打後一般候選會縮成常用的，含晨星的可能只剩打盔甲的組）
-            const msDecks = new Map(); (await raidSimCandidateDecks(data, false)).forEach(d => msDecks.set(d.cards.slice().sort().join('+'), d)); usesM.forEach((n, k) => { if (k.split('+').includes(MS) && k.split('+').length === 3 && !msDecks.has(k)) msDecks.set(k, { cards: k.split('+') }); });
-            const list = [...msDecks.values()].filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
+            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
                 .map(d => { const hp = fS.hitParts(d.cards); const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); return plans.length ? { cards: d.cards, plans } : null; }).filter(Boolean);
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -13411,7 +13412,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v16_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v17_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14533,11 +14534,6 @@
             pick.sort((a, b) => (a.depOrder ?? 99) - (b.depOrder ?? 99) || b.avg - a.avg);   // 照打的順序（第 1 組先打），不照扣血後的傷害重排：順序一變，前面的組先扣掉的血就不一樣
         }
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
-            // 防空高砲（只能打盔甲）：全公會都會用，固定打剩下盔甲最厚的部位（例如 Terro 的肚子），薄的部位（腳）一下就破、後面的人沒盔甲可打
-            //   （模擬器只看單刀會挑有加成的部位，例如碎顱打擊打腳 +50%）
-            if (hitParts && raidState && raidState.parts) { const hp0 = hitParts, ban0 = new Set(raidBannedParts || []);
-                const thick = Object.keys(raidState.parts).filter(k => !ban0.has(k) && (Number(raidState.parts[k].armor) || 0) > 0).sort((a, b) => (Number(raidState.parts[b].armor) || 0) - (Number(raidState.parts[a].armor) || 0))[0];
-                if (thick) hitParts = (cards) => { const h = hp0(cards); return cards.includes('FlakShot') ? h.filter(k => k === thick) : h; }; }
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
@@ -14567,7 +14563,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v16_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v17_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

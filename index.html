@@ -6981,7 +6981,13 @@
 
         // 選了某個（通常是比較舊的）場次時才呼叫：如果那場資料還沒抓過，跟伺服器要那一場
         // 的完整攻擊紀錄；抓過的話直接用快取，不用每次切換場次都重新跟伺服器要一次
-        async function ensureSessionAttacksLoaded(startedAt) {
+        const sessionAttacksLoading = new Map();   // 同一場同時好幾個地方要（例如一次打開好幾個人的推薦）：只下載一次，大家等同一份
+        function ensureSessionAttacksLoaded(startedAt) {
+            if (sessionAttacksCache.has(startedAt)) return Promise.resolve(sessionAttacksCache.get(startedAt));
+            if (!sessionAttacksLoading.has(startedAt)) sessionAttacksLoading.set(startedAt, ensureSessionAttacksLoaded0(startedAt).finally(() => sessionAttacksLoading.delete(startedAt)));
+            return sessionAttacksLoading.get(startedAt);
+        }
+        async function ensureSessionAttacksLoaded0(startedAt) {
             if (sessionAttacksCache.has(startedAt)) return sessionAttacksCache.get(startedAt);
             if (raidLogDemoActive) return []; // 示範模式的場次資料在 buildRaidSessions() 裡已經算好，不會走到這裡
             try {

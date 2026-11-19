@@ -130,6 +130,8 @@ function simAttack(opt, P = P0) {
     if (b.layer === 'skeleton') return 0;
     const i = b.layer === 'armor' ? 0 : 1;
     if (d < h[i]) { h[i] -= d; return d; }
+    // P.layerFixed：整刀照出刀時的層別（遊戲把破甲後的傷害也記成打在盔甲，盔甲加成整刀有效）：盔甲打完，剩下的傷害繼續扣肉體，層別不變
+    if (P.layerFixed && i === 0) { const a = h[0]; h[0] = 0; const bb = Math.min(d - a, h[1]); h[1] -= bb; return a + bb; }
     const got = h[i]; h[i] = 0;
     board[loc] = { layer: i === 0 ? (h[1] > 0 ? 'body' : 'skeleton') : 'skeleton', cursed: false };   // 這一下剩下的部分不再往下打（下一下才照新的層算）
     nBody = LOCS.filter(l => realLayer(l) === 'body').length; nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length; nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;

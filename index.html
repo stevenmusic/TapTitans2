@@ -7731,6 +7731,71 @@
         const RAID_SIM_PICK_OLD_LOW = 0.73;   // 標紅：打法低於 90%（最近 4 場每場約 1～2 人）、配卡低於 73%（M-44 約 8 人）
         const RAID_LOG_OVERALL_LOW = 0.9;      // 同級水準偏低：這場均傷低於同條件應有的 90%（最近 7 場每場 4～8 人，平均 6 人）
         let raidClanData = null, raidClanDataLoading = false;   // 官方 clan_data：playerCode → { tree（研究樹換算值）, raw }
+        /* 換了突襲水晶、伺服器還沒抓到（遊戲限制帳號資料 12 小時才能抓一次）：玩家在突襲水晶頁自己標現在放水晶的卡，
+           存在伺服器（所有人看到的推薦都照這份算）；伺服器之後抓到比這份新的帳號資料，就自動改回伺服器的 */
+        const RAID_CRYSTAL_OV_KEY = 'crystal_override';
+        let raidCrystalOv = {};
+        function raidCrystalOvActive(code) { const o = raidCrystalOv && raidCrystalOv[code]; return o && raidClanData && Number(o.at) > Number(raidClanData.at || 0) ? o : null; }
+        function raidCrystalOvApply() {
+            if (!raidClanData) return;
+            raidClanData.byCode.forEach((v, code) => {
+                const p = v.raw; if (!p) return;
+                if (p._bcServer) { p.boosted_cards = p._bcServer; delete p._bcServer; delete p._crystalOv; }
+                const o = raidCrystalOvActive(code); if (!o || !o.cards) return;
+                const server = p.boosted_cards || [], out = [];
+                Object.entries(o.cards).forEach(([cat, ids]) => {
+                    const cur = server.filter(b => b.category === cat);
+                    const lv6 = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat).map(c => Number(c.level) || 0).sort((a, b) => b - a)[5] || 0;
+                    const L = cur.length ? Math.max(...cur.map(b => Number(b.boost_level) || 0)) : lv6;   // 水晶等級跟原本同一類一樣
+                    (ids || []).forEach((id, i) => out.push({ skill_name: id, boost_level: L, category: cat, slot_number: i }));
+                });
+                server.filter(b => !o.cards[b.category]).forEach(b => out.push(b));
+                p._bcServer = server; p._crystalOv = o.at; p.boosted_cards = out;
+            });
+        }
+        let crystalOvEdit = null;   // { code, sel: { cat: [id] } }
+        function crystalOvStart(code) {
+            const v = raidClanData && raidClanData.byCode.get(code); if (!v) return;
+            const slots = crystalSlotsOf(v.raw), sel = {};
+            Object.keys(slots).forEach(cat => { sel[cat] = slots[cat].cur.map(b => b.skill_name); });
+            crystalOvEdit = { code, sel }; renderCrystalReco();
+        }
+        function crystalOvToggle(cat, id) {
+            if (!crystalOvEdit) return; const v = raidClanData.byCode.get(crystalOvEdit.code); const n = (crystalSlotsOf(v.raw)[cat] || {}).n || 0;
+            const a = crystalOvEdit.sel[cat] = crystalOvEdit.sel[cat] || [];
+            const i = a.indexOf(id); if (i >= 0) a.splice(i, 1); else if (a.length < n) a.push(id);
+            renderCrystalReco();
+        }
+        async function crystalOvSave(clear) {
+            if (!crystalOvEdit && !clear) return;
+            const code = clear || crystalOvEdit.code;
+            const remote = (await kvGet(RAID_CRYSTAL_OV_KEY)) || {};
+            if (clear) delete remote[code]; else remote[code] = { at: Date.now(), cards: crystalOvEdit.sel };
+            await kvSet(RAID_CRYSTAL_OV_KEY, remote);
+            raidCrystalOv = remote; crystalOvEdit = null;
+            raidCrystalOvApply();
+            try { raidSimPickCache.clear(); raidRecoLast.clear(); } catch (e) {}   // 等級變了：推薦重算（暫存的 key 也含等級）
+            renderCrystalReco();
+            try { raidLogRestorePlayerRecos(); } catch (e) {}
+        }
+        function crystalOvHtml(p) {
+            const code = p.player_code, o = raidCrystalOvActive(code);
+            const btn = (txt, js, bg, fg) => `<button onclick="${js}" style="font:inherit; font-size:12.5px; font-weight:800; padding:6px 10px; border:none; border-radius:8px; background:${bg}; color:${fg}; cursor:pointer;">${txt}</button>`;
+            if (!crystalOvEdit || crystalOvEdit.code !== code) {
+                const note = o ? `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin-bottom:4px;">目前照手動標的水晶算（${new Date(o.at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}），伺服器抓到新的帳號資料後自動改回</div>` : '';
+                return `<div style="margin:6px 0;">${note}<div style="display:flex; gap:6px;">${btn(o ? '重新標水晶' : '我換水晶了（伺服器還沒更新）', `crystalOvStart('${code}')`, '#ede4f6', '#5b2c83')}${o ? btn('改回伺服器資料', `crystalOvSave('${code}')`, '#f3ece2', '#5a4a3a') : ''}</div></div>`;
+            }
+            const slots = crystalSlotsOf({ ...p, boosted_cards: p._bcServer || p.boosted_cards });
+            let ok = true;
+            const rows = Object.keys(CRYSTAL_CAT).filter(cat => slots[cat]).map(cat => {
+                const n = slots[cat].n, sel = crystalOvEdit.sel[cat] || []; if (sel.length !== n) ok = false;
+                const cards = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat && RAID_CARD_IMAGE[c.skill_name]).sort((a, b) => (Number(b.level) || 0) - (Number(a.level) || 0));
+                const chips = cards.map(c => { const on = sel.includes(c.skill_name); return `<span onclick="crystalOvToggle('${cat}', '${c.skill_name}')" style="display:inline-flex; align-items:center; gap:3px; margin:2px; padding:3px 7px 3px 3px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:700; border:2px solid ${on ? '#6a3d9a' : '#e2d7c5'}; background:${on ? '#ede4f6' : '#fff'};"><img src="${RAID_CARD_IMAGE[c.skill_name]}" style="width:24px; height:24px; border-radius:5px;">${escapeHtml(raidCardLabel(c.skill_name))} ${c.level}</span>`; }).join('');
+                return `<div style="margin-top:6px;"><div style="font-size:12.5px; font-weight:900; color:#4a3728;">${CRYSTAL_CAT[cat]}（選 ${sel.length}／${n} 張）</div><div>${chips}</div></div>`;
+            }).join('');
+            return `<div style="margin:6px 0; padding:8px; background:#faf6ff; border:1px solid #d9c7ee; border-radius:12px;"><div style="font-size:13px; font-weight:900; color:#5b2c83;">點選你現在放水晶的卡</div>${rows}
+                <div style="display:flex; gap:6px; margin-top:8px;">${ok ? btn('儲存', 'crystalOvSave()', '#6a3d9a', '#fff') : '<span style="font-size:12px; color:#c0392b; align-self:center;">每一類要選滿</span>'}${btn('取消', 'crystalOvEdit = null; renderCrystalReco();', '#f3ece2', '#5a4a3a')}</div></div>`;
+        }
         async function raidLoadClanData() {
             if (raidClanData || raidClanDataLoading || raidLogDemoActive) return raidClanData;
             raidClanDataLoading = true;
@@ -7751,6 +7816,8 @@
                         m.set(p.player_code, { partMult, loy, necroMult, raw: p });
                     });
                     raidClanData = { at: j.at, byCode: m };
+                    try { raidCrystalOv = (await kvGet(RAID_CRYSTAL_OV_KEY)) || {}; } catch (e) { raidCrystalOv = {}; }
+                    raidCrystalOvApply();
                     if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
                 }
             } catch (e) {} finally { raidClanDataLoading = false; }
@@ -14316,7 +14383,7 @@
             // 個人頁精簡：玩家和關卡選單同一排
             const top = `<input class="player-name-input" id="crystal-me-q" placeholder="搜尋玩家名稱" value="${escapeHtml(crystalMeQ)}" oninput="crystalMeFilter(this.value)" style="margin-bottom:6px;"><div style="display:flex; gap:6px; align-items:center;"><div style="flex:1; min-width:0;">${sel}</div>${lvSelect.replace('padding:3px 6px;', 'padding:7px 6px; font-weight:700;')}</div>${lvInfo}${reBtn}`;
             const hadQ = document.activeElement && document.activeElement.id === 'crystal-me-q';
-            box.innerHTML = tabs + `${top}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
+            box.innerHTML = tabs + `${top}${crystalOvHtml(p)}${crystalSlotWarn(p, players).replace('padding:0 10px 4px;', 'padding:4px 2px 0;')}${gainLine}${sections}${deckBox}
                 <div style="font-size:12px; color:#857a6b; margin-top:4px;">綠框＝換上｜紅虛線＝換掉｜分數越高越值得放水晶（升級多的屬性，加上最近自己和全公會常不常用這張卡）</div>`; if (crystalMeQ) { const k = crystalMeQ.trim().toLowerCase(), sl = document.getElementById('crystal-me-sel'); if (sl) [...sl.options].forEach(o => { o.hidden = !!k && !o.textContent.toLowerCase().includes(k); }); }
             if (hadQ) { const el = document.getElementById('crystal-me-q'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
         }

@@ -6,7 +6,7 @@ const RaidSim = require('./sim/raidsim');
 const CAL = require('./sim/calibration.json');
 // 跟網頁攻擊紀錄重算同一套：卡片係數用 calibration.json，整組修正（deckK）、點擊校正不在這裡乘——網頁拿每張卡的傷害（by）套最新的滾動校正
 const P = { ...RaidSim.P0, ...CAL, k: { ...(CAL.k || {}) }, deckK: {}, tapK: 1 };
-const SIM_VER = 8;   // v8：三角支援苦痛、爆裂傷害都加（不用湊另一類卡）；v7：變質氣體＋內在真理的苦痛機率相乘（原本取最大）；v6：肆虐瘟疫擴散機率 50%（係數 0.786，拿掉氣體＋瘟疫＋漩渦整組修正）； v5：腐敗突擊照部位目前這一層缺血比例算（env.hpMax，存 ms）； v4：模擬照打之前每個部位剩的盔甲／肉體（一刀之內破甲、打成骨架）；v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
+const SIM_VER = 9;   // v9：出刀前盔甲記錄不準時照遊戲記錄（打在盔甲的傷害）修正；v8：三角支援苦痛、爆裂傷害都加（不用湊另一類卡）；v7：變質氣體＋內在真理的苦痛機率相乘（原本取最大）；v6：肆虐瘟疫擴散機率 50%（係數 0.786，拿掉氣體＋瘟疫＋漩渦整組修正）； v5：腐敗突擊照部位目前這一層缺血比例算（env.hpMax，存 ms）； v4：模擬照打之前每個部位剩的盔甲／肉體（一刀之內破甲、打成骨架）；v3：模擬器跟網頁同一版（sim/ 從 raid-sim/ 複製），存 by／t／cap，網頁直接套校正、不用再背景重算
 const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
 const LOY = [1, 1.1, 1.14, 1.16, 1.18, 1.2, 1.22, 1.24, 1.26, 1.28, 1.3, 1.32, 1.34];
 const ENEMY = { Lojak: 1, Takedar: 2, Jukk: 3, Sterl: 4, Mohaca: 5, Terro: 6, Klonk: 7, Priker: 8 };
@@ -14,12 +14,15 @@ const EXCLUDE = new Set(['CelestialStatic']);   // 不推薦的卡（天體靜�
 const DECK_BAN = [['Haymaker', 'TotemFairySkill']];
 // 每一版改到哪些卡：升版時只重算用到這些卡的刀，其他刀模擬結果完全一樣，直接沿用（整場重算從約 1,500 刀降到兩三百刀）
 //   v4 以前的舊資料（沒有每張卡的傷害 by 等欄位）一律重算
-const VER_CARDS = { 5: ['DecayingAttack'], 6: ['PlagueAttack'], 7: ['InnerTruth'], 8: ['TriangleSupport'] };
+const LOCS8 = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
+// v9 跟卡片無關：只重算盔甲記錄不準的刀（遊戲記錄打在盔甲的傷害比以為剩的盔甲還多）
+const armorMismatch = (r, a) => !!(r && Array.isArray(r.ha) && Array.isArray(a && a.parts) && a.parts.some(pp => pp && pp.layer === 'armor' && (Number(pp.damage) || 0) > (Number(r.ha[LOCS8.indexOf(pp.part)]) || 0) * 1e6 * 1.05 + 1e6));
+const VER_CARDS = { 5: ['DecayingAttack'], 6: ['PlagueAttack'], 7: ['InnerTruth'], 8: ['TriangleSupport'], 9: armorMismatch };
 function simFresh(r, a) {
   if (!r || !(r.v >= 4)) return false;
   if (r.v >= SIM_VER) return true;
   const cards = new Set(((a && a.cards) || []).map(c => c && c.name));
-  for (let v = r.v + 1; v <= SIM_VER; v++) { const vc = VER_CARDS[v]; if (!vc) return false; if (vc.some(c => cards.has(c))) return false; }   // 沒登記改了哪些卡的版本：保守起見重算
+  for (let v = r.v + 1; v <= SIM_VER; v++) { const vc = VER_CARDS[v]; if (!vc) return false; if (typeof vc === 'function' ? vc(r, a) : vc.some(c => cards.has(c))) return false; }   // 沒登記改了哪些卡的版本：保守起見重算
   return true;
 }
 const yieldLoop = () => new Promise(r => setImmediate(r));
@@ -97,6 +100,14 @@ function createSimExp(deps) {
     const rl = Number(a.raidLevel) || Number(p.player_raid_level) || 0;
     const tau = 4.002 * Math.pow(rl, 0.884) * LOY[Math.max(0, Math.min(12, Number(p.loyalty_level) || 0))] * (1 + env.morale);
     const mirror = (Number(a.cycle) || 1) >= 2 ? 0.35 : 0;
+    // 出刀前的盔甲記錄不準（遊戲記錄打在盔甲的傷害比以為剩的盔甲還多）：照遊戲記錄，盔甲至少有這麼多——
+    //   不然會以為一刀之內破甲、盔甲加成中途消失而低估（快來加入 M-48：以為剩 460M、實際打在盔甲 678M，應打 527M、實際 678M）
+    if (env.hpAB && Array.isArray(a.parts)) {
+      const hpAB = { ...env.hpAB }, hp = env.hp ? { ...env.hp } : null, board = { ...env.board }; let fixed = false;
+      a.parts.forEach(pp => { if (!pp || pp.layer !== 'armor' || !hpAB[pp.part]) return; const dmg = Number(pp.damage) || 0, cur = hpAB[pp.part];
+        if (dmg > (cur[0] || 0) * 1.05 + 1e6) { hpAB[pp.part] = [dmg, cur[1]]; if (hp) hp[pp.part] = dmg + (cur[1] || 0); if (board[pp.part] && board[pp.part].layer === 'body') board[pp.part] = { layer: 'armor', cursed: false }; fixed = true; } });
+      if (fixed) env = { ...env, hpAB, hp, board };
+    }
     const miss = missOf(env);   // 腐敗突擊：每個部位盔甲、肉體各少了幾成（有最大血量才有，沒有就照舊用固定值）
     const baseOpt = (deck) => { const drums = deck.some(d => d[0] === 'BattleDrums'); return { deck, board: env.board, taps: (drums ? 400 : 600) + env.extraSec * 20, dur: (drums ? 20 : 30) + env.extraSec, tau, mirror, curse: env.curse, buff: env.buff, necro, hp: env.hpAB || undefined, miss }; };   // hp：打之前每個部位剩的盔甲、肉體（一刀之內破甲、打成骨架照實際算）
     // 打法：實際牌組、實際等級、實際打的部位

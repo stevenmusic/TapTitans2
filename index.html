@@ -12916,8 +12916,10 @@
             const envS = { ...env, board: plan.board }, sceneS = {}; Object.keys(plan.board).forEach(k => { const b = plan.board[k]; sceneS[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
             const tgs = [plan.tg].concat(plan.tg.length > 1 ? plan.tg.map(k => [k]) : []);   // 全部一起打，或只打其中一塊
-            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
-                .map(d => { const hp = fS.hitParts(d.cards); const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); return plans.length ? { cards: d.cards, plans } : null; }).filter(Boolean);
+            // 晨星＋手上任意兩張還沒用的卡（不限公會打過的組合：晨星單張配所有卡，傷害最大化）；幾百組先粗算、前 8 名精算
+            const own = Object.keys(me.lv).filter(c => c !== MS && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)), list = [];
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [MS, own[a], own[b]]; if (raidSimDeckBanned(cards)) continue; const hp = fS.hitParts(cards);
+                const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); if (plans.length) list.push({ cards, plans }); }
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
             return pool[0] ? { ...pool[0], ms: { mode: plan.mode, now: plan.now } } : null;
@@ -13198,11 +13200,12 @@
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
                     // 帶刺的晨星（開關 ON）：先挑好晨星那組（只比十幾組），卡扣掉、少一刀再算主推薦——主推薦只算一次（原本算完再整套重算一次，慢一倍）
                     let msRow = null, infoP = info;
-                    if (!reuse && raidSpecialPref === true && n0 >= 2) {
+                    if (!reuse && n0 >= 1 && (raidSpecialPref === true || raidMorningOkNow())) {
                         const M = await raidSimMorningBest(r, info, data).catch(() => null);
-                        if (M && !M.ms.now) {   // 已經是時機（現在打）就不用保留：晨星組跟其他牌組一起照傷害挑（強制留會佔掉別組的卡，例如追風的防空高砲排不進去）
+                        if (M && !M.ms.now && raidSpecialPref === true && n0 >= 2) {   // 已經是時機（現在打）就不用保留：晨星組跟其他牌組一起照傷害挑（強制留會佔掉別組的卡，例如追風的防空高砲排不進去）
                             msRow = { cards: byPartOrderCards(M.cards), rawCards: M.cards, targets: (M.tg || []).map(k => ({ part: k, layer: M.ms.mode === 'armor' ? 'armor' : 'body', cursed: false })), allParts: false, simDmg: M, msLater: !M.ms.now, msNow: M.ms.now, msMode: M.ms.mode };
                             infoP = { ...info, used: new Set([...(info.used || []), ...M.cards]), remaining: n0 - 1 }; }
+                        else if (M && M.ms.now) infoP = { ...info, extraDecks: [M.cards] };   // 現在打：最強的晨星組放進候選，跟其他牌組一起比
                     }
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...infoP, voidMode: voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));
                       if (!reuse) {
@@ -13415,7 +13418,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v18_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v19_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14550,7 +14553,7 @@
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const dataSig = 'd' + (data && Array.isArray(data.decks) ? data.decks.length : 0) + 'u' + ((() => { try { const m = raidDeckUsesMap(); return m ? m.size : 0; } catch (e) { return 0; } })());   // 候選牌組資料不同（沒載完、比較舊）算出的推薦不能共用
             const lvSig = 'L' + Object.keys(me.lv || {}).sort().map(c => c + (Math.round((me.lv[c] || 0) * 10) / 10)).join(',');   // 卡片等級（換突襲水晶、升級）變了：暫存的推薦不能用
-            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.extraDecks || []).map(c => c.slice().sort().join('+')).join(',') + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (!info.force && raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -14566,7 +14569,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v18_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v19_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
@@ -14578,6 +14581,7 @@
             const cands = (await raidSimCandidateDecks(data, fast)).filter(d => usedEnough(d.cards)).filter(d => {
                 return !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(d.cards);
             });
+            (info.extraDecks || []).forEach(cards => { const k = cards.slice().sort().join('+'); if (!cands.some(d => d.cards.slice().sort().join('+') === k) && !raidSimDeckBanned(cards) && cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(cards)) cands.unshift({ cards, uses: 0 }); });   // 例如晨星配任意兩張挑出來最強的那組
             const list = [], extra = [];
             const build = (cards, E, hitF) => {
                 E = E || env; const hp = (hitF || hitParts)(cards);

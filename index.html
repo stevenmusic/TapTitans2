@@ -13411,7 +13411,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v15_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v16_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14533,6 +14533,11 @@
             pick.sort((a, b) => (a.depOrder ?? 99) - (b.depOrder ?? 99) || b.avg - a.avg);   // 照打的順序（第 1 組先打），不照扣血後的傷害重排：順序一變，前面的組先扣掉的血就不一樣
         }
         async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
+            // 防空高砲（只能打盔甲）：全公會都會用，固定打剩下盔甲最厚的部位（例如 Terro 的肚子），薄的部位（腳）一下就破、後面的人沒盔甲可打
+            //   （模擬器只看單刀會挑有加成的部位，例如碎顱打擊打腳 +50%）
+            if (hitParts && raidState && raidState.parts) { const hp0 = hitParts, ban0 = new Set(raidBannedParts || []);
+                const thick = Object.keys(raidState.parts).filter(k => !ban0.has(k) && (Number(raidState.parts[k].armor) || 0) > 0).sort((a, b) => (Number(raidState.parts[b].armor) || 0) - (Number(raidState.parts[a].armor) || 0))[0];
+                if (thick) hitParts = (cards) => { const h = hp0(cards); return cards.includes('FlakShot') ? h.filter(k => k === thick) : h; }; }
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = await raidSimLoad(); } catch (e) { return null; }
@@ -14562,7 +14567,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v15_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v16_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

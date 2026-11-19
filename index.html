@@ -12697,7 +12697,7 @@
             raidSpecialPref = v; try { localStorage.setItem('tt2_special_pref', v ? '1' : '0'); } catch (e) {}
             [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換
         }
-        function raidSpecialToggle(name) { const on = (raidLogRecoRows.get(name) || []).some(x => x.voidLater || x.voidTag || x.finLater); raidSpecialSet(!on); }
+        function raidSpecialToggle(name) { const on = (raidLogRecoRows.get(name) || []).some(x => x.voidLater || x.voidTag || x.finLater || x.msLater || x.msNow); raidSpecialSet(!on); }
         function raidBodyNow() { const P = (raidState && raidState.parts) || {}, bn = raidBannedParts || []; return Object.entries(P).filter(([k, v]) => !bn.includes(k) && !(v.armor > 0) && v.body > 0).length; }
         function raidRecoVoidOn(r) { return false; }   // 推薦不再做「留一組瘋狂無效」的 6 組最佳化（太複雜）：改成右上角按鈕打開小視窗，列瘋狂無效能配的最高傷害牌組
         /* 留瘋狂無效：估這一輪（剩 0 次就是下一輪）結束前，能打的肉體部位會不會到 6 個以上。
@@ -12811,12 +12811,12 @@
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
             const lvOf = (c) => v && v.raw ? raidSimBaseLevel(v.raw, c) : 0; const banN = (raidBannedParts || []).length;
             const ci = raidPlayerCycleInfo(r.player, r.attacks || []); const usedNow = (c) => !raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has(c);
-            const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack') && banN <= 1, can = voidOk || finOk;
-            const on = can && (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag || x.finLater);
+            const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack') && banN <= 1, msOk = lvOf('BarbedMorningstar') > 0 && !usedNow('BarbedMorningstar') && raidMorningOkNow(), can = voidOk || finOk || msOk;
+            const on = can && (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag || x.finLater || x.msLater || x.msNow);
             const lab = !can ? '不能用' : on ? 'ON' : 'OFF';
-            const why = !can ? (banN > 2 ? `禁打 ${banN} 個部位，湊不到 6 肉體／6 骨架` : '瘋狂無效、凱旋行軍都不能用（沒卡或這輪已用）') : (on ? '保留' : '照傷害計算，不特地保留') + '：瘋狂無效' + (voidOk ? '' : '（這隻王用不到）') + '、凱旋行軍' + (finOk ? '' : '（這隻王用不到）') + '｜全公會一起，按一下切換';
+            const why = !can ? (banN > 2 ? `禁打 ${banN} 個部位，湊不到 6 肉體／6 骨架` : '瘋狂無效、凱旋行軍都不能用（沒卡或這輪已用）') : (on ? '保留' : '照傷害計算，不特地保留') + '：瘋狂無效' + (voidOk ? '' : '（這隻王用不到）') + '、凱旋行軍' + (finOk ? '' : '（這隻王用不到）') + '、帶刺的晨星' + (msOk ? '' : '（這隻王用不到）') + '｜全公會一起，按一下切換';
             const ico = (id, ok) => { const im = raidCardImage(id); return im ? `<span style="position:relative; display:block; width:24px; height:24px;"><img src="${im}" alt="" style="width:24px; height:24px; border-radius:5px; display:block; ${on && ok ? '' : 'filter:grayscale(1); opacity:.45;'}">${ok ? '' : '<span style="position:absolute; left:-1px; right:-1px; top:50%; height:2px; background:#8a7a6a; transform:rotate(-35deg);"></span>'}</span>` : ''; };   // 用不到的那張打斜線
-            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidSpecialToggle(this.dataset.p)' : ''}" title="${why}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:2px; border:none; border-radius:7px; background:none; ${on ? 'box-shadow:0 0 0 2px #7b4fa8;' : ''} cursor:${can ? 'pointer' : 'default'}; font-family:inherit;"><span style="display:flex; gap:2px;">${ico('CrushingVoid', voidOk)}${ico('FinisherAttack', finOk)}</span><span style="font-size:10px; font-weight:800; color:${on ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidSpecialToggle(this.dataset.p)' : ''}" title="${why}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:2px; border:none; border-radius:7px; background:none; ${on ? 'box-shadow:0 0 0 2px #7b4fa8;' : ''} cursor:${can ? 'pointer' : 'default'}; font-family:inherit;"><span style="display:flex; gap:2px;">${ico('CrushingVoid', voidOk)}${ico('FinisherAttack', finOk)}${ico('BarbedMorningstar', msOk)}</span><span style="font-size:10px; font-weight:800; color:${on ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
         }
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
@@ -12859,6 +12859,51 @@
                 }
             } catch (e) { console.error(e); body = '<div style="font-size:12px; color:#c0392b;">算不出來，請稍後再試。</div>'; }
             if (document.getElementById('raid-void-top') === ov) ov.innerHTML = card(body);
+        }
+        /* 帶刺的晨星：另一種狀態的部位越多加成越高（一個部位 +15%，5 個以上 +75%，禁打的部位照實際狀態算）
+           禁打 3 個以上 → 打肉體（禁打的盔甲一直在，盔甲容易湊滿 5 個）：已經有肉體就現在打，還沒有就等第 1 個肉體（拆最薄的盔甲）
+           禁打 2 個以下 → 打盔甲：肉體 ≥5 就現在打，還不到就等 5 肉體（其他能打的部位都變肉體，留盔甲最厚的那塊打）
+           湊不到 5 個就回傳 null（按鈕顯示不能用） */
+        function raidMorningPlan(B, hpA) {
+            const keys = Object.keys(B), real = (b) => b.layer === 'banned' ? (b.under || 'armor') : b.layer;
+            const banN = keys.filter(k => B[k].layer === 'banned').length;
+            const open = keys.filter(k => B[k].layer === 'armor' || B[k].layer === 'body'); if (!open.length) return null;
+            const board = { ...B }; let tg, now, mode;
+            if (banN >= 3) {
+                mode = 'body'; let bodies = open.filter(k => B[k].layer === 'body'); now = bodies.length > 0;
+                if (!now) { const k0 = open.slice().sort((a, b) => (hpA[a] || 0) - (hpA[b] || 0))[0]; board[k0] = { layer: 'body' }; bodies = [k0]; }
+                if (keys.filter(k => real(board[k]) === 'armor').length < 5) return null;
+                tg = bodies;
+            } else {
+                mode = 'armor'; const arm = open.filter(k => B[k].layer === 'armor'); if (!arm.length) return null;
+                now = keys.filter(k => real(B[k]) === 'body').length >= 5;
+                if (now) tg = arm; else { const big = arm.slice().sort((a, b) => (hpA[b] || 0) - (hpA[a] || 0))[0]; arm.forEach(k => { if (k !== big) board[k] = { layer: 'body' }; }); tg = [big]; }
+                if (keys.filter(k => real(board[k]) === 'body').length < 5) return null;
+            }
+            return { mode, now, board, tg };
+        }
+        function raidMorningOkNow() {
+            if (!raidState || !raidState.parts) return false;
+            const ban = raidBannedParts || [], B = {}, hpA = {};
+            Object.entries(raidState.parts).forEach(([k, x]) => { const a = Number(x.armor) || 0, b = Number(x.body) || 0; const L = a > 0 ? 'armor' : b > 0 ? 'body' : 'skeleton'; B[k] = ban.includes(k) ? { layer: 'banned', under: L } : { layer: L }; hpA[k] = a; });
+            return !!raidMorningPlan(B, hpA);
+        }
+        async function raidSimMorningBest(r, info, data) {
+            const MS = 'BarbedMorningstar', used = new Set(info.used || []);
+            if (used.has(MS)) return null;
+            const v = raidAccountInfo(r.player); if (!v) return null;
+            let P = await raidSimLoad(); P = { ...P, fg: true };
+            const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
+            if (!(me.lv[MS] > 0)) return null;
+            const plan = raidMorningPlan(env.board, env.hpA || {}); if (!plan) return null;
+            const envS = { ...env, board: plan.board }, sceneS = {}; Object.keys(plan.board).forEach(k => { const b = plan.board[k]; sceneS[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
+            const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
+            const tgs = [plan.tg].concat(plan.tg.length > 1 ? plan.tg.map(k => [k]) : []);   // 全部一起打，或只打其中一塊
+            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
+                .map(d => { const hp = fS.hitParts(d.cards); const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); return plans.length ? { cards: d.cards, plans } : null; }).filter(Boolean);
+            if (!list.length) return null;
+            const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
+            return pool[0] ? { ...pool[0], ms: { mode: plan.mode, now: plan.now } } : null;
         }
         // 凱旋行軍：禁打 0～1 個時，其他部位清成骨架（≥6 個）後打最厚的部位。算這個人「凱旋行軍那組在 6 骨架時打最厚部位」最好的一組
         async function raidSimFinisherBest(r, info, data) {
@@ -12951,7 +12996,7 @@
             } else return null;
             // 部位吃不吃得下：這一輪的組（前 6 組、不含留給之後的瘋狂無效／凱旋行軍）打同一個部位的加起來，超過部位剩的血 1 成以上就重算
             const need = {}, needA = {};
-            rows.slice(0, Math.max(RAID_ATTACKS_PER_CYCLE, n)).forEach(x => { if (x.voidLater || x.finLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
+            rows.slice(0, Math.max(RAID_ATTACKS_PER_CYCLE, n)).forEach(x => { if (x.voidLater || x.finLater || x.msLater) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
             const P = (raidState && raidState.parts) || {};
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; })
                 || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0))   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
@@ -13069,8 +13114,8 @@
             const deckGridInner = (rows) => `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(122px, 1fr)); gap:4px 6px;">
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
-                    const later = i >= Math.max(RAID_ATTACKS_PER_CYCLE, Math.min(info.remaining || 0, RAID_ATTACKS_MAX)) && !x.voidLater && !x.finLater && !x.flakLater;
-                    return `<div style="padding:2px; border-radius:7px; background:${x.finLater ? '#f6ecd2' : x.flakLater ? '#e3eef9' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.flakLater ? ' box-shadow:inset 0 0 0 1.5px #1565c0;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.finLater ? '#8a6414' : x.flakLater ? '#1565c0' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.finLater ? '凱旋行軍丨6 骨架再打' : x.flakLater ? '防空高砲丨1肉體再打' : x.voidTag ? '瘋狂無效丨現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效丨現在打' : '瘋狂無效丨6 肉體再打') : `第 ${i + 1} 組${later ? '丨之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
+                    const later = i >= Math.max(RAID_ATTACKS_PER_CYCLE, Math.min(info.remaining || 0, RAID_ATTACKS_MAX)) && !x.voidLater && !x.finLater && !x.flakLater && !x.msLater && !x.msNow;
+                    return `<div style="padding:2px; border-radius:7px; background:${x.msLater || x.msNow ? '#fbe3e0' : x.finLater ? '#f6ecd2' : x.flakLater ? '#e3eef9' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.msLater || x.msNow ? ' box-shadow:inset 0 0 0 1.5px #b0453a;' : x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.flakLater ? ' box-shadow:inset 0 0 0 1.5px #1565c0;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.msLater || x.msNow ? '#a0352b' : x.finLater ? '#8a6414' : x.flakLater ? '#1565c0' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.msNow ? '帶刺的晨星丨現在打' : x.msLater ? (x.msMode === 'armor' ? '帶刺的晨星丨5肉體再打盔甲' : '帶刺的晨星丨1肉體再打') : x.finLater ? '凱旋行軍丨6 骨架再打' : x.flakLater ? '防空高砲丨1肉體再打' : x.voidTag ? '瘋狂無效丨現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效丨現在打' : '瘋狂無效丨6 肉體再打') : `第 ${i + 1} 組${later ? '丨之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -13154,6 +13199,19 @@
                                 if (others && (finPref === true || sum(others) + F.avg >= sum(simPick))) simPick = others.concat([{ cards: byPartOrderCards(F.cards), rawCards: F.cards, targets: [{ part: F.big, layer: 'body', cursed: false }], allParts: false, simDmg: F, finLater: true }]);
                             }
                         }
+                        // 帶刺的晨星：同一個開關。ON 保留一組到最佳時機（現在就是時機就排「現在打」），自動照合計傷害決定
+                        if (simPick && raidSpecialPref !== false && n0 >= 1) {
+                            const M = await raidSimMorningBest(r, info, data).catch(() => null);
+                            const keep = simPick.filter(x => x.finLater);
+                            const natural = simPick.some(x => !x.finLater && (x.rawCards || x.cards).includes('BarbedMorningstar'));
+                            if (M && n0 >= 1 + keep.length + (M.ms.now ? 0 : 1) && !(natural && M.ms.now && raidSpecialPref !== true)) {
+                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
+                                const usedX = new Set([...(info.used || []), ...M.cards, ...keep.flatMap(x => x.rawCards || x.cards)]);
+                                const others = n0 - 1 - keep.length > 0 ? await raidSimPlayerPick(r.player, { ...info, used: usedX, remaining: n0 - 1 - keep.length, voidMode: voidLaterGo && !M.cards.includes('CrushingVoid') }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null) : [];
+                                const row = { cards: byPartOrderCards(M.cards), rawCards: M.cards, targets: (M.tg || []).map(k => ({ part: k, layer: M.ms.mode === 'armor' ? 'armor' : 'body', cursed: false })), allParts: false, simDmg: M, msLater: !M.ms.now, msNow: M.ms.now, msMode: M.ms.mode };
+                                if (others && (raidSpecialPref === true || sum(others) + sum(keep) + M.avg >= sum(simPick))) simPick = others.concat(keep, [row]);
+                            }
+                        }
                       }
                       if (simPick && simPick.length) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) });   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
@@ -13161,7 +13219,7 @@
                     if (simPick) {
                         // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）
                         const expPer = raidPlayerTypicalDmg(r);
-                        const weak = expPer > 0 ? simPick.filter(x => !x.voidLater && !x.finLater && !x.flakLater && x.simDmg && Math.max(x.simDmg.avg || 0, x.simDmg.raw || 0) < expPer * RAID_RECO_WEAK) : [];   // 用不受部位剩血限制的傷害判斷：收尾刀（部位快沒血、應打被限制）不會被當成太弱
+                        const weak = expPer > 0 ? simPick.filter(x => !x.voidLater && !x.finLater && !x.flakLater && !x.msLater && !x.msNow && x.simDmg && Math.max(x.simDmg.avg || 0, x.simDmg.raw || 0) < expPer * RAID_RECO_WEAK) : [];   // 用不受部位剩血限制的傷害判斷：收尾刀（部位快沒血、應打被限制）不會被當成太弱
                         if (weak.length) simPick = simPick.filter(x => !weak.includes(x));
                         const weakLine = weak.length ? `<div style="font-size:12px; font-weight:700; color:#8a7a6a; margin:4px 0 0;">另外 ${weak.length} 刀剩下的卡太弱（不到平常每刀 ${formatNumAlwaysM(expPer)} 的 ${Math.round(RAID_RECO_WEAK * 100)}%），建議留到下一輪卡片重新可用再打</div>` : '';
                         simPick.forEach(x => all.push(x));
@@ -14497,7 +14555,7 @@
             const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v14_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
-                const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
+                const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算
                 if (pre && pre.sig === key && okRows(pre.rows)) { raidSimPickCache.set(key, pre.rows); return pre.rows; }
                 const remote = await kvGet(kvKey);
                 if (remote && remote.sig === key && okRows(remote.rows)) { raidSimPickCache.set(key, remote.rows); return remote.rows; }

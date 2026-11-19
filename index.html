@@ -12900,6 +12900,12 @@
             }
             return { mode, now, board, tg };
         }
+        function raidMorningNow() {   // 現在的盤面就是晨星的時機（照部位剩的血、打王順序）
+            if (!raidState || !raidState.parts) return false;
+            const ban = raidBannedParts || [], B = {}, hpA = {}, hpB = {};
+            Object.entries(raidState.parts).forEach(([k, x]) => { const a = Number(x.armor) || 0, b = Number(x.body) || 0; const L = a > 0 ? 'armor' : b > 0 ? 'body' : 'skeleton'; B[k] = ban.includes(k) ? { layer: 'banned', under: L } : { layer: L }; hpA[k] = a; hpB[k] = b; });
+            const pl = raidMorningPlan(B, hpA, hpB); return !!(pl && pl.now);
+        }
         function raidMorningOkNow() {
             if (!raidState || !raidState.parts) return false;
             const ban = raidBannedParts || [], B = {}, hpA = {};
@@ -13229,8 +13235,12 @@
                     let msRow = null, infoP = info;
                     if (!reuse && n0 >= 1) {
                         const extra = [];
-                        if (raidSpecialPref !== false && raidMorningOkNow()) { const M = await raidSimMorningBest(r, info, data).catch(() => null); if (M && M.ms.now) extra.push(M.cards); }
-                        if (n0 <= 2) { const top = await raidSimBruteTop(r, info, 12).catch(() => null); (top || []).forEach(c => extra.push(c)); }
+                        // 晨星組只有「現在就是時機」才用得到：先用盤面判斷（不花時間），不是時機就不算；晨星和全部組合同時算
+                        const [M, top] = await Promise.all([
+                            raidSpecialPref !== false && raidMorningNow() && (info.used ? !(info.used.has ? info.used.has('BarbedMorningstar') : info.used.includes('BarbedMorningstar')) : true) ? raidSimMorningBest(r, info, data).catch(() => null) : null,
+                            n0 <= 2 ? raidSimBruteTop(r, info, 12).catch(() => null) : null]);
+                        if (M && M.ms.now) extra.push(M.cards);
+                        (top || []).forEach(c => extra.push(c));
                         if (extra.length) infoP = { ...info, extraDecks: extra };
                     }
                     let simPick; try { simPick = reuse || await raidSimPlayerPick(r.player, { ...infoP, voidMode: voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t));

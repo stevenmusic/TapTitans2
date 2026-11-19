@@ -8872,7 +8872,8 @@
         }
         // 這張卡在這個情境能不能用；回傳 { ok, why }（why＝不能用的原因，答題後顯示）
         // onlyPart：只看打這個部位時用不用得到（整組牌要同時打得到同一個部位，才是能用的牌組）
-        const RAID_LAYER_BONUS_ONLY = new Set(['RuinousRust', 'RazorWind', 'Fragmentize', 'FlakShot']);
+        // 防空高砲不在這裡：它只能打盔甲（打肉體不會發動），有防空高砲的牌組只排打盔甲（攻擊紀錄 109 刀沒有一刀只點肉體）
+        const RAID_LAYER_BONUS_ONLY = new Set(['RuinousRust', 'RazorWind', 'Fragmentize']);
         function quizCardUsable(card, scene, onlyPart, ignoreParts, loose) {   // loose：牌組頁自己挑卡，不套推薦用的「只在某些情況才用」（例如帶刺的晨星）
             const data = QUIZ_CARDS[card];
             const n = quizSceneCounts(scene);
@@ -12906,7 +12907,9 @@
             const envS = { ...env, board: plan.board }, sceneS = {}; Object.keys(plan.board).forEach(k => { const b = plan.board[k]; sceneS[k] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
             const tgs = [plan.tg].concat(plan.tg.length > 1 ? plan.tg.map(k => [k]) : []);   // 全部一起打，或只打其中一塊
-            const list = (await raidSimCandidateDecks(data, false)).filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
+            // 候選：公會打過 RAID_SIM_MIN_USES 次以上、含晨星的全部牌組（開打後一般候選會縮成常用的，含晨星的可能只剩打盔甲的組）
+            const msDecks = new Map(); (await raidSimCandidateDecks(data, false)).forEach(d => msDecks.set(d.cards.slice().sort().join('+'), d)); usesM.forEach((n, k) => { if (k.split('+').includes(MS) && k.split('+').length === 3 && !msDecks.has(k)) msDecks.set(k, { cards: k.split('+') }); });
+            const list = [...msDecks.values()].filter(d => d.cards.includes(MS) && (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)))
                 .map(d => { const hp = fS.hitParts(d.cards); const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); return plans.length ? { cards: d.cards, plans } : null; }).filter(Boolean);
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -13408,7 +13411,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v14_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v15_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14559,7 +14562,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v14_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v15_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

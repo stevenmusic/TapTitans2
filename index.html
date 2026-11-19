@@ -7786,14 +7786,16 @@
                 return `<div style="margin:6px 0;">${note}<div style="display:flex; gap:6px;">${btn(o ? '重新標水晶' : '我換水晶了（伺服器還沒更新）', `crystalOvStart('${code}')`, '#ede4f6', '#5b2c83')}${o ? btn('改回伺服器資料', `crystalOvSave('${code}')`, '#f3ece2', '#5a4a3a') : ''}</div></div>`;
             }
             const slots = crystalSlotsOf({ ...p, boosted_cards: p._bcServer || p.boosted_cards });
+            const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };   // 跟牌組頁同一套版面
             let ok = true;
             const rows = Object.keys(CRYSTAL_CAT).filter(cat => slots[cat]).map(cat => {
                 const n = slots[cat].n, sel = crystalOvEdit.sel[cat] || []; if (sel.length !== n) ok = false;
-                const cards = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat && RAID_CARD_IMAGE[c.skill_name]).sort((a, b) => (Number(b.level) || 0) - (Number(a.level) || 0));
-                const chips = cards.map(c => { const on = sel.includes(c.skill_name); return `<span onclick="crystalOvToggle('${cat}', '${c.skill_name}')" style="display:inline-flex; align-items:center; gap:3px; margin:2px; padding:3px 7px 3px 3px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:700; border:2px solid ${on ? '#6a3d9a' : '#e2d7c5'}; background:${on ? '#ede4f6' : '#fff'};"><img src="${RAID_CARD_IMAGE[c.skill_name]}" style="width:24px; height:24px; border-radius:5px;">${escapeHtml(raidCardLabel(c.skill_name))} ${c.level}</span>`; }).join('');
-                return `<div style="margin-top:6px;"><div style="font-size:12.5px; font-weight:900; color:#4a3728;">${CRYSTAL_CAT[cat]}（選 ${sel.length}／${n} 張）</div><div>${chips}</div></div>`;
+                const cards = (p.cards || []).filter(c => crystalSkills && (crystalSkills[c.skill_name] || {}).cat === cat && raidCardImage(c.skill_name)).sort((a, b) => (Number(b.level) || 0) - (Number(a.level) || 0));
+                const cell = (c) => { const id = c.skill_name, on = sel.includes(id), lb = raidCardLabel(id);
+                    return `<div onclick="crystalOvToggle('${cat}', '${id}')" title="${escapeHtml(lb)}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && sel.length >= n ? 0.45 : 1};"><img src="${raidCardImage(id)}" alt="" style="width:100%; max-width:60px; margin:0 auto; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #6a3d9a; outline-offset:-1px;' : ''}"><div style="font-size:12px; line-height:1.2; color:#4a3728; white-space:nowrap; letter-spacing:${lb.length >= 5 ? -1.3 : -0.4}px; margin:1px -2px 0;">${escapeHtml(lb)}<span style="display:inline-block; width:1px; height:0.85em; background:#847968; margin:0 2px; vertical-align:-1px;"></span><b>${Number(c.level) || 0}</b></div></div>`; };
+                return `<div style="margin-top:6px; padding:5px; background:${col[cat]}; border-radius:9px;"><div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:3px;">${CRYSTAL_CAT[cat]}<span style="font-weight:700; color:${sel.length === n ? '#2e7d32' : '#c0392b'};">（選 ${sel.length}／${n} 張）</span></div><div style="display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px 4px;">${cards.map(cell).join('')}</div></div>`;
             }).join('');
-            return `<div style="margin:6px 0; padding:8px; background:#faf6ff; border:1px solid #d9c7ee; border-radius:12px;"><div style="font-size:13px; font-weight:900; color:#5b2c83;">點選你現在放水晶的卡</div>${rows}
+            return `<div style="margin:6px 0; padding:8px; background:#fff; border:1px solid #eadfcc; border-radius:12px;"><div style="font-size:13px; font-weight:900; color:#5b2c83;">點選你現在放水晶的卡（等級是沒放水晶的原本等級）</div>${rows}
                 <div style="display:flex; gap:6px; margin-top:8px;">${ok ? btn('儲存', 'crystalOvSave()', '#6a3d9a', '#fff') : '<span style="font-size:12px; color:#c0392b; align-self:center;">每一類要選滿</span>'}${btn('取消', 'crystalOvEdit = null; renderCrystalReco();', '#f3ece2', '#5a4a3a')}</div></div>`;
         }
         async function raidLoadClanData() {

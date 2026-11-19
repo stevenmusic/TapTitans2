@@ -8343,7 +8343,10 @@
                     const board = {}; LOCS.forEach((l, i) => { const ch = sx.b[i]; board[l] = ch === 'X' || ch === 'x' ? { layer: 'banned', cursed: ch === 'x', under: raidBannedUnder(sx.u, i) } : ch === 'A' || ch === 'a' ? { layer: 'armor', cursed: ch === 'a' } : ch === 'B' ? { layer: 'body' } : { layer: 'skeleton' }; });
                     const latest = serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
                     if (a.raidStartedAt !== latest) return;   // 只算這一場（場次加成、門票用這場的）
-                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0 };   // 這一刀那一場自己的加成（顯示下一場時 env0 是下一場的）
+                    // 出刀前每個部位剩的血（伺服器有 ha 時）：照樣扣剩血，但盔甲至少是遊戲記錄打在盔甲上的傷害（伺服器記的盔甲可能不準）
+                    const armLog = {}; (a.parts || []).forEach(pp => { if (pp && pp.layer === 'armor') armLog[pp.part] = (armLog[pp.part] || 0) + (Number(pp.damage) || 0); });
+                    const hpSimCs = sx.ha && sx.h ? raidHpSimOf(LOCS, (k) => Math.max((Number(sx.ha[LOCS.indexOf(k)]) || 0) * 1e6, armLog[k] || 0), (k) => Math.max(0, (Number(sx.h[LOCS.indexOf(k)]) || 0) - (Number(sx.ha[LOCS.indexOf(k)]) || 0)) * 1e6, LOCS.filter(k => board[k].layer === 'banned')) : null;
+                    const env = { ...(await raidSimEnvForAttack(env0, a)), board, curse: sx.c ? { type: sx.c[0], per: sx.c[1] } : null, mirror: a.cycle >= 2 ? 0.35 : 0, hpSim: hpSimCs };   // 這一刀那一場自己的加成（顯示下一場時 env0 是下一場的）
                     const me = raidSimPlayer(v, env0.morale, {}, { boss: a.boss, rl: a.raidLevel, realLoyalty: true });
                     a.cards.forEach(c => { me.lv[c.name] = Number(c.level) || me.lv[c.name] || 1; });   // 這刀實際的等級（已含水晶、賽季加成、放大的等級加成）
                     me.fromAttack = true;   // 攻擊紀錄的等級已含放大加成，模擬時不要再加一次

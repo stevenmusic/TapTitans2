@@ -7732,8 +7732,8 @@
         const RAID_LOG_OVERALL_LOW = 0.9;      // 同級水準偏低：這場均傷低於同條件應有的 90%（最近 7 場每場 4～8 人，平均 6 人）
         let raidClanData = null, raidClanDataLoading = false;   // 官方 clan_data：playerCode → { tree（研究樹換算值）, raw }
         /* 換了突襲水晶、伺服器還沒抓到（遊戲限制帳號資料 12 小時才能抓一次）：玩家在突襲水晶頁自己標現在放水晶的卡，
-           存在伺服器（所有人看到的推薦都照這份算）；伺服器之後抓到比這份新的帳號資料，就自動改回伺服器的 */
-        const RAID_CRYSTAL_OV_KEY = 'crystal_override';
+           只存在自己手機（只影響這支手機看到的推薦，誰都改不到別人的）；伺服器之後抓到比這份新的帳號資料，就自動改回伺服器的 */
+        const RAID_CRYSTAL_OV_KEY = 'tt2_crystal_ov';
         let raidCrystalOv = {};
         function raidCrystalOvActive(code) { const o = raidCrystalOv && raidCrystalOv[code]; return o && raidClanData && Number(o.at) > Number(raidClanData.at || 0) ? o : null; }
         function raidCrystalOvApply() {
@@ -7754,13 +7754,7 @@
             });
         }
         let crystalOvEdit = null;   // { code, sel: { cat: [id] } }
-        const CRYSTAL_OV_ME_KEY = 'tt2_crystal_me';
-        function crystalOvMe() { try { return localStorage.getItem(CRYSTAL_OV_ME_KEY) || null; } catch (e) { return null; } }
-        function crystalOvClaim(code) {
-            const v = raidClanData && raidClanData.byCode.get(code); if (!v) return;
-            try { localStorage.setItem(CRYSTAL_OV_ME_KEY, code); } catch (e) {}
-            crystalOvStart(code);
-        }
+        function crystalOvClaim(code) { crystalOvStart(code); }
         function crystalOvStart(code) {
             const v = raidClanData && raidClanData.byCode.get(code); if (!v) return;
             const slots = crystalSlotsOf(v.raw), sel = {};
@@ -7776,10 +7770,9 @@
         async function crystalOvSave(clear) {
             if (!crystalOvEdit && !clear) return;
             const code = clear || crystalOvEdit.code;
-            if (code !== crystalOvMe()) { crystalOvEdit = null; renderCrystalReco(); return; }   // 只有本人能改
-            const remote = (await kvGet(RAID_CRYSTAL_OV_KEY)) || {};
+            const remote = { ...(raidCrystalOv || {}) };
             if (clear) delete remote[code]; else remote[code] = { at: Date.now(), cards: crystalOvEdit.sel };
-            await kvSet(RAID_CRYSTAL_OV_KEY, remote);
+            try { localStorage.setItem(RAID_CRYSTAL_OV_KEY, JSON.stringify(remote)); } catch (e) {}
             raidCrystalOv = remote; crystalOvEdit = null;
             raidCrystalOvApply();
             try { raidSimPickCache.clear(); raidRecoLast.clear(); } catch (e) {}   // 等級變了：推薦重算（暫存的 key 也含等級）
@@ -7789,8 +7782,6 @@
         function crystalOvHtml(p) {
             const code = p.player_code, o = raidCrystalOvActive(code);
             const btn = (txt, js, bg, fg) => `<button onclick="${js}" style="font:inherit; font-size:12.5px; font-weight:800; padding:6px 10px; border:none; border-radius:8px; background:${bg}; color:${fg}; cursor:pointer;">${txt}</button>`;
-            const meCode = crystalOvMe(), mine = meCode === code;
-            if (meCode && !mine) return '';   // 只有自己（這支手機第一次標的人）能標，別人的頁面不顯示
             if (!crystalOvEdit || crystalOvEdit.code !== code) return `<div style="display:flex; gap:6px; margin:6px 0;">${btn('我換水晶了', `crystalOvClaim('${code}')`, '#ede4f6', '#5b2c83')}${o ? btn('改回伺服器資料', `crystalOvSave('${code}')`, '#f3ece2', '#5a4a3a') : ''}</div>`;
             const slots = crystalSlotsOf({ ...p, boosted_cards: p._bcServer || p.boosted_cards });
             const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };   // 跟牌組頁同一套版面
@@ -7825,7 +7816,7 @@
                         m.set(p.player_code, { partMult, loy, necroMult, raw: p });
                     });
                     raidClanData = { at: j.at, byCode: m };
-                    try { raidCrystalOv = (await kvGet(RAID_CRYSTAL_OV_KEY)) || {}; } catch (e) { raidCrystalOv = {}; }
+                    try { raidCrystalOv = JSON.parse(localStorage.getItem(RAID_CRYSTAL_OV_KEY) || '{}') || {}; } catch (e) { raidCrystalOv = {}; }
                     raidCrystalOvApply();
                     if (typeof renderRaidLogQueryResult === 'function' && raidLogPanelShown()) renderRaidLogQueryResult();
                 }
@@ -14503,7 +14494,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v14_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v14_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater).length >= n - rows.filter(x => x.voidLater || x.finLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

@@ -12697,7 +12697,7 @@
         // 瘋狂無效開關（推薦框右上角）：有這張卡的人預設開（網站有統計瘋狂無效的使用），按一下關掉看一般推薦。只記關掉的人（這支手機）
         // 預設：現在已經 6 個以上肉體才開（瘋狂無效那組要在 6 肉體打）；不到 6 個預設關（不是每個人都等得到，一般推薦裡的瘋狂無效不一定是 6 肉體打）。手動切過就照手動的
         // 瘋狂無效＋凱旋行軍（保留特殊牌組）共用一個開關，全公會同開同關（這支手機記住）：null＝自動、true＝保留、false＝照傷害算
-        let raidSpecialPref = (() => { try { const v = localStorage.getItem('tt2_special_pref'); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; } })();
+        let raidSpecialPref = (() => { try { const v = localStorage.getItem('tt2_special_pref'); return v === '0' ? false : true; } catch (e) { return true; } })();   // 預設 ON（保留瘋狂無效、凱旋行軍、帶刺的晨星）；自己切成 OFF 才關
         const raidRecoVoidPref = { has: () => raidSpecialPref !== null, get: () => raidSpecialPref, set: (k, v) => raidSpecialSet(v) };
         function raidSpecialSet(v) {
             raidSpecialPref = v; try { localStorage.setItem('tt2_special_pref', v ? '1' : '0'); } catch (e) {}

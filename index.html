@@ -13091,7 +13091,11 @@
                 return;
             }
             raidLogRecoOpen.add(r.player);
+            // 右滑選了好幾個人（綠條）：按其中一個人的推薦，選取的人一起打開、同時算
+            const others = raidLogCompareSet.has(r.player) && raidLogCompareSet.size > 1 ? [...raidLogCompareSet].filter(n => n !== r.player).map(n => raidLogLastRanked.find(x => x && x.player === n)).filter(Boolean) : [];
+            others.forEach(o => { raidRecoClicked.add(o.player); raidLogRecoOpen.add(o.player); });
             raidLogUiSave();
+            others.forEach(o => raidLogRenderPlayerReco(o));
             // （手動按也沿用暫存：伺服器暫存每次改規則都升版本，不會拿到舊算法的結果；一律重算會讓推薦變慢）
             return raidLogRenderPlayerReco(r);
         }

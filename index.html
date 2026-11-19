@@ -8326,6 +8326,7 @@
             try { renderRaidRecentAttacks(); } catch (e) {}   // 最近攻擊的「照推薦打」標記跟著更新
         }
         const raidPrevLoadTried = new Set();
+        const RAID_LOCS8 = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
         const raidCsExpMem = new Map(), raidCsExpBy = new Map(); let raidCsExpBusy = false, raidCsExpRedraw = null;
         function raidCsExp(a, sx) {
             const k = raidSimExpKey(a);
@@ -8418,7 +8419,12 @@
                     // 天體靜態：伺服器的應打還是舊模擬（只點四肢才充能，例如 Krolowv 那刀算成 +415%），改用網頁的新模擬重算這一刀（算好前先不顯示）
                     const csAtk = (a.cards || []).some(c => c.name === 'CelestialStatic') || ((a.cards || []).some(c => c.name === 'TotemFairySkill') && ((a.cards || []).some(c => c.name === 'Haymaker') || (sx && sx.tg && sx.tg.length > 1)));   // 圖騰打多部位：精靈只在一個部位，伺服器舊模擬高估   // 宇宙激光＋圖騰之力：伺服器還是舊模擬，也改網頁重算
                     // 這場每一刀都用網頁新版模擬重算（伺服器的模擬是舊版），算好前先用伺服器的
-                    if (sx && sx.v >= 3 && sx.by && sx.exp) {   // 伺服器新版（v3）：模擬器跟網頁同一版，帶每張卡的傷害——直接套網頁最新的校正，跟推薦同一套算法，不用再背景重算
+                    // 伺服器記的「出刀前盔甲剩多少」不準：遊戲記錄打在盔甲上的傷害比它以為剩的盔甲還多（盔甲其實還很多）——
+                    //   照剩的盔甲算會以為一刀之內破甲、盔甲加成中途消失而低估（快來加入 撼地破甲＋稜角裂痕 盔甲記 460M、實際打在盔甲 678M：應打 529M、實際 678M）
+                    //   這種刀在網頁照遊戲記錄的層別重算（不套錯的剩血）
+                    const armMis = !!(sx && sx.ha && (a.parts || []).some(pp => pp && pp.layer === 'armor' && (Number(pp.damage) || 0) > (Number(sx.ha[RAID_LOCS8.indexOf(pp.part)]) || 0) * 1e6 * 1.05 + 1e6));
+                    if (armMis && sx.b && serverSessionsSummary && serverSessionsSummary[0] && a.raidStartedAt === serverSessionsSummary[0].startedAt) { /* 網頁重算只做這一場（場次加成用這場的） */ const w = raidCsExp(a, sx); a.simExp = w ? raidExpAdjusted(a, w) : null; }
+                    else if (sx && sx.v >= 3 && sx.by && sx.exp) {   // 伺服器新版（v3）：模擬器跟網頁同一版，帶每張卡的傷害——直接套網頁最新的校正，跟推薦同一套算法，不用再背景重算
                         const k = raidSimExpKey(a); if (!raidCsExpBy.has(k)) raidCsExpBy.set(k, { t: sx.t || 0, b: sx.by });
                         const adj = raidExpAdjusted(a, sx.exp); a.simExp = sx.cap > 0 ? Math.min(adj, sx.cap) : adj;
                     } else { const w = sx && sx.exp && sx.b ? raidCsExp(a, sx) : null; a.simExp = sx && sx.exp ? (w ? raidExpAdjusted(a, w) : csAtk ? null : raidSimExpFix(a, sx)) : null; } a.simTg = sx ? sx.tg : null; a.simB = sx ? sx.b : null; a.simU = sx ? sx.u : null; a.simHA = sx ? sx.ha : null; a.simC = sx ? sx.c : null; a.simH = sx ? sx.h : null;

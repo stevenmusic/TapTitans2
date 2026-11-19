@@ -7754,6 +7754,13 @@
             });
         }
         let crystalOvEdit = null;   // { code, sel: { cat: [id] } }
+        const CRYSTAL_OV_ME_KEY = 'tt2_crystal_me';
+        function crystalOvMe() { try { return localStorage.getItem(CRYSTAL_OV_ME_KEY) || null; } catch (e) { return null; } }
+        function crystalOvClaim(code) {
+            const v = raidClanData && raidClanData.byCode.get(code); if (!v) return;
+            try { localStorage.setItem(CRYSTAL_OV_ME_KEY, code); } catch (e) {}
+            crystalOvStart(code);
+        }
         function crystalOvStart(code) {
             const v = raidClanData && raidClanData.byCode.get(code); if (!v) return;
             const slots = crystalSlotsOf(v.raw), sel = {};
@@ -7769,6 +7776,7 @@
         async function crystalOvSave(clear) {
             if (!crystalOvEdit && !clear) return;
             const code = clear || crystalOvEdit.code;
+            if (code !== crystalOvMe()) { crystalOvEdit = null; renderCrystalReco(); return; }   // 只有本人能改
             const remote = (await kvGet(RAID_CRYSTAL_OV_KEY)) || {};
             if (clear) delete remote[code]; else remote[code] = { at: Date.now(), cards: crystalOvEdit.sel };
             await kvSet(RAID_CRYSTAL_OV_KEY, remote);
@@ -7781,10 +7789,9 @@
         function crystalOvHtml(p) {
             const code = p.player_code, o = raidCrystalOvActive(code);
             const btn = (txt, js, bg, fg) => `<button onclick="${js}" style="font:inherit; font-size:12.5px; font-weight:800; padding:6px 10px; border:none; border-radius:8px; background:${bg}; color:${fg}; cursor:pointer;">${txt}</button>`;
-            if (!crystalOvEdit || crystalOvEdit.code !== code) {
-                const note = o ? `<div style="font-size:12px; font-weight:800; color:#6a3d9a; margin-bottom:4px;">目前照手動標的水晶算（${new Date(o.at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}），伺服器抓到新的帳號資料後自動改回</div>` : '';
-                return `<div style="margin:6px 0;">${note}<div style="display:flex; gap:6px;">${btn(o ? '重新標水晶' : '我換水晶了（伺服器還沒更新）', `crystalOvStart('${code}')`, '#ede4f6', '#5b2c83')}${o ? btn('改回伺服器資料', `crystalOvSave('${code}')`, '#f3ece2', '#5a4a3a') : ''}</div></div>`;
-            }
+            const meCode = crystalOvMe(), mine = meCode === code;
+            if (meCode && !mine) return '';   // 只有自己（這支手機第一次標的人）能標，別人的頁面不顯示
+            if (!crystalOvEdit || crystalOvEdit.code !== code) return `<div style="display:flex; gap:6px; margin:6px 0;">${btn('我換水晶了', `crystalOvClaim('${code}')`, '#ede4f6', '#5b2c83')}${o ? btn('改回伺服器資料', `crystalOvSave('${code}')`, '#f3ece2', '#5a4a3a') : ''}</div>`;
             const slots = crystalSlotsOf({ ...p, boosted_cards: p._bcServer || p.boosted_cards });
             const col = { Burst: '#f3dfe3', Affliction: '#e8ddf3', Support: '#dcefdc' };   // 跟牌組頁同一套版面
             let ok = true;
@@ -7795,7 +7802,7 @@
                     return `<div onclick="crystalOvToggle('${cat}', '${id}')" title="${escapeHtml(lb)}" style="cursor:pointer; text-align:center; min-width:0; opacity:${!on && sel.length >= n ? 0.45 : 1};"><img src="${raidCardImage(id)}" alt="" style="width:100%; max-width:60px; margin:0 auto; aspect-ratio:1; border-radius:7px; display:block; ${on ? 'outline:3px solid #6a3d9a; outline-offset:-1px;' : ''}"><div style="font-size:12px; line-height:1.2; color:#4a3728; white-space:nowrap; letter-spacing:${lb.length >= 5 ? -1.3 : -0.4}px; margin:1px -2px 0;">${escapeHtml(lb)}<span style="display:inline-block; width:1px; height:0.85em; background:#847968; margin:0 2px; vertical-align:-1px;"></span><b>${Number(c.level) || 0}</b></div></div>`; };
                 return `<div style="margin-top:6px; padding:5px; background:${col[cat]}; border-radius:9px;"><div style="font-size:12px; font-weight:800; color:#4a3728; margin-bottom:3px;">${CRYSTAL_CAT[cat]}<span style="font-weight:700; color:${sel.length === n ? '#2e7d32' : '#c0392b'};">（選 ${sel.length}／${n} 張）</span></div><div style="display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px 4px;">${cards.map(cell).join('')}</div></div>`;
             }).join('');
-            return `<div style="margin:6px 0; padding:8px; background:#fff; border:1px solid #eadfcc; border-radius:12px;"><div style="font-size:13px; font-weight:900; color:#5b2c83;">點選你現在放水晶的卡（等級是沒放水晶的原本等級）</div>${rows}
+            return `<div style="margin:6px 0; padding:8px; background:#fff; border:1px solid #eadfcc; border-radius:12px;"><div style="font-size:13px; font-weight:900; color:#5b2c83;">點選放水晶的卡</div>${rows}
                 <div style="display:flex; gap:6px; margin-top:8px;">${ok ? btn('儲存', 'crystalOvSave()', '#6a3d9a', '#fff') : '<span style="font-size:12px; color:#c0392b; align-self:center;">每一類要選滿</span>'}${btn('取消', 'crystalOvEdit = null; renderCrystalReco();', '#f3ece2', '#5a4a3a')}</div></div>`;
         }
         async function raidLoadClanData() {

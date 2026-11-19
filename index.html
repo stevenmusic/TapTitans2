@@ -7426,6 +7426,8 @@
         // 不會因為重畫就把使用者展開看到一半的內容強制收合
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
+        // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
+        const RAID_RECO_VER = 21;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -7435,7 +7437,7 @@
         function raidLogUiSave() {
             try {
                 const html = {}; (typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : []).forEach(n => { const h = raidLogRecoHtml.get(n) || (typeof raidLogRecoStale !== 'undefined' && raidLogRecoStale.get(n)); if (h && h.length < 60000) html[n] = h; });
-                localStorage.setItem(RAID_LOG_UI_KEY, JSON.stringify({ expanded: [...raidLogExpandedPlayers], details: [...raidLogOpenDetails].slice(-300), recos: typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : [], html }));
+                localStorage.setItem(RAID_LOG_UI_KEY, JSON.stringify({ expanded: [...raidLogExpandedPlayers], details: [...raidLogOpenDetails].slice(-300), recos: typeof raidLogRecoOpen !== 'undefined' ? [...raidLogRecoOpen] : [], html, htmlVer: RAID_RECO_VER }));
             } catch (e) {}
         }
         // 載入中的灰色骨架：推薦牌組（6 格）、清單（n 列）
@@ -13014,10 +13016,16 @@
             raidVoidTopCache.set(key, html);
             return html;
         }
-        const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.html) || {}));   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
+        const raidLogRecoHtml = new Map(Object.entries((raidLogUiLoaded && raidLogUiLoaded.htmlVer === RAID_RECO_VER && raidLogUiLoaded.html) || {}));   // 存的畫面是舊版算法算的就不用   // 玩家 → 上次算好的內容，重畫時先放回去，不會閃一下空白（重新整理後也先用存下來的）
         // 重新計算時先顯示上一次的推薦（清楚顯示，上面標「舊的推薦・重新計算中 x%」、左邊橘色線），算好再換掉，不會清空
         // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
         const raidRecoLast = new Map(), raidRecoEmptyRetry = new Map(), raidRecoForce = new Set();
+        // 上次的推薦存在手機上：重新整理、重開網頁時先拿來沿用（盤面沒破甲、他沒出刀就不重算），不會一打開就換成另一版
+        const RAID_RECO_LAST_KEY = 'tt2_reco_last_v' + RAID_RECO_VER;
+        try { const o = JSON.parse(localStorage.getItem(RAID_RECO_LAST_KEY) || '{}'); Object.entries(o).forEach(([k, x]) => { if (x && x.rows && Date.now() - (x.at || 0) < 12 * 3600 * 1000) raidRecoLast.set(k, { ...x, used: new Set(x.used || []) }); }); } catch (e) {}
+        function raidRecoLastSave() {
+            try { const o = {}; raidRecoLast.forEach((x, k) => { if (Date.now() - (x.at || 0) < 12 * 3600 * 1000) o[k] = { ...x, used: [...x.used], rows: x.rows.map(r => ({ ...r, simDmg: r.simDmg ? { ...r.simDmg, alts: undefined } : r.simDmg })) }; }); localStorage.setItem(RAID_RECO_LAST_KEY, JSON.stringify(o)); } catch (e) {}
+        }
         function raidRecoReuse(name, sig, used, n, lvNow) {
             const L = raidRecoLast.get(name); if (!L || L.sig !== sig || !(L.rows && L.rows.length)) return null;   // 空的結果不沿用
             const now = new Set(used || []); let rows;
@@ -13241,7 +13249,7 @@
                         }
                         if (simPick && msRow) simPick = simPick.concat([msRow]);
                       }
-                      if (simPick && simPick.length) raidRecoLast.set(r.player, { sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) });   // armorAt：算的時候每個部位剩的盔甲
+                      if (simPick && simPick.length) { raidRecoLast.set(r.player, { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
@@ -13429,7 +13437,7 @@
         async function raidRecoPrefetch() {
             if (Date.now() - raidRecoPrefetchAt < 60000 || raidLogDemoActive || !raidLogPanelShown()) return;
             raidRecoPrefetchAt = Date.now();
-            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v20_${c}`))];
+            const keys = [...new Set((raidLogLastRanked || []).map(r => raidClanData && raidClanData.byCode.get(r.identity) ? r.identity : null).filter(c => c && /^[A-Za-z0-9_.:-]+$/.test(c)).map(c => `reco_v${RAID_RECO_VER}_${c}`))];
             if (!keys.length) return;
             const got = await kvGetMany(keys);
             Object.entries(got).forEach(([k, v]) => { if (v && v.sig && Array.isArray(v.rows)) raidRecoKvMem.set(k, v); });
@@ -14580,7 +14588,7 @@
             const segX = (round) => seg(Math.min(95, P1 + round * 15), Math.min(97, P1 + (round + 1) * 15));
             // 伺服器暫存：每個人最新的推薦（同一個狀態、同樣剩下的卡和刀數就直接拿，不用再算；首頁推薦另外存）
             const code = v && v.raw && v.raw.player_code;
-            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v20_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
+            const kvKey = code && !fast && !info.voidMode && !raidCrystalOvActive(code) && /^[A-Za-z0-9_.:-]+$/.test(code) ? `reco_v${RAID_RECO_VER}_${code}` : null;   // v4：補位、留刀超過 6 刀、自己組牌組（舊版存的作廢）
             if (kvKey && !info.force) {
                 const pre = raidRecoKvMem.get(kvKey);   // 先拿好的（不用等伺服器）
                 const okRows = (rows) => Array.isArray(rows) && rows.length >= Math.min(n, 1) && rows.filter(x => !x.voidLater && !x.finLater && !x.msLater).length >= n - rows.filter(x => x.voidLater || x.finLater || x.msLater).length && rows.every(x => x && x.simDmg && x.simDmg.avg > 0);   // 組數不夠（比剩的刀數少）也重算   // 有 0 傷害的組：暫存不能用，重算

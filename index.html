@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 26;
+        const RAID_RECO_VER = 27;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12946,7 +12946,10 @@
         const raidNextSplitLast = new Map();   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
         async function raidNextBossSplit(n, who) {
             if (!raidState || !raidState.parts || raidNextRaidPending() || n < 2) return null;
-            const left = Number(raidState.currentHp) || 0; if (!(left > 0)) return null;
+            const killLeft = Number(raidState.currentHp) || 0; if (!(killLeft > 0)) return null;
+            // 要打死：能打的部位剩的盔甲（要先拆掉才打得到肉體）＋ 離斬殺線剩的血
+            const ban0 = new Set(raidBannedParts || []), armorLeft = Object.entries(raidState.parts).filter(([k]) => !ban0.has(k)).reduce((t, [, x]) => t + Math.max(0, Number(x.armor) || 0), 0);
+            const left = killLeft + armorLeft;
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts).slice(0, 100);
             const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0)) return null;

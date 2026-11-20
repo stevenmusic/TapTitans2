@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 34;
+        const RAID_RECO_VER = 35;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12944,7 +12944,7 @@
             usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(VOID) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => mates.add(c)); });
             const own0 = Object.keys(me.lv).filter(c => c !== VOID && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
             const own = own0.filter((c, i) => i < 20 || mates.has(c)), items = [];
-            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !playable(cards)) continue;
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !playable(cards)) continue;
                 const hp = hitParts(cards), plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(x => hp.includes(x)); if (tg.length && !plans.some(y => y.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                 const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) items.push({ cards, plans: pl2 }); }
             if (!items.length) return null;
@@ -12958,8 +12958,8 @@
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             const scene = {}; Object.keys(env.board).forEach(x => { const b = env.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const { hitParts } = raidSimPartFns(scene);
-            const own = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]).slice(0, 20), items = [];   // 等級前 20 高的卡（31 張全試約 4500 組、慢 4 倍，最強的組合幾乎都在前 20 張）
-            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) for (let c = b + 1; c < own.length; c++) { const cards = [own[a], own[b], own[c]]; if (raidSimDeckBanned(cards)) continue; const hp = hitParts(cards); if (!hp.length) continue;
+            const own = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]).slice(0, 20), items = [], usesB = raidDeckUsesMap();   // 等級前 20 高的卡（31 張全試約 4500 組、慢 4 倍，最強的組合幾乎都在前 20 張）
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) for (let c = b + 1; c < own.length; c++) { const cards = [own[a], own[b], own[c]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesB)) continue; const hp = hitParts(cards); if (!hp.length) continue;
                 const plans = hp.map(x => ({ tg: [x], label: '' })); if (hp.length > 1) plans.push({ tg: hp, label: '' }); items.push({ cards, plans }); }
             if (!items.length) return null;
             const pool = (await raidSimEvalPool(P, env, me, items, 1, null, Math.max(k, 12))).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -13041,7 +13041,7 @@
             const msMates = new Set(); usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(MS) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => msMates.add(c)); });   // 公會跟晨星搭過的卡
             const own0 = Object.keys(me.lv).filter(c => c !== MS && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
             const own = own0.filter((c, i) => i < 20 || msMates.has(c)), list = [];   // 等級前 20 高＋公會跟晨星搭過的（冷門低等級的不試，約少一半組合）
-            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [MS, own[a], own[b]]; if (raidSimDeckBanned(cards)) continue; const hp = fS.hitParts(cards);
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [MS, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM)) continue; const hp = fS.hitParts(cards);
                 const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); if (plans.length) list.push({ cards, plans }); }
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -13068,7 +13068,7 @@
             const mates = new Set(); usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(FIN) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => mates.add(c)); });
             const own0 = Object.keys(me.lv).filter(c => c !== FIN && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
             const own = own0.filter((c, i) => i < 20 || mates.has(c)), list = [];
-            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [FIN, own[a], own[b]]; if (raidSimDeckBanned(cards) || !fS.hitParts(cards).includes(big)) continue;
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [FIN, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !fS.hitParts(cards).includes(big)) continue;
                 list.push({ cards, plans: [{ tg: [big], label: '', cap: env.hp ? env.hp[big] : undefined }] }); }
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
@@ -13120,7 +13120,7 @@
             const usesM = raidDeckUsesMap(), mates = new Set(); usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(VOID) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => mates.add(c)); });
             const own0 = Object.keys(me.lv).filter(c => c !== VOID && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
             const own = own0.filter((c, i) => i < 20 || mates.has(c)), vlist = [];
-            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !fF.playable(cards)) continue;
+            for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !fF.playable(cards)) continue;
                 const hp = fF.hitParts(cards), plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                 const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
             if (!vlist.length) return '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出瘋狂無效的牌組。</div>';
@@ -13511,6 +13511,9 @@
         // 推薦只用打過幾次以上的牌組（公會歷史＋這場），沒驗證過的組合不推（0＝不限制）
         let RAID_SIM_MIN_USES = 3;   // 公會打過 3 次以上的牌組才推（原本 10 次會漏掉很少人打、但其實更強的組合，例如皎月光束＋靈魂鎖鏈＋圖騰之力）；3～9 次的挑選時打折（raidVerifyWeights）
         // 推薦只用驗證過的牌組：公會累計（伺服器紀錄＋這場）打過 RAID_SIM_MIN_USES 刀以上
+        /* 只推有實際攻擊紀錄的牌組（公會打過 RAID_SIM_MIN_USES 次以上）：沒人打過的組合模擬再高也沒辦法驗證，實際常常差很多（例：頭骨碎擊＋閃電鞭＋瘋狂無效）。
+           瘋狂無效、凱旋行軍、帶刺的晨星、剩 1～2 刀全部組合、自己組牌組都照這條 */
+        function raidDeckRecorded(cards, usesM) { return ((usesM || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES; }
         function raidDeckUsesMap() {
             const m = new Map((raidSimDeckList || []).map(d => [d.cards.slice().sort().join('+'), d.uses || 0]));
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
@@ -14770,7 +14773,7 @@
                   const self = [];
                   for (let a = 0; a < free.length; a++) for (let b2 = a + 1; b2 < free.length; b2++) for (let c2 = b2 + 1; c2 < free.length; c2++) {
                       const cards = [free[a], free[b2], free[c2]], k = cards.slice().sort().join('+'); if (seen.has(k)) continue; seen.add(k);
-                      if (raidSimDeckBanned(cards) || !playable(cards)) continue; const it = build(cards); if (it) self.push(it); }
+                      if (raidSimDeckBanned(cards) || !playable(cards) || !usedEnough(cards)) continue; const it = build(cards); if (it) self.push(it); }
                   if (self.length) { const rr = (await raidSimParallel(P, self.map(it => ({ kind: 'r', base: raidSimBase(env, me, it.cards), cards: it.cards, plans: it.plans })))) || null;
                       const rw = rr ? raidPhaseWeights(rr.map((x, i) => x ? { ...x, cards: self[i].cards } : null).filter(Boolean), phaseK) : null, rwOf = new Map((rw || []).map(x => [x.cards.slice().sort().join('+'), x.selW || 1]));   // 粗篩也照打王階段的優先部位加權（打優先部位的組不會先被刷掉）
                       const keep = rr ? self.map((it, i) => [it, rr[i] ? rr[i].avg * raidSimDeckFactor(it.cards) * (rwOf.get(it.cards.slice().sort().join('+')) || 1) : 0]).sort((x, y) => y[1] - x[1]).slice(0, Math.max(RAID_SELF_KEEP, (disj < n ? 2 : 1) * RAID_SELF_KEEP)).map(x => x[0]) : self.slice(0, RAID_SELF_KEEP);
@@ -14834,7 +14837,7 @@
                     const usesM = raidDeckUsesMap(), mates = new Set(); usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(VOID) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => mates.add(c)); });
                     const own0 = Object.keys(me.lv).filter(c => c !== VOID && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
                     const own = own0.filter((c, i) => i < 20 || mates.has(c)), vlist = [];
-                    for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !fF.playable(cards)) continue;
+                    for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !fF.playable(cards)) continue;
                         const hp = fF.hitParts(cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
                         const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
                     return vlist.length ? (await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20)).filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8) : [];

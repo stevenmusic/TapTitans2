@@ -15632,7 +15632,7 @@
                 for (let i = 0; i < n; i++) {
                     const w = new Worker('raid-sim/simworker.js?v=34');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
-                    w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); raidSimPool = false; pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
+                    w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); if (raidSimPool === pool) raidSimPool = null; try { pool.ws.forEach(x => x.terminate()); } catch (e2) {} pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
                 }
                 raidSimPool = pool;
@@ -15668,7 +15668,11 @@
             const bg = !!(P && (P.bg || (raidBgMode > 0 && !P.fg)));   // 背景作業（伺服器沒有的刀、全公會配卡）
             const lo = !!(P && P.lowPri) || bg;
             if (!lo) raidSimHiBusy++;
-            try { return await raidSimParallelInner(P, jobs, onProgress, pool, lo, bg); } finally { if (!lo) raidSimHiBusy--; }
+            try {
+                let r = await raidSimParallelInner(P, jobs, onProgress, pool, lo, bg);
+                if (r === 'stall') { const p2 = raidSimPoolGet(); r = p2 ? await raidSimParallelInner(P, jobs, onProgress, p2, lo, bg) : null; if (r === 'stall') r = null; }   // Worker 被收掉：重開一批再算一次，還是不行就退回主畫面算
+                return r;
+            } finally { if (!lo) raidSimHiBusy--; }
         }
         async function raidSimParallelInner(P, jobs, onProgress, pool, lo, bg) {
             const CH = 2, chunks = [];
@@ -15681,14 +15685,18 @@
                         if (next >= chunks.length || stopped) break;
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
-                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 1e9, rest: bg ? 35 : 1 }); });   // 前景全速；背景算 35 休 35
+                        const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 1e9, rest: bg ? 35 : 1 });   // 前景全速；背景算 35 休 35
+                            /* 看門狗：手機切到別的 App 時系統可能把 Worker 收掉，不會回應也不會報錯，這裡就永遠等不到、排隊的推薦全部卡住。
+                               網頁在前景時一批（2 組）正常 1 秒內算完，前景累積 25 秒（背景作業 120 秒）沒回應就當 Worker 死了，丟掉重開 */
+                            let vis = 0, last = Date.now(); const lim = bg ? 120000 : 25000;
+                            const dog = setInterval(() => { const now = Date.now(); if (!document.hidden) vis += now - last; last = now; if (!pool.wait.has(id)) { clearInterval(dog); return; } if (vis > lim) { clearInterval(dog); pool.wait.delete(id); ng(new Error('stall')); } }, 1000); });
                         res.forEach((r, k) => { out[start + k] = r; });
                         done += part.length;
                         if (onProgress && onProgress(done / jobs.length) === 'stop') { stopped = true; throw new Error('cancelled'); }   // 呼叫的地方說不用算了（狀態已經變了）
                     }
                 }));
                 return out;
-            } catch (e) { if (e && e.message === 'cancelled') throw e; console.error('raidSimParallel', e && e.message || e); try { pool.ws.forEach(w => w.terminate()); } catch (e2) {} raidSimPool = null; return null; }   // 出錯不永久停用：下次重開 Worker
+            } catch (e) { if (e && e.message === 'cancelled') throw e; console.error('raidSimParallel', e && e.message || e); stopped = true; try { pool.ws.forEach(w => w.terminate()); } catch (e2) {} if (raidSimPool === pool) raidSimPool = null; return e && e.message === 'stall' ? 'stall' : null; }   // 出錯不永久停用：下次重開 Worker
         }
         async function raidSimRankInner(P, env, me, list, n, progress, extra, topN) {
             const pool = await raidSimEvalPool(P, env, me, list.concat(extra || []), n, progress, topN);

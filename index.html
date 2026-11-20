@@ -12718,7 +12718,7 @@
         const raidRecoVoidPref = { has: () => raidSpecialPref !== null, get: () => raidSpecialPref, set: (k, v) => raidSpecialSet(v) };
         function raidSpecialSet(v) {
             raidSpecialPref = v; try { localStorage.setItem('tt2_special_pref', v ? '1' : '0'); } catch (e) {}
-            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidRecoLast.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換
+            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換（算過的模式直接沿用，沒算過的才重算；算到一半切換就放掉舊的）
         }
         function raidSpecialToggle(name) { raidSpecialSet(raidSpecialPref === false); }   // 最佳 ↔ 梭哈
         function raidBodyNow() { const P = (raidState && raidState.parts) || {}, bn = raidBannedParts || []; return Object.entries(P).filter(([k, v]) => !bn.includes(k) && !(v.armor > 0) && v.body > 0).length; }
@@ -12801,6 +12801,7 @@
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
         // 「下一隻王」併進同一個開關：最佳（ON，預設）才照比例留幾組打下一隻王；梭哈（OFF）全部打現在這隻
         const raidNextOn = () => raidSpecialPref !== false;
+        const raidRecoModeKey = () => raidSpecialPref === false ? '|梭哈' : '|最佳';
         function raidRecoWrap(r, html) { const sw = raidRecoSpecialBtnHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
@@ -13077,13 +13078,13 @@
         // 上一次算好的推薦（照推薦打了一組、其他都沒變時直接拿掉那組沿用）
         const raidRecoLast = new Map(), raidRecoEmptyRetry = new Map(), raidRecoForce = new Set();
         // 上次的推薦存在手機上：重新整理、重開網頁時先拿來沿用（盤面沒破甲、他沒出刀就不重算），不會一打開就換成另一版
-        const RAID_RECO_LAST_KEY = 'tt2_reco_last_v' + RAID_RECO_VER;
+        const RAID_RECO_LAST_KEY = 'tt2_reco_last_v' + RAID_RECO_VER + 'm';
         try { const o = JSON.parse(localStorage.getItem(RAID_RECO_LAST_KEY) || '{}'); Object.entries(o).forEach(([k, x]) => { if (x && x.rows && Date.now() - (x.at || 0) < 12 * 3600 * 1000) raidRecoLast.set(k, { ...x, used: new Set(x.used || []) }); }); } catch (e) {}
         function raidRecoLastSave() {
             try { const o = {}; raidRecoLast.forEach((x, k) => { if (Date.now() - (x.at || 0) < 12 * 3600 * 1000) o[k] = { ...x, used: [...x.used], rows: x.rows.map(r => ({ ...r, simDmg: r.simDmg ? { ...r.simDmg, alts: undefined } : r.simDmg })) }; }); localStorage.setItem(RAID_RECO_LAST_KEY, JSON.stringify(o)); } catch (e) {}
         }
         function raidRecoReuse(name, sig, used, n, lvNow) {
-            const L = raidRecoLast.get(name); if (!L || L.sig !== sig || !(L.rows && L.rows.length)) return null;   // 空的結果不沿用
+            const L = raidRecoLast.get(name + raidRecoModeKey()); if (!L || L.sig !== sig || !(L.rows && L.rows.length)) return null;   // 最佳、梭哈各存一份：切回算過的模式直接顯示   // 空的結果不沿用
             const now = new Set(used || []); let rows;
             if (n === L.n && now.size === L.used.size && [...L.used].every(c => now.has(c))) rows = L.rows;   // 他沒出刀（別人出刀、血量小變）
             else if (n === L.n - 1 && now.size === L.used.size + 3 && [...L.used].every(c => now.has(c))) {   // 他照推薦打了其中一組
@@ -13276,7 +13277,8 @@
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
-                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const split0 = raidNextOn() && !nextRound ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX)).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
+                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
@@ -13294,12 +13296,16 @@
                         if (extra.length) infoP = { ...info, extraDecks: extra };
                     }
                     // 這輪會打死這隻王：m 組打這隻、其他打下一隻王（全盔甲、詛咒甲），兩種排法（先排下一隻／先排這隻）取 6 組合計高的
-                    const split = !reuse && !nextRound && raidNextOn() ? await raidNextBossSplit(n0).catch(() => null) : null;
+                    const split = !reuse ? split0 : null;
                     let simPick; try { simPick = reuse || (split ? await (async () => {
                           const sumOf = (rows) => (rows || []).reduce((t, x) => t + ((x.simDmg && x.simDmg.avg) || 0), 0), usedPlus = (rows) => new Set([...(infoP.used || []), ...(rows || []).flatMap(x => x.rawCards || x.cards)]);
                           const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: false, force }, data, simFns.playable, simFns.hitParts, prog);
-                          const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m), CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, (t) => raidRecoProgSet(r.player, t)) : null;
-                          const CB = await pk({ ...infoP, remaining: split.m }, () => {}), NB = CB ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CB) }, data, split, n0 - split.m) : null;
+                          const seg = (a, b2) => (t) => { const m2 = /(\d+)%/.exec(String(t || '')); raidRecoProgSet(r.player, `計算中 ${Math.round(a + (m2 ? Number(m2[1]) : 0) * (b2 - a) / 100)}%`); };   // 四段各佔一部分，不會停在 92%／100% 不動
+                          raidRecoProgSet(r.player, '計算中 2%');
+                          const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m); raidRecoProgSet(r.player, '計算中 20%');
+                          const CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, seg(20, 55)) : null;
+                          const CB = await pk({ ...infoP, remaining: split.m }, seg(55, 85)); raidRecoProgSet(r.player, '計算中 88%');
+                          const NB = CB ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CB) }, data, split, n0 - split.m) : null; raidRecoProgSet(r.player, '計算中 99%');
                           const A = CA && NA ? CA.concat(NA) : null, B = CB && NB ? CB.concat(NB) : null;
                           return A && (!B || sumOf(A) >= sumOf(B)) ? A : B;
                       })() : await raidSimPlayerPick(r.player, { ...infoP, voidMode: voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t)));
@@ -13322,7 +13328,7 @@
                         }
                         if (simPick && msRow) simPick = simPick.concat([msRow]);
                       }
-                      if (simPick && simPick.length) { raidRecoLast.set(r.player, { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
+                      if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {

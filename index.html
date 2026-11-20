@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 30;
+        const RAID_RECO_VER = 31;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12928,7 +12928,8 @@
             return !!raidMorningPlan(B, hpA, hpB);
         }
         // 剩沒幾刀：還沒用的卡所有 3 張組合，照現在盤面粗算後精算，回傳最強的 k 組（卡片）
-        async function raidSimBruteTop(r, info, k) {
+        async function raidSimBruteTop(r, info, k) { return raidSimMemoGet('bt' + k, r, info, () => raidSimBruteTop0(r, info, k)); }
+        async function raidSimBruteTop0(r, info, k) {
             const used = new Set(info.used || []); const v = raidAccountInfo(r.player); if (!v) return null;
             let P = await raidSimLoad(); P = { ...P, fg: true };
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
@@ -12995,7 +12996,13 @@
             const pick = await raidSimPickPool(P, E, me, pool.filter(o => o.avg > 0), k);   // 從全部候選挑（只用精算過的前幾名會共用同幾張強卡，湊不滿 k 組）
             return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name }));
         }
-        async function raidSimMorningBest(r, info, data) {
+        // 同一個人、同樣的盤面（各部位層別）、同樣用過的卡和等級：晨星組、全部組合算過就直接用（盤面小變化、別人出刀不重算）
+        const raidSimMemo = new Map();
+        function raidSimMemoKey(tag, r, info) { const P = (raidState && raidState.parts) || {}; const v = raidAccountInfo(r.player); const lv = v ? Object.entries(raidSimPlayerNow(v, { morale: 0, season: {} }).lv || {}).sort().map(([c, l]) => c + l).join(',') : '';
+            return [tag, r.player, raidState && raidState.bossName, (raidBannedParts || []).slice().sort().join(), Object.keys(P).sort().map(k => k + ((Number(P[k].armor) || 0) > 0 ? 'A' : (Number(P[k].body) || 0) > 0 ? 'B' : 'S')).join(''), [...(info.used || [])].sort().join(), lv].join('|'); }
+        async function raidSimMemoGet(tag, r, info, fn) { const k = raidSimMemoKey(tag, r, info); if (raidSimMemo.has(k)) return raidSimMemo.get(k); const p = fn().catch(() => null); raidSimMemo.set(k, p); if (raidSimMemo.size > 300) raidSimMemo.delete(raidSimMemo.keys().next().value); const v = await p; if (v == null) raidSimMemo.delete(k); return v; }
+        async function raidSimMorningBest(r, info, data) { return raidSimMemoGet('ms', r, info, () => raidSimMorningBest0(r, info, data)); }
+        async function raidSimMorningBest0(r, info, data) {
             const MS = 'BarbedMorningstar', used = new Set(info.used || []);
             if (used.has(MS)) return null;
             const v = raidAccountInfo(r.player); if (!v) return null;
@@ -13008,7 +13015,9 @@
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
             const tgs = [plan.tg].concat(plan.tg.length > 1 ? plan.tg.map(k => [k]) : []);   // 全部一起打，或只打其中一塊
             // 晨星＋手上任意兩張還沒用的卡（不限公會打過的組合：晨星單張配所有卡，傷害最大化）；幾百組先粗算、前 8 名精算
-            const own = Object.keys(me.lv).filter(c => c !== MS && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)), list = [];
+            const msMates = new Set(); usesM.forEach((n2, k2) => { const cs = k2.split('+'); if (cs.includes(MS) && n2 >= RAID_SIM_MIN_USES) cs.forEach(c => msMates.add(c)); });   // 公會跟晨星搭過的卡
+            const own0 = Object.keys(me.lv).filter(c => c !== MS && me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]);
+            const own = own0.filter((c, i) => i < 20 || msMates.has(c)), list = [];   // 等級前 20 高＋公會跟晨星搭過的（冷門低等級的不試，約少一半組合）
             for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [MS, own[a], own[b]]; if (raidSimDeckBanned(cards)) continue; const hp = fS.hitParts(cards);
                 const plans = tgs.filter(tg => tg.every(k => hp.includes(k))).map(tg => ({ tg, label: '', cap: env.hp ? tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined })); if (plans.length) list.push({ cards, plans }); }
             if (!list.length) return null;

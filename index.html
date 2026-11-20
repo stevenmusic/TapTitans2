@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 37;
+        const RAID_RECO_VER = 38;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13012,7 +13012,7 @@
             // 同一次推薦（同一個人、同一隻下一隻王）的候選只算一次：兩種排法共用，挑的時候再扣掉另一邊用掉的卡
             if (split.pool && split.poolUsed) { const ex = [...used].filter(c => !split.poolUsed.has(c)); const P0 = split.poolP, E0 = split.envN, me0 = split.poolMe;
                 const pick0 = await raidSimPickPool(P0, E0, me0, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), k);
-                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '等 1 個肉體' : o.msLater ? (o.msMode === 'body' ? '晨星等時機打肉體' : '晨星等 5 肉體') : '' })); }
+                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: o.msLater && o.msMode === 'body' ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !(o.msLater && o.msMode === 'body') && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '等 1 個肉體' : o.msLater ? (o.msMode === 'body' ? '晨星等時機打肉體' : '晨星等 5 肉體') : '' })); }
             let P = await raidSimLoad(); P = { ...P, fg: true };
             const E = split.envN, me = raidSimPlayerNow(v, E);
             const scene = {}; Object.keys(E.board).forEach(x => { const b = E.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
@@ -13040,7 +13040,7 @@
                 await reEval((c) => c.includes('BarbedMorningstar'), envMs, (c) => { const hp = fM.hitParts(c); return plan.tg.every(x => hp.includes(x)) ? [{ tg: plan.tg, label: '' }] : []; }, { msLater: true, msMode: plan.mode }); } }
             split.pool = pool; split.poolUsed = used; split.poolP = P; split.poolMe = me;
             const pick = await raidSimPickPool(P, E, me, pool.filter(o => o.avg > 0), k);   // 從全部候選挑（只用精算過的前幾名會共用同幾張強卡，湊不滿 k 組）
-            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '等 1 個肉體' : o.msLater ? (o.msMode === 'body' ? '晨星等時機打肉體' : '晨星等 5 肉體') : '' }));
+            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: o.msLater && o.msMode === 'body' ? 'body' : E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !(o.msLater && o.msMode === 'body') && !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '等 1 個肉體' : o.msLater ? (o.msMode === 'body' ? '晨星等時機打肉體' : '晨星等 5 肉體') : '' }));
         }
         // 同一個人、同樣的盤面（各部位層別）、同樣用過的卡和等級：晨星組、全部組合算過就直接用（盤面小變化、別人出刀不重算）
         const raidSimMemo = new Map();

@@ -13121,7 +13121,12 @@
             const h = raidLogRecoStale.get(name); if (!h) return null;
             return `<div data-prog data-stale="1" style="font-size:12px; font-weight:800; color:#b9770e; margin-bottom:4px;">舊的推薦・重新計算中 ${Math.max(1, pct || 1)}%</div><div style="border-left:3px solid #e0a040; padding-left:6px;">${h.replace(/^<!--[^>]*-->/, '')}</div>`;
         }
-        const raidRecoProgText = (el, n) => { el.textContent = (el.dataset.stale ? '舊的推薦・重新計算中 ' : '計算中 ') + n + '%'; };
+        // 好幾個人的推薦同時要算：一次只算一個（大家共用同一批運算），其他的顯示「排隊中」，不會一直停在 1% 看起來像壞了
+        const raidRecoQ = { busy: 0, max: 1, q: [] };   // 一次算 1 個：總時間一樣（5 人都約 86 秒），但每個人都比較早拿到結果（第 1 個 14 秒、同時算要 43 秒）
+        const raidRecoQueuePos = (name) => raidRecoQ.q.findIndex(x => x.name === name);
+        function raidRecoAcquire(name) { if (raidRecoQ.busy < raidRecoQ.max) { raidRecoQ.busy++; return Promise.resolve(); } return new Promise(res => raidRecoQ.q.push({ name, res })); }
+        function raidRecoRelease() { const nx = raidRecoQ.q.shift(); if (nx) nx.res(); else raidRecoQ.busy = Math.max(0, raidRecoQ.busy - 1); }
+        const raidRecoProgText = (el, n, name) => { const q = name != null ? raidRecoQueuePos(name) : -1; el.textContent = (el.dataset.stale ? '舊的推薦・' : '') + (q >= 0 ? `排隊中（前面還有 ${q + raidRecoQ.busy} 個）` : (el.dataset.stale ? '重新計算中 ' : '計算中 ') + n + '%'); };
         // 個人推薦「計算中 %」：數字 1、2、3…慢慢往上跳到實際進度（不會一次跳一大段），重畫後馬上補回，不會閃掉
         const raidRecoProg = new Map();   // 名字 → { target, shown, timer }
         function raidRecoProgSet(name, t) {
@@ -13132,7 +13137,7 @@
             if (!g.timer) g.timer = setInterval(() => {
                 if (g.shown < g.target) g.shown = Math.min(g.target, g.shown + Math.max(1, Math.ceil((g.target - g.shown) / 6)));   // 落後越多追越快（算得快時也會走到 100%）
                 const bx = raidLogRecoBox(name);
-                if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) raidRecoProgText(pct, Math.max(1, g.shown)); else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
+                if (bx && !raidLogRecoHtml.get(name)) { const rr = raidLogLastRanked.find(x => x.player === name); const html = `<div style="font-size:12px; color:#5a4a3a;">計算中 ${Math.max(1, g.shown)}%</div>`; const pct = bx.querySelector('[data-prog]'); if (pct) raidRecoProgText(pct, Math.max(1, g.shown), name); else bx.innerHTML = rr ? raidRecoWrap(rr, html.replace('<div ', '<div data-prog ')) : html; }
             }, 50);
         }
         const raidRecoDoneAt = new Map();
@@ -13293,6 +13298,7 @@
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    let held = false; if (!reuse) { raidRecoProgSet(r.player, '計算中 1%'); await raidRecoAcquire(r.player); held = true; }   // 要真的算：排隊（沿用的不用排）
                     // 以傷害為主（不強制擺出特殊牌組）：帶刺的晨星時機到了，最強的晨星組（配任意兩張）放進候選照傷害比；
                     //   剩 1～2 刀：還沒用的卡所有 3 張組合都算，最強的幾組放進候選（公會沒打過的組合也挑得到）
                     let msRow = null, infoP = info;
@@ -13341,7 +13347,7 @@
                         if (simPick && msRow) simPick = simPick.concat([msRow]);
                       }
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
-                    } finally { if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
+                    } finally { if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) {
                         // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）

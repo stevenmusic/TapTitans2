@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 25;
+        const RAID_RECO_VER = 26;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12952,7 +12952,8 @@
             const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0)) return null;
             const roundDmg = (raidGuildRoundLeft(sa).left || 0) * avg;
             const last = who ? raidNextSplitLast.get(who) : null, lastM = last && last.boss === raidState.bossName && last.n === n ? last.m : 0;
-            if (!(roundDmg > left * (lastM ? 0.9 : 1))) { if (who) raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); return null; }   // 這輪打不死：不切（上次有切的留 1 成緩衝，不要切來切去）
+            // 這輪會不會打死：估計（假設大家這輪都打完）要比王的血多 15% 以上才算（有人打不完，差一點的其實打不死，例如 Takedar 剩 90.5B、估 93.8B）；已經切了的多不到 5% 才取消，不要切來切去
+            if (!(roundDmg > left * (lastM ? 1.05 : 1.15))) { if (who) raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); return null; }
             const raw = n * left / roundDmg;
             let m = Math.max(1, Math.min(n - 1, Math.round(raw)));
             if (lastM && Math.abs(raw - lastM) < 0.8) m = lastM;   // 跟上次差不到一組：維持上次的組數

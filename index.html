@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 29;
+        const RAID_RECO_VER = 30;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -14898,8 +14898,11 @@
             { const seen = new Set(), keep = [], drop = [], isRes = (x) => !!(x.voidLater || x.msLater);
               rows.slice().sort((a, b) => (isRes(b) ? 1 : 0) - (isRes(a) ? 1 : 0) || ((b.simDmg || {}).avg || 0) - ((a.simDmg || {}).avg || 0)).forEach(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) { drop.push(x); return; } cs.forEach(c => seen.add(c)); keep.push(x); });
               if (drop.length) {
-                  drop.forEach(() => { const c = (poolAll || []).filter(o => o && o.avg > 0 && !o.cards.some(z => seen.has(z)) && playable(o.cards)).sort((a, b) => b.avg - a.avg)[0]; if (!c) return; c.cards.forEach(z => seen.add(z));
-                      keep.push({ cards: byPartOrderCards(c.cards), rawCards: c.cards, targets: (c.tg || []).map(k => ({ part: k, layer: env.board[k] && env.board[k].layer === 'armor' ? 'armor' : 'body', cursed: !!(env.board[k] && env.board[k].cursed) })), allParts: false, simDmg: c }); });
+                  for (let di = 0; di < drop.length; di++) { const cs0 = (poolAll || []).filter(o => o && o.avg > 0 && !o.cards.some(z => seen.has(z)) && playable(o.cards)).sort((a, b) => (b.final ? 1 : 0) - (a.final ? 1 : 0) || b.avg - a.avg);   // 精算過的優先
+                      let c = cs0[0]; if (!c) break;
+                      if (!c.final) { const it = build(c.cards); const ev = it ? (await raidSimEvalPool(P, env, me, [it], 1, null, 1)).filter(o => o.final) : []; if (ev[0]) c = ev[0]; }   // 只粗算過的：先精算（才有準的應打和範圍）
+                      c.cards.forEach(z => seen.add(z));
+                      keep.push({ cards: byPartOrderCards(c.cards), rawCards: c.cards, targets: (c.tg || []).map(k => ({ part: k, layer: env.board[k] && env.board[k].layer === 'armor' ? 'armor' : 'body', cursed: !!(env.board[k] && env.board[k].cursed) })), allParts: false, simDmg: c }); }
                   const ord = (x) => isRes(x) ? 1 : 0; keep.sort((a, b) => ord(a) - ord(b) || ((a.simDmg || {}).depOrder ?? 99) - ((b.simDmg || {}).depOrder ?? 99) || ((b.simDmg || {}).avg || 0) - ((a.simDmg || {}).avg || 0));
                   rows.splice(0, rows.length, ...keep);
               } }
@@ -14946,7 +14949,7 @@
                     res = raidSimDeck(P, env, me, cards, tg.length ? [{ tg, label: '' }] : env.plans);
                     raidSimDmgCache.set(key, res);
                 }
-                el.innerHTML = `應打 ${formatNumAlwaysM(res.avg)}<span style="display:block; font-weight:600; color:#8a7a6a; font-size:12px; white-space:nowrap; margin:0 -8px; letter-spacing:-0.3px; text-align:center;">(${formatNumAlwaysM(res.lo)}～${formatNumAlwaysM(res.hi)})</span>`;
+                el.innerHTML = `應打 ${formatNumAlwaysM(res.avg)}` + (isFinite(res.lo) && isFinite(res.hi) ? `<span style="display:block; font-weight:600; color:#8a7a6a; font-size:12px; white-space:nowrap; margin:0 -8px; letter-spacing:-0.3px; text-align:center;">(${formatNumAlwaysM(res.lo)}～${formatNumAlwaysM(res.hi)})</span>` : '');   // 範圍算不出來（還沒精算）就只顯示應打
             }
             // 補好應打後再存一次畫面：之前存的是還沒補應打的版本，重畫或重開網頁時應打就不見了
             box = raidLogRecoBox(name) || box;

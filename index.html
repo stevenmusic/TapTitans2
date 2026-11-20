@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 27;
+        const RAID_RECO_VER = 29;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13313,11 +13313,12 @@
                         const extra = [];
                         // 晨星組只有「現在就是時機」才用得到：先用盤面判斷（不花時間），不是時機就不算；晨星和全部組合同時算
                         const [M, top] = await Promise.all([
-                            raidSpecialPref !== false && raidMorningNow() && (info.used ? !(info.used.has ? info.used.has('BarbedMorningstar') : info.used.includes('BarbedMorningstar')) : true) ? raidSimMorningBest(r, info, data).catch(() => null) : null,
+                            raidSpecialPref !== false && raidMorningOkNow() && (info.used ? !(info.used.has ? info.used.has('BarbedMorningstar') : info.used.includes('BarbedMorningstar')) : true) ? raidSimMorningBest(r, info, data).catch(() => null) : null,
                             n0 <= 2 ? raidSimBruteTop(r, info, 12).catch(() => null) : null]);
                         if (M && M.ms.now) extra.push(M.cards);
+                        if (M && !M.ms.now && n0 >= 2) infoP = { ...infoP, msCand: M };   // 晨星時機還沒到：跟瘋狂無效一樣，保留的合計比較高才留
                         (top || []).forEach(c => extra.push(c));
-                        if (extra.length) infoP = { ...info, extraDecks: extra };
+                        if (extra.length) infoP = { ...infoP, extraDecks: extra };
                     }
                     // 這輪會打死這隻王：m 組打這隻、其他打下一隻王（全盔甲、詛咒甲），兩種排法（先排下一隻／先排這隻）取 6 組合計高的
                     const split = !reuse ? split0 : null;
@@ -13356,6 +13357,7 @@
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
+                    if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) return false; cs.forEach(c => seen.add(c)); return true; }); }   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）
                     if (simPick) {
                         // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）
                         const expPer = raidPlayerTypicalDmg(r);
@@ -14676,7 +14678,7 @@
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const dataSig = 'd' + (data && Array.isArray(data.decks) ? data.decks.length : 0) + 'u' + ((() => { try { const m = raidDeckUsesMap(); return m ? m.size : 0; } catch (e) { return 0; } })());   // 候選牌組資料不同（沒載完、比較舊）算出的推薦不能共用
             const lvSig = 'L' + Object.keys(me.lv || {}).sort().map(c => c + (Math.round((me.lv[c] || 0) * 10) / 10)).join(',');   // 卡片等級（換突襲水晶、升級）變了：暫存的推薦不能用
-            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.extraDecks || []).map(c => c.slice().sort().join('+')).join(',') + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.extraDecks || []).map(c => c.slice().sort().join('+')).join(',') + '|' + (info.msCand ? 'ms' + info.msCand.cards.slice().sort().join('+') : '') + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
             if (!info.force && raidSimPickCache.has(key)) return raidSimPickCache.get(key);
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -14770,7 +14772,8 @@
                 return out;
             };
             // 留一組瘋狂無效等肉體多再打：瘋狂無效的組用「能打的部位全部變肉體」算，其他 n−1 組照現在的狀態，6 組合計最高（每一組瘋狂無效的候選都試，其他組照樣找最佳解）
-            let pick0, voidO = null, normalSum = null, poolAll = null;   // poolAll：挑 6 組用的傷害表（被前面的組打掉部位、掉分的組，從這裡找替換）
+            let pick0, voidO = null, msO = null, normalSum = null, poolAll = null;
+            const reservedO = () => [voidO, msO].filter(Boolean);   // 留到時機再打的組（瘋狂無效、帶刺的晨星）：之後扣部位剩血、補位、換卡都從這裡拿用掉的卡，新增保留的組只要加在這裡   // poolAll：挑 6 組用的傷害表（被前面的組打掉部位、掉分的組，從這裡找替換）
             const VOID = 'CrushingVoid';
             if (info.voidMode && me.lv[VOID] > 0 && !used.has(VOID)) {
                 const boardF = {}; Object.entries(env.board).forEach(([k, b]) => { boardF[k] = info.voidNow ? b : (b.layer === 'armor' || b.layer === 'body') ? { layer: 'body' } : b; });
@@ -14797,8 +14800,17 @@
                     const sm = V.avg + others.reduce((t, o) => t + (o.avg || 0), 0);
                     if (!best || sm > best.sm) best = { sm, V, others };
                 }
+                if (window.RAID_VOID_LOG) console.log('VOIDCMP', name, 'void', best ? Math.round(best.sm / 1e6) + ' ' + best.V.cards.join('+') + ' ' + Math.round(best.V.avg / 1e6) : '-', 'normal', Math.round(normalSum / 1e6), 'n', n);
                 if (best && best.sm >= normalSum) { pick0 = best.others; voidO = best.V; } else pick0 = normal;   // 以傷害為主：留瘋狂無效那組合計比較高才留，不強制
             } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? raidDecayAdj(mergeFlak(got.pool)).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
+            // 帶刺的晨星等時機（info.msCand：晨星組在時機盤面的傷害）：保留晨星＋其他 n−1 組的合計比較高才留（跟瘋狂無效一樣以傷害為主，用已經算好的候選，不整套重算）
+            if (info.msCand && Array.isArray(pick0) && pick0.length >= 1 && !reservedO().some(o => o.cards.some(c => info.msCand.cards.includes(c)))) {
+                const Mc = info.msCand, sumA = (l) => l.reduce((t, o) => t + (o.avg || 0), 0);
+                const rest = (poolAll || []).filter(o => o && !o.cards.some(c => Mc.cards.includes(c)));
+                const others = pick0.length > 1 ? await raidSimPickPool(P, env, me, rest, pick0.length - 1) : [];
+                if (window.RAID_VOID_LOG) console.log('MSCMP', name, 'ms', Math.round((Mc.avg + sumA(others)) / 1e6), Mc.cards.join('+'), Math.round(Mc.avg / 1e6), 'normal', Math.round(sumA(pick0) / 1e6));
+                if (others.length === pick0.length - 1 && Mc.avg + sumA(others) >= sumA(pick0)) { pick0 = others; msO = Mc; }
+            }
             if (progress) progress('計算中 92%');   // 挑好了：接著換打法、扣部位剩血
             const phaseNow = phaseK;
             const items = list.concat(extra);
@@ -14843,7 +14855,7 @@
                 // 最佳解：被前面的組打掉部位、掉分超過 5% 的組，換成其他牌組會不會更高——照「前面的組打完後」的盤面模擬卡片不重複的前 6 名，比較高就換
                 for (const g of pick.filter(o => o.hpAt && o.preAvg > 0 && o.avg < o.preAvg * 0.95)) {
                     if (!poolAll) break;
-                    const usedC = new Set([...pick.filter(o => o !== g).flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
+                    const usedC = new Set([...pick.filter(o => o !== g).flatMap(o => o.cards), ...reservedO().flatMap(o => o.cards)]);
                     const gs = g.cards.slice().sort().join('+');
                     const cand = poolAll.filter(o => o.avg > 0 && !o.cards.some(c => usedC.has(c)) && o.cards.slice().sort().join('+') !== gs).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1)).slice(0, 6);
                     let bestC = null;
@@ -14865,8 +14877,8 @@
                 try { const oo = { cards: o.cards, tg: o.tg, plan: o.plan, cap: env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined }; const fr = await raidSimParallel(P, [{ kind: 'f', base: raidSimBase(env, me, o.cards), o: oo }]); const f = fr && fr[0] ? fr[0] : raidSimFinal(P, env, me, oo); if (f && f.avg > 0) { pick[i] = { ...o, ...f }; continue; } } catch (e) { console.error(e); }
                 pick.splice(i, 1); }
             // 拿掉之後補滿：從同一批算好的牌組，挑卡片不重複、打的部位還有血、傷害最高的補上（不然會少一組）
-            { const want = n - (voidO ? 1 : 0);
-              if (pick.length < want && Array.isArray(poolAll)) { const usedC = new Set([...pick.flatMap(o => o.cards), ...(voidO ? voidO.cards : [])]);
+            { const want = n - reservedO().length;
+              if (pick.length < want && Array.isArray(poolAll)) { const usedC = new Set([...pick.flatMap(o => o.cards), ...reservedO().flatMap(o => o.cards)]);
                 const alive = (o) => !env.hp || (o.tg || []).some(k => (env.hp[k] || 0) > 0);
                 // 補上的組扣掉前面各組已經分走的部位血量（平均分到打的部位），應打不會超過剩下的血
                 const took = {}; pick.forEach(o => { const tg = o.tg || []; tg.forEach(k => { took[k] = (took[k] || 0) + (o.avg || 0) / Math.max(1, tg.length); }); });
@@ -14877,9 +14889,20 @@
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };
-            pick.forEach(scaleShow); if (voidO) scaleShow(voidO);
+            pick.forEach(scaleShow); reservedO().forEach(scaleShow);
             rows.sort((x, y) => (x.simDmg.depOrder ?? 99) - (y.simDmg.depOrder ?? 99) || (y.simDmg.avg || 0) - (x.simDmg.avg || 0));   // 照打的順序（扣部位剩血時假設的順序），同順序再照應打
+            if (msO) rows.push({ cards: byPartOrderCards(msO.cards), rawCards: msO.cards, targets: (msO.tg || []).map(k => ({ part: k, layer: msO.ms && msO.ms.mode === 'armor' ? 'armor' : 'body', cursed: false })), allParts: false, simDmg: msO, msLater: true, msMode: msO.ms ? msO.ms.mode : 'armor' });
             if (voidO) rows.push({ cards: byPartOrderCards(voidO.cards), rawCards: voidO.cards, targets: voidO.tg.map(k => ({ part: k, layer: 'body', cursed: false })), allParts: voidO.tg.length >= 2 && voidO.tg.length >= env.open.length, simDmg: voidO, voidLater: true, voidNow: !!info.voidNow, normalSum });
+            // 總檢查：所有組的卡不能重複（前面好幾個步驟都會動到組合，不管哪一步漏掉，這裡一律擋下）——
+            //   有重複就拿掉傷害低的那組（留到時機的組優先保留），再從候選補一組卡片不重複、傷害最高的
+            { const seen = new Set(), keep = [], drop = [], isRes = (x) => !!(x.voidLater || x.msLater);
+              rows.slice().sort((a, b) => (isRes(b) ? 1 : 0) - (isRes(a) ? 1 : 0) || ((b.simDmg || {}).avg || 0) - ((a.simDmg || {}).avg || 0)).forEach(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) { drop.push(x); return; } cs.forEach(c => seen.add(c)); keep.push(x); });
+              if (drop.length) {
+                  drop.forEach(() => { const c = (poolAll || []).filter(o => o && o.avg > 0 && !o.cards.some(z => seen.has(z)) && playable(o.cards)).sort((a, b) => b.avg - a.avg)[0]; if (!c) return; c.cards.forEach(z => seen.add(z));
+                      keep.push({ cards: byPartOrderCards(c.cards), rawCards: c.cards, targets: (c.tg || []).map(k => ({ part: k, layer: env.board[k] && env.board[k].layer === 'armor' ? 'armor' : 'body', cursed: !!(env.board[k] && env.board[k].cursed) })), allParts: false, simDmg: c }); });
+                  const ord = (x) => isRes(x) ? 1 : 0; keep.sort((a, b) => ord(a) - ord(b) || ((a.simDmg || {}).depOrder ?? 99) - ((b.simDmg || {}).depOrder ?? 99) || ((b.simDmg || {}).avg || 0) - ((a.simDmg || {}).avg || 0));
+                  rows.splice(0, rows.length, ...keep);
+              } }
             if (progress) progress('計算中 100%');
             raidSimPickCache.set(key, rows);
             if (kvKey && rows.length) { const slim = { sig: key, rows: rows.map(r => ({ ...r, simDmg: r.simDmg ? { avg: r.simDmg.avg, lo: r.simDmg.lo, hi: r.simDmg.hi, tg: r.simDmg.tg, plan: r.simDmg.plan } : r.simDmg })) }; raidRecoKvMem.set(kvKey, slim); kvSet(kvKey, slim); }

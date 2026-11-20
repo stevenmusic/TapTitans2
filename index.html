@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 38;
+        const RAID_RECO_VER = 39;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13397,7 +13397,16 @@
                           const CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, seg(20, 55)) : null;
                           const CB = await pk({ ...infoP, remaining: split.m }, seg(55, 85)); raidRecoProgSet(r.player, '計算中 88%');
                           const NB = CB ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CB) }, data, split, n0 - split.m) : null; raidRecoProgSet(r.player, '計算中 99%');
-                          const A = CA && NA ? CA.concat(NA) : null, B = CB && NB ? CB.concat(NB) : null;
+                          /* 兩隻王一起挑：先排一邊再排另一邊只是起點，接著輪流「固定一邊、重排另一邊」，加總不再變高為止（每一步都不會變低）。
+                             只比 A、B 兩種排法時，兩個加總差不多（例如 4222 對 4120），盤面小變就換來換去；輪流重排會收斂到同一個更高的解 */
+                          const best = [];
+                          const climb = async (C, N) => { for (let it = 0; it < 3 && C && N; it++) { const s0 = sumOf(C) + sumOf(N);
+                              const N2 = await raidSimNextBossPick(r, { ...infoP, used: usedPlus(C) }, data, split, n0 - split.m); const s1 = N2 ? sumOf(C) + sumOf(N2) : -1; if (s1 > s0 + 1e6) N = N2;
+                              const C2 = await pk({ ...infoP, used: usedPlus(N), remaining: split.m }, null); const s2 = C2 ? sumOf(C2) + sumOf(N) : -1;
+                              if (s2 > sumOf(C) + sumOf(N) + 1e6) C = C2; else if (!(s1 > s0 + 1e6)) break; }
+                              if (C && N) best.push(C.concat(N)); };
+                          await climb(CA, NA); await climb(CB, NB);
+                          const A = best[0] || null, B = best[1] || null;
                           if (window.RAID_SPLIT_LOG) console.log('SPLIT', r.player, 'A', Math.round(sumOf(A) / 1e6), 'B', Math.round(sumOf(B) / 1e6));
                           return A && (!B || sumOf(A) >= sumOf(B)) ? A : B;
                       })() : await raidSimPlayerPick(r.player, { ...infoP, voidMode: voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t)));

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 31;
+        const RAID_RECO_VER = 32;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15697,15 +15697,24 @@
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
         async function raidSimEvalPool(P, env, me, all, n, progress, topN, lite) {   // lite：配卡用的輕量版（模擬次數約減半，只是打分數不用那麼精準）
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
-            let quick = await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans, lite })), (f) => progress ? progress(`計算中 ${Math.round(f * 60)}%`) : undefined);
+            /* 收斂打法（無損）：模擬器只看部位類型（頭／肚／手臂含手／腳）、層別、詛咒，同一組種子。兩種打法的部位逐一同類（順序也一樣），
+               就是盤面上互換兩個一模一樣的部位，模擬結果相同，只算一次；剩血少（hpSim，照實際破甲）的部位照名字單獨算。
+               同一類挑剩血上限最大的當代表（上限只影響取小，最大的那個一定不輸）；結果照類型複製回每個打法（alts），後面照打王順序改打照樣找得到每個部位 */
+            const B0 = env && env.board || {}, HS0 = env && env.hpSim || {};
+            const pcls = (k) => { const b = B0[k] || {}; if (HS0[k]) return k; return (k === 'Head' ? 'H' : k === 'ChestUpper' ? 'C' : /^Arm|^Hand/.test(k) ? 'R' : /^Leg/.test(k) ? 'L' : k) + (b.layer || '?') + (b.cursed ? '*' : ''); };
+            const psig = (tg) => tg.map(pcls).join(',');
+            const capV = (p) => p.cap > 0 ? p.cap : Infinity;
+            const allS = all.map(a => { if (window.RAID_NO_PDEDUP || !Array.isArray(a.plans) || a.plans.length < 2) return a; const rep = new Map(); a.plans.forEach(p => { const k = psig(p.tg), r = rep.get(k); if (!r || capV(p) > capV(r)) rep.set(k, p); }); return rep.size < a.plans.length ? { ...a, plans: [...rep.values()], plansFull: a.plans } : a; });
+            let quick = await raidSimParallel(P, allS.map(a => ({ kind: 's', base: raidSimBase(env, me, a.cards), cards: a.cards, plans: a.plans, lite })), (f) => progress ? progress(`計算中 ${Math.round(f * 60)}%`) : undefined);
             if (!quick) {
                 quick = [];
                 for (let i = 0; i < all.length; i++) {
                     if (progress && progress(`計算中 ${Math.round(i / all.length * 60)}%`) === 'stop') throw new Error('cancelled');   // 快速篩約占 6 成時間
                     await raidMainTick();   // Worker 不能用、退回主畫面算：一樣算 50ms 休息 50ms
-                    quick.push(raidSimScreen(P, env, me, all[i].cards, all[i].plans));
+                    quick.push(raidSimScreen(P, env, me, allS[i].cards, allS[i].plans));
                 }
             }
+            quick.forEach((q, i) => { const a = allS[i]; if (!q || !a || !a.plansFull || !Array.isArray(q.alts)) return; const by = new Map(q.alts.map(x => [psig(x.tg), x])); q.alts = a.plansFull.map(p => { const x = by.get(psig(p.tg)); return x ? { ...x, tg: p.tg, plan: p.label } : null; }).filter(Boolean); });   // 省掉的打法照類型補回 alts
             quick.sort((a, b) => b.avg * raidSimDeckFactor(b.cards) - a.avg * raidSimDeckFactor(a.cards));
             const nTop = Math.min(quick.length, topN || (window.RAID_NTOP_OLD ? Math.max(80, n * 12) : Math.max(30, n * 13)));   // 精算幾組照剩幾刀：6 刀 78 組、3 刀 39 組、1 刀 30 組（刀少時最佳組合都在前面）   // 精算前 40 組（24 組時粗算誤差偶爾會刷掉好牌，Steven 少 0.7%）   // topN：配卡只精算前幾組（挑中但沒精算的，挑的時候會再補算）
             const fin = await raidSimParallel(P, quick.slice(0, nTop).map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o, runs: lite ? 100 : undefined })), (f) => progress ? progress(`計算中 ${60 + Math.round(f * 40)}%`) : undefined);

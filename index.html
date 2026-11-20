@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 24;
+        const RAID_RECO_VER = 25;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -8046,7 +8046,10 @@
             // 上一場打過的也收：剛開打時這場還沒幾刀，只看這場會讓候選一下子變少（開打前是看上一場，推薦才對；開打前後要用同一批）
             if (!fast) { const prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
                 let prev = prevSa ? sessionAttacksCache.get(prevSa) : null; if (prevSa && !prev) { try { prev = await ensureSessionAttacksLoaded(prevSa); } catch (e) {} }
-                [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...(Array.isArray(prev) ? prev : [])].forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length === 3) add(cs); }); }
+                (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length === 3) add(cs); });
+                // 上一場只收打過 2 次以上的（只打過 1 次的多半是試打、冷門組合；全收候選會從約 270 組變 500 組，推薦慢一倍）
+                const pc = new Map(); (Array.isArray(prev) ? prev : []).forEach(a => { if (!a || a.placeholder) return; const cs = (a.cards || []).map(c => c.name); if (cs.length !== 3) return; const kk = cs.slice().sort().join('+'); const e = pc.get(kk) || { n: 0, cs }; e.n++; pc.set(kk, e); });
+                pc.forEach(e => { if (e.n >= 2) add(e.cs); }); }
             const scenCnt = new Map(), scenCards = new Map();
             (BY_PART_GAME_SCENARIOS || []).forEach(sc => new Set((sc.decks || []).filter(d => Array.isArray(d.cards) && d.cards.length === 3).map(d => { const k = d.cards.slice().sort().join('+'); scenCards.set(k, d.cards); return k; })).forEach(k => scenCnt.set(k, (scenCnt.get(k) || 0) + 1)));
             scenCnt.forEach((n, k) => { if (n >= RAID_SIM_SCEN_MIN || (uses.get(k) || 0) >= RAID_SIM_PROVEN_USES) add(scenCards.get(k)); });

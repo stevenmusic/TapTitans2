@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 41;
+        const RAID_RECO_VER = 42;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12670,7 +12670,7 @@
            瘟疫沒配變質氣體（＋沙漏、＋沙漏＋瘋狂）實際跟應打差不多，不打折 */
         function raidPlagueFactor(cards) {
             if (!cards) return 1; let f = 1;
-            if (cards.includes('PlagueAttack') && cards.includes('MentalFocus')) f *= cards.includes('CrushingVoid') ? 0.81 : 0.9;
+            if (cards.includes('PlagueAttack') && cards.includes('MentalFocus') && !cards.includes('SandsOfTime')) f *= cards.includes('CrushingVoid') ? 0.81 : 0.9;   /* ＋沙漏的不打折：Allen 兩刀 +16%、+17%，Noctrl 100%，沒有偏高 */
             if (cards.includes('Purify') && cards.includes('TriangleSupport')) f *= 0.96;
             return f;
         }

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 22;
+        const RAID_RECO_VER = 23;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12718,9 +12718,9 @@
         const raidRecoVoidPref = { has: () => raidSpecialPref !== null, get: () => raidSpecialPref, set: (k, v) => raidSpecialSet(v) };
         function raidSpecialSet(v) {
             raidSpecialPref = v; try { localStorage.setItem('tt2_special_pref', v ? '1' : '0'); } catch (e) {}
-            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換
+            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidRecoLast.delete(name); raidLogRenderPlayerReco(r); });   // 所有打開的推薦一起換
         }
-        function raidSpecialToggle(name) { const on = (raidLogRecoRows.get(name) || []).some(x => x.voidLater || x.voidTag || x.finLater || x.msLater || x.msNow); raidSpecialSet(!on); }
+        function raidSpecialToggle(name) { raidSpecialSet(raidSpecialPref === false); }   // 最佳 ↔ 梭哈
         function raidBodyNow() { const P = (raidState && raidState.parts) || {}, bn = raidBannedParts || []; return Object.entries(P).filter(([k, v]) => !bn.includes(k) && !(v.armor > 0) && v.body > 0).length; }
         function raidRecoVoidOn(r) { return false; }   // 推薦不再做「留一組瘋狂無效」的 6 組最佳化（太複雜）：改成右上角按鈕打開小視窗，列瘋狂無效能配的最高傷害牌組
         /* 留瘋狂無效：估這一輪（剩 0 次就是下一輪）結束前，能打的肉體部位會不會到 6 個以上。
@@ -12799,17 +12799,9 @@
             return raidLogRenderPlayerReco(r);
         }
         // 開關只跟上面的說明文字同一列，牌組格子照原本全寬（不被擠成兩欄）
-        // 「下一隻」開關：ON＝估計這輪會打死這隻王，照比例留幾組打下一隻王；OFF（預設）＝全部打現在這隻王（傷害高的先）。全公會一起、存在手機上
-        let raidNextPref = (() => { try { return localStorage.getItem('tt2_next_pref') === '1'; } catch (e) { return false; } })();
-        function raidNextToggle() {
-            raidNextPref = !raidNextPref; try { localStorage.setItem('tt2_next_pref', raidNextPref ? '1' : '0'); } catch (e) {}
-            [...raidLogRecoOpen].forEach(name => { const r = (raidLogLastRanked || []).find(x => x && x.player === name); if (!r) return; raidRecoStaleKeep(name); raidLogRecoHtml.delete(name); raidLogRecoRows.delete(name); raidRecoLast.delete(name); raidLogRenderPlayerReco(r); });
-        }
-        function raidRecoNextBtnHtml() {
-            const on = raidNextPref;
-            return `<button onclick="event.stopPropagation(); raidNextToggle()" title="下一隻王：${on ? 'ON，這輪會打死這隻王時留幾組打下一隻' : 'OFF，全部打現在這隻王'}（按一下切換）" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:3px 5px; border:none; border-radius:7px; background:none; ${on ? 'box-shadow:0 0 0 2px #4a5f86;' : ''} cursor:pointer; font-family:inherit;"><span style="font-size:11px; font-weight:900; color:${on ? '#34496e' : '#8a7a6a'}; line-height:24px;">下一隻</span><span style="font-size:10px; font-weight:800; color:${on ? '#34496e' : '#8a7a6a'};">${on ? 'ON' : 'OFF'}</span></button>`;
-        }
-        function raidRecoWrap(r, html) { const sw = raidRecoSpecialBtnHtml(r) + (raidNextRaidPending() ? '' : raidRecoNextBtnHtml()); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
+        // 「下一隻王」併進同一個開關：最佳（ON，預設）才照比例留幾組打下一隻王；梭哈（OFF）全部打現在這隻
+        const raidNextOn = () => raidSpecialPref !== false;
+        function raidRecoWrap(r, html) { const sw = raidRecoSpecialBtnHtml(r); if (!sw) return html; const i = html.indexOf('<div style="display:grid;'), top = i >= 0 ? html.slice(0, i) : html, rest = i >= 0 ? html.slice(i) : ''; return `<div style="display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;"><div style="flex:1; min-width:0;">${top}</div>${sw}</div>${rest}`; }
         function raidRecoVoidSwitchHtml(r) {
             return '';   // 瘋狂無效按鈕拿掉：推薦裡固定排一組瘋狂無效
             if (!raidRecoVoidOwned(r)) return '';
@@ -12845,11 +12837,11 @@
             const lvOf = (c) => v && v.raw ? raidSimBaseLevel(v.raw, c) : 0; const banN = (raidBannedParts || []).length;
             const ci = raidPlayerCycleInfo(r.player, r.attacks || []); const usedNow = (c) => !raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has(c);
             const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack') && banN <= 1, msOk = lvOf('BarbedMorningstar') > 0 && !usedNow('BarbedMorningstar') && raidMorningOkNow(), can = voidOk || finOk || msOk;
-            const on = can && (raidLogRecoRows.get(r.player) || []).some(x => x.voidLater || x.voidTag || x.finLater || x.msLater || x.msNow);
-            const lab = !can ? '不能用' : on ? 'ON' : 'OFF';
-            const why = !can ? (banN > 2 ? `禁打 ${banN} 個部位，湊不到 6 肉體／6 骨架` : '瘋狂無效、凱旋行軍都不能用（沒卡或這輪已用）') : (on ? '保留' : '照傷害計算，不特地保留') + '：瘋狂無效' + (voidOk ? '' : '（這隻王用不到）') + '、凱旋行軍' + (finOk ? '' : '（這隻王用不到）') + '、帶刺的晨星' + (msOk ? '' : '（這隻王用不到）') + '｜全公會一起，按一下切換';
+            const on = raidSpecialPref !== false;   // 最佳（預設）／梭哈：一律可以按（就算三張都用不到，也管「這輪打死王時留幾組打下一隻」）
+            const lab = on ? '最佳' : '梭哈';
+            const why = (on ? '最佳打法：瘋狂無效、凱旋行軍、帶刺的晨星看時機（合計傷害高才留），這輪會打死王時照比例留幾組打下一隻王' : '梭哈：全部打現在這隻王，傷害高的先') + '｜全公會一起，按一下切換';
             const ico = (id, ok) => { const im = raidCardImage(id); return im ? `<span style="position:relative; display:block; width:24px; height:24px;"><img src="${im}" alt="" style="width:24px; height:24px; border-radius:5px; display:block; ${on && ok ? '' : 'filter:grayscale(1); opacity:.45;'}">${ok ? '' : '<span style="position:absolute; left:-1px; right:-1px; top:50%; height:2px; background:#8a7a6a; transform:rotate(-35deg);"></span>'}</span>` : ''; };   // 用不到的那張打斜線
-            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${can ? 'raidSpecialToggle(this.dataset.p)' : ''}" title="${why}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:2px; border:none; border-radius:7px; background:none; ${on ? 'box-shadow:0 0 0 2px #7b4fa8;' : ''} cursor:${can ? 'pointer' : 'default'}; font-family:inherit;"><span style="display:flex; gap:2px;">${ico('CrushingVoid', voidOk)}${ico('FinisherAttack', finOk)}${ico('BarbedMorningstar', msOk)}</span><span style="font-size:10px; font-weight:800; color:${on ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
+            return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); raidSpecialToggle(this.dataset.p)" title="${why}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:2px; border:none; border-radius:7px; background:none; ${on ? 'box-shadow:0 0 0 2px #7b4fa8;' : ''} cursor:pointer; font-family:inherit;"><span style="display:flex; gap:2px;">${ico('CrushingVoid', voidOk)}${ico('FinisherAttack', finOk)}${ico('BarbedMorningstar', msOk)}</span><span style="font-size:10px; font-weight:800; color:${on ? '#6a3d96' : '#8a7a6a'};">${lab}</span></button>`;
         }
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
@@ -13172,13 +13164,13 @@
                 raidLogRenderPlayerReco(r);
             });
         }
-        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidNextPref ? 'next' : '', raidNextRaidPending() ? 'next' : '', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
+        function raidRecoStateSig(r) { const ci = raidPlayerCycleInfo(r.player, r.attacks); return ['s1', raidNextOn() ? 'next' : '', raidNextRaidPending() ? 'next' : '', raidState && raidState.bossName, ci.cycle, ci.remaining, [...(ci.used || [])].sort().join('+'), raidRecoFinPref.has(r.player) ? (raidRecoFinPref.get(r.player) ? 'F1' : 'F0') : 'Fa'].join('|'); }
         const raidRecoGen = new Map();   // 每次重畫推薦加 1：只有最新那一次算完才寫畫面
         // 正在算的時候，畫面因為別人出刀、血量變而重畫：這個人自己的狀態（輪次、剩幾刀、用過的卡、開關）沒變就不從頭重算，
         // 只把目前進度畫回新的框，記一個「待更新」；算完再補一次（血量變的部分沿用快取，很快）
         const raidRecoBusy = new Map();
         async function raidLogRenderPlayerReco(r) {
-            const sig = raidRecoStateSig(r) + '|' + raidRecoVoidOn(r) + '|' + (raidNextPref ? 'next' : '');   // 開關（含「下一隻」）切了就不是同一次計算
+            const sig = raidRecoStateSig(r) + '|' + raidRecoVoidOn(r) + '|' + (raidNextOn() ? 'next' : '');   // 開關（含「下一隻」）切了就不是同一次計算
             const b = raidRecoBusy.get(r.player);
             if (b && b.sig === sig) {
                 b.pending = true;
@@ -13284,7 +13276,7 @@
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
-                    const reuseSig = JSON.stringify([raidNextPref ? 'next' : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), raidCalSig(), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
@@ -13302,7 +13294,7 @@
                         if (extra.length) infoP = { ...info, extraDecks: extra };
                     }
                     // 這輪會打死這隻王：m 組打這隻、其他打下一隻王（全盔甲、詛咒甲），兩種排法（先排下一隻／先排這隻）取 6 組合計高的
-                    const split = !reuse && !nextRound && raidNextPref ? await raidNextBossSplit(n0).catch(() => null) : null;
+                    const split = !reuse && !nextRound && raidNextOn() ? await raidNextBossSplit(n0).catch(() => null) : null;
                     let simPick; try { simPick = reuse || (split ? await (async () => {
                           const sumOf = (rows) => (rows || []).reduce((t, x) => t + ((x.simDmg && x.simDmg.avg) || 0), 0), usedPlus = (rows) => new Set([...(infoP.used || []), ...(rows || []).flatMap(x => x.rawCards || x.cards)]);
                           const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: false, force }, data, simFns.playable, simFns.hitParts, prog);

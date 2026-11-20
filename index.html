@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 35;
+        const RAID_RECO_VER = 36;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12664,11 +12664,17 @@
             if (!ms.length) return 1; const m = ms.reduce((t, v) => t + v, 0) / ms.length;
             return Math.min(1, 1 - 0.45 * (1 - 0.6 * Math.min(0.7, Math.max(0, m)) / 0.35));   // 只打折，不加分
         }
-        /* 瘟疫暫時打折（同上，模擬器修正 claude/decay-missing 上線前，只用在推薦）：瘟疫配「變質氣體」或「瘋狂無效」估太高，兩個各自約 0.9、一起用相乘。
-           這場攻擊紀錄：瘟疫＋時之沙約 1.0、瘟疫＋變質氣體約 0.9（＋符文 0.92、＋腐鏽 0.90）、瘟疫＋時之沙＋瘋狂 6 肉體 0.88／0.99；
-           快來加入試打瘟疫＋變質氣體＋瘋狂 6 肉體約 0.78（0.9×0.9＝0.81） */
-        function raidPlagueFactor(cards) { if (!cards || !cards.includes('PlagueAttack')) return 1; return (cards.includes('MentalFocus') ? 0.9 : 1) * (cards.includes('CrushingVoid') ? 0.9 : 1); }
-        function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || o.decayF) return o; const f = (o.cards.includes('DecayingAttack') ? raidDecayFactor(o.tg) : 1) * raidPlagueFactor(o.cards); if (f >= 1) return o.cards.includes('DecayingAttack') || o.cards.includes('PlagueAttack') ? { ...o, decayF: 1 } : o; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
+        /* 暫時打折（模擬器重新校正前，只用在推薦）：攻擊紀錄驗證固定偏高的組合
+           - 瘟疫＋變質氣體：這場實際約應打 0.9（＋符文 0.86～1.03、＋腐鏽 0.90、＋蜂群 0.91）；再加瘋狂無效更低（快來加入 6 肉體試打約 0.78）→ 0.9，有瘋狂 0.81
+           - 淨化爆裂＋輻射萬花筒：這場 40 多刀平均 0.98，傷害高的人更低（relax 0.94～0.95、Kingoffight 0.95～0.96、點點點 0.94）→ 0.96
+           瘟疫沒配變質氣體（＋沙漏、＋沙漏＋瘋狂）實際跟應打差不多，不打折 */
+        function raidPlagueFactor(cards) {
+            if (!cards) return 1; let f = 1;
+            if (cards.includes('PlagueAttack') && cards.includes('MentalFocus')) f *= cards.includes('CrushingVoid') ? 0.81 : 0.9;
+            if (cards.includes('Purify') && cards.includes('TriangleSupport')) f *= 0.96;
+            return f;
+        }
+        function raidDecayAdj(arr) { return (arr || []).map(o => { if (!o || !o.cards || o.decayF) return o; const f = (o.cards.includes('DecayingAttack') ? raidDecayFactor(o.tg) : 1) * raidPlagueFactor(o.cards); if (f >= 1) return o.cards.includes('DecayingAttack') ? { ...o, decayF: 1 } : o; const q = { ...o, decayF: f, avg: (o.avg || 0) * f }; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi *= f; if (q.raw != null) q.raw *= f; return q; }); }
         const RAID_ATTACKS_MAX = 12;
         const RAID_SELF_CARDS = 16, RAID_SELF_KEEP = 40;   // 自己組牌組：用沒用過的卡裡等級最高的幾張、粗算後留幾組細算
         const RAID_RECO_WEAK = 0.5;   // 推薦的組應打低於平常每刀的幾成就不列（漏了一輪、卡用掉太多時剩下的組）
@@ -14937,7 +14943,7 @@
                 const capOf = (o) => env.hp ? (o.tg || []).reduce((t, k) => t + Math.max(0, (env.hp[k] || 0) - (took[k] || 0)), 0) : Infinity;
                 for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; const cap = capOf(o); if (!(cap > 0)) continue;
                     const q = { ...o }; if (q.avg > cap) { const f = cap / q.avg; q.avg = cap; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi = Math.min(q.hi, cap * 1.08); } pick.push(q); o.cards.forEach(c => usedC.add(c)); (q.tg || []).forEach(k => { took[k] = (took[k] || 0) + q.avg / Math.max(1, q.tg.length); }); } } }
-            pick.forEach((o, i) => { if ((o.cards.includes('DecayingAttack') || o.cards.includes('PlagueAttack')) && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
+            pick.forEach((o, i) => { if ((o.cards.includes('DecayingAttack') || raidPlagueFactor(o.cards) < 1) && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };

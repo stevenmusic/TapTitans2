@@ -12969,7 +12969,7 @@
             return { m, name, envN };
         }
         // 下一隻王最強的 k 組（卡片不重複，候選跟推薦一樣）
-        async function raidSimNextBossPick(r, info, data, split, k) {
+        async function raidSimNextBossPick(r, info, data, split, k, progress) {
             if (!(k > 0)) return [];
             const used = new Set(info.used || []), v = raidAccountInfo(r.player); if (!v) return null;
             // 同一次推薦（同一個人、同一隻下一隻王）的候選只算一次：兩種排法共用，挑的時候再扣掉另一邊用掉的卡
@@ -12983,7 +12983,7 @@
             const cands = (await raidSimCandidateDecks(data, false)).filter(d => (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(d.cards));
             const items = cands.map(d => { const hp = hitParts(d.cards); const pl = raidSimPlansFor(d.cards, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); return pl.length ? { cards: d.cards, plans: pl } : null; }).filter(Boolean);
             if (!items.length) return [];
-            const pool = await raidSimEvalPool(P, E, me, items, k, null, Math.max(24, k * 8));
+            const pool = await raidSimEvalPool(P, E, me, items, k, progress || null, Math.max(24, k * 8));
             split.pool = pool; split.poolUsed = used; split.poolP = P; split.poolMe = me;
             const pick = await raidSimPickPool(P, E, me, pool.filter(o => o.avg > 0), k);   // 從全部候選挑（只用精算過的前幾名會共用同幾張強卡，湊不滿 k 組）
             return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name }));
@@ -13313,7 +13313,7 @@
                           const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: false, force }, data, simFns.playable, simFns.hitParts, prog);
                           const seg = (a, b2) => (t) => { const m2 = /(\d+)%/.exec(String(t || '')); raidRecoProgSet(r.player, `計算中 ${Math.round(a + (m2 ? Number(m2[1]) : 0) * (b2 - a) / 100)}%`); };   // 四段各佔一部分，不會停在 92%／100% 不動
                           raidRecoProgSet(r.player, '計算中 2%');
-                          const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m); raidRecoProgSet(r.player, '計算中 20%');
+                          const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m, seg(2, 20)); raidRecoProgSet(r.player, '計算中 20%');
                           const CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, seg(20, 55)) : null;
                           const CB = await pk({ ...infoP, remaining: split.m }, seg(55, 85)); raidRecoProgSet(r.player, '計算中 88%');
                           const NB = CB ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CB) }, data, split, n0 - split.m) : null; raidRecoProgSet(r.player, '計算中 99%');

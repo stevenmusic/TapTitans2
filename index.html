@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 40;
+        const RAID_RECO_VER = 41;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13029,13 +13029,16 @@
                 const ev = (await raidSimEvalPool(P, envX, me, its, 1, null, 12)).filter(o => o.final).map(o => { const f = raidPlagueFactor(o.cards); return { ...o, avg: o.avg * f, ...tag }; });
                 const sig = (c) => c.slice().sort().join('+'), got = new Map(ev.map(o => [sig(o.cards), o]));
                 pool = pool.map(o => { const g = got.get(sig(o.cards)); return g && g.avg > (o.avg || 0) ? g : o; }); };
-            if (openN.length && !openN.some(x => E.board[x].layer === 'body')) {
-                const k0 = openN.slice().sort((a, b) => ((E.hpA || {})[a] || 0) - ((E.hpA || {})[b] || 0))[0];
+            /* 下一隻王先破哪一塊：防空和晨星要用同一個假設，不然一組說「頭破甲再打」、另一組卻打頭的盔甲（矛盾）。
+               跟晨星的規則一樣：詛咒甲先拆，再來薄的 */
+            const firstBreak = openN.filter(x => E.board[x].layer === 'armor').sort((a, b) => (!!E.board[b].cursed - !!E.board[a].cursed) || (((E.hpA || {})[a] || 0) - ((E.hpA || {})[b] || 0)))[0] || null;
+            if (openN.length && !openN.some(x => E.board[x].layer === 'body') && firstBreak) {
+                const k0 = firstBreak;
                 const envFl = { ...E, board: { ...E.board, [k0]: { layer: 'body', cursed: false } } };
                 await reEval((c) => c.includes('FlakShot'), envFl, (c) => { const hp = hitParts(c).filter(x => x !== k0); return raidSimPlansFor(c, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); }, { flakLater: true, flakPart: k0 });
             }
             { const hpB = {}; Object.keys(E.board).forEach(x => { hpB[x] = Math.max(0, ((E.hp || {})[x] || 0) - ((E.hpA || {})[x] || 0)); });
-              const plan = raidMorningPlan(E.board, E.hpA || {}, hpB, null);
+              const plan = raidMorningPlan(E.board, E.hpA || {}, hpB, firstBreak ? [firstBreak] : null);
               if (plan && !plan.now) { const envMs = { ...E, board: plan.board }, sc = {}; Object.keys(plan.board).forEach(x => { const b = plan.board[x]; sc[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; }); const fM = raidSimPartFns(sc);
                 await reEval((c) => c.includes('BarbedMorningstar'), envMs, (c) => { const hp = fM.hitParts(c); return plan.tg.every(x => hp.includes(x)) ? [{ tg: plan.tg, label: '' }] : []; }, { msLater: true, msMode: plan.mode }); } }
             split.pool = pool; split.poolUsed = used; split.poolP = P; split.poolMe = me;

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 48;
+        const RAID_RECO_VER = 49;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13008,7 +13008,7 @@
             open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
             const c0 = t.c && t.c[0], curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
             const envN = { ...env, board, open, plans, curse, hp, hpA, hpSim: undefined, strategy: undefined };
-            return { m, name, envN, fixed };
+            return { m, name, envN, fixed, E: raw };   // E：照全公會進度估，他這輪在這隻王死前大約還能打幾刀（小數）
         }
         // 下一隻王最強的 k 組（卡片不重複，候選跟推薦一樣）
         async function raidSimNextBossPick(r, info, data, split, k, progress) {
@@ -13432,9 +13432,16 @@
                                   const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + o.avg, 0);
                                   if (CL.length >= kC && NL.length >= kN) dfs(CL, 0, kC, 0, goN);
                                   return { kC, kN, s: bestS, sel: bestSel }; };
-                              const allM = []; for (let m2 = split.fixed ? split.m : Math.max(1, split.m - 1); m2 <= (split.fixed ? split.m : Math.min(n0 - 1, split.m + 1)); m2++) allM.push(solve(m2, n0 - m2));
-                              const pickM = allM.filter(x => x.sel).reduce((b2, x) => !b2 || x.s > b2.s ? x : b2, null);
-                              if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, '估計 m=' + split.m, allM.map(x => x.kC + '+' + x.kN + ' ' + Math.round(x.s / 1e6)).join(' | '), '→ 用 ' + (pickM ? pickM.kC + '+' + pickM.kN : '-'), 'steps', steps);
+                              /* 期望傷害決定組數：E＝估計他在這隻王死前還能打幾刀（例 1.4）。第 1 組一定打得到；第 2 組只有 0.4 的機會打得到，
+                                 打不到就只能拿去打下一隻王。所以 m＝floor(E) 和 ceil(E) 兩種都窮舉，最後那組照機率算期望值（打得到算這隻王的傷害、打不到算那組打下一隻王的傷害），取期望值高的 */
+                              const E = Math.max(1, Number(split.E) || split.m), mLo = split.fixed ? split.m : Math.max(1, Math.min(n0 - 1, Math.floor(E))), mHi = split.fixed ? split.m : Math.max(1, Math.min(n0 - 1, Math.ceil(E)));
+                              const nvOf = new Map(NL.map(o => [sig(o.cards), o.avg]));
+                              const allM = []; for (let m2 = mLo; m2 <= mHi; m2++) { const x = solve(m2, n0 - m2);
+                                  if (x.sel) { const p = split.fixed ? 1 : Math.max(0, Math.min(1, E - (m2 - 1))); const cur = x.sel.slice(0, m2).sort((a2, b2) => b2.avg - a2.avg), last = cur[cur.length - 1];
+                                      x.ev = x.s - (1 - p) * Math.max(0, last.avg - (nvOf.get(sig(last.cards)) || 0)); }   // 最後一組打不到的話，少掉的是「這隻王的傷害 − 拿去打下一隻的傷害」
+                                  allM.push(x); }
+                              const pickM = allM.filter(x => x.sel).reduce((b2, x) => !b2 || x.ev > b2.ev ? x : b2, null);
+                              if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, 'E=' + (split.E || 0).toFixed(2), allM.map(x => x.kC + '+' + x.kN + ' 加總' + Math.round(x.s / 1e6) + ' 期望' + Math.round((x.ev || 0) / 1e6)).join(' | '), '→ 用 ' + (pickM ? pickM.kC + '+' + pickM.kN : '-'), 'steps', steps);
                               const bestSel = pickM && pickM.sel, kC = pickM ? pickM.kC : split.m;
                               if (bestSel) {
                                   /* 照窮舉的結果排：這隻王只開放窮舉挑中的那幾組的卡（其他卡都當成用過），排出來就是那幾組，只是照原本流程配打法、部位 */

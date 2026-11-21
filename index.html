@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 46;
+        const RAID_RECO_VER = 47;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13415,19 +13415,26 @@
                               const out = {}; await pk({ ...infoP, remaining: split.m, poolOut: out }, null);
                               const sig = (c) => c.slice().sort().join('+'), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0 && !seen.has(sig(o.cards)) && seen.add(sig(o.cards))).sort((x, y) => y.avg - x.avg); };
                               const CL = top(out.pool), NL = top(split.pool && split.pool.filter(o => !o.cards.some(c => (infoP.used || new Set()).has && infoP.used.has(c))));
-                              const kC = split.m, kN = n0 - split.m; let bestS = -1, bestSel = null, steps = 0; const usedC = new Set(), sel = [];
-                              const dfs = (L, i, k, acc, next) => { if (++steps > 3e6) return; if (k === 0) return next(acc); for (let j = i; j < L.length; j++) { const o = L[j]; if (o.cards.some(c => usedC.has(c))) continue;
-                                  if (acc + o.avg * k + (next.bound || 0) <= bestS) break;   // 剩下的都比這組小：上限也贏不了就停
-                                  o.cards.forEach(c => usedC.add(c)); sel.push(o); dfs(L, j + 1, k - 1, acc + o.avg, next); sel.pop(); o.cards.forEach(c => usedC.delete(c)); } };
-                              const finN = (acc) => { if (acc > bestS) { bestS = acc; bestSel = sel.slice(); } };
-                              const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + o.avg, 0);
-                              if (CL.length >= kC && NL.length >= kN) dfs(CL, 0, kC, 0, goN);
-                              if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, 'best', Math.round(bestS / 1e6), (bestSel || []).map(o => o.cards.join('+') + ' ' + Math.round(o.avg / 1e6)).join(' | '), 'steps', steps);
+                              /* 這隻王打幾組（m）是照「全公會這輪打多少、王剩多少血」估的，不一定準：估計值 ±1 組的每一種搭配都窮舉，取加總最高
+                                 （不完全放開：只看加總會把大部分組排給這隻王，但王很快就會被打死，那些組實際打不到） */
+                              let steps = 0; const usedC = new Set(), sel = [];
+                              const solve = (kC, kN) => { let bestS = -1, bestSel = null;
+                                  const dfs = (L, i, k, acc, next) => { if (++steps > 3e6) return; if (k === 0) return next(acc); for (let j = i; j < L.length; j++) { const o = L[j]; if (o.cards.some(c => usedC.has(c))) continue;
+                                      if (acc + o.avg * k + (next.bound || 0) <= bestS) break;   // 剩下的都比這組小：上限也贏不了就停
+                                      o.cards.forEach(c => usedC.add(c)); sel.push(o); dfs(L, j + 1, k - 1, acc + o.avg, next); sel.pop(); o.cards.forEach(c => usedC.delete(c)); } };
+                                  const finN = (acc) => { if (acc > bestS) { bestS = acc; bestSel = sel.slice(); } };
+                                  const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + o.avg, 0);
+                                  if (CL.length >= kC && NL.length >= kN) dfs(CL, 0, kC, 0, goN);
+                                  return { kC, kN, s: bestS, sel: bestSel }; };
+                              const allM = []; for (let m2 = Math.max(1, split.m - 1); m2 <= Math.min(n0 - 1, split.m + 1); m2++) allM.push(solve(m2, n0 - m2));
+                              const pickM = allM.filter(x => x.sel).reduce((b2, x) => !b2 || x.s > b2.s ? x : b2, null);
+                              if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, '估計 m=' + split.m, allM.map(x => x.kC + '+' + x.kN + ' ' + Math.round(x.s / 1e6)).join(' | '), '→ 用 ' + (pickM ? pickM.kC + '+' + pickM.kN : '-'), 'steps', steps);
+                              const bestSel = pickM && pickM.sel, kC = pickM ? pickM.kC : split.m;
                               if (bestSel) {
                                   /* 照窮舉的結果排：這隻王只開放窮舉挑中的那幾組的卡（其他卡都當成用過），排出來就是那幾組，只是照原本流程配打法、部位 */
                                   const keepC = new Set(bestSel.slice(0, kC).flatMap(o => o.cards)), allCards = Object.keys(RAID_CARD_IMAGE);
-                                  const CJ = await pk({ ...infoP, used: new Set([...(infoP.used || []), ...allCards.filter(c => !keepC.has(c))]), remaining: split.m }, null);
-                                  const NJ = CJ ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CJ) }, data, split, n0 - split.m) : null;
+                                  const CJ = await pk({ ...infoP, used: new Set([...(infoP.used || []), ...allCards.filter(c => !keepC.has(c))]), remaining: kC }, null);
+                                  const NJ = CJ ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CJ) }, data, split, n0 - kC) : null;
                                   if (CJ && NJ) best.push(CJ.concat(NJ)); }
                           } catch (e) { console.error('split joint', e); }
                           if (window.RAID_SPLIT_LOG) console.log('SPLIT', r.player, best.map(x => Math.round(sumOf(x) / 1e6)).join(' / '));

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 47;
+        const RAID_RECO_VER = 48;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12973,9 +12973,10 @@
         }
         /* 這輪會打死這隻王：估這隻王剩的血佔全公會這輪能打的多少，6 組裡照比例留幾組給下一隻王（全盔甲、詛咒甲、禁打）
            例：這輪能打 60B、王剩 10B → 1 組打這隻、5 組打下一隻。回傳 { m: 打這隻的組數, name, envN } 或 null（這輪打不死、沒有下一隻） */
-        const raidNextSplitLast = new Map();   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
+        const raidNextSplitLast = new Map();
+        const raidSplitPlan = new Map();   // 玩家 → { boss, n, m }：換王那輪排好的「這隻王打 m 組」（之後出刀照這個扣，不重新估）   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
         async function raidNextBossSplit(n, who) {
-            if (!raidState || !raidState.parts || raidNextRaidPending() || n < 2) return null;
+            if (!raidState || !raidState.parts || raidNextRaidPending() || n < 1) return null;
             const killLeft = Number(raidState.currentHp) || 0; if (!(killLeft > 0)) return null;
             // 要打死：能打的部位剩的盔甲（要先拆掉才打得到肉體）＋ 離斬殺線剩的血
             const ban0 = new Set(raidBannedParts || []), armorLeft = Object.entries(raidState.parts).filter(([k]) => !ban0.has(k)).reduce((t, [, x]) => t + Math.max(0, Number(x.armor) || 0), 0);
@@ -12985,11 +12986,15 @@
             const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0)) return null;
             const roundDmg = (raidGuildRoundLeft(sa).left || 0) * avg;
             const last = who ? raidNextSplitLast.get(who) : null, lastM = last && last.boss === raidState.bossName && last.n === n ? last.m : 0;
+            /* 已經排好「這隻王打 m 組」、之後他出刀了：照原本的分配扣掉打掉的刀數，不重新估（重新估每次都至少 1 組，打完分配的最後一組又會多排一組給這隻王） */
+            const plan = who ? raidSplitPlan.get(who) : null, planOn = !!(plan && plan.boss === raidState.bossName && n < plan.n);
             // 這輪會不會打死：估計（假設大家這輪都打完）要比王的血多 15% 以上才算（有人打不完，差一點的其實打不死，例如 Takedar 剩 90.5B、估 93.8B）；已經切了的多不到 5% 才取消，不要切來切去
-            if (!(roundDmg > left * (lastM ? 1.05 : 1.15))) { if (who) raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); return null; }
+            if (!(roundDmg > left * (lastM || planOn ? 1.05 : 1.15))) { if (who) { raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); raidSplitPlan.delete(who); } return null; }
             const raw = n * left / roundDmg;
-            let m = Math.max(1, Math.min(n - 1, Math.round(raw)));
-            if (lastM && Math.abs(raw - lastM) < 0.8) m = lastM;   // 跟上次差不到一組：維持上次的組數
+            let m, fixed = false;
+            if (planOn) { m = Math.max(0, plan.m - (plan.n - n)); fixed = true; }   // 0：這隻王分配的都打完了，剩下全部留給下一隻王（等這隻王死）
+            else { if (n < 2) return null; m = Math.max(1, Math.min(n - 1, Math.round(raw)));
+                if (lastM && Math.abs(raw - lastM) < 0.8) m = lastM; }   // 跟上次差不到一組：維持上次的組數
             if (who) raidNextSplitLast.set(who, { boss: raidState.bossName, n, m });
             const sr = typeof bossHpSeedRaid === 'function' ? bossHpSeedRaid() : null, cur = raidState.bossOrdinal || 0;
             const name = sr && cur ? sr.seq[cur] : null, t = name && sr.titans.find(x => x.n === name); if (!t) return null;   // 最後一隻：沒有下一隻
@@ -13003,7 +13008,7 @@
             open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
             const c0 = t.c && t.c[0], curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
             const envN = { ...env, board, open, plans, curse, hp, hpA, hpSim: undefined, strategy: undefined };
-            return { m, name, envN };
+            return { m, name, envN, fixed };
         }
         // 下一隻王最強的 k 組（卡片不重複，候選跟推薦一樣）
         async function raidSimNextBossPick(r, info, data, split, k, progress) {
@@ -13396,6 +13401,7 @@
                           const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: false, force }, data, simFns.playable, simFns.hitParts, prog);
                           const seg = (a, b2) => (t) => { const m2 = /(\d+)%/.exec(String(t || '')); raidRecoProgSet(r.player, `計算中 ${Math.round(a + (m2 ? Number(m2[1]) : 0) * (b2 - a) / 100)}%`); };   // 四段各佔一部分，不會停在 92%／100% 不動
                           raidRecoProgSet(r.player, '計算中 2%');
+                          if (split.m === 0) return await raidSimNextBossPick(r, infoP, data, split, n0, seg(2, 99));   // 這隻王分配的組打完了：全部留給下一隻王
                           const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m, seg(2, 20)); raidRecoProgSet(r.player, '計算中 20%');
                           const CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, seg(20, 55)) : null;
                           const CB = await pk({ ...infoP, remaining: split.m }, seg(55, 85)); raidRecoProgSet(r.player, '計算中 88%');
@@ -13426,7 +13432,7 @@
                                   const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + o.avg, 0);
                                   if (CL.length >= kC && NL.length >= kN) dfs(CL, 0, kC, 0, goN);
                                   return { kC, kN, s: bestS, sel: bestSel }; };
-                              const allM = []; for (let m2 = Math.max(1, split.m - 1); m2 <= Math.min(n0 - 1, split.m + 1); m2++) allM.push(solve(m2, n0 - m2));
+                              const allM = []; for (let m2 = split.fixed ? split.m : Math.max(1, split.m - 1); m2 <= (split.fixed ? split.m : Math.min(n0 - 1, split.m + 1)); m2++) allM.push(solve(m2, n0 - m2));
                               const pickM = allM.filter(x => x.sel).reduce((b2, x) => !b2 || x.s > b2.s ? x : b2, null);
                               if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, '估計 m=' + split.m, allM.map(x => x.kC + '+' + x.kN + ' ' + Math.round(x.s / 1e6)).join(' | '), '→ 用 ' + (pickM ? pickM.kC + '+' + pickM.kN : '-'), 'steps', steps);
                               const bestSel = pickM && pickM.sel, kC = pickM ? pickM.kC : split.m;
@@ -13461,6 +13467,7 @@
                             }
                         }
                         if (simPick && msRow) simPick = simPick.concat([msRow]);
+                        if (split && simPick && simPick.length) raidSplitPlan.set(r.player, { boss: raidState.bossName, n: n0, m: simPick.filter(x => !x.nextBoss).length });   // 記住這次排的「這隻王打幾組」，之後出刀照這個扣
                       }
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }

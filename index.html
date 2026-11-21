@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 43;
+        const RAID_RECO_VER = 44;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13098,7 +13098,7 @@
                 list.push({ cards, plans: [{ tg: [big], label: '', cap: env.hp ? env.hp[big] : undefined }] }); }
             if (!list.length) return null;
             const pool = (await raidSimEvalPool(P, envS, me, list, 1, null, 8)).filter(o => o.final).sort((a, b) => b.avg - a.avg);
-            return pool[0] ? { ...pool[0], big } : null;
+            return pool[0] ? { ...pool[0], big, alts: pool.slice(0, 3).map(o => ({ ...o, big })) } : null;   // alts：前 3 名（最強那組的卡可能跟別組撞）
         }
         // 這輪（或到下一輪結束）全公會剩下的傷害，夠不夠把最厚以外的部位清成骨架
         // 全公會這一輪還剩幾刀：這場出過刀的人照各自剩幾刀；還沒出刀、但上一場有打的人當作這輪還有 6 刀（剛開打時大部分人都還沒出刀）
@@ -13424,10 +13424,13 @@
                         const nP = Math.min(infoP.remaining || 0, RAID_ATTACKS_MAX);
                         if (simPick && !split && finPref !== false && nP >= 2 && (raidBannedParts || []).length <= 1 && (finPref === true || (skel && skel.ok))) {
                             const F = await raidSimFinisherBest(r, infoP, data).catch(() => null);
-                            if (F) {
-                                const others = await raidSimPlayerPick(r.player, { ...infoP, used: new Set([...(infoP.used || []), ...F.cards]), remaining: nP - 1, voidMode: voidLaterGo && !F.cards.includes('CrushingVoid') }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
-                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0);
-                                if (others && sum(others) + F.avg >= sum(simPick)) simPick = others.concat([{ cards: byPartOrderCards(F.cards), rawCards: F.cards, targets: [{ part: F.big, layer: 'body', cursed: false }], allParts: false, simDmg: F, finLater: true }]);
+                            if (F) {   /* 凱旋組前 3 名都試（跟晨星、瘋狂一樣：最強那組撞卡時，換一組合計可能更高），取合計最高 */
+                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0); let bestF = null;
+                                for (const Fx of (F.alts && F.alts.length ? F.alts : [F])) {
+                                    const others = await raidSimPlayerPick(r.player, { ...infoP, used: new Set([...(infoP.used || []), ...Fx.cards]), remaining: nP - 1, voidMode: voidLaterGo && !Fx.cards.includes('CrushingVoid') }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
+                                    if (!others) continue; const sm = sum(others) + Fx.avg;
+                                    if (sm >= sum(simPick) && (!bestF || sm > bestF.sm)) bestF = { sm, Fx, others }; }
+                                if (bestF) { const Fx = bestF.Fx; simPick = bestF.others.concat([{ cards: byPartOrderCards(Fx.cards), rawCards: Fx.cards, targets: [{ part: Fx.big, layer: 'body', cursed: false }], allParts: false, simDmg: Fx, finLater: true }]); }
                             }
                         }
                         if (simPick && msRow) simPick = simPick.concat([msRow]);

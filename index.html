@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 49;
+        const RAID_RECO_VER = 50;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12966,7 +12966,7 @@
             const { hitParts } = raidSimPartFns(scene);
             const own = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]).slice(0, 20), items = [], usesB = raidDeckUsesMap();   // 等級前 20 高的卡（31 張全試約 4500 組、慢 4 倍，最強的組合幾乎都在前 20 張）
             for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) for (let c = b + 1; c < own.length; c++) { const cards = [own[a], own[b], own[c]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesB)) continue; const hp = hitParts(cards); if (!hp.length) continue;
-                const plans = hp.map(x => ({ tg: [x], label: '' })); if (hp.length > 1) plans.push({ tg: hp, label: '' }); items.push({ cards, plans }); }
+                const plans = hp.map(x => ({ tg: [x], label: '' })); if (hp.length > 1 && raidPartsConnected(hp)) plans.push({ tg: hp, label: '' }); items.push({ cards, plans }); }
             if (!items.length) return null;
             const pool = (await raidSimEvalPool(P, env, me, items, 1, null, Math.max(k, 12))).filter(o => o.final).sort((a, b) => b.avg - a.avg);
             return pool.slice(0, k).map(o => o.cards);
@@ -15418,7 +15418,13 @@
         const RAID_SIM_SINGLE = new Set(['TotemFairySkill']);
         // 打幾個部位傷害最高要實際試：除了單一部位、頭肚、頭肚以外、全部，再補「剩血最多的前 k 個部位」（k＝2～全部−1），部位數卡在中間的最佳打法才不會漏掉
         //   （部位不需要相連：一刀可以打任何部位組合）
+        /* 一起打的部位要連在一起（點的時候要連貫）：頭－肚、肚－左右肩、肩－同側的手、肚－左右腳、兩腳相連。
+           例：頭＋右腳中間隔著肚，沒辦法一起打（卡片限定頭腳時，原本「全部位」扣掉肚會變成頭＋腳） */
+        const RAID_PART_ADJ = { Head: ['ChestUpper'], ChestUpper: ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'LegUpperLeft', 'LegUpperRight'], ArmUpperLeft: ['ChestUpper', 'HandLeft'], ArmUpperRight: ['ChestUpper', 'HandRight'], HandLeft: ['ArmUpperLeft'], HandRight: ['ArmUpperRight'], LegUpperLeft: ['ChestUpper', 'LegUpperRight'], LegUpperRight: ['ChestUpper', 'LegUpperLeft'] };
+        function raidPartsConnected(tg) { if (!tg || tg.length <= 1) return true; const set = new Set(tg), seen = new Set([tg[0]]), st = [tg[0]];
+            while (st.length) { const k = st.pop(); (RAID_PART_ADJ[k] || []).forEach(x => { if (set.has(x) && !seen.has(x)) { seen.add(x); st.push(x); } }); } return seen.size === set.size; }
         function raidSimPlansFor(cards, plans) {
+            plans = (plans || []).filter(p => raidPartsConnected(p.tg));
             if (cards.some(c => RAID_SIM_SINGLE.has(c))) return plans.filter(p => p.tg.length === 1);
             const out = plans.slice(), has = new Set(plans.map(p => p.tg.slice().sort().join()));
             const uni = [...new Set(plans.flatMap(p => p.tg))]; if (uni.length < 3 || !window.RAID_KPLANS_ON) return out;   // 補打法會增加計算時間：預設關閉（只給比對用）

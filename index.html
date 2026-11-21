@@ -13173,15 +13173,34 @@
         function raidRecoLastSave() {
             try { const o = {}; raidRecoLast.forEach((x, k) => { if (Date.now() - (x.at || 0) < 12 * 3600 * 1000) o[k] = { ...x, used: [...x.used], rows: x.rows.map(r => ({ ...r, simDmg: r.simDmg ? { ...r.simDmg, alts: undefined } : r.simDmg })) }; }); localStorage.setItem(RAID_RECO_LAST_KEY, JSON.stringify(o)); } catch (e) {}
         }
+        /* 推薦重算紀錄（存在這支手機，最多 500 筆）：每次真的重算記下時間、誰、原因、花多久，之後追查「為什麼一直重算」用。
+           查看：網址後面加 #recolog（例：…/index.html#recolog），會跳出紀錄和「複製」按鈕，貼給 AI 就能查 */
+        const RAID_RECO_LOG_KEY = 'tt2_reco_log';
+        let raidRecoLogArr = (() => { try { return JSON.parse(localStorage.getItem(RAID_RECO_LOG_KEY) || '[]'); } catch (e) { return []; } })();
+        function raidRecoLogAdd(e) { try { const d = new Date(), z = (x) => String(x).padStart(2, '0'); raidRecoLogArr.push({ t: `${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`, v: RAID_RECO_VER, boss: raidState && raidState.bossName, hp: raidState && Math.round((Number(raidState.currentHp) || 0) / 1e8) / 10, ...e }); if (raidRecoLogArr.length > 500) raidRecoLogArr = raidRecoLogArr.slice(-500); localStorage.setItem(RAID_RECO_LOG_KEY, JSON.stringify(raidRecoLogArr)); } catch (err) {} }
+        function raidRecoLogText() { return raidRecoLogArr.map(e => `${e.t}｜v${e.v}｜${e.boss || ''} ${e.hp ?? ''}B｜${e.p}｜${e.ev}${e.why ? '｜' + e.why : ''}${e.ms != null ? '｜' + (e.ms / 1000).toFixed(1) + 's' : ''}`).join('\n'); }
+        function raidRecoLogShow() {
+            let ov = document.getElementById('raid-reco-log'); if (ov) ov.remove();
+            ov = document.createElement('div'); ov.id = 'raid-reco-log'; ov.style.cssText = 'position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; padding:12px;';
+            ov.innerHTML = `<div style="background:#fff; border-radius:12px; padding:10px; width:100%; max-width:720px; max-height:90vh; display:flex; flex-direction:column; gap:6px;"><div style="display:flex; gap:6px; align-items:center;"><b style="flex:1;">推薦重算紀錄（${raidRecoLogArr.length} 筆）</b><button id="rrl-copy">複製</button><button id="rrl-clear">清除</button><button id="rrl-close">關閉</button></div><textarea readonly style="flex:1; min-height:60vh; font-size:11px; font-family:monospace;"></textarea></div>`;
+            document.body.appendChild(ov); const ta = ov.querySelector('textarea'); ta.value = raidRecoLogText();
+            ov.querySelector('#rrl-copy').onclick = () => { ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (e) { document.execCommand('copy'); } };
+            ov.querySelector('#rrl-clear').onclick = () => { raidRecoLogArr = []; try { localStorage.removeItem(RAID_RECO_LOG_KEY); } catch (e) {} ta.value = ''; };
+            ov.querySelector('#rrl-close').onclick = () => { ov.remove(); if (location.hash === '#recolog') history.replaceState(null, '', location.pathname + location.search); };
+        }
+        window.addEventListener('hashchange', () => { if (location.hash === '#recolog') raidRecoLogShow(); });
+        window.addEventListener('load', () => { if (location.hash === '#recolog') setTimeout(raidRecoLogShow, 500); });
         function raidRecoReuse(name, sig, used, n, lvNow) {
-            const L = raidRecoLast.get(name + raidRecoModeKey()); if (!L || L.sig !== sig || !(L.rows && L.rows.length)) return null;   // 最佳、梭哈各存一份：切回算過的模式直接顯示   // 空的結果不沿用
+            const L = raidRecoLast.get(name + raidRecoModeKey()); raidRecoReuse.why = '';
+            if (!L || !(L.rows && L.rows.length)) { raidRecoReuse.why = '沒有上次的推薦'; return null; }
+            if (L.sig !== sig) { try { const a = JSON.parse(L.sig), b = JSON.parse(sig), nm = ['換王組數', '王', '禁打', '盤面層別', '打王階段', '下一輪', '瘋狂等', '已6肉體', '凱旋開關', '瘋狂開關', '6骨架', '6肉體等得到']; raidRecoReuse.why = '狀態變了：' + a.map((x, i) => JSON.stringify(x) !== JSON.stringify(b[i]) ? (nm[i] || i) + ' ' + JSON.stringify(x).slice(0, 60) + '→' + JSON.stringify(b[i]).slice(0, 60) : '').filter(Boolean).join('；'); } catch (e) { raidRecoReuse.why = '狀態變了'; } return null; }   // 最佳、梭哈各存一份：切回算過的模式直接顯示   // 空的結果不沿用
             const now = new Set(used || []); let rows;
             if (n === L.n && now.size === L.used.size && [...L.used].every(c => now.has(c))) rows = L.rows;   // 他沒出刀（別人出刀、血量小變）
             else if (n === L.n - 1 && now.size === L.used.size + 3 && [...L.used].every(c => now.has(c))) {   // 他照推薦打了其中一組
                 const add = [...now].filter(c => !L.used.has(c)).sort().join('+');
-                const k = L.rows.findIndex(x => (x.rawCards || x.cards).slice().sort().join('+') === add); if (k < 0) return null;   // 打的不是推薦裡的組：重算
+                const k = L.rows.findIndex(x => (x.rawCards || x.cards).slice().sort().join('+') === add); if (k < 0) { raidRecoReuse.why = '打的不是推薦裡的組：' + add; return null; }   // 打的不是推薦裡的組：重算
                 rows = L.rows.filter((x, i) => i !== k);
-            } else return null;
+            } else { raidRecoReuse.why = `刀數或用過的卡變了（上次剩 ${L.n} 刀、${L.used.size} 張；現在 ${n} 刀、${now.size} 張）`; return null; }
             // 部位吃不吃得下：這一輪的組（前 6 組、不含留給之後的瘋狂無效／凱旋行軍）打同一個部位的加起來，超過部位剩的血 1 成以上就重算
             const need = {}, needA = {};
             rows.slice(0, Math.max(RAID_ATTACKS_PER_CYCLE, n)).forEach(x => { if (x.voidLater || x.finLater || x.msLater || x.nextBoss) return; const tg = (x.targets || []).map(t => t.part).filter(Boolean); const d = (x.simDmg && x.simDmg.avg) || 0; if (!tg.length || !(d > 0)) return; const A = raidArmorDeck(x.rawCards || x.cards); tg.forEach(k => { need[k] = (need[k] || 0) + d / tg.length; if (A) needA[k] = (needA[k] || 0) + d / tg.length; }); });
@@ -13190,8 +13209,8 @@
                 || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0))   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
                 // 別人把盔甲打掉：某個部位從「盔甲夠打完整刀」變成「打到一半會破甲」（或反過來），模擬出來的傷害會變，要重算
                 || Object.entries(need).some(([k, d]) => { const a0 = (L.armorAt || {})[k] || 0, a1 = Math.max(0, Number((P[k] || {}).armor) || 0); return a0 > 0 && (d > a0) !== (d > a1); });
-            if (short) return null;
-            if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) return null;   // 要沿用的組，卡片等級變了
+            if (short) { raidRecoReuse.why = '部位剩的血吃不下，或別人把盔甲打掉（破甲時機變了）'; return null; }
+            if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) { raidRecoReuse.why = '卡片等級變了（換水晶／升級）'; return null; }   // 要沿用的組，卡片等級變了
             return rows;
         }
         const raidLogRecoStale = new Map(), raidRecoWritten = new Map();   // raidRecoWritten：玩家 → 最後寫上畫面的是第幾次計算   // 玩家 → 上一次算好的內容（狀態變了、正在重算）
@@ -13377,6 +13396,7 @@
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    const recoT0 = Date.now(); if (!reuse) raidRecoLogAdd({ p: r.player, ev: '重算', why: force ? '手動按推薦' : (raidRecoReuse.why || '') });
                     let held = false; if (!reuse) { raidRecoProgSet(r.player, '計算中 1%'); await raidRecoAcquire(r.player); held = true; }   // 要真的算：排隊（沿用的不用排）
                     // 以傷害為主（不強制擺出特殊牌組）：帶刺的晨星時機到了，最強的晨星組（配任意兩張）放進候選照傷害比；
                     //   剩 1～2 刀：還沒用的卡所有 3 張組合都算，最強的幾組放進候選（公會沒打過的組合也挑得到）
@@ -13477,7 +13497,7 @@
                         if (split && simPick && simPick.length) raidSplitPlan.set(r.player, { boss: raidState.bossName, n: n0, m: simPick.filter(x => !x.nextBoss).length });   // 記住這次排的「這隻王打幾組」，之後出刀照這個扣
                       }
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
-                    } finally { if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
+                    } finally { if (!reuse) raidRecoLogAdd({ p: r.player, ev: '算完', ms: Date.now() - recoT0 }); if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) return false; cs.forEach(c => seen.add(c)); return true; }); }   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）
                     if (simPick) {

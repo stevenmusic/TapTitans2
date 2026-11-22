@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 53;
+        const RAID_RECO_VER = 54;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12962,15 +12962,20 @@
         const raidNextSplitLast = new Map();
         const raidSplitPlan = new Map();   // 玩家 → { boss, n, m }：換王那輪排好的「這隻王打 m 組」（之後出刀照這個扣，不重新估）   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
         async function raidNextBossSplit(n, who) {
-            if (!raidState || !raidState.parts || raidNextRaidPending() || n < 1) return null;
+            if (!raidState || !raidState.parts || n < 1) return null;
+            /* 下一場還沒開打（預估）：一樣照第一輪全公會打得到多少，算第一隻王會不會在第一輪就死、要留幾組給第二隻王
+               （不然會把整輪 6 組都排給第一隻，連 6 骨架才打的凱旋行軍都排進去，但第一隻王早就死了） */
+            const pending = raidNextRaidPending();
             const killLeft = Number(raidState.currentHp) || 0; if (!(killLeft > 0)) return null;
             // 要打死：能打的部位剩的盔甲（要先拆掉才打得到肉體）＋ 離斬殺線剩的血
             const ban0 = new Set(raidBannedParts || []), armorLeft = Object.entries(raidState.parts).filter(([k]) => !ban0.has(k)).reduce((t, [, x]) => t + Math.max(0, Number(x.armor) || 0), 0);
             const left = killLeft + armorLeft;
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts).slice(0, 100);
+            const L0 = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts);
+            /* 平均每刀：打到一半用最近 100 刀；預估下一場第一輪用上一場第一輪的刀（上一場最後的刀多半是剩下的弱牌組，會低估很多，例 M-48 最後 100 刀平均 295M） */
+            const st0 = parseRaidSessionTs(sa), L = pending && st0 ? L0.filter(a => a.ts - st0 < CARD_USAGE_ROUND_MS) : L0.slice(0, 100);
             const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0)) return null;
-            const roundDmg = (raidGuildRoundLeft(sa).left || 0) * avg;
+            const gl = raidGuildRoundLeft(sa), roundDmg = (pending ? (gl.active || 0) * RAID_ATTACKS_PER_CYCLE : (gl.left || 0)) * avg;   // 預估的下一場：第一輪每個有在打的人都有 6 刀
             const last = who ? raidNextSplitLast.get(who) : null, lastM = last && last.boss === raidState.bossName && last.n === n ? last.m : 0;
             /* 已經排好「這隻王打 m 組」、之後他出刀了：照原本的分配扣掉打掉的刀數，不重新估（重新估每次都至少 1 組，打完分配的最後一組又會多排一組給這隻王） */
             const plan = who ? raidSplitPlan.get(who) : null, planOn = !!(plan && plan.boss === raidState.bossName && n < plan.n);
@@ -12982,7 +12987,8 @@
             else { if (n < 2) return null; m = Math.max(1, Math.min(n - 1, Math.round(raw)));
                 if (lastM && Math.abs(raw - lastM) < 0.8) m = lastM; }   // 跟上次差不到一組：維持上次的組數
             if (who) raidNextSplitLast.set(who, { boss: raidState.bossName, n, m });
-            const sr = typeof bossHpSeedRaid === 'function' ? bossHpSeedRaid() : null, cur = raidState.bossOrdinal || 0;
+            if (pending) await raidSimEnv();   // 預估的下一場：先載好涵蓋那天的 seed
+            const sr = pending ? raidPreviewSeedRaid() : typeof bossHpSeedRaid === 'function' ? bossHpSeedRaid() : null, cur = raidState.bossOrdinal || 0;   // 預估的下一場：用下一場那一關的出王順序（bossHpSeedRaid 是上一場的）
             const name = sr && cur ? sr.seq[cur] : null, t = name && sr.titans.find(x => x.n === name); if (!t) return null;   // 最後一隻：沒有下一隻
             const eid = RAID_ENEMY_INDEX[name] ? 'Enemy' + RAID_ENEMY_INDEX[name] : null, tt = eid && (apiTitanTarget || []).find(x => x.enemy_id === eid);
             const bans = tt && Array.isArray(tt.state) ? tt.state.filter(x => String(x.state) === '1').map(x => x.id) : ticketBestBansAuto(t, sr);   // 公會在遊戲裡標的禁打；沒有就用網頁算的最佳禁法
@@ -13377,7 +13383,7 @@
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
-                    const split0 = raidNextOn() && !nextRound ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX), r.player).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
+                    const split0 = raidNextOn() && (!nextRound || predicted) ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX), r.player).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
                     const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
@@ -15656,6 +15662,11 @@
             const LOCS = ['Head', 'ChestUpper', 'ArmUpperLeft', 'ArmUpperRight', 'HandLeft', 'HandRight', 'LegUpperLeft', 'LegUpperRight'];
             const out = {}; LOCS.forEach((l, i) => { if (Array.isArray(ms[i])) out[l] = ms[i]; });
             return Object.keys(out).length ? out : null;
+        }
+        function raidPreviewSeedRaid() {   // 下一場（預告或預估）那一關的 seed 資料：出王順序、每隻王的部位
+            if (!raidPreview || !raidPreview.level) return null; const at = raidPreview.startAt || new Date().toISOString();
+            const sd = raidSeedCovers(ticketCalc.seed, at) ? ticketCalc.seed : raidSeedAtCache.get(at) || null;
+            return sd ? sd.raids.find(r => r.t === 9999 && r.l === Number(raidPreview.level)) || null : null;
         }
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();

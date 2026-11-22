@@ -1719,7 +1719,8 @@ function buildRaidPreview(payload) {
     banned: target && Array.isArray(target.state) ? target.state.filter(x => String(x.state) === '1').map(x => x.id) : [],
     curse: (titan.cursed_debuffs || []).map(d => ({ type: d.bonus_type, amount: Number(d.bonus_amount) || 0 })),
     buff: (raid.area_buffs || []).map(b => PREVIEW_BUFF_FROM_API[b.bonus_type]).find(Boolean) || null,
-    startAt: payload.start_at, level: raid.level || null
+    startAt: payload.start_at, level: raid.level || null,
+    morale: payload.morale && Number(payload.morale.bonus_amount) > 0 ? Number(payload.morale.bonus_amount) : null   // 下一場的士氣（公會用了門票會變高；網頁預告期間照這個算推薦）
   };
 }
 
@@ -1737,6 +1738,7 @@ function watcherHandleRaidSnapshot(payload, event) {
         pv.bansByName = watcherPreview.bansByName || {};
         if (pv.bansByName[pv.name]) pv.banned = pv.bansByName[pv.name].slice();
       }
+      if (pv.morale == null && watcherPreview && watcherPreview.raidId === pv.raidId) pv.morale = watcherPreview.morale;   // 這份沒帶士氣：沿用同一場之前記到的
       watcherPreview = pv;
     }
     // 下一場預告也帶了每隻王的部位（都還沒被打過）：存下來，開打前就能算整場血量

@@ -425,7 +425,27 @@ function buildAttackContext() {
     Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hp[loc] = Math.max(0, Number(p.armor) || 0) + Math.max(0, Number(p.body) || 0); });
     const hpAB = {};   // 盔甲、肉體分開（模擬一刀之內破甲、打成骨架用）
     Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hpAB[loc] = [Math.max(0, Number(p.armor) || 0), Math.max(0, Number(p.body) || 0)]; });
-    return { v: 1, curse, cursed: cursedParts.length, cursedParts, layers, hp, hpAB };
+    const hpMax = {};   // 盔甲、肉體上限（腐敗突擊照目前這一層缺血比例算）
+    Object.keys(status).forEach((loc) => { const p = status[loc] || {}; hpMax[loc] = [Math.max(0, Number(p.armorMax) || 0), Math.max(0, Number(p.bodyMax) || 0)]; });
+    /* 同一時間別人也在打：攻擊事件是一刀打完（約 30 秒）才收到，這段時間裡先打完的別人的刀已經扣掉了部位血量，
+       這刀「出刀前」其實比現在多。把這刀打的期間（往前 30 秒＋場次多的秒數）內結束的別人的刀，照重疊的比例加回去
+       （M-48：盔甲記太少的 4 刀都是這樣，例：快來加入 頭記 460M、實際打在盔甲 678M，前 40 秒別人打了 448M） */
+    let addBack = false;
+    try {
+      const now = Date.now(), DUR = (30 + (Number(simEnvBuffs().extraSec) || 0)) * 1000;
+      (watcherRecentAtk || []).forEach(e => {
+        if (e.enemy !== watcherCurrentEnemyId) return;
+        const fr = Math.min(1, (e.t - (now - DUR)) / DUR); if (!(fr > 0)) return;
+        (e.parts || []).forEach(pp => { const h = hpAB[pp.part], mx = hpMax[pp.part] || []; if (!h) return; const add = (Number(pp.damage) || 0) * fr;
+          if (pp.layer === 'armor') { h[0] = Math.min(h[0] + add, mx[0] > 0 ? mx[0] : Infinity); addBack = true; }
+          else if (pp.layer === 'body') { h[1] = Math.min(h[1] + add, mx[1] > 0 ? mx[1] : Infinity); addBack = true; } });
+      });
+    } catch (e) {}
+    if (addBack) {   // 加回去之後層別、剩血跟著改
+      cursedParts.length = 0;
+      Object.keys(hpAB).forEach((loc) => { const [a, b] = hpAB[loc]; const layer = a > 0 ? 'armor' : (b > 0 ? 'body' : 'skeleton'); layers[loc] = layer; if (layer === 'armor' && (status[loc] || {}).cursed) cursedParts.push(loc); hp[loc] = a + b; });
+    }
+    return { v: 1, curse, cursed: cursedParts.length, cursedParts, layers, hp, hpAB, hpMax, ...(addBack ? { ov: 1 } : {}) };
   } catch (e) {
     return null;
   }
@@ -1694,6 +1714,7 @@ function watcherSubscribe() {
 // 這段時間畫面顯示下一場的第 1 隻王（部位血量、詛咒甲、詛咒類型、公會標的禁打、加成），不動目前這場的王狀態；
 // 下一場開打（收到 raid_started_at 或攻擊事件）就清掉
 let watcherPreview = null;
+let watcherRecentAtk = [];   // 最近 90 秒收到的刀（各部位各層的傷害）：算下一刀出刀前的狀態時，把同時間打完的別人的刀加回去
 function buildRaidPreview(payload) {
   const raid = payload.raid || {};
   const seq = Array.isArray(raid.spawn_sequence) ? raid.spawn_sequence : [];
@@ -1908,6 +1929,7 @@ function watcherHandleAttack(payload) {
     totalDamage
   };
   insertAttack(attackEntry);
+  try { const now = Date.now(); watcherRecentAtk = watcherRecentAtk.filter(e => now - e.t < 90 * 1000); watcherRecentAtk.push({ t: now, enemy: watcherCurrentEnemyId, parts: parts.map(p => ({ part: p.part, layer: p.layer, damage: p.damage })) }); } catch (e) {}   // 給下一刀算「出刀前」狀態用（同時間別人的刀）
   if (attackCtx) saveAttackContext(attackEntry, attackCtx);   // 攻擊紀錄照舊先寫；這個只是另外存的狀態，出錯不影響上面
   try { simExp.enqueue(attackEntry, simEnvLive(attackCtx)); } catch (e) {}   // 期望傷害（打法／配卡）背景模擬，不影響攻擊紀錄
 }
@@ -1940,7 +1962,7 @@ function simEnvLive(ctx) {
   });
   const c0 = ctx.curse && ctx.curse[0];
   const curse = c0 ? { type: /^Burst/.test(c0.type) ? 'Burst' : /^Afflict/.test(c0.type) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0.amount) || 0) } : null;
-  return { ...simEnvBuffs(), board, curse, hp: ctx.hp || null, hpAB: ctx.hpAB || null };
+  return { ...simEnvBuffs(), board, curse, hp: ctx.hp || null, hpAB: ctx.hpAB || null, hpMax: ctx.hpMax || null };
 }
 
 function handleWatcherRaidEnd(reason) {

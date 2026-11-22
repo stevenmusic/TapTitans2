@@ -11,10 +11,11 @@ const LOC_I = Object.fromEntries(LOCS.map((l, i) => [l, i])), KIND_I = { tap: 0,
 function rng(seed) { let s = seed >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = (s ^ (s >>> 16)) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
 // P：全域係數（校正用）
-const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, cbSands1: 0.68, cbSands4: 1.85, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, burstJitter: 0.9, k: {} };
+const P0 = { burst: 1.17, aff: 1.0, weakenDur: 3, decayMissing: 0.35, decayK: 0.58, decayCap: 0.7, potionShare: 0.25, totem: 1, additive: true, boostAdd: true, runeSelf: true, totemExtra: true, totemMode: "add", sandsSkip: ["CosmicBarb"], fuseReset: true, cbSands1: 0.68, cbSands4: 1.85, plagueSpread: true, haymakerBonus: true, whipOpen: true, totemLambda: 35, burstJitter: 0.9, k: {} };
 
 /* opt:
    deck: [[id, lv]]
+   miss: { loc: 缺失比例 | [盔甲缺失比例, 肉體缺失比例] }（可省略：腐敗突擊照部位目前這一層少了幾成算，沒給就用 P.decayMissing）
    board: { loc: { layer: 'armor'|'body'|'skeleton'|'banned', cursed: bool } }（禁打的詛咒甲：layer 'banned', cursed true）
    targets: [loc]（這組牌點擊的部位，輪流打）
    taps, dur, tau（每下點擊基礎傷害）, mirror（0～0.35）, curse: { type: 'Burst'|'Afflicted'|'Body', per }, buff: { burstChance, burstDamage, affChance, affDamage, all }
@@ -34,6 +35,8 @@ function simAttack(opt, P = P0) {
   if (hpL) for (const l in opt.hp) { const h = opt.hp[l]; if (h && board[l] && (board[l].layer === 'armor' || board[l].layer === 'body')) { hpL[l] = [Math.max(0, +h[0] || 0), Math.max(0, +h[1] || 0)];
     if (board[l].layer === 'armor' && !(hpL[l][0] > 0)) board[l] = { layer: hpL[l][1] > 0 ? 'body' : 'skeleton', cursed: false };   // 盔甲已經打光（例如前面的組打掉了）：一開始就是肉體
     else if (board[l].layer === 'body' && !(hpL[l][1] > 0)) board[l] = { layer: 'skeleton', cursed: false }; } }
+  // opt.miss：{ 部位: 目前這一層缺失比例 0～1 }，或 [盔甲缺失比例, 肉體缺失比例]（一刀之內破甲後改用肉體的）；腐敗突擊用
+  const missOf = (l) => { const x = opt.miss ? opt.miss[l] : null; if (x == null) return null; const v = Array.isArray(x) ? (board[l] && board[l].layer === 'body' ? x[1] : x[0]) : x; return Number.isFinite(+v) ? +v : null; };
   const targets = (opt.targets && opt.targets.length) ? opt.targets : LOCS.filter(l => board[l] && board[l].layer !== 'banned' && board[l].layer !== 'skeleton');
   const layerOf = (l) => board[l] ? board[l].layer : 'body';
   let cursedOpenN = LOCS.filter(l => board[l] && board[l].cursed && (board[l].layer === 'armor' || board[l].layer === 'banned')).length; const cursedOpen = () => cursedOpenN;   // 盤面只在部位打破時變：重算一次
@@ -72,7 +75,7 @@ function simAttack(opt, P = P0) {
     const add = (v) => parts.push(v);
     if (has.has('BurstBoost') && kind === 'burst') add(A('BurstBoost', effLv('BurstBoost', t, loc)));
     if (has.has('MentalFocus') && kind === 'aff') add(A('MentalFocus', effLv('MentalFocus', t, loc)));
-    if (has.has('TriangleSupport')) { if (kind === 'burst' && hasAffCard) add(A('TriangleSupport', effLv('TriangleSupport', t, loc))); if (kind === 'aff' && hasBurstCard) add(A('TriangleSupport', effLv('TriangleSupport', t, loc))); }
+    if (has.has('TriangleSupport') && (kind === 'burst' || kind === 'aff')) add(A('TriangleSupport', effLv('TriangleSupport', t, loc)));   // 三角支援：苦痛、爆裂傷害都加，不用另外湊爆裂／苦痛卡（謎樣人物 暗影＋氣體＋三角支援 實際 459M，舊規則只算 221M）
     if (has.has('LimbSupport') && isLimb(loc)) add(A('LimbSupport', effLv('LimbSupport', t, loc)));
     if (has.has('ExecutionersAxe') && (isHead(loc) || isTorso(loc))) add(A('ExecutionersAxe', effLv('ExecutionersAxe', t, loc)));
     if (has.has('InnerTruth') && (isHead(loc) || isTorso(loc))) add(A('InnerTruth', effLv('InnerTruth', t, loc)));
@@ -127,6 +130,8 @@ function simAttack(opt, P = P0) {
     if (b.layer === 'skeleton') return 0;
     const i = b.layer === 'armor' ? 0 : 1;
     if (d < h[i]) { h[i] -= d; return d; }
+    // P.layerFixed：整刀照出刀時的層別（遊戲把破甲後的傷害也記成打在盔甲，盔甲加成整刀有效）：盔甲打完，剩下的傷害繼續扣肉體，層別不變
+    if (P.layerFixed && i === 0) { const a = h[0]; h[0] = 0; const bb = Math.min(d - a, h[1]); h[1] -= bb; return a + bb; }
     const got = h[i]; h[i] = 0;
     board[loc] = { layer: i === 0 ? (h[1] > 0 ? 'body' : 'skeleton') : 'skeleton', cursed: false };   // 這一下剩下的部分不再往下打（下一下才照新的層算）
     nBody = LOCS.filter(l => realLayer(l) === 'body').length; nSkel = LOCS.filter(l => realLayer(l) === 'skeleton').length; nArmor = LOCS.filter(l => realLayer(l) === 'armor').length;
@@ -254,7 +259,8 @@ function simAttack(opt, P = P0) {
           if (P.plagueMode === 'otherStacks') n = Object.keys(stacks[l]).filter(c => c !== 'PlagueAttack').reduce((x, c) => x + liveCount(l, c, t), 0) + ap;
           m = 1 + 0.1467 * Math.min(P.plagueCap || 6, n);
         }
-        if (id === 'DecayingAttack') m = P.decayMissing;
+        // 腐敗突擊：部位缺失血量越多傷害越高。有 opt.miss（這個部位目前這一層少了幾成）就照缺血比例算（最多算到 decayCap），沒有就用固定的 decayMissing（舊行為）
+        if (id === 'DecayingAttack') { const ms = missOf(l); m = ms != null ? (P.decayK ?? 1) * Math.min(P.decayCap ?? 0.7, Math.max(0, ms)) : P.decayMissing; }
         let dmg = 0;
         if (id === 'Disease') dmg = liveN * (1 + 0.13 * (t - (diseaseSince[l] != null ? diseaseSince[l] : t))); else dmg = liveN;
         if (hpL && board[l] && board[l].layer === 'skeleton') continue;   // 變骨架的部位：苦痛沒傷害

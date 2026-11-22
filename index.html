@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 54;
+        const RAID_RECO_VER = 57;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12767,7 +12767,7 @@
                 const big = banned.length <= 1 ? open.slice().sort((a, b) => (P[b].a + P[b].b) - (P[a].a + P[a].b))[0] : null;
                 const order = armorParts.slice().sort((a, b) => (cursedSet.has(b) - cursedSet.has(a)) || (cursedSet.has(a) ? P[a].a - P[b].a : ((a === big) - (b === big)) || P[b].a - P[a].a));
                 const needArmor = order.slice(0, needN).reduce((t, k) => t + P[k].a, 0);
-                const dmg = (leftNow + (nextRound ? nextAdd : 0)) * avg;
+                const capV = raidRoundCap(nextRound && !raidNextRaidPending()), dmg = capV ? capV.dmg : (leftNow + (nextRound ? nextAdd : 0)) * avg;   // 預估的下一場：只算第一輪（raidRoundCap）
                 const need = needArmor > 0 ? Math.ceil(needArmor / avg) : 0;
                 return dmg >= needArmor ? { ok: true, n: 6, need: nextRound ? Math.max(0, need - leftNow) : need, left: nextRound ? nextAdd : leftNow, needArmor } : { ok: false, n: 6 - needN, left: nextRound ? nextAdd : leftNow, needArmor, dmg };
             }
@@ -12971,11 +12971,8 @@
             const ban0 = new Set(raidBannedParts || []), armorLeft = Object.entries(raidState.parts).filter(([k]) => !ban0.has(k)).reduce((t, [, x]) => t + Math.max(0, Number(x.armor) || 0), 0);
             const left = killLeft + armorLeft;
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            const L0 = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts);
-            /* 平均每刀：打到一半用最近 100 刀；預估下一場第一輪用上一場第一輪的刀（上一場最後的刀多半是剩下的弱牌組，會低估很多，例 M-48 最後 100 刀平均 295M） */
-            const st0 = parseRaidSessionTs(sa), L = pending && st0 ? L0.filter(a => a.ts - st0 < CARD_USAGE_ROUND_MS) : L0.slice(0, 100);
-            const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0)) return null;
-            const gl = raidGuildRoundLeft(sa), roundDmg = (pending ? (gl.active || 0) * RAID_ATTACKS_PER_CYCLE : (gl.left || 0)) * avg;   // 預估的下一場：第一輪每個有在打的人都有 6 刀
+            const cap = raidRoundCap(false); if (!cap) return null;
+            const avg = cap.avg, roundDmg = cap.dmg;   // 這輪全公會還打得到多少（raidRoundCap：打到一半、預估下一場用同一個算法）
             const last = who ? raidNextSplitLast.get(who) : null, lastM = last && last.boss === raidState.bossName && last.n === n ? last.m : 0;
             /* 已經排好「這隻王打 m 組」、之後他出刀了：照原本的分配扣掉打掉的刀數，不重新估（重新估每次都至少 1 組，打完分配的最後一組又會多排一組給這隻王） */
             const plan = who ? raidSplitPlan.get(who) : null, planOn = !!(plan && plan.boss === raidState.bossName && n < plan.n);
@@ -13099,6 +13096,23 @@
         }
         // 這輪（或到下一輪結束）全公會剩下的傷害，夠不夠把最厚以外的部位清成骨架
         // 全公會這一輪還剩幾刀：這場出過刀的人照各自剩幾刀；還沒出刀、但上一場有打的人當作這輪還有 6 刀（剛開打時大部分人都還沒出刀）
+        /* 全公會這輪（nextRound：到下一輪結束）還打得到多少傷害——換王組數、等得到 6 肉體、6 骨架都用這一個算法：
+           - 打到一半：這輪剩的刀數（下一輪再加每人 6 刀）× 最近 100 刀平均
+           - 預估的下一場（還沒開打）：上一場第一輪實際出的刀數 × 上一場第一輪平均每刀 × 士氣換算（每刀傷害跟 1＋士氣成正比）。
+             不用「人數×6」（有人打不滿：M-48 49 人第一輪只出 275 刀），也不用上一場最後的刀（剩下的弱牌組，平均低很多） */
+        function raidRoundCap(nextRound) {
+            const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt; if (!sa) return null;
+            const L0 = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.totalDamage > 0).sort((a, b) => b.ts - a.ts);
+            const mean = (l) => l.length ? l.reduce((t, a) => t + a.totalDamage, 0) / l.length : 0;
+            if (raidNextRaidPending()) {
+                const st = parseRaidSessionTs(sa), r1 = st ? L0.filter(a => a.ts - st < CARD_USAGE_ROUND_MS) : []; const avg0 = mean(r1); if (!(avg0 > 0)) return null;
+                const snap = bossHpSnapshot || {}, mPrev = snap.raid_started_at === sa && snap.morale && Number(snap.morale.bonus_amount) > 0 ? Number(snap.morale.bonus_amount) : 0.3, mNew = raidPreview && raidPreview.morale > 0 ? raidPreview.morale : RAID_PREVIEW_MORALE;
+                const avg = avg0 * (1 + mNew) / (1 + mPrev); return { attacks: r1.length, avg, dmg: r1.length * avg, pending: true };
+            }
+            const avg = mean(L0.slice(0, 100)); if (!(avg > 0)) return null;
+            const { left, active } = raidGuildRoundLeft(sa), att = left + (nextRound ? active * RAID_ATTACKS_PER_CYCLE : 0);
+            return { attacks: att, avg, dmg: att * avg, left, active };
+        }
         function raidGuildRoundLeft(sa) {
             const prevSa = serverSessionsSummary && serverSessionsSummary[1] && serverSessionsSummary[1].startedAt;
             const prevWho = new Set(); const prevAtk = prevSa && sessionAttacksCache.get(prevSa);
@@ -13114,9 +13128,8 @@
         function raidSkelReach(nextRound) {
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa).sort((a, b) => b.ts - a.ts).slice(0, 100);
-            const avg = L.length ? L.reduce((t, a) => t + (a.totalDamage || 0), 0) / L.length : 0; if (!(avg > 0) || !raidState || !raidState.parts) return null;
-            let { left, active } = raidGuildRoundLeft(sa);
-            if (nextRound) left += active * RAID_ATTACKS_PER_CYCLE;
+            const cap = raidRoundCap(nextRound && !raidNextRaidPending()); if (!cap || !raidState || !raidState.parts) return null;   // 預估的下一場：只算第一輪
+            const avg = cap.avg, left = cap.attacks;
             const bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((raidState.parts[k] || {}).armor) || 0) + Math.max(0, Number((raidState.parts[k] || {}).body) || 0);
             const open = Object.keys(raidState.parts).filter(k => !bn.includes(k) && hp(k) > 0), big = open.slice().sort((a, b) => hp(b) - hp(a))[0];
             const need = open.filter(k => k !== big).reduce((t, k) => t + hp(k), 0);
@@ -13379,7 +13392,7 @@
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
                     const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
-                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = (raidBannedParts || []).length > 2 ? false : raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false ? false : vPref === true ? hasVoid && !sixNow : n0 <= 1 ? false : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && (!!(skel && skel.ok) || raidRecoFinPref.get(r.player) === true)));   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
+                    const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = (raidBannedParts || []).length > 2 ? false : raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false || n0 <= 1 ? false : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && !!(skel && skel.ok)));   /* 「最佳」只是允許保留，還是要這輪（預估的下一場：第一輪）等得到 6 肉體才留；梭哈（OFF）不留 */   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
@@ -13474,7 +13487,7 @@
                         // 凱旋行軍：適合的人（照他自己的卡片等級，留一組後整輪合計比較高）留一組，等 6 骨架打最厚的部位
                         const finPref = raidRecoFinPref.has(r.player) ? raidRecoFinPref.get(r.player) : null;   // null＝自動
                         const nP = Math.min(infoP.remaining || 0, RAID_ATTACKS_MAX);
-                        if (simPick && !split && finPref !== false && nP >= 2 && (raidBannedParts || []).length <= 1 && (finPref === true || (skel && skel.ok))) {
+                        if (simPick && !split && finPref !== false && nP >= 2 && (raidBannedParts || []).length <= 1 && (skel && skel.ok)   /* 「最佳」只是允許保留：一樣要這輪等得到 6 骨架（預估的下一場：第一輪） */) {
                             const F = await raidSimFinisherBest(r, infoP, data).catch(() => null);
                             if (F) {   /* 凱旋組前 3 名都試（跟晨星、瘋狂一樣：最強那組撞卡時，換一組合計可能更高），取合計最高 */
                                 const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0); let bestF = null;

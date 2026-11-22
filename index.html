@@ -15408,8 +15408,12 @@
                 .filter(a => { if (!a || a.placeholder || !ss.includes(a.raidStartedAt) || !a.cards || a.cards.length !== 3 || a.imported) return false; const k = raidSimExpKey(a); if (seenK.has(k)) return false; seenK.add(k); return true; })
                 .sort((x, y) => (y.attackDatetime || '').localeCompare(x.attackDatetime || ''));
             const ebOf = (a) => { const k = raidSimExpKey(a), sx = raidSimExpMap.get(k); if (sx && sx.v >= 3 && sx.by) return { t: sx.t || 0, b: sx.by, v: sx.v }; const e = raidCsExpBy.get(k); return e ? { ...e, v: 0 } : null; };
+            /* 伺服器升版只重算用到改動卡片的刀（跟 raid-relay/simexp.js 的 VER_CARDS 一樣），其他刀版本號不變但結果一樣：
+               只排除「版本比較舊、而且用到之後改過的卡」的刀（還是舊模擬器的應打） */
+            const VER_CARDS = { 5: ['DecayingAttack'], 6: ['PlagueAttack'], 7: ['InnerTruth'], 8: ['TriangleSupport'] };
             let vMax = 0; atks.forEach(a => { const e = ebOf(a); if (e && e.v > vMax) vMax = e.v; });
-            const ebMap = new Map(); atks.forEach(a => { const e = ebOf(a); if (e && (e.v >= vMax || !vMax)) ebMap.set(raidSimExpKey(a), e); });
+            const stale = (a, v) => { if (!(v >= 3)) return true; const cs = a.cards.map(c => c.name); for (let x = v + 1; x <= vMax; x++) if ((VER_CARDS[x] || []).some(c => cs.includes(c))) return true; return false; };
+            const ebMap = new Map(); atks.forEach(a => { const e = ebOf(a); if (e && (!vMax || !stale(a, e.v))) ebMap.set(raidSimExpKey(a), e); });
             const cr = {}; let n = 0;
             atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; n++;
                 Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (!(sim > 0) || !(act > 0)) return; const x = cr[c] || (cr[c] = []); if (x.length < 40) x.push(act / sim); }); });

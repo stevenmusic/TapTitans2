@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 58;
+        const RAID_RECO_VER = 59;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15422,10 +15422,15 @@
             tr.sort((a, b) => a - b); let tap = tr.length >= 20 ? tr[tr.length >> 1] : 1; tap = Math.abs(tap - 1) >= 0.02 ? Math.round(Math.max(0.85, Math.min(1.2, tap)) * 1000) / 1000 : 1;
             const card = {}; Object.entries(cr).forEach(([c, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) card[c] = Math.round(Math.max(0.8, Math.min(1.25, m)) * 1000) / 1000; });
             // 剩下的整組偏差（卡片校正之後）：只乘在顯示的應打
-            const g = {}, gWho = {};
+            /* 整組偏差：這一場有 4 刀以上、2 個人以上打過，就照這一場的（最接近現在的狀況）；不夠才用兩場合起來的（6 刀以上、2 個人以上）。
+               兩場一律合起來會把這一場的偏差沖淡（例：星辰回聲＋重拳＋圖騰之力 M-48 11 刀 94%，合上一場只修一半） */
+            const g = {}, gWho = {}, gc = {}, gcWho = {};
             atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; const adj = (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(adj > 0)) return;
-                const k = raidDeckKeyOf(a.cards); const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) { x.push(a.totalDamage / adj); (gWho[k] || (gWho[k] = new Set())).add(a.playerCode || a.player); } });
-            const deck = {}; Object.entries(g).forEach(([k, x]) => { if (x.length < RAID_DECK_CAL_MIN || (gWho[k] || new Set()).size < 2) return;   /* 至少 2 個人打過（只有一個人的是他自己的狀況，不是牌組的偏差） */ x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
+                const k = raidDeckKeyOf(a.cards), who = a.playerCode || a.player, r = a.totalDamage / adj;
+                const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) { x.push(r); (gWho[k] || (gWho[k] = new Set())).add(who); }
+                if (a.raidStartedAt === ss[0]) { const y = gc[k] || (gc[k] = []); if (y.length < RAID_DECK_CAL_N) { y.push(r); (gcWho[k] || (gcWho[k] = new Set())).add(who); } } });
+            Object.keys(g).forEach(k => { if ((gc[k] || []).length >= 4 && (gcWho[k] || new Set()).size >= 2) { g[k] = gc[k]; gWho[k] = gcWho[k]; g[k].cur = true; } });
+            const deck = {}; Object.entries(g).forEach(([k, x]) => { if ((!x.cur && x.length < RAID_DECK_CAL_MIN) || (gWho[k] || new Set()).size < 2) return;   /* 至少 2 個人打過（只有一個人的是他自己的狀況，不是牌組的偏差） */ x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
             return { card, deck, tap };
         }
         // 攻擊紀錄某一刀顯示的應打：原始公式的分卡模擬，乘上每張卡的校正，再乘剩下的整組偏差

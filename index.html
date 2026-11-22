@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 50;
+        const RAID_RECO_VER = 51;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13193,7 +13193,7 @@
         function raidRecoReuse(name, sig, used, n, lvNow) {
             const L = raidRecoLast.get(name + raidRecoModeKey()); raidRecoReuse.why = '';
             if (!L || !(L.rows && L.rows.length)) { raidRecoReuse.why = '沒有上次的推薦'; return null; }
-            if (L.sig !== sig) { try { const a = JSON.parse(L.sig), b = JSON.parse(sig), nm = ['換王組數', '王', '禁打', '盤面層別', '打王階段', '下一輪', '瘋狂等', '已6肉體', '凱旋開關', '瘋狂開關', '6骨架', '6肉體等得到']; raidRecoReuse.why = '狀態變了：' + a.map((x, i) => JSON.stringify(x) !== JSON.stringify(b[i]) ? (nm[i] || i) + ' ' + JSON.stringify(x).slice(0, 60) + '→' + JSON.stringify(b[i]).slice(0, 60) : '').filter(Boolean).join('；'); } catch (e) { raidRecoReuse.why = '狀態變了'; } return null; }   // 最佳、梭哈各存一份：切回算過的模式直接顯示   // 空的結果不沿用
+            if (L.sig !== sig) { try { const a = JSON.parse(L.sig), b = JSON.parse(sig), nm = ['換王組數', '王', '禁打', '盤面層別', '打王階段', '下一輪', '瘋狂等', '已6肉體', '凱旋開關', '瘋狂開關', '6骨架', '6肉體等得到', '加成／詛咒']; raidRecoReuse.why = '狀態變了：' + a.map((x, i) => JSON.stringify(x) !== JSON.stringify(b[i]) ? (nm[i] || i) + ' ' + JSON.stringify(x).slice(0, 60) + '→' + JSON.stringify(b[i]).slice(0, 60) : '').filter(Boolean).join('；'); } catch (e) { raidRecoReuse.why = '狀態變了'; } return null; }   // 最佳、梭哈各存一份：切回算過的模式直接顯示   // 空的結果不沿用
             const now = new Set(used || []); let rows;
             if (n === L.n && now.size === L.used.size && [...L.used].every(c => now.has(c))) rows = L.rows;   // 他沒出刀（別人出刀、血量小變）
             else if (n === L.n - 1 && now.size === L.used.size + 3 && [...L.used].every(c => now.has(c))) {   // 他照推薦打了其中一組
@@ -13392,7 +13392,7 @@
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
                     const split0 = raidNextOn() && !nextRound ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX), r.player).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
-                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok)]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
@@ -15655,6 +15655,8 @@
             return out;
         }
         const RAID_PREVIEW_MORALE = 0.5;   // 下一場還沒開打（遊戲還沒給士氣）：照士氣 50% 預估（公會會用門票）；開打後照遊戲實際的士氣
+        const raidSeedAtCache = new Map();
+        function raidSeedCovers(sd, at) { if (!sd || !sd.valid_from || !sd.expire_at) return false; const z = (x) => Date.parse(x + (/Z$/.test(x) ? '' : 'Z')), t = Date.parse(at); return z(sd.valid_from) <= t && t <= z(sd.expire_at); }
         async function raidSimEnv() {
             if (!bossHpSnapshot && !bossHpSnapshotTried) await loadBossHpSnapshot();
             const snap = bossHpSnapshot || {};
@@ -15684,7 +15686,13 @@
                 else if (b.bonus_type === 'RaidAttackDuration') extraSec = a;
             });
             // 顯示的是下一場（遊戲預告或預估的）：加成照下一場的 seed，不是這一場的
-            const pvRaid = raidPreview && raidPreview.level && ticketCalc.seed ? ticketCalc.seed.raids.find(r => r.t === 9999 && r.l === Number(raidPreview.level)) : null;
+            /* seed 每週一份：網頁開著跨週時，記憶體裡的 ticketCalc.seed 還是上一週的，同一關的加成會拿到上一週的。
+               照下一場開打的時間（沒有就用現在）找涵蓋那天的 seed，不是那一份就照日期重抓一次（存起來，同一場只抓一次） */
+            let pvSeed = ticketCalc.seed;
+            if (raidPreview && raidPreview.level) { const at = raidPreview.startAt || new Date().toISOString();
+                if (!raidSeedCovers(pvSeed, at)) { pvSeed = raidSeedAtCache.get(at) || null;
+                    if (!pvSeed) { pvSeed = await ticketSeedFetch(at).catch(() => null); if (pvSeed) { raidSeedAtCache.set(at, pvSeed); if (raidSeedCovers(pvSeed, new Date().toISOString())) ticketCalc.seed = pvSeed; } } } }
+            const pvRaid = raidPreview && raidPreview.level && pvSeed ? pvSeed.raids.find(r => r.t === 9999 && r.l === Number(raidPreview.level)) : null;
             if (pvRaid) { Object.keys(buff).forEach(k => delete buff[k]); const x = raidBuffsOfRaid(pvRaid); Object.assign(buff, x.buff); extraSec = x.extraSec; }
             // 首頁模擬畫面：加成用模擬板選的那一種
             if (raidSimActive) {

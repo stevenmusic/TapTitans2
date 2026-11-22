@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 57;
+        const RAID_RECO_VER = 58;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15400,21 +15400,28 @@
         // 每張卡的滾動校正：這場每張卡最近 40 刀「實際卡片傷害 ÷ 原始公式模擬的卡片傷害」中位數（至少 10 刀、偏差 3% 以上、0.8～1.25），乘進那張卡的係數（挑牌組時照樣照個人等級比）
         let raidCardKBase = null, raidCardCal = {}, raidTapCal = 1;   // raidTapCal：點擊傷害的滾動校正（實際點擊 ÷ 公式點擊，最近 100 刀中位數）
         function raidDeckCalCompute() {
-            const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
-            const atks = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === latest && a.cards && a.cards.length === 3 && !a.imported)
+            /* 校正資料：這一場＋上一場（新的優先）。只用這一場的話，剛開打時刀數不夠（不到 50 刀就不校正）、每組牌組也湊不到 6 刀，
+               推薦、牌組頁、攻擊紀錄的應打會在開打前後跳一次；兩場合起來刀數夠，牌組偏差也看得出來（例：瘟疫＋變質氣體各變體單場都不到 6 刀）。
+               只用伺服器最新版模擬器算的刀（v 最大的；舊版的應打跟現在的模擬器不一樣，不能拿來校正） */
+            const ss = (serverSessionsSummary || []).slice(0, 2).map(x => x && x.startedAt).filter(Boolean); if (!ss.length) return null;
+            const seenK = new Set(), atks = [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...ss.flatMap(sa => sessionAttacksCache.get(sa) || [])]
+                .filter(a => { if (!a || a.placeholder || !ss.includes(a.raidStartedAt) || !a.cards || a.cards.length !== 3 || a.imported) return false; const k = raidSimExpKey(a); if (seenK.has(k)) return false; seenK.add(k); return true; })
                 .sort((x, y) => (y.attackDatetime || '').localeCompare(x.attackDatetime || ''));
+            const ebOf = (a) => { const k = raidSimExpKey(a), sx = raidSimExpMap.get(k); if (sx && sx.v >= 3 && sx.by) return { t: sx.t || 0, b: sx.by, v: sx.v }; const e = raidCsExpBy.get(k); return e ? { ...e, v: 0 } : null; };
+            let vMax = 0; atks.forEach(a => { const e = ebOf(a); if (e && e.v > vMax) vMax = e.v; });
+            const ebMap = new Map(); atks.forEach(a => { const e = ebOf(a); if (e && (e.v >= vMax || !vMax)) ebMap.set(raidSimExpKey(a), e); });
             const cr = {}; let n = 0;
-            atks.forEach(a => { const eb = raidCsExpBy.get(raidSimExpKey(a)); if (!eb) return; n++;
+            atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; n++;
                 Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (!(sim > 0) || !(act > 0)) return; const x = cr[c] || (cr[c] = []); if (x.length < 40) x.push(act / sim); }); });
             if (n < 50) return null;   // 這場的應打還沒算夠就先不換
-            const tr = []; atks.forEach(a => { if (tr.length >= 100) return; const eb = raidCsExpBy.get(raidSimExpKey(a)); const act = Number(a.tapDamage); if (eb && eb.t > 0 && act > 0) tr.push(act / eb.t); });
+            const tr = []; atks.forEach(a => { if (tr.length >= 100) return; const eb = ebMap.get(raidSimExpKey(a)); const act = Number(a.tapDamage); if (eb && eb.t > 0 && act > 0) tr.push(act / eb.t); });
             tr.sort((a, b) => a - b); let tap = tr.length >= 20 ? tr[tr.length >> 1] : 1; tap = Math.abs(tap - 1) >= 0.02 ? Math.round(Math.max(0.85, Math.min(1.2, tap)) * 1000) / 1000 : 1;
             const card = {}; Object.entries(cr).forEach(([c, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) card[c] = Math.round(Math.max(0.8, Math.min(1.25, m)) * 1000) / 1000; });
             // 剩下的整組偏差（卡片校正之後）：只乘在顯示的應打
-            const g = {};
-            atks.forEach(a => { const eb = raidCsExpBy.get(raidSimExpKey(a)); if (!eb) return; const adj = (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(adj > 0)) return;
-                const k = raidDeckKeyOf(a.cards); const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) x.push(a.totalDamage / adj); });
-            const deck = {}; Object.entries(g).forEach(([k, x]) => { if (x.length < RAID_DECK_CAL_MIN) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
+            const g = {}, gWho = {};
+            atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; const adj = (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(adj > 0)) return;
+                const k = raidDeckKeyOf(a.cards); const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) { x.push(a.totalDamage / adj); (gWho[k] || (gWho[k] = new Set())).add(a.playerCode || a.player); } });
+            const deck = {}; Object.entries(g).forEach(([k, x]) => { if (x.length < RAID_DECK_CAL_MIN || (gWho[k] || new Set()).size < 2) return;   /* 至少 2 個人打過（只有一個人的是他自己的狀況，不是牌組的偏差） */ x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
             return { card, deck, tap };
         }
         // 攻擊紀錄某一刀顯示的應打：原始公式的分卡模擬，乘上每張卡的校正，再乘剩下的整組偏差

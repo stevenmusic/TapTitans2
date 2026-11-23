@@ -13289,6 +13289,7 @@
         // 正在算的時候，畫面因為別人出刀、血量變而重畫：這個人自己的狀態（輪次、剩幾刀、用過的卡、開關）沒變就不從頭重算，
         // 只把目前進度畫回新的框，記一個「待更新」；算完再補一次（血量變的部分沿用快取，很快）
         const raidRecoBusy = new Map();
+        const RAID_RECO_MIN_GAP_MS = 20000, raidRecoLastDone = new Map(), raidRecoOwnSig = new Map(), raidRecoDefer = new Map();   // 別人出刀觸發的重算：同一個人 20 秒內最多算一次
         async function raidLogRenderPlayerReco(r) {
             const sig = raidRecoStateSig(r) + '|' + raidRecoVoidOn(r) + '|' + (raidNextOn() ? 'next' : '');   // 開關（含「下一隻」）切了就不是同一次計算
             const b = raidRecoBusy.get(r.player);
@@ -13401,6 +13402,18 @@
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    /* 重算頻率限制：他自己的狀態沒變（沒出刀、沒換開關），只是別人出刀讓盤面變了，上次算完不到 20 秒就先不算，
+                       畫面維持上次的推薦（不標「舊的推薦」），20 秒到了再一次算（期間多少人出刀都只算一次）。他自己出刀、手動按推薦一律馬上算 */
+                    if (!reuse && !force && raidLogRecoHtml.get(r.player) && raidRecoOwnSig.get(r.player) === sig0) {
+                        const wait = RAID_RECO_MIN_GAP_MS - (Date.now() - (raidRecoLastDone.get(r.player) || 0));
+                        if (wait > 0) {
+                            raidRecoWritten.set(r.player, gen);
+                            const bxD = raidLogRecoBox(r.player); if (bxD) { bxD.innerHTML = raidLogRecoHtml.get(r.player); raidSimFillRecoDamage(r.player, bxD); }
+                            if (!raidRecoDefer.has(r.player)) { raidRecoDefer.set(r.player, setTimeout(() => { raidRecoDefer.delete(r.player); const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player); if (r2 && raidLogRecoOpen.has(r.player)) raidLogRenderPlayerReco(r2); }, wait + 300));
+                                raidRecoLogAdd({ p: r.player, ev: '延後', why: `${Math.ceil(wait / 1000)} 秒後再算｜${raidRecoReuse.why || ''}` }); }
+                            return;
+                        }
+                    }
                     const recoT0 = Date.now(); if (!reuse) raidRecoLogAdd({ p: r.player, ev: '重算', why: force ? '手動按推薦' : (raidRecoReuse.why || '') });
                     let held = false; if (!reuse) { raidRecoProgSet(r.player, '計算中 1%'); await raidRecoAcquire(r.player); held = true; }   // 要真的算：排隊（沿用的不用排）
                     // 以傷害為主（不強制擺出特殊牌組）：帶刺的晨星時機到了，最強的晨星組（配任意兩張）放進候選照傷害比；
@@ -13502,7 +13515,7 @@
                         if (split && simPick && simPick.length) raidSplitPlan.set(r.player, { boss: raidState.bossName, n: n0, m: simPick.filter(x => !x.nextBoss).length });   // 記住這次排的「這隻王打幾組」，之後出刀照這個扣
                       }
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
-                    } finally { if (!reuse) raidRecoLogAdd({ p: r.player, ev: '算完', ms: Date.now() - recoT0 }); if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
+                    } finally { if (!reuse) { raidRecoLogAdd({ p: r.player, ev: '算完', ms: Date.now() - recoT0 }); raidRecoLastDone.set(r.player, Date.now()); raidRecoOwnSig.set(r.player, sig0); } if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) return false; cs.forEach(c => seen.add(c)); return true; }); }   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）
                     if (simPick) {

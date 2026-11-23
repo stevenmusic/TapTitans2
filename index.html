@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 72;
+        const RAID_RECO_VER = 73;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -8936,7 +8936,7 @@
         // 只能打盔甲的卡跟只能打肉體的卡也不能同組）
         function deckPlayableNow(cards, scene) {
             const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
-            return attackable.some(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok));
+            return attackable.some(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, n === 'FinisherAttack').ok));   /* 凱旋行軍不寫死骨架數，交給模擬器 */
         }
         const quizSceneCards = () => Object.keys(QUIZ_CARDS).filter(n => quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers'));
         function quizShuffle(a) { return a.slice().sort(() => Math.random() - 0.5); }
@@ -12836,7 +12836,7 @@
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
             const lvOf = (c) => v && v.raw ? raidSimBaseLevel(v.raw, c) : 0; const banN = (raidBannedParts || []).length;
             const ci = raidPlayerCycleInfo(r.player, r.attacks || []); const usedNow = (c) => !raidNextRaidPending() && ci.remaining > 0 && ci.used && ci.used.has && ci.used.has(c);
-            const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack') && banN <= 1, msOk = lvOf('BarbedMorningstar') > 0 && !usedNow('BarbedMorningstar') && raidMorningOkNow(), can = voidOk || finOk || msOk;
+            const voidOk = lvOf('CrushingVoid') > 0 && !usedNow('CrushingVoid') && banN <= 2, finOk = lvOf('FinisherAttack') > 0 && !usedNow('FinisherAttack'), msOk = lvOf('BarbedMorningstar') > 0 && !usedNow('BarbedMorningstar') && raidMorningOkNow(), can = voidOk || finOk || msOk;
             const on = raidSpecialPref !== false;   // 最佳（預設）／梭哈：一律可以按（就算三張都用不到，也管「這輪打死王時留幾組打下一隻」）
             const lab = on ? '最佳' : '梭哈';
             const why = (on ? '最佳打法：瘋狂無效、凱旋行軍、帶刺的晨星看時機（合計傷害高才留），這輪會打死王時照比例留幾組打下一隻王' : '梭哈：全部打現在這隻王，傷害高的先') + '｜全公會一起，按一下切換';
@@ -12846,7 +12846,7 @@
         function raidRecoFinBtnHtml(r) {
             const v = raidClanData && r && r.identity ? raidClanData.byCode.get(r.identity) : null;
             if (!(v && v.raw && raidSimBaseLevel(v.raw, 'FinisherAttack') > 0)) return '';
-            const banN = (raidBannedParts || []).length, noSix = banN >= 2;   // 禁打 2 個以上：6 骨架之後沒有部位可以給凱旋行軍打
+            const banN = (raidBannedParts || []).length, noSix = false;   /* 不寫死禁打數：骨架幾個交給模擬器算傷害 */
             const img = raidCardImage('FinisherAttack'), inReco = !noSix && (raidLogRecoRows.get(r.player) || []).some(x => x.finLater);
             return `<button data-p="${escapeHtml(r.player)}" onclick="event.stopPropagation(); ${noSix ? '' : 'raidRecoFinToggle(this.dataset.p)'}" title="凱旋行軍：${noSix ? `禁打 ${banN} 個部位，湊不到 6 骨架` : inReco ? '開（推薦留一組，按一下關掉）' : '關（按一下留一組）'}" style="flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0; border:none; background:none; cursor:${noSix ? 'default' : 'pointer'}; font-family:inherit;">${img ? `<img src="${img}" alt="凱旋行軍" style="width:30px; height:30px; border-radius:6px; display:block; ${inReco ? 'box-shadow:0 0 0 2px #b08a2e;' : 'filter:grayscale(1); opacity:.5;'}">` : ''}<span style="font-size:10px; font-weight:800; color:${inReco ? '#8a6414' : '#8a7a6a'};">${noSix ? '不能用' : inReco ? 'ON' : 'OFF'}</span></button>`;
         }
@@ -13120,11 +13120,11 @@
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             if (!(me.lv[FIN] > 0)) return null;
             const B = env.board, keys = Object.keys(B), banned = keys.filter(k => B[k].layer === 'banned');
-            if (banned.length > 1) return null;
+            /* 不寫死「禁打最多 1 個、6 個骨架」：禁打多的王也能把其他部位清成骨架再打（骨架少傷害就低，交給模擬器照骨架數算） */
             const open = keys.filter(k => B[k].layer === 'armor' || B[k].layer === 'body'); if (!open.length) return null;
             const big = open.slice().sort((a, b) => (env.hp[b] || 0) - (env.hp[a] || 0))[0];
             const boardS = {}; keys.forEach(k => { boardS[k] = k === big ? { layer: 'body' } : B[k].layer === 'banned' ? B[k] : { layer: 'skeleton' }; });
-            if (keys.filter(k => boardS[k].layer === 'skeleton').length < 6) return null;
+            if (!keys.some(k => boardS[k].layer === 'skeleton')) return null;
             const envS = { ...env, board: boardS, curse: null }, sceneS = {}; keys.forEach(k => { sceneS[k] = boardS[k].layer; });
             const fS = raidSimPartFns(sceneS), usesM = raidDeckUsesMap();
             /* 凱旋行軍＋手上任意兩張（等級前 20 高＋公會跟凱旋搭過的卡），不限公會打過的組合 */
@@ -13402,7 +13402,7 @@
                     const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
                     const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
                     const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
-                    const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene).ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+                    const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, null, false, n === 'FinisherAttack').ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
                     // 這位玩家的卡片等級（所有攻擊紀錄裡最近一次的）：跟公會中位數比，強的卡組合往前排
                     const [allLv] = await Promise.all([loadAllCardLevels(), cardCsvLoad()]);
                     const pLv = (allLv && allLv[r.player]) || {};
@@ -13434,7 +13434,7 @@
                     //   估計這輪等不到 → 照一般推薦
                     const usedVoid = !!(info.used && (info.used.has ? info.used.has('CrushingVoid') : info.used.includes('CrushingVoid')));
                     const hasVoid = raidRecoVoidOwned(r) && !usedVoid, sixNow = raidBodyNow() >= 6;
-                    const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 && (raidBannedParts || []).length <= 1 ? raidSkelReach(nextRound) : null;
+                    const n0 = Math.min(info.remaining || 0, RAID_ATTACKS_MAX), skel = n0 >= 2 ? raidSkelReach(nextRound) : null;
                     // 活著的部位（盔甲或肉體）≥6 時，照四階段先拆盔甲再打肉體，6 骨架之前會先經過 6 肉體：凱旋行軍等得到，瘋狂無效也等得到
                     const vReach = hasVoid && !sixNow ? raidVoidReach(nextRound) : null, aliveN = Object.keys(raidState.parts).filter(k => !(raidBannedParts || []).includes(k) && ((Number(raidState.parts[k].armor) || 0) > 0 || (Number(raidState.parts[k].body) || 0) > 0)).length, vPref = (raidBannedParts || []).length > 2 ? false : raidRecoVoidPref.has(r.player) ? raidRecoVoidPref.get(r.player) : null, voidLaterGo = vPref === false || n0 <= 1 ? false : hasVoid && !sixNow && (!(vReach && !vReach.ok) || (aliveN >= 6 && !!(skel && skel.ok)));   /* 「最佳」只是允許保留，還是要這輪（預估的下一場：第一輪）等得到 6 肉體才留；梭哈（OFF）不留 */   // vPref：瘋狂無效按鈕手動切過（ON／OFF），沒切過照自動   // 活著的部位 ≥6 才會先經過 6 肉體
                     // 照推薦打了其中一組、或只是別人出刀：其他都沒變（部位狀態、階段、校正、開關）就直接沿用，不重算
@@ -13544,7 +13544,7 @@
                         // 凱旋行軍：適合的人（照他自己的卡片等級，留一組後整輪合計比較高）留一組，等 6 骨架打最厚的部位
                         const finPref = raidRecoFinPref.has(r.player) ? raidRecoFinPref.get(r.player) : null;   // null＝自動
                         const nP = Math.min(infoP.remaining || 0, RAID_ATTACKS_MAX);
-                        if (simPick && !split && finPref !== false && nP >= 2 && (raidBannedParts || []).length <= 1 && (skel && skel.ok)   /* 「最佳」只是允許保留：一樣要這輪等得到 6 骨架（預估的下一場：第一輪） */) {
+                        if (simPick && !split && finPref !== false && nP >= 2 && (skel && skel.ok)   /* 「最佳」只是允許保留：一樣要這輪等得到 6 骨架（預估的下一場：第一輪） */) {
                             const F = await raidSimFinisherBest(r, infoP, data).catch(() => null);
                             if (F) {   /* 凱旋組前 3 名都試（跟晨星、瘋狂一樣：最強那組撞卡時，換一組合計可能更高），取合計最高 */
                                 const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0); let bestF = null;
@@ -14801,7 +14801,7 @@
             // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
             // 毀了雨：任何部位都能打（只是打詛咒盔甲有加成，模擬器照部位算），不套「只能打詛咒盔甲」
             // 帶刺的晨星不套「其中一種只剩 1～2 個才能用」的使用規則：模擬器照部位數算加成，攻擊紀錄各種盤面都準（1.01～1.04），划不划算交給傷害決定
-            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar' || RAID_LAYER_BONUS_ONLY.has(n)).ok));   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar' || n === 'FinisherAttack' || RAID_LAYER_BONUS_ONLY.has(n)).ok));   /* 凱旋行軍也不寫死「骨架 6 個」：骨架少傷害就低，交給模擬器照骨架數算，看傷害決定 */   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
             const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
@@ -15619,8 +15619,7 @@
         function raidFinViable() {
             if (!raidState || !raidState.parts) return { ok: false };
             const P = raidState.parts, bn = raidBannedParts || [], hp = (k) => Math.max(0, Number((P[k] || {}).armor) || 0) + Math.max(0, Number((P[k] || {}).body) || 0);
-            if (bn.length > 1) return { ok: false, why: 'banned' };
-            const open = Object.keys(P).filter(k => !bn.includes(k) && hp(k) > 0); if (open.length < 7) return { ok: false, why: 'parts' };
+            const open = Object.keys(P).filter(k => !bn.includes(k) && hp(k) > 0); if (open.length < 2) return { ok: false, why: 'parts' };   /* 不寫死禁打數、6 骨架：清掉其他部位、留一個打，骨架幾個交給模擬器算傷害 */
             const big = open.slice().sort((a, b) => hp(b) - hp(a))[0], smallHp = open.filter(k => k !== big).reduce((t, k) => t + hp(k), 0);
             const sa = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const L = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.boss === raidState.bossName).sort((a, b) => b.ts - a.ts).slice(0, 100);
@@ -15645,7 +15644,7 @@
             const body = open.filter(k => B[k].layer === 'body'), armor = open.filter(k => B[k].layer === 'armor');
             const nSkel = LOCS.filter(k => B[k].layer === 'skeleton').length;
             const g = raidPhaseGuild();
-            const finOK = banned.length <= 1 && raidFinViable().ok;   // 凱旋行軍要 6 骨架＋一個留著打的部位（禁打最多 1 個），而且清完其他部位時最厚的部位還剩夠打的血
+            const finOK = raidFinViable().ok;   // 凱旋行軍要 6 骨架＋一個留著打的部位（禁打最多 1 個），而且清完其他部位時最厚的部位還剩夠打的血
             const big = finOK ? open.slice().sort((a, b) => hpQ(b) - hpQ(a))[0] || null : null;
             const reserve = big ? g.finLeft * g.finDmg : 0;
             const cu = env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted') ? env.curse : null;

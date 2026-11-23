@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 62;
+        const RAID_RECO_VER = 63;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13517,7 +13517,7 @@
                       if (simPick && simPick.length) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (!reuse) { raidRecoLogAdd({ p: r.player, ev: '算完', ms: Date.now() - recoT0 }); raidRecoLastDone.set(r.player, Date.now()); raidRecoOwnSig.set(r.player, sig0); } if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
-                    if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) return false; cs.forEach(c => seen.add(c)); return true; }); }   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）
+                    if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) { raidRecoLogAdd({ p: r.player, ev: '少一組', why: '卡片重複被拿掉：' + cs.join('+') }); return false; } cs.forEach(c => seen.add(c)); return true; }); }   /* 被拿掉就記在 #recolog（這是前面挑牌有漏洞，要追） */   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）
                     if (simPick) {
                         // 太弱的組不推薦（例如漏了一輪、卡片已經用掉很多）：應打低於這個人平常每刀傷害的 RAID_RECO_WEAK 就拿掉，避免誤導（留到下一輪卡片重新可用再打）
                         const expPer = raidPlayerTypicalDmg(r);
@@ -14979,7 +14979,7 @@
                 /* 晨星組不只試最強的一組：最強那組的卡常跟別組撞（例：晨星＋爆擊增強＋爆擊次數 vs 爆擊增強＋爆擊次數＋虛弱），前 8 名都試，取合計最高（跟瘋狂無效一樣） */
                 for (const Mc of (info.msCand.alts && info.msCand.alts.length ? info.msCand.alts : [info.msCand])) {
                     if (reservedO().some(o => o.cards.some(c => Mc.cards.includes(c))) || Mc.cards.some(c => used.has(c))) continue;   // 晨星組的卡這次不能用（例如凱旋行軍那組已經拿走）
-                    const rest = (poolAll || []).filter(o => o && !o.cards.some(c => Mc.cards.includes(c)));
+                    const resC = new Set(reservedO().flatMap(o => o.cards)), rest = (poolAll || []).filter(o => o && !o.cards.some(c => Mc.cards.includes(c) || resC.has(c)));   /* 也要避開已經保留的組（瘋狂無效）的卡：不然挑出來跟瘋狂組撞卡，最後總檢查會把一組整個拿掉，少一組 */
                     const others = pick0.length > 1 ? await raidSimPickPool(P, env, me, rest, pick0.length - 1) : [];
                     if (others.length !== pick0.length - 1) continue;
                     const sm = Mc.avg + sumA(others); if (window.RAID_VOID_LOG) console.log('MSCMP', name, 'ms', Math.round(sm / 1e6), Mc.cards.join('+'), Math.round(Mc.avg / 1e6), 'normal', Math.round(base0 / 1e6));

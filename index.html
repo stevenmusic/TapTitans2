@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 69;
+        const RAID_RECO_VER = 70;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12959,7 +12959,9 @@
         }
         /* 這輪會打死這隻王：估這隻王剩的血佔全公會這輪能打的多少，6 組裡照比例留幾組給下一隻王（全盔甲、詛咒甲、禁打）
            例：這輪能打 60B、王剩 10B → 1 組打這隻、5 組打下一隻。回傳 { m: 打這隻的組數, name, envN } 或 null（這輪打不死、沒有下一隻） */
-        const raidNextSplitLast = new Map();
+        const RAID_SPLIT_LAST_KEY = 'tt2_split_last';
+        const raidNextSplitLast = (() => { const m = new Map(); try { Object.entries(JSON.parse(localStorage.getItem(RAID_SPLIT_LAST_KEY) || '{}')).forEach(([k, v]) => { if (v && Date.now() - (v.at || 0) < 12 * 3600 * 1000) m.set(k, v); }); } catch (e) {}
+            return { get: (k) => m.get(k), set: (k, v) => { m.set(k, { ...v, at: Date.now() }); try { localStorage.setItem(RAID_SPLIT_LAST_KEY, JSON.stringify(Object.fromEntries(m))); } catch (e) {} } }; })();   /* 「這輪會不會打死這隻王」上次的判斷存在手機：重新整理後一樣有緩衝（切了的要多不到 5% 才取消），不會一下切兩隻王、一下又不切 */
         const RAID_SPLIT_PLAN_KEY = 'tt2_split_plan';
         const raidSplitPlan = (() => { const m = new Map(); try { Object.entries(JSON.parse(localStorage.getItem(RAID_SPLIT_PLAN_KEY) || '{}')).forEach(([k, v]) => { if (v && Date.now() - (v.at || 0) < 12 * 3600 * 1000) m.set(k, v); }); } catch (e) {}
             const save = () => { try { localStorage.setItem(RAID_SPLIT_PLAN_KEY, JSON.stringify(Object.fromEntries(m))); } catch (e) {} };

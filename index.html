@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 71;
+        const RAID_RECO_VER = 72;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15471,41 +15471,44 @@
             let vMax = 0; atks.forEach(a => { const e = ebOf(a); if (e && e.v > vMax) vMax = e.v; });
             const stale = (a, v) => { if (!(v >= 3)) return true; const cs = a.cards.map(c => c.name); for (let x = v + 1; x <= vMax; x++) if ((VER_CARDS[x] || []).some(c => cs.includes(c))) return true; return false; };
             const ebMap = new Map(); atks.forEach(a => { const e = ebOf(a); if (e && (!vMax || !stale(a, e.v))) ebMap.set(raidSimExpKey(a), e); });
-            const cr = {}; let n = 0;
-            atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; n++;
-                Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (!(sim > 0) || !(act > 0)) return; const x = cr[c] || (cr[c] = []); if (x.length < 40) x.push(act / sim); }); });
-            if (n < 50) return null;   // 這場的應打還沒算夠就先不換
+            /* 滾動校正：所有牌組用同一套規則，不設「幾刀以上才修」的門檻，刀數少就少修一點、刀數多就修足（收縮估計）：
+                 修正量 ＝ 實際偏差 × 可信度，可信度 ＝ n·τ² ÷ (n·τ² ＋ σ²)
+                 n：刀數（這一場 1、上一場 0.5，越新越重；同一個人最多算 2 刀，避免一個人的狀況被當成牌組的偏差）
+                 σ：這一組每刀偏差的起伏（沒有隨機性的組起伏很小，2 刀就幾乎修足；起伏大的組要很多刀才修足），τ：牌組偏差通常有多大（5%）
+               分四層，一層一層扣掉再算下一層：點擊 → 每張卡 → 輔助卡（自己沒傷害）／兩張卡一起用 → 整組 */
+            const TAU2 = 0.05 * 0.05, SIG0 = 0.06 * 0.06;
+            const wOf = (a) => a.raidStartedAt === ss[0] ? 1 : 0.5;
+            const shrink = (list) => {   // list：[{ r, w, who }] → 修正係數（1＝不修）
+                if (!list.length) return 1;
+                const per = {}; list.forEach(o => { (per[o.who] || (per[o.who] = [])).push(o); });
+                let sw = 0, sl = 0; Object.values(per).forEach(xs => { xs.sort((p, q) => q.w - p.w).slice(0, 2).forEach(o => { sw += o.w; sl += o.w * Math.log(o.r); }); });
+                if (!(sw > 0)) return 1; const m = sl / sw;
+                const lg = list.map(o => Math.log(o.r)), mu = lg.reduce((t, v) => t + v, 0) / lg.length;
+                const s2 = lg.length >= 2 ? Math.max(0.01 * 0.01, lg.reduce((t, v) => t + (v - mu) * (v - mu), 0) / (lg.length - 1)) : SIG0;
+                const k = sw * TAU2 / (sw * TAU2 + s2), f = Math.exp(k * m);
+                return Math.abs(f - 1) < 0.01 ? 1 : Math.round(Math.max(0.85, Math.min(1.18, f)) * 1000) / 1000;
+            };
+            let n = 0; atks.forEach(a => { if (ebMap.get(raidSimExpKey(a))) n++; });
+            if (n < 50) return null;   // 這兩場的應打還沒算夠就先不換
             const tr = []; atks.forEach(a => { if (tr.length >= 100) return; const eb = ebMap.get(raidSimExpKey(a)); const act = Number(a.tapDamage); if (eb && eb.t > 0 && act > 0) tr.push(act / eb.t); });
-            tr.sort((a, b) => a - b); let tap = tr.length >= 20 ? tr[tr.length >> 1] : 1; tap = Math.abs(tap - 1) >= 0.02 ? Math.round(Math.max(0.85, Math.min(1.2, tap)) * 1000) / 1000 : 1;
-            const card = {}; Object.entries(cr).forEach(([c, x]) => { if (x.length < 10) return; x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) card[c] = Math.round(Math.max(0.8, Math.min(1.25, m)) * 1000) / 1000; });
-            // 剩下的整組偏差（卡片校正之後）：只乘在顯示的應打
-            /* 整組偏差：這一場有 4 刀以上、2 個人以上打過，就照這一場的（最接近現在的狀況）；不夠才用兩場合起來的（6 刀以上、2 個人以上）。
-               兩場一律合起來會把這一場的偏差沖淡（例：星辰回聲＋重拳＋圖騰之力 M-48 11 刀 94%，合上一場只修一半） */
-            /* 輔助卡（自己沒傷害：圖騰之力、變質氣體、靈魂之火、戰鼓…）的偏差：卡片校正只看「每張卡自己的傷害」，輔助卡沒有傷害就校正不到，
-               只能等每一組牌組各自湊滿刀數。改成把「有這張輔助卡的所有牌組」合起來看（8 刀、3 個人以上），同一張輔助卡讓整組一致偏高或偏低就修
-               （M-50：有圖騰之力的組多半實際高 8～17%、瘟疫配變質氣體的組多半低 4～23%，每一組單獨都不到 4 刀） */
-            const dmgCards = new Set(); atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (eb) Object.entries(eb.b || {}).forEach(([c, x]) => { if (x > 0) dmgCards.add(c); }); });
+            tr.sort((x, y) => x - y); let tap = tr.length >= 20 ? tr[tr.length >> 1] : 1; tap = Math.abs(tap - 1) >= 0.02 ? Math.round(Math.max(0.85, Math.min(1.2, tap)) * 1000) / 1000 : 1;
+            // 第 2 層：每張卡（自己打出的傷害 ÷ 模擬的這張卡傷害）
+            const cr = {}; atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (sim > 0 && act > 0) (cr[c] || (cr[c] = [])).push({ r: act / sim, w: wOf(a), who: a.playerCode || a.player }); }); });
+            const card = {}; Object.entries(cr).forEach(([c, x]) => { const f = shrink(x); if (f !== 1) card[c] = f; });
             const adjOf = (a) => { const eb = ebMap.get(raidSimExpKey(a)); return eb ? (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0) : 0; };
-            const sr = {}, sw = {}; atks.forEach(a => { const adj = adjOf(a); if (!(adj > 0)) return; a.cards.forEach(cc => { const c = cc.name || cc; if (dmgCards.has(c)) return; (sr[c] || (sr[c] = [])).push(a.totalDamage / adj); (sw[c] || (sw[c] = new Set())).add(a.playerCode || a.player); }); });
-            const sup = {}; Object.entries(sr).forEach(([c, x]) => { if (x.length < 8 || (sw[c] || new Set()).size < 3) return; x.sort((p, q) => p - q); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) sup[c] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
+            const dmgCards = new Set(); atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (eb) Object.entries(eb.b || {}).forEach(([c, x]) => { if (x > 0) dmgCards.add(c); }); });
+            // 第 3 層：輔助卡（自己沒傷害，有這張卡的所有牌組合起來），再來兩張卡一起用（一組牌只用偏差最大的那一對，避免同一個原因乘兩次）
+            const sr = {}; atks.forEach(a => { const adj = adjOf(a); if (!(adj > 0)) return; a.cards.forEach(cc => { const c = cc.name || cc; if (!dmgCards.has(c)) (sr[c] || (sr[c] = [])).push({ r: a.totalDamage / adj, w: wOf(a), who: a.playerCode || a.player }); }); });
+            const sup = {}; Object.entries(sr).forEach(([c, x]) => { const f = shrink(x); if (f !== 1) sup[c] = f; });
             const supF0 = (cs) => cs.reduce((t, cc) => t * (sup[cc.name || cc] || 1), 1);
-            /* 兩張卡一起用的偏差（例：瘟疫＋變質氣體，不管第三張是什麼都偏低）：有這兩張卡的所有牌組合起來看（6 刀、3 個人以上）；
-               一組牌有 3 對，只用偏差最大的那一對（避免同一個原因乘兩次） */
-            const pr = {}, pw = {}; atks.forEach(a => { const adj = adjOf(a); if (!(adj > 0)) return; const cs = a.cards.map(cc => cc.name || cc).sort(), r = a.totalDamage / (adj * supF0(a.cards));
-                for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) { const k = cs[i] + '+' + cs[j]; (pr[k] || (pr[k] = [])).push(r); (pw[k] || (pw[k] = new Set())).add(a.playerCode || a.player); } });
-            const pair = {}; Object.entries(pr).forEach(([k, x]) => { if (x.length < 6 || (pw[k] || new Set()).size < 3) return; x.sort((p, q) => p - q); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.04) pair[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
+            const pr = {}; atks.forEach(a => { const adj = adjOf(a); if (!(adj > 0)) return; const cs = a.cards.map(cc => cc.name || cc).sort(), r = a.totalDamage / (adj * supF0(a.cards));
+                for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) (pr[cs[i] + '+' + cs[j]] || (pr[cs[i] + '+' + cs[j]] = [])).push({ r, w: wOf(a), who: a.playerCode || a.player, deck: cs.join('+') }); });
+            /* 一對卡只出現在一種牌組裡時，就是那組牌自己的偏差（留給第 4 層），不算成兩張卡一起用的偏差 */
+            const pair = {}; Object.entries(pr).forEach(([k, x]) => { if (new Set(x.map(o => o.deck)).size < 2) return; const f = shrink(x); if (f !== 1) pair[k] = f; });
             const pairF = (cs0) => { const cs = cs0.map(cc => cc.name || cc).sort(); let f = 1; for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) { const v = pair[cs[i] + '+' + cs[j]]; if (v && Math.abs(Math.log(v)) > Math.abs(Math.log(f))) f = v; } return f; };
-            const supF = (cs) => supF0(cs) * pairF(cs);
-            const g = {}, gWho = {}, gc = {}, gcWho = {};
-            atks.forEach(a => { const adj0 = adjOf(a); if (!(adj0 > 0)) return; const adj = adj0 * supF(a.cards);
-                const k = raidDeckKeyOf(a.cards), who = a.playerCode || a.player, r = a.totalDamage / adj;
-                const x = g[k] || (g[k] = []); if (x.length < RAID_DECK_CAL_N) { x.push(r); (gWho[k] || (gWho[k] = new Set())).add(who); }
-                if (a.raidStartedAt === ss[0]) { const y = gc[k] || (gc[k] = []); if (y.length < RAID_DECK_CAL_N) { y.push(r); (gcWho[k] || (gcWho[k] = new Set())).add(who); } } });
-            /* 需要幾刀照偏差有多穩定決定：每刀偏差都差不多（最大最小差不到 3%，例如星辰回聲＋重拳＋振奮士氣這種沒有隨機性的組，每刀都一樣）2 刀就夠；
-               起伏大的組才要 4 刀（這一場）／6 刀（兩場合起來）才不會被運氣帶偏 */
-            const tight = (x) => x.length >= 2 && Math.max(...x) - Math.min(...x) <= 0.03;
-            Object.keys(g).forEach(k => { const y = gc[k] || []; if ((y.length >= 4 || tight(y)) && (gcWho[k] || new Set()).size >= 2) { g[k] = gc[k]; gWho[k] = gcWho[k]; g[k].cur = true; } });
-            const deck = {}; Object.entries(g).forEach(([k, x]) => { if ((!x.cur && x.length < RAID_DECK_CAL_MIN && !tight(x)) || (gWho[k] || new Set()).size < 2) return;   /* 至少 2 個人打過（只有一個人的是他自己的狀況，不是牌組的偏差） */ x.sort((a, b) => a - b); const m = x[Math.floor(x.length / 2)]; if (Math.abs(m - 1) >= 0.03) deck[k] = Math.round(Math.max(0.85, Math.min(1.15, m)) * 1000) / 1000; });
+            // 第 4 層：整組（扣掉前三層之後剩下的）
+            const g = {}; atks.forEach(a => { const adj = adjOf(a) * supF0(a.cards) * pairF(a.cards); if (!(adj > 0)) return; (g[raidDeckKeyOf(a.cards)] || (g[raidDeckKeyOf(a.cards)] = [])).push({ r: a.totalDamage / adj, w: wOf(a), who: a.playerCode || a.player }); });
+            const deck = {}; Object.entries(g).forEach(([k, x]) => { const f = shrink(x); if (f !== 1) deck[k] = f; });
             return { card, deck, tap, sup, pair };
         }
         // 攻擊紀錄某一刀顯示的應打：原始公式的分卡模擬，乘上每張卡的校正，再乘剩下的整組偏差

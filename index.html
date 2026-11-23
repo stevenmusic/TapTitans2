@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 73;
+        const RAID_RECO_VER = 74;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -8934,9 +8934,8 @@
         }
         // 整組牌能不能用：現在要有一個能打的部位，三張卡都打得到它（例如只能打四肢的卡跟只能打頭肚的卡不能同組，
         // 只能打盔甲的卡跟只能打肉體的卡也不能同組）
-        function deckPlayableNow(cards, scene) {
-            const attackable = RAID_PARTS.map(p => p.key).filter(k => ['cursed', 'armor', 'body'].includes(scene[k]));
-            return attackable.some(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, n === 'FinisherAttack').ok));   /* 凱旋行軍不寫死骨架數，交給模擬器 */
+        function deckPlayableNow(cards, scene) {   /* 不寫死卡片能打哪裡：有部位能打就行，加成交給模擬器算 */
+            return RAID_PARTS.some(p => ['cursed', 'armor', 'body'].includes(scene[p.key]));
         }
         const quizSceneCards = () => Object.keys(QUIZ_CARDS).filter(n => quizAnswerSet(n, 'parts') || quizAnswerSet(n, 'layers'));
         function quizShuffle(a) { return a.slice().sort(() => Math.random() - 0.5); }
@@ -13401,8 +13400,8 @@
                     // 照現在王的部位狀態判斷：三張卡（含限定部位的卡：頭肚、頭腳、肚手肩、四肢）都要打得到同一個現在能打的部位（禁打、骨架不算）
                     const attackable = Object.keys(scene).filter(k => ['armor', 'cursed', 'body'].includes(scene[k]));
                     const partOk = (n, k) => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k);
-                    const hitParts = (cards) => attackable.filter(k => cards.every(n => partOk(n, k) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, k).ok)));
-                    const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n) && (!QUIZ_CARDS[n] || quizCardUsable(n, scene, null, false, n === 'FinisherAttack').ok)) && deckPlayableNow(cards, scene) && hitParts(cards).length > 0;
+                    const hitParts = () => attackable.slice();   /* 不寫死卡片能打哪裡：加成交給模擬器算 */
+                    const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n)) && hitParts(cards).length > 0;
                     // 這位玩家的卡片等級（所有攻擊紀錄裡最近一次的）：跟公會中位數比，強的卡組合往前排
                     const [allLv] = await Promise.all([loadAllCardLevels(), cardCsvLoad()]);
                     const pLv = (allLv && allLv[r.player]) || {};
@@ -14801,7 +14800,7 @@
             // （舊規則「詛咒甲只給撼地破甲、毀了雨」拿掉：改由打王四階段決定，所有牌組都能改打詛咒甲，傷害掉不到容忍值才改）
             // 毀了雨：任何部位都能打（只是打詛咒盔甲有加成，模擬器照部位算），不套「只能打詛咒盔甲」
             // 帶刺的晨星不套「其中一種只剩 1～2 個才能用」的使用規則：模擬器照部位數算加成，攻擊紀錄各種盤面都準（1.01～1.04），划不划算交給傷害決定
-            const hitParts = (cards) => attackable.filter(k => cards.every(n => !QUIZ_CARDS[n] || quizCardUsable(n, scene, k, false, loose || n === 'BarbedMorningstar' || n === 'FinisherAttack' || RAID_LAYER_BONUS_ONLY.has(n)).ok));   /* 凱旋行軍也不寫死「骨架 6 個」：骨架少傷害就低，交給模擬器照骨架數算，看傷害決定 */   // 每張卡都要打得到（部位限制、層別限制都算），例如破碎本能只能打頭、肚子
+            const hitParts = () => attackable.slice();   /* 不寫死卡片能打哪裡：每張卡任何部位、任何狀態都能打，部位／層別加成模擬器照實際算，打不到加成傷害自然低，交給傷害決定 */
             const playable = (cards) => !raidSimDeckBanned(cards) && cards.every(n => !RAID_SIM_EXCLUDE.has(n)) && hitParts(cards).length > 0;
             return { hitParts, playable };
         }
@@ -14853,7 +14852,7 @@
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;   // 粗算（2 次）換成精算的比例
                 // 只能換到每張卡都打得到的部位（例如破碎本能只能打頭、肚子）
-                const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
+                const partOk = () => true;   /* 不寫死卡片能打哪裡：換部位時傷害交給模擬器算 */
                 let best = null;
                 alts.filter(a => a.tg.join() === o.tg.join() || a.tg.every(partOk)).forEach(a => { const est = a.raw * scale, v = capOf(a.tg, est), isCur = a.tg.join() === o.tg.join();
                     if (!best || v > best.v * 1.02 || (isCur && v >= best.v * 0.98)) best = { a, est, v }; });   // 差 2% 內維持原本的打法
@@ -16046,7 +16045,7 @@
                 const alts = o.alts && o.alts.length ? o.alts : [{ tg: o.tg, raw: raw0 }];
                 const cur = alts.find(a => a.tg.join() === o.tg.join());
                 const scale = cur && cur.raw > 0 ? raw0 / cur.raw : 1;
-                const partOk = (k) => o.cards.every(n => !(CARD_LIMITS[n] && CARD_LIMITS[n].kind === 'part') || (BY_PART_RECO_PART_SETS[CARD_LIMITS[n].tag] || []).includes(k));
+                const partOk = () => true;   /* 不寫死卡片能打哪裡：換部位時傷害交給模擬器算 */
                 const top = Math.max(...alts.map(a => a.raw * scale));
                 const ok = alts.filter(a => a.tg.join() === o.tg.join() || (a.tg.every(partOk) && a.raw * scale >= top * 0.98));
                 return Math.max(...ok.map(a => { const per = a.raw * scale / a.tg.length; return a.tg.reduce((t, k) => t + Math.min(per, bud[k] || 0) + RAID_SIM_OVERFLOW * Math.max(0, per - (bud[k] || 0)), 0); }));   // 輪流打：每個部位平均分到傷害

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 64;
+        const RAID_RECO_VER = 65;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12992,6 +12992,13 @@
             const env = await raidSimEnv(), board = {}, hp = {}, hpA = {};
             Object.keys(t.p).forEach(k => { const e = t.p[k], a = Number(e[1]) || 0, b = Number(e[2]) || 0, cu = !!e[3];
                 board[k] = bans.includes(k) ? { layer: 'banned', cursed: cu, under: a > 0 ? 'armor' : 'body' } : a > 0 ? { layer: 'armor', cursed: cu } : { layer: 'body' }; hp[k] = a + b; hpA[k] = a; });
+            /* 他打到下一隻王的時候，公會已經先打過一段了：照打王順序（先拆詛咒甲、薄的先；再拆盔甲、厚的先）先扣掉「他出刀前公會打掉的傷害」，
+               約等於這隻王打死後這輪剩的傷害的一半（大家出刀時間平均分布，他的刀平均落在中間）。
+               詛咒甲通常只有 2～3B，公會幾刀就拆完，不能當成還在：例 Sterl 詛咒甲合計約 9B，換王後全公會還有幾十 B 要打，他打到時早就拆完了 */
+            const dPre = Math.max(0, roundDmg - left) / 2;
+            { let d = dPre; const arm = Object.keys(board).filter(k => board[k].layer === 'armor' && hpA[k] > 0);
+              const order = arm.filter(k => board[k].cursed).sort((a, b) => hpA[a] - hpA[b]).concat(arm.filter(k => !board[k].cursed).sort((a, b) => hpA[b] - hpA[a]));
+              for (const k of order) { if (!(d > 0)) break; const x = Math.min(d, hpA[k]); hpA[k] -= x; hp[k] -= x; d -= x; if (!(hpA[k] > 0)) { hpA[k] = 0; board[k] = { layer: hp[k] > 0 ? 'body' : 'skeleton' }; } } }
             const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body'), plans = [];
             const add = (tg) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label: '' }); };
             open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);

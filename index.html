@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 68;
+        const RAID_RECO_VER = 69;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12960,7 +12960,10 @@
         /* 這輪會打死這隻王：估這隻王剩的血佔全公會這輪能打的多少，6 組裡照比例留幾組給下一隻王（全盔甲、詛咒甲、禁打）
            例：這輪能打 60B、王剩 10B → 1 組打這隻、5 組打下一隻。回傳 { m: 打這隻的組數, name, envN } 或 null（這輪打不死、沒有下一隻） */
         const raidNextSplitLast = new Map();
-        const raidSplitPlan = new Map();   // 玩家 → { boss, n, m }：換王那輪排好的「這隻王打 m 組」（之後出刀照這個扣，不重新估）   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
+        const RAID_SPLIT_PLAN_KEY = 'tt2_split_plan';
+        const raidSplitPlan = (() => { const m = new Map(); try { Object.entries(JSON.parse(localStorage.getItem(RAID_SPLIT_PLAN_KEY) || '{}')).forEach(([k, v]) => { if (v && Date.now() - (v.at || 0) < 12 * 3600 * 1000) m.set(k, v); }); } catch (e) {}
+            const save = () => { try { localStorage.setItem(RAID_SPLIT_PLAN_KEY, JSON.stringify(Object.fromEntries(m))); } catch (e) {} };
+            return { get: (k) => m.get(k), set: (k, v) => { m.set(k, { ...v, at: Date.now() }); save(); }, delete: (k) => { m.delete(k); save(); }, clear: () => { m.clear(); save(); } }; })();   /* 存在手機：重新整理後也照原本的分配扣，不會重新估、又多排一組給這隻王 */   // 玩家 → { boss, n, m }：換王那輪排好的「這隻王打 m 組」（之後出刀照這個扣，不重新估）   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
         async function raidNextBossSplit(n, who) {
             if (!raidState || !raidState.parts || n < 1) return null;
             /* 下一場還沒開打（預估）：一樣照第一輪全公會打得到多少，算第一隻王會不會在第一輪就死、要留幾組給第二隻王
@@ -13078,7 +13081,7 @@
         // 同一個人、同樣的盤面（各部位層別）、同樣用過的卡和等級：晨星組、全部組合算過就直接用（盤面小變化、別人出刀不重算）
         const raidSimMemo = new Map();
         function raidSimMemoKey(tag, r, info) { const P = (raidState && raidState.parts) || {}; const v = raidAccountInfo(r.player); const lv = v ? Object.entries(raidSimPlayerNow(v, { morale: 0, season: {} }).lv || {}).sort().map(([c, l]) => c + l).join(',') : '';
-            return [tag, r.player, raidState && raidState.bossName, (raidBannedParts || []).slice().sort().join(), Object.keys(P).sort().map(k => k + ((Number(P[k].armor) || 0) > 0 ? 'A' : (Number(P[k].body) || 0) > 0 ? 'B' : 'S')).join(''), [...(info.used || [])].sort().join(), lv].join('|'); }
+            return [tag, r.player, raidState && raidState.bossName, (raidBannedParts || []).slice().sort().join(), Object.keys(P).sort().map(k => k + ((Number(P[k].armor) || 0) > 0 ? 'A' : (Number(P[k].body) || 0) > 0 ? 'B' : 'S')).join(''), [...(info.used || [])].sort().join(), lv, raidCalSig()].join('|'); }   /* 校正每小時更新：晨星、凱旋、全部組合的暫存也要跟著換，不然推薦跟攻擊紀錄的應打不一致 */
         async function raidSimMemoGet(tag, r, info, fn) { const k = raidSimMemoKey(tag, r, info); if (raidSimMemo.has(k)) return raidSimMemo.get(k); const p = fn().catch(() => null); raidSimMemo.set(k, p); if (raidSimMemo.size > 300) raidSimMemo.delete(raidSimMemo.keys().next().value); const v = await p; if (v == null) raidSimMemo.delete(k); return v; }
         async function raidSimMorningBest(r, info, data) { return raidSimMemoGet('ms', r, info, () => raidSimMorningBest0(r, info, data)); }
         async function raidSimMorningBest0(r, info, data) {

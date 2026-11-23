@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 59;
+        const RAID_RECO_VER = 60;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -8207,7 +8207,7 @@
                     const k = d.cards.slice().sort().join('+'); if (seen.has(k)) return; seen.add(k);
                     if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c)) || !playable(d.cards)) return;   // 這裡不扣用過的卡，挑的時候再扣
                     const hp = hitParts(d.cards);
-                    const pl = raidSimPlansFor(d.cards, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
+                    const pl = raidSimPlansFor(d.cards, board, plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter((p, i, arr) => p.tg.length && arr.findIndex(q => q.tg.join() === p.tg.join()) === i));
                     if (pl.length) all.push({ cards: d.cards, plans: pl });
                 });
                 raidSimRankBusy++;
@@ -8306,7 +8306,7 @@
                         if (!raidPickCands) raidPickCands = await raidSimCandidateDecks(await loadByPartStats(byPartTop, byPartStatsGroup(currentSessionBuff())));
                         raidPickCands.filter(d => !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))).forEach(d => {
                             const hp = hitParts(d.cards); if (!hp.length) return;
-                            const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
+                            const pl = raidSimPlansFor(d.cards, board, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i));
                             if (pl.length) all.push({ cards: d.cards, plans: pl });
                         });
                         pool = await raidSimEvalPool(P, env, me, all, RAID_ATTACKS_PER_CYCLE, null, 10, true);   // 配卡：輕量版
@@ -12938,7 +12938,7 @@
             const own = own0.filter((c, i) => i < 20 || mates.has(c)), items = [];
             for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !playable(cards)) continue;
                 const hp = hitParts(cards), plans = []; env.plans.forEach(pl => { const tg = pl.tg.filter(x => hp.includes(x)); if (tg.length && !plans.some(y => y.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) items.push({ cards, plans: pl2 }); }
+                const pl2 = raidSimPlansFor(cards, env.board, plans); if (pl2.length) items.push({ cards, plans: pl2 }); }
             if (!items.length) return null;
             const pool = (await raidSimEvalPool(P, env, me, items, 1, null, Math.max(k, 12))).filter(o => o.final).sort((a, b) => b.avg - a.avg);
             return pool.slice(0, k).map(o => o.cards);
@@ -12952,7 +12952,7 @@
             const { hitParts } = raidSimPartFns(scene);
             const own = Object.keys(me.lv).filter(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c) && raidCardImage(c)).sort((a, b) => me.lv[b] - me.lv[a]).slice(0, 20), items = [], usesB = raidDeckUsesMap();   // 等級前 20 高的卡（31 張全試約 4500 組、慢 4 倍，最強的組合幾乎都在前 20 張）
             for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) for (let c = b + 1; c < own.length; c++) { const cards = [own[a], own[b], own[c]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesB)) continue; const hp = hitParts(cards); if (!hp.length) continue;
-                const plans = hp.map(x => ({ tg: [x], label: '' })); if (hp.length > 1 && raidPartsConnected(hp)) plans.push({ tg: hp, label: '' }); items.push({ cards, plans }); }
+                const plans = hp.map(x => ({ tg: [x], label: '' })); if (hp.length > 1 && raidPartsConnected(hp, env.board)) plans.push({ tg: hp, label: '' }); items.push({ cards, plans }); }
             if (!items.length) return null;
             const pool = (await raidSimEvalPool(P, env, me, items, 1, null, Math.max(k, 12))).filter(o => o.final).sort((a, b) => b.avg - a.avg);
             return pool.slice(0, k).map(o => o.cards);
@@ -13012,7 +13012,7 @@
             const scene = {}; Object.keys(E.board).forEach(x => { const b = E.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const { hitParts, playable } = raidSimPartFns(scene), usesM = raidDeckUsesMap();
             const cands = (await raidSimCandidateDecks(data, false)).filter(d => (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(d.cards));
-            const items = cands.map(d => { const hp = hitParts(d.cards); const pl = raidSimPlansFor(d.cards, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); return pl.length ? { cards: d.cards, plans: pl } : null; }).filter(Boolean);
+            const items = cands.map(d => { const hp = hitParts(d.cards); const pl = raidSimPlansFor(d.cards, E.board, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); return pl.length ? { cards: d.cards, plans: pl } : null; }).filter(Boolean);
             if (!items.length) return [];
             let pool = (await raidSimEvalPool(P, E, me, items, k, progress || null, Math.max(24, k * 8))).map(o => { const f = raidPlagueFactor(o.cards); if (f >= 1) return o; const q = { ...o, avg: o.avg * f, decayF: f }; ['lo', 'hi', 'raw'].forEach(x => { if (q[x] != null) q[x] *= f; }); return q; });   /* 下一隻王也套瘟疫暫時打折 */
             /* 下一隻王剛出來是全盔甲：防空高砲、帶刺的晨星這時打很虧，跟這隻王一樣照「等時機再打」的盤面算（以傷害為主，合計高才會被挑）
@@ -13029,7 +13029,7 @@
             if (openN.length && !openN.some(x => E.board[x].layer === 'body') && firstBreak) {
                 const k0 = firstBreak;
                 const envFl = { ...E, board: { ...E.board, [k0]: { layer: 'body', cursed: false } } };
-                await reEval((c) => c.includes('FlakShot'), envFl, (c) => { const hp = hitParts(c).filter(x => x !== k0); return raidSimPlansFor(c, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); }, { flakLater: true, flakPart: k0 });
+                await reEval((c) => c.includes('FlakShot'), envFl, (c) => { const hp = hitParts(c).filter(x => x !== k0); return raidSimPlansFor(c, envFl.board, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); }, { flakLater: true, flakPart: k0 });
             }
             { const hpB = {}; Object.keys(E.board).forEach(x => { hpB[x] = Math.max(0, ((E.hp || {})[x] || 0) - ((E.hpA || {})[x] || 0)); });
               const plan = raidMorningPlan(E.board, E.hpA || {}, hpB, firstBreak ? [firstBreak] : null);
@@ -13158,7 +13158,7 @@
             const own = own0.filter((c, i) => i < 20 || mates.has(c)), vlist = [];
             for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !fF.playable(cards)) continue;
                 const hp = fF.hitParts(cards), plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
+                const pl2 = raidSimPlansFor(cards, envF.board, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
             if (!vlist.length) return '<div style="font-size:12px; color:#8a7a6a;">剩下的卡湊不出瘋狂無效的牌組。</div>';
             const pool = raidDecayAdj((await raidSimEvalPool(P, envF, me, vlist, 1, null, 20)).filter(o => o.final));
             pool.forEach(o => { const f = showF(o.cards); o.avg *= f; if (o.lo != null) o.lo *= f; if (o.hi != null) o.hi *= f; });
@@ -13944,7 +13944,7 @@
                         const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };
                         const { hitParts } = raidSimPartFns(scene);
                         const list = []; cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return;
-                            const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) list.push({ cards: d.cards, plans: pl }); });
+                            const pl = raidSimPlansFor(d.cards, board, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) list.push({ cards: d.cards, plans: pl }); });
                         if (!list.length) return;
                         const meUp = meWith(me, candIds), picks2 = {};
                         const cache = { scr: new Map(), fin: new Map() };
@@ -14016,7 +14016,7 @@
                                 const L = cond.state === 'skeleton' ? (k === keep ? 'body' : 'skeleton') : 'body'; board[k] = { layer: L, cursed: false }; scene[k] = L; });
                             return mk({ board, scene, w: b0.w, label: cond.state === 'skeleton' ? '收尾（其他都打成骨架）' : '全肉體' }, true); };
                         candIds.forEach(id => { const cards = deckOf(id); if (!cards || !cards.every(c => me.lv[c] > 0)) return;
-                            const ok = (m) => { const hp = m.hitParts(cards); if (!hp.length) return null; const pl = raidSimPlansFor(cards, m.plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); return pl.length ? pl : null; };
+                            const ok = (m) => { const hp = m.hitParts(cards); if (!hp.length) return null; const pl = raidSimPlansFor(cards, m.board, m.plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); return pl.length ? pl : null; };
                             // 先用最常見的幾種盤面；都用不到這張卡，就找這隻王其他用得到的盤面；還是沒有就用收尾盤面
                             let use = ms.slice(0, CRYSTAL_FAST_STATES).map(m => [m, ok(m)]).filter(x => x[1]);
                             if (!use.length) use = ms.slice(CRYSTAL_FAST_STATES).map(m => [m, ok(m)]).filter(x => x[1]).slice(0, CRYSTAL_FAST_STATES);
@@ -14062,7 +14062,7 @@
                         const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };
                         const { hitParts } = raidSimPartFns(scene);
                         const all = [];
-                        cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                        cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, board, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                         if (!all.length) continue;
                         const scr = async (m) => (await raidSimParallel(P, all.map(a => ({ kind: 's', base: raidSimBase(env, m, a.cards), cards: a.cards, plans: a.plans, lite: true })))) || all.map(a => raidSimScreen(P, env, m, a.cards, a.plans));
                         // 兩段篩：全部候選先粗算 1 次（升／不升水晶各一次），留前 CRYSTAL_ROUGH_N 名再照原本的篩法（候選跟推薦一樣完整，計算量少很多）
@@ -14530,7 +14530,7 @@
                     deckSimRes = { err: lines.filter(x => !x.all).map(x => '✖ ' + x.txt).join('\n') }; return; }
                 let plans = env.plans.map(pl => ({ ...pl, tg: pl.tg.filter(k => hp.includes(k)) })).filter((pl, i, arr) => pl.tg.length && arr.findIndex(q => q.tg.join() === pl.tg.join()) === i);
                 if (deckSimTarget) plans = plans.filter(pl => pl.tg.length === 1 && pl.tg[0] === deckSimTarget);
-                plans = raidSimPlansFor(cards3, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
+                plans = raidSimPlansFor(cards3, env.board, plans).map(pl => ({ ...pl, cap: pl.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) }));
                 if (!plans.length) { deckSimRes = { err: '這組打不到選的部位' }; return; }
                 await new Promise(r => setTimeout(r, 0));
                 const r = raidSimFinal(P, env, me, raidSimScreen(P, env, me, cards3, plans));
@@ -14861,7 +14861,7 @@
             const build = (cards, E, hitF) => {
                 E = E || env; const hp = (hitF || hitParts)(cards);
                 const plans = []; E.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label, cap: E.hp ? tg.reduce((t, k) => t + (E.hp[k] || 0), 0) : undefined }); });
-                const pl2 = raidSimPlansFor(cards, plans); return pl2.length ? { cards, plans: pl2, cplans: raidSimCursedPlans(pl2, E), aplans: raidSimArmorPlans(pl2, E) } : null;
+                const pl2 = raidSimPlansFor(cards, E.board, plans); return pl2.length ? { cards, plans: pl2, cplans: raidSimCursedPlans(pl2, E), aplans: raidSimArmorPlans(pl2, E) } : null;
             };
             cands.forEach((d, i) => { const it = build(d.cards); if (it) (i < 40 ? list : extra).push(it); });
             // 用他還沒用過的卡（等級最高的 16 張；公會牌組不夠排滿時 18 張）自己組 3 張的組合，一起挑（公會沒打過的高傷害組合也不會漏掉）
@@ -14943,7 +14943,7 @@
                     const own = own0.filter((c, i) => i < 20 || mates.has(c)), vlist = [];
                     for (let a = 0; a < own.length; a++) for (let b = a + 1; b < own.length; b++) { const cards = [VOID, own[a], own[b]]; if (raidSimDeckBanned(cards) || !raidDeckRecorded(cards, usesM) || !fF.playable(cards)) continue;
                         const hp = fF.hitParts(cards); const plans = []; envF.plans.forEach(pl => { const tg = pl.tg.filter(k => hp.includes(k)); if (tg.length && !plans.some(x => x.tg.join() === tg.join())) plans.push({ tg, label: pl.label }); });
-                        const pl2 = raidSimPlansFor(cards, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
+                        const pl2 = raidSimPlansFor(cards, envF.board, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
                     return vlist.length ? (await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20)).filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8) : [];
                 })(); raidSimMemo.set(vKey, vpoolP); vpoolP.catch(() => raidSimMemo.delete(vKey)); if (raidSimMemo.size > 300) raidSimMemo.delete(raidSimMemo.keys().next().value); }
                 const vpool = raidDecayAdj((await vpoolP).map(o => ({ ...o }))).sort((a, b) => b.avg - a.avg);   /* 瘟疫暫時打折也套在瘋狂候選 */
@@ -15462,10 +15462,16 @@
         /* 一起打的部位要連在一起（點的時候要連貫）：頭－肚、肚－左右肩、肩－同側的手、肚－左右腳、兩腳相連。
            例：頭＋右腳中間隔著肚，沒辦法一起打（卡片限定頭腳時，原本「全部位」扣掉肚會變成頭＋腳） */
         const RAID_PART_ADJ = { Head: ['ChestUpper'], ChestUpper: ['Head', 'ArmUpperLeft', 'ArmUpperRight', 'LegUpperLeft', 'LegUpperRight'], ArmUpperLeft: ['ChestUpper', 'HandLeft'], ArmUpperRight: ['ChestUpper', 'HandRight'], HandLeft: ['ArmUpperLeft'], HandRight: ['ArmUpperRight'], LegUpperLeft: ['ChestUpper', 'LegUpperRight'], LegUpperRight: ['ChestUpper', 'LegUpperLeft'] };
-        function raidPartsConnected(tg) { if (!tg || tg.length <= 1) return true; const set = new Set(tg), seen = new Set([tg[0]]), st = [tg[0]];
-            while (st.length) { const k = st.pop(); (RAID_PART_ADJ[k] || []).forEach(x => { if (set.has(x) && !seen.has(x)) { seen.add(x); st.push(x); } }); } return seen.size === set.size; }
-        function raidSimPlansFor(cards, plans) {
-            plans = (plans || []).filter(p => raidPartsConnected(p.tg));
+        /* 中間隔著的部位如果打不到（骨架、禁打），手指滑過去不影響，算連在一起（例：Jukk 禁頭、肚子已經是骨架，四肢六個部位照樣一起打——實際攻擊紀錄就是這樣打的）；
+           隔著的是還能打的部位（盔甲、肉體）才算斷開（例：碎顱只打頭腳，肚子還有肉體時頭＋腳不能一起打）。board 沒給就用現在的盤面 */
+        function raidLiveBoard() { const b = {}, ban = raidBannedParts || []; Object.entries((raidState && raidState.parts) || {}).forEach(([k, x]) => { b[k] = { layer: ban.includes(k) ? 'banned' : (x.armor > 0 ? 'armor' : x.body > 0 ? 'body' : 'skeleton') }; }); return b; }
+        function raidPartsConnected(tg, board) { if (!tg || tg.length <= 1) return true; const B = board || raidLiveBoard(), pass = (k) => !(B[k] && (B[k].layer === 'armor' || B[k].layer === 'body'));
+            const set = new Set(tg), seen = new Set([tg[0]]), st = [tg[0]];
+            while (st.length) { const k = st.pop(); (RAID_PART_ADJ[k] || []).forEach(x => { if (!seen.has(x) && (set.has(x) || pass(x))) { seen.add(x); st.push(x); } }); }
+            return tg.every(k => seen.has(k)); }
+        function raidSimPlansFor(cards, a, b) {
+            let plans, board; if (Array.isArray(a)) { plans = a; board = b; } else { board = a; plans = b; }   // (cards, plans) 或 (cards, board, plans)
+            plans = (plans || []).filter(p => raidPartsConnected(p.tg, board));
             if (cards.some(c => RAID_SIM_SINGLE.has(c))) return plans.filter(p => p.tg.length === 1);
             const out = plans.slice(), has = new Set(plans.map(p => p.tg.slice().sort().join()));
             const uni = [...new Set(plans.flatMap(p => p.tg))]; if (uni.length < 3 || !window.RAID_KPLANS_ON) return out;   // 補打法會增加計算時間：預設關閉（只給比對用）
@@ -16035,7 +16041,7 @@
             const cands = (await raidSimCandidateDecks(data)).filter(d => !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c)));
             if (!cands.length) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">沒有可以模擬的牌組。</div>'; return; }
             // 最好的 6 組，卡片不重複（全部快速篩一次，前 12 組各跑 200 次）
-            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, plans) })));
+            const pick = await raidSimRank(P, env, me, cands.slice(0, 40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, env.board, plans) })), 6, (t) => { box.innerHTML = `<div style="font-size:12px; color:#8a7a6a;">${t}</div>`; }, cands.slice(40).map(d => ({ cards: d.cards, plans: raidSimPlansFor(d.cards, env.board, plans) })));
             const ic = (id) => raidCardImage(id) ? `<img src="${raidCardImage(id)}" alt="" title="${escapeHtml(raidCardLabel(id))}" style="width:30px; height:30px; border-radius:6px; vertical-align:middle;">` : '';
             box.innerHTML = `<div style="font-size:12px; color:#8a7a6a; margin-bottom:4px;">${escapeHtml(raidState.bossName || '')}｜門票 ${Math.round(morale * 100)}%｜突襲等級 ${me.rl}${Object.keys(season).length ? `｜賽季加成 ${Object.entries(season).map(([c, n]) => `${escapeHtml(raidCardLabel(c))} +${n}`).join('、')}` : ''}</div>` + pick.map((o, i) => `<div style="display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #eadfcc;">
                     <b style="width:16px; color:#8a7a6a;">${i + 1}</b>${o.cards.map(ic).join('')}
@@ -17188,7 +17194,7 @@
                 const env = { board, open, plans, curse: c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null, mirror: CRYSTAL_MIRROR, buff, extraSec, morale: 0.3, season: {}, hp: null };   // 詛咒只在模擬裡算一次（有效血量不再另外換算）；鏡子力照一場平均
                 const { hitParts } = raidSimPartFns(scene);
                 const all = [];
-                cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
+                cands.forEach(d => { if (raidSimDeckBanned(d.cards) || !d.cards.every(c => me.lv[c] > 0 && !RAID_SIM_EXCLUDE.has(c))) return; const hp = hitParts(d.cards); if (!hp.length) return; const pl = raidSimPlansFor(d.cards, board, plans.map(x => ({ tg: x.tg.filter(k => hp.includes(k)), label: '' })).filter((x, i, arr) => x.tg.length && arr.findIndex(q => q.tg.join() === x.tg.join()) === i)); if (pl.length) all.push({ cards: d.cards, plans: pl }); });
                 const pool = await raidSimEvalPool(P, env, me, all, 6, null, 12, true);
                 const pick = await raidSimPickPool(P, env, me, pool, 6);
                 out.push([st.w, pick.length ? pick.reduce((x, o) => x + o.avg, 0) / pick.length : 0]);

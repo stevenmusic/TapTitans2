@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 60;
+        const RAID_RECO_VER = 62;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13213,7 +13213,7 @@
             const short = Object.entries(need).some(([k, d]) => { const pt = P[k] || {}; const hp = Math.max(0, Number(pt.armor) || 0) + Math.max(0, Number(pt.body) || 0); return d * 0.9 > hp; })
                 || Object.entries(needA).some(([k, d]) => d * 0.9 > Math.max(0, Number((P[k] || {}).armor) || 0))   // 盔甲卡的組：盔甲快不夠了就重算（模擬會照剩的盔甲算）
                 // 別人把盔甲打掉：某個部位從「盔甲夠打完整刀」變成「打到一半會破甲」（或反過來），模擬出來的傷害會變，要重算
-                || Object.entries(need).some(([k, d]) => { const a0 = (L.armorAt || {})[k] || 0, a1 = Math.max(0, Number((P[k] || {}).armor) || 0); return a0 > 0 && (d > a0) !== (d > a1); });
+                || Object.entries(need).some(([k, d]) => { const a0 = (L.armorAt || {})[k] || 0, a1 = Math.max(0, Number((P[k] || {}).armor) || 0), mx = Number((P[k] || {}).armorMax) || a0; return a0 > 0 && (d > a0) !== (d > a1) && raidHpBucket(a0, mx) !== raidHpBucket(a1, mx); });   /* 跨過血量分段才算（例：盔甲從 2% 掉到 1% 以下），不是少 1M 就重算 */
             if (short) { raidRecoReuse.why = '部位剩的血吃不下，或別人把盔甲打掉（破甲時機變了）'; return null; }
             if (lvNow && rows.some(x => (x.rawCards || x.cards || []).some(c => (lvNow[c] || 0) !== (L.lv[c] || 0)))) { raidRecoReuse.why = '卡片等級變了（換水晶／升級）'; return null; }   // 要沿用的組，卡片等級變了
             return rows;
@@ -13398,7 +13398,7 @@
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
                     const split0 = raidNextOn() && (!nextRound || predicted) ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX), r.player).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
-                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).join(',') : '')(raidPhaseInfo(await raidSimEnv())), nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidState.bossName, (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).slice(0, 1).join(',') : '')(raidPhaseInfo(await raidSimEnv())) /* 打王順序只看第一個（現在該先打的部位）：後面幾個部位互換順序，推薦的組幾乎不變，不用整套重算 */, nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
@@ -15560,17 +15560,23 @@
             const bigLeft = sh >= 0.99 ? -Infinity : hp(big) - smallHp * sh / (1 - sh);
             return { ok: bigLeft >= reserve && reserve > 0, big, share: sh, bigLeft, reserve };
         }
+        /* 血量分段：剩的比例（對上限）分成 0、1%、2%、5%、10%、25%、50%、100% 幾段，回傳那一段的上緣×上限。
+           用在「部位排順序、推薦能不能沿用」：只有跨段才算狀態改變，不會每少 1M 就重排、重算 */
+        const RAID_HP_STEPS = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1];
+        function raidHpBucket(x, max) { x = Math.max(0, Number(x) || 0); if (!(x > 0)) return 0; if (!(max > 0)) return x; const f = x / max; const u = RAID_HP_STEPS.find(t => f <= t) || 1; return u * max; }
         function raidPhaseInfo(env) {
             if (!env || !env.board || !raidState || !raidState.parts) return null;
             const parts = raidState.parts, B = env.board, LOCS = Object.keys(B);
             const armorOf = (k) => Math.max(0, Number((parts[k] || {}).armor) || 0), bodyOf = (k) => Math.max(0, Number((parts[k] || {}).body) || 0), hpOf = (k) => armorOf(k) + bodyOf(k);
+            /* 排順序用分段後的血量（只在跨過 50%／25%／10%／5%／2%／1% 時才變）：差不多的兩個部位少個 1M 就交換順序，推薦就整套重算 */
+            const armorQ = (k) => raidHpBucket(armorOf(k), Number((parts[k] || {}).armorMax) || armorOf(k)), hpQ = (k) => raidHpBucket(hpOf(k), (Number((parts[k] || {}).armorMax) || 0) + (Number((parts[k] || {}).bodyMax) || 0) || hpOf(k));
             const banned = LOCS.filter(k => B[k].layer === 'banned');
             const open = LOCS.filter(k => B[k].layer === 'armor' || B[k].layer === 'body');
             const body = open.filter(k => B[k].layer === 'body'), armor = open.filter(k => B[k].layer === 'armor');
             const nSkel = LOCS.filter(k => B[k].layer === 'skeleton').length;
             const g = raidPhaseGuild();
             const finOK = banned.length <= 1 && raidFinViable().ok;   // 凱旋行軍要 6 骨架＋一個留著打的部位（禁打最多 1 個），而且清完其他部位時最厚的部位還剩夠打的血
-            const big = finOK ? open.slice().sort((a, b) => hpOf(b) - hpOf(a))[0] || null : null;
+            const big = finOK ? open.slice().sort((a, b) => hpQ(b) - hpQ(a))[0] || null : null;
             const reserve = big ? g.finLeft * g.finDmg : 0;
             const cu = env.curse && (env.curse.type === 'Burst' || env.curse.type === 'Afflicted') ? env.curse : null;
             const cursed = cu ? armor.filter(k => B[k].cursed) : [];
@@ -15578,24 +15584,24 @@
             if (cursed.length) {
                 const share = cu.type === 'Burst' ? g.burstShare : g.affShare;
                 const tol = Math.min(0.15, 2 * (cu.per || 0.06) * share);
-                const order = cursed.slice().sort((a, b) => armorOf(a) - armorOf(b));
+                const order = cursed.slice().sort((a, b) => armorQ(a) - armorQ(b));
                 return { phase: 1, order, ok: (k) => cursed.includes(k), tol, big, reserve, g, line: `拆詛咒甲：先打${order.map(lbl).join('→')}（剩血少的先拆）` };
             }
             if (body.length < 6 && armor.length) {
                 let cand = armor.slice();
                 if (big && cand.includes(big) && body.length + cand.length - 1 >= 6) cand = cand.filter(k => k !== big);   // 其他全開就夠 6 肉體：最厚的留給凱旋行軍
-                const order = cand.sort((a, b) => armorOf(b) - armorOf(a));
+                const order = cand.sort((a, b) => armorQ(b) - armorQ(a));
                 return { phase: 2, order, ok: (k) => order.includes(k), tol: 0.05, big, reserve, g, line: `拆盔甲：先打${order.map(lbl).join('→')}（厚的先拆）${big && !order.includes(big) ? `，${lbl(big)}留給凱旋行軍` : ''}` };
             }
             const small = open.filter(k => k !== big), smallBody = small.filter(k => B[k].layer === 'body').reduce((t, k) => t + bodyOf(k), 0);
             if (body.length >= 6 && g.voidLeft > 0 && smallBody > g.voidLeft * g.voidDmg) {
                 const bigOk = big && hpOf(big) > reserve * 1.2;
-                const order = open.filter(k => k !== big || bigOk).sort((a, b) => hpOf(b) - hpOf(a));
+                const order = open.filter(k => k !== big || bigOk).sort((a, b) => hpQ(b) - hpQ(a));
                 return { phase: 3, order, ok: (k) => order.includes(k), tol: 0.05, big, reserve, g, line: `瘋狂無效時段（還有 ${g.voidLeft} 人沒用）：剩血多的先打，別把小部位打成骨架${big ? `；${lbl(big)}保留 ${M(reserve)} 給凱旋行軍` : ''}` };
             }
             if (finOK && big) {
                 if (nSkel < 6) {
-                    const order = small.sort((a, b) => hpOf(a) - hpOf(b));
+                    const order = small.sort((a, b) => hpQ(a) - hpQ(b));
                     return { phase: 4, order, ok: (k) => order.includes(k), tol: 0.10, big, reserve, g, line: `凱旋行軍時段：先清小部位湊 6 個骨架（${order.map(lbl).join('→')}），${lbl(big)}留給凱旋行軍` };
                 }
                 return { phase: 4, order: [big], ok: () => true, tol: 0, big, reserve, g, line: `凱旋行軍時段：已經 ${nSkel} 個骨架，凱旋行軍打${lbl(big)}` };

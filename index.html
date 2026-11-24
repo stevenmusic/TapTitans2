@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 75;
+        const RAID_RECO_VER = 76;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13008,7 +13008,7 @@
             open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
             const c0 = t.c && t.c[0], curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
             const envN = { ...env, board, open, plans, curse, hp, hpA, hpSim: undefined, strategy: undefined };
-            return { m, name, envN, fixed, E: raw };   // E：照全公會進度估，他這輪在這隻王死前大約還能打幾刀（小數）
+            return { m, name, envN, fixed, E: raw, after: Math.max(0, roundDmg - left) };   // after：這隻王打死後，這輪公會還能打下一隻王多少（等不等得到晨星、瘋狂無效的時機）   // E：照全公會進度估，他這輪在這隻王死前大約還能打幾刀（小數）
         }
         /* 下一隻王的 k 組也照「一組一組扣部位剩的血」算（跟這隻王一樣用 raidSimDeplete）：前面的組把某個部位（例如詛咒甲）打光了，
            後面打同一個部位的組改打別的部位、或照打光後的盤面重新模擬。原本每組都假設部位滿血，兩組都去打同一塊詛咒甲，其實詛咒甲不夠吃 */
@@ -13045,7 +13045,7 @@
             // 同一次推薦（同一個人、同一隻下一隻王）的候選只算一次：兩種排法共用，挑的時候再扣掉另一邊用掉的卡
             if (split.pool && split.poolUsed) { const ex = [...used].filter(c => !split.poolUsed.has(c)); const P0 = split.poolP, E0 = split.envN, me0 = split.poolMe;
                 const pick0 = await raidSimNextDeplete(P0, E0, me0, await raidSimPickPool(P0, E0, me0, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), k), split.items, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), used);
-                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: o.msLater && o.msMode === 'body' ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !(o.msLater && o.msMode === 'body') && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' })); }
+                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' })); }
             let P = await raidSimLoad(); P = { ...P, fg: true };
             const E = split.envN, me = raidSimPlayerNow(v, E);
             const scene = {}; Object.keys(E.board).forEach(x => { const b = E.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
@@ -13072,12 +13072,18 @@
             }
             { const hpB = {}; Object.keys(E.board).forEach(x => { hpB[x] = Math.max(0, ((E.hp || {})[x] || 0) - ((E.hpA || {})[x] || 0)); });
               const plan = raidMorningPlan(E.board, E.hpA || {}, hpB, firstBreak ? [firstBreak] : null);
-              if (plan && !plan.now) { const envMs = { ...E, board: plan.board }, sc = {}; Object.keys(plan.board).forEach(x => { const b = plan.board[x]; sc[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; }); const fM = raidSimPartFns(sc);
+              const msNeedN = plan ? Object.keys(plan.board).filter(x => E.board[x] && E.board[x].layer === 'armor' && plan.board[x].layer === 'body').reduce((t, x) => t + ((E.hpA || {})[x] || 0), 0) : 0;
+              if (plan && !plan.now && !(split.after >= 0 && msNeedN > split.after)) { const envMs = { ...E, board: plan.board }, sc = {}; Object.keys(plan.board).forEach(x => { const b = plan.board[x]; sc[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; }); const fM = raidSimPartFns(sc);
                 await reEval((c) => c.includes('BarbedMorningstar'), envMs, (c) => { const hp = fM.hitParts(c); return plan.tg.every(x => hp.includes(x)) ? [{ tg: plan.tg, label: '' }] : []; }, { msLater: true, msMode: plan.mode }); } }
+            /* 瘋狂無效：這輪換王後公會還打得到的傷害，夠把下一隻王能打的部位盔甲全拆完（全部變肉體），瘋狂組就照那時的盤面算、標「N 肉體再打」，跟其他組比傷害 */
+            { const openV = Object.keys(E.board).filter(x => E.board[x].layer === 'armor' || E.board[x].layer === 'body'), needV = openV.reduce((t, x) => t + (E.board[x].layer === 'armor' ? ((E.hpA || {})[x] || 0) : 0), 0);
+              if (openV.length && openV.some(x => E.board[x].layer === 'armor') && split.after >= needV) {
+                const bV = { ...E.board }; openV.forEach(x => { bV[x] = { layer: 'body' }; }); const envV = { ...E, board: bV, hpA: Object.fromEntries(Object.keys(E.board).map(x => [x, openV.includes(x) ? 0 : ((E.hpA || {})[x] || 0)])) };
+                await reEval((c) => c.includes('CrushingVoid'), envV, (c) => raidSimPlansFor(c, bV, E.plans.map(p => ({ tg: p.tg.slice(), label: '' }))), { voidLater: true, voidN: Math.min(6, openV.length) }); } }
             split.pool = pool; split.poolUsed = used; split.poolP = P; split.poolMe = me;
             split.items = items;
             const pick = await raidSimNextDeplete(P, E, me, await raidSimPickPool(P, E, me, pool.filter(o => o.avg > 0), k), items, pool.filter(o => o.avg > 0), used);   // 從全部候選挑（只用精算過的前幾名會共用同幾張強卡，湊不滿 k 組）
-            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: o.msLater && o.msMode === 'body' ? 'body' : E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !(o.msLater && o.msMode === 'body') && !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' }));
+            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' }));
         }
         // 同一個人、同樣的盤面（各部位層別）、同樣用過的卡和等級：晨星組、全部組合算過就直接用（盤面小變化、別人出刀不重算）
         const raidSimMemo = new Map();

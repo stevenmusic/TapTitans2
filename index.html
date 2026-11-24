@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 76;
+        const RAID_RECO_VER = 77;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13041,7 +13041,7 @@
         // 下一隻王最強的 k 組（卡片不重複，候選跟推薦一樣）
         async function raidSimNextBossPick(r, info, data, split, k, progress) {
             if (!(k > 0)) return [];
-            const used = new Set(info.used || []), v = raidAccountInfo(r.player); if (!v) return null;
+            const used = new Set([...(info.used || []), ...(split.noNext || [])]), v = raidAccountInfo(r.player); if (!v) return null;   // 這隻王現在就用得到的特殊牌不留給下一隻王
             // 同一次推薦（同一個人、同一隻下一隻王）的候選只算一次：兩種排法共用，挑的時候再扣掉另一邊用掉的卡
             if (split.pool && split.poolUsed) { const ex = [...used].filter(c => !split.poolUsed.has(c)); const P0 = split.poolP, E0 = split.envN, me0 = split.poolMe;
                 const pick0 = await raidSimNextDeplete(P0, E0, me0, await raidSimPickPool(P0, E0, me0, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), k), split.items, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), used);
@@ -13482,10 +13482,18 @@
                         if (extra.length) infoP = { ...infoP, extraDecks: extra };
                     }
                     // 這輪會打死這隻王：m 組打這隻、其他打下一隻王（全盔甲、詛咒甲），兩種排法（先排下一隻／先排這隻）取 6 組合計高的
-                    const split = !reuse ? split0 : null;
+                    const split = !reuse ? split0 ? { ...split0 } : null : null;
+                    /* 這隻王現在就用得到的特殊牌（帶刺的晨星、瘋狂無效、凱旋行軍）：把握這隻王的時機，不留給下一隻王（下一隻王還要等換王、再等時機，比較不確定）。
+                       要不要用、跟哪兩張搭，一樣在這隻王的組數裡照合計傷害決定 */
+                    let finSp = null;
+                    if (split) { const noN = new Set();
+                        if (infoP.msCand || (infoP.extraDecks || []).some(c => c.includes('BarbedMorningstar'))) noN.add('BarbedMorningstar');
+                        if (hasVoid && (sixNow || voidLaterGo)) noN.add('CrushingVoid');
+                        if (raidRecoFinPref.get(r.player) !== false && n0 >= 2 && skel && skel.ok) { finSp = await raidSimFinisherBest(r, infoP, data).catch(() => null); if (finSp) noN.add('FinisherAttack'); }
+                        split.noNext = noN; }
                     let simPick; try { simPick = reuse || (split ? await (async () => {
                           const sumOf = (rows) => (rows || []).reduce((t, x) => t + ((x.simDmg && x.simDmg.avg) || 0), 0), usedPlus = (rows) => new Set([...(infoP.used || []), ...(rows || []).flatMap(x => x.rawCards || x.cards)]);
-                          const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: false, force }, data, simFns.playable, simFns.hitParts, prog);
+                          const pk = (inf, prog) => raidSimPlayerPick(r.player, { ...inf, voidMode: voidLaterGo && !((inf.used && inf.used.has && inf.used.has('CrushingVoid'))), force }, data, simFns.playable, simFns.hitParts, prog);
                           const seg = (a, b2) => (t) => { const m2 = /(\d+)%/.exec(String(t || '')); raidRecoProgSet(r.player, `計算中 ${Math.round(a + (m2 ? Number(m2[1]) : 0) * (b2 - a) / 100)}%`); };   // 四段各佔一部分，不會停在 92%／100% 不動
                           raidRecoProgSet(r.player, '計算中 2%');
                           if (split.m === 0) return await raidSimNextBossPick(r, infoP, data, split, n0, seg(2, 99));   // 這隻王分配的組打完了：全部留給下一隻王
@@ -13506,8 +13514,8 @@
                              找到後照那個組合實際排一次（這隻王的打法、部位分配照原本的流程），跟上面兩種排法一起比 */
                           try {
                               const out = {}; await pk({ ...infoP, remaining: split.m, poolOut: out }, null);
-                              const sig = (c) => c.slice().sort().join('+'), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0 && !seen.has(sig(o.cards)) && seen.add(sig(o.cards))).sort((x, y) => y.avg - x.avg); };
-                              const CL = top(out.pool), NL = top(split.pool && split.pool.filter(o => !o.cards.some(c => (infoP.used || new Set()).has && infoP.used.has(c))));
+                              const sig = (c) => c.slice().sort().join('+'), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0).sort((x, y) => y.avg - x.avg).filter(o => !seen.has(sig(o.cards)) && seen.add(sig(o.cards))); };   // 同一組有好幾種打法（現在打／等時機）：留傷害高的
+                              const CL = top([...(out.pool || []), ...(out.vpool || []), ...(infoP.msCand ? (infoP.msCand.alts && infoP.msCand.alts.length ? infoP.msCand.alts : [infoP.msCand]) : []), ...(finSp ? (finSp.alts && finSp.alts.length ? finSp.alts : [finSp]).map(o => ({ ...o, finRes: true })) : [])]),   /* 這隻王的候選也放等時機的瘋狂、晨星、凱旋組 */ NL = top(split.pool && split.pool.filter(o => !o.cards.some(c => (infoP.used || new Set()).has && infoP.used.has(c))));
                               /* 這隻王打幾組（m）是照「全公會這輪打多少、王剩多少血」估的，不一定準：估計值 ±1 組的每一種搭配都窮舉，取加總最高
                                  （不完全放開：只看加總會把大部分組排給這隻王，但王很快就會被打死，那些組實際打不到） */
                               let steps = 0; const usedC = new Set(), sel = [];
@@ -13532,8 +13540,9 @@
                               const bestSel = pickM && pickM.sel, kC = pickM ? pickM.kC : split.m;
                               if (bestSel) {
                                   /* 照窮舉的結果排：這隻王只開放窮舉挑中的那幾組的卡（其他卡都當成用過），排出來就是那幾組，只是照原本流程配打法、部位 */
-                                  const keepC = new Set(bestSel.slice(0, kC).flatMap(o => o.cards)), allCards = Object.keys(RAID_CARD_IMAGE);
-                                  const CJ = await pk({ ...infoP, used: new Set([...(infoP.used || []), ...allCards.filter(c => !keepC.has(c))]), remaining: kC }, null);
+                                  const finO = bestSel.slice(0, kC).find(o => o.finRes), keepC = new Set(bestSel.slice(0, kC).filter(o => o !== finO).flatMap(o => o.cards)), allCards = Object.keys(RAID_CARD_IMAGE);
+                                  let CJ = kC - (finO ? 1 : 0) > 0 ? await pk({ ...infoP, used: new Set([...(infoP.used || []), ...allCards.filter(c => !keepC.has(c))]), remaining: kC - (finO ? 1 : 0) }, null) : [];
+                                  if (CJ && finO) CJ = CJ.concat([{ cards: byPartOrderCards(finO.cards), rawCards: finO.cards, targets: [{ part: finO.big, layer: 'body', cursed: false }], allParts: false, simDmg: finO, finLater: true }]);   // 凱旋行軍：這隻王 6 骨架時打最厚的部位
                                   const NJ = CJ ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CJ) }, data, split, n0 - kC) : null;
                                   if (CJ && NJ) best.push(CJ.concat(NJ)); }
                           } catch (e) { console.error('split joint', e); }
@@ -15008,7 +15017,7 @@
                         const pl2 = raidSimPlansFor(cards, envF.board, plans); if (pl2.length) vlist.push({ cards, plans: pl2 }); }
                     return vlist.length ? (await raidSimEvalPool(P, envF, me, vlist, 1, seg(0, 8), 20)).filter(o => o.final).sort((a, b) => b.avg - a.avg).slice(0, 8) : [];
                 })(); raidSimMemo.set(vKey, vpoolP); vpoolP.catch(() => raidSimMemo.delete(vKey)); if (raidSimMemo.size > 300) raidSimMemo.delete(raidSimMemo.keys().next().value); }
-                const vpool = raidDecayAdj((await vpoolP).map(o => ({ ...o }))).sort((a, b) => b.avg - a.avg);   /* 瘟疫暫時打折也套在瘋狂候選 */
+                const vpool = raidDecayAdj((await vpoolP).map(o => ({ ...o }))).sort((a, b) => b.avg - a.avg); if (info.poolOut) info.poolOut.vpool = vpool;   /* 瘟疫暫時打折也套在瘋狂候選 */
                 const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK));
                 poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;

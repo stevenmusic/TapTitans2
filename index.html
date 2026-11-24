@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 74;
+        const RAID_RECO_VER = 75;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13001,7 +13001,7 @@
                詛咒甲通常只有 2～3B，公會幾刀就拆完，不能當成還在：例 Sterl 詛咒甲合計約 9B，換王後全公會還有幾十 B 要打，他打到時早就拆完了 */
             const dPre = Math.max(0, roundDmg - left) / 2;
             { let d = dPre; const arm = Object.keys(board).filter(k => board[k].layer === 'armor' && hpA[k] > 0);
-              const order = arm.filter(k => board[k].cursed).sort((a, b) => hpA[a] - hpA[b]).concat(arm.filter(k => !board[k].cursed).sort((a, b) => hpA[b] - hpA[a]));
+              const order = arm.filter(k => board[k].cursed).sort((a, b) => hpA[a] - hpA[b]);   /* 只先扣詛咒甲（每塊 2～3B，公會幾刀就拆完）；一般盔甲不先扣：換王後一開始大家都在拆盔甲，推薦也要照拆盔甲的盤面排（拆盔甲的組、等肉體的組照時機標），不能當成已經全部變肉體 */
               for (const k of order) { if (!(d > 0)) break; const x = Math.min(d, hpA[k]); hpA[k] -= x; hp[k] -= x; d -= x; if (!(hpA[k] > 0)) { hpA[k] = 0; board[k] = { layer: hp[k] > 0 ? 'body' : 'skeleton' }; } } }
             const open = Object.keys(board).filter(k => board[k].layer === 'armor' || board[k].layer === 'body'), plans = [];
             const add = (tg) => { if (tg.length && !plans.some(p => p.tg.join() === tg.join())) plans.push({ tg, label: '' }); };

@@ -6938,6 +6938,10 @@
                 raidPreview = { buff: cb.buff || null, startAt: cb.startAt || null, level: cb.level || null, bansByName: cb.bansByName || null, morale: Number(cb.morale) > 0 ? Number(cb.morale) : null };   // bansByName：公會已經先設定的每隻王禁打
                 raidBannedParts = Array.isArray(cb.banned) ? cb.banned.slice() : [];
                 raidCurseInfo = Array.isArray(cb.curse) ? cb.curse : [];
+            } else if (cb.starting) {   // 剛開打、新場次快照還沒進來：伺服器回預告的第一隻王，禁打、詛咒照預告帶的
+                raidPreview = null;
+                raidBannedParts = Array.isArray(cb.banned) ? cb.banned.slice() : [];
+                raidCurseInfo = Array.isArray(cb.curse) ? cb.curse : [];
             } else {
                 if (raidPreview) { raidPreview = null; raidBannedParts = []; raidCurseInfo = []; }
                 // 伺服器記著這場每隻王的禁打（titan_target）：剛打開網頁、還沒收到即時事件也能直接套用

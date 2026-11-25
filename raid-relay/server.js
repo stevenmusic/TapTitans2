@@ -1714,6 +1714,7 @@ function watcherSubscribe() {
 // 這段時間畫面顯示下一場的第 1 隻王（部位血量、詛咒甲、詛咒類型、公會標的禁打、加成），不動目前這場的王狀態；
 // 下一場開打（收到 raid_started_at 或攻擊事件）就清掉
 let watcherPreview = null;
+let watcherLastPreview = null;   // 最後一份預告（預告被清掉後，開打那幾分鐘新場次快照還沒進來時用）
 let watcherRecentAtk = [];   // 最近 90 秒收到的刀（各部位各層的傷害）：算下一刀出刀前的狀態時，把同時間打完的別人的刀加回去
 function buildRaidPreview(payload) {
   const raid = payload.raid || {};
@@ -1760,7 +1761,7 @@ function watcherHandleRaidSnapshot(payload, event) {
         if (pv.bansByName[pv.name]) pv.banned = pv.bansByName[pv.name].slice();
       }
       if (pv.morale == null && watcherPreview && watcherPreview.raidId === pv.raidId) pv.morale = watcherPreview.morale;   // 這份沒帶士氣：沿用同一場之前記到的
-      watcherPreview = pv;
+      watcherPreview = pv; watcherLastPreview = pv;
     }
     // 下一場預告也帶了每隻王的部位（都還沒被打過）：存下來，開打前就能算整場血量
     if (payload.raid && Array.isArray(payload.raid.titans)) saveTitanSpawnParts(payload.raid.titans, 'preview:' + payload.start_at);
@@ -2077,6 +2078,13 @@ function startWatcher() {
 
 function buildCurrentBossPayload() {
   // 下一場預告期間：回傳下一場第 1 隻王（網頁看到 preview 就套用它帶的禁打、詛咒、加成）
+  /* 開打時間到了、新場次的快照還沒進來（剛開打幾分鐘）：直接回預告的第一隻王當作目前的王，
+     不要回上一場留下的王（M-50 開打時顯示了 M-48 的 Klonk 4/6 一兩分鐘） */
+  const pvAny = watcherPreview || watcherLastPreview, pvAt = pvAny && pvAny.startAt ? Date.parse(pvAny.startAt) : NaN;
+  if (pvAny && pvAt <= Date.now() && Date.now() - pvAt < 30 * 60 * 1000) {
+    const cur = watcherCurrentRaidStartedAt ? Date.parse(watcherCurrentRaidStartedAt) : 0;
+    if (!(cur >= pvAt - 5 * 60 * 1000)) return { ...pvAny, preview: false, starting: true, raidStartedAt: null, raidEnded: false, hasReceivedAttack: false, titanTarget: watcherTitanTarget };
+  }
   if (watcherPreview) return { ...watcherPreview, preview: true, hasReceivedAttack: true };
   return {
     name: watcherBossName, ordinal: watcherBossOrdinal, total: watcherBossTotal || 6,

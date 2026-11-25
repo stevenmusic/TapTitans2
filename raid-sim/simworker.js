@@ -25,6 +25,7 @@ async function screen(P, base, cards, plans, lite) {   // lite：配卡用的輕
   let rough = []; for (const pl of plans) { const raw = (await simMeanT({ ...base, targets: pl.tg, seed: 7 }, lite ? 1 : 2, P)).total; rough.push({ plan: pl.label, tg: pl.tg, cap: pl.cap, raw, avg: Math.min(raw, capOf(pl)) }); }
   const alts = rough.map(x => ({ plan: x.plan, tg: x.tg, raw: x.raw }));
   if (rough.length > 2) rough = rough.sort((a, b) => b.avg - a.avg).slice(0, 2);
+  if (!lite) { const b = rough.reduce((x, y) => !x || y.avg > x.avg ? y : x, null); return { cards, ...b, alts }; }   /* 第二段跟第一段同一組種子、同樣 2 次，結果一模一樣：直接用，不重跑 */
   let best = null;
   for (const pl of rough) { const r = (await simMeanT({ ...base, targets: pl.tg, seed: 7 }, lite ? 4 : SCREEN_RUNS, P)).total; const v = Math.min(r, capOf(pl)); if (!best || v > best.avg) best = { ...pl, raw: r, avg: v }; }
   return { cards, ...best, alts };

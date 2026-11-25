@@ -7428,7 +7428,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 87;
+        const RAID_RECO_VER = 89;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12929,7 +12929,7 @@
         async function raidSimVoidTopNow0(r, info, k) {
             const VOID = 'CrushingVoid', used = new Set(info.used || []); if (used.has(VOID)) return null;
             const v = raidAccountInfo(r.player); if (!v) return null;
-            let P = await raidSimLoad(); P = { ...P, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); P = { ...P, fg: true };
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env); if (!(me.lv[VOID] > 0)) return null;
             const scene = {}; Object.keys(env.board).forEach(x => { const b = env.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const { hitParts, playable } = raidSimPartFns(scene), usesM = raidDeckUsesMap(), mates = new Set();
@@ -12946,7 +12946,7 @@
         async function raidSimBruteTop(r, info, k) { return raidSimMemoGet('bt' + k, r, info, () => raidSimBruteTop0(r, info, k)); }
         async function raidSimBruteTop0(r, info, k) {
             const used = new Set(info.used || []); const v = raidAccountInfo(r.player); if (!v) return null;
-            let P = await raidSimLoad(); P = { ...P, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); P = { ...P, fg: true };
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             const scene = {}; Object.keys(env.board).forEach(x => { const b = env.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const { hitParts } = raidSimPartFns(scene);
@@ -13054,7 +13054,7 @@
             if (split.pool && split.poolUsed) { const ex = [...used].filter(c => !split.poolUsed.has(c)); const P0 = split.poolP, E0 = split.envN, me0 = split.poolMe;
                 const pick0 = await raidSimNextDeplete(P0, E0, me0, await raidSimPickPool(P0, E0, me0, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), k), split.items, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), used);
                 return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbEta: split.eta, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' })); }
-            let P = await raidSimLoad(); P = { ...P, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); P = { ...P, fg: true };
             const E = split.envN, me = raidSimPlayerNow(v, E);
             const scene = {}; Object.keys(E.board).forEach(x => { const b = E.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
             const { hitParts, playable } = raidSimPartFns(scene), usesM = raidDeckUsesMap();
@@ -13103,7 +13103,7 @@
             const MS = 'BarbedMorningstar', used = new Set(info.used || []);
             if (used.has(MS)) return null;
             const v = raidAccountInfo(r.player); if (!v) return null;
-            let P = await raidSimLoad(); P = { ...P, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); P = { ...P, fg: true };
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             if (!(me.lv[MS] > 0)) return null;
             const hpB = {}; Object.keys(env.board).forEach(k => { hpB[k] = Math.max(0, ((env.hp || {})[k] || 0) - ((env.hpA || {})[k] || 0)); });
@@ -13129,7 +13129,7 @@
             const FIN = 'FinisherAttack', used = new Set(info.used || []);
             if (used.has(FIN)) return null;
             const v = raidAccountInfo(r.player); if (!v) return null;
-            let P = await raidSimLoad(); P = { ...P, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); P = { ...P, fg: true };
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             if (!(me.lv[FIN] > 0)) return null;
             const B = env.board, keys = Object.keys(B), banned = keys.filter(k => B[k].layer === 'banned');
@@ -13199,7 +13199,7 @@
             if (used.has(VOID)) return '<div style="font-size:12px; color:#8a7a6a;">瘋狂無效這輪已經用過。</div>';
             const v = raidAccountInfo(r.player); if (!v) return '<div style="font-size:12px; color:#8a7a6a;">沒有這個人的帳號資料。</div>';
             const data = await loadByPartStats(byPartTop, byPartStatsGroup(raidSimActive ? simBuffKey() : currentSessionBuff()));
-            let P = await raidSimLoad(); const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {}, fg: true };
+            let P = raidPlayerP(await raidSimLoad(), r.player); const deckKShow = { ...(P.deckK || {}) }; P = { ...P, deckK: {}, fg: true };
             const showF = (cards) => deckKShow[cards.slice().sort().join('+')] || 1;
             const env = await raidSimEnv(), me = raidSimPlayerNow(v, env);
             if (!(me.lv[VOID] > 0)) return '<div style="font-size:12px; color:#8a7a6a;">沒有瘋狂無效這張卡。</div>';
@@ -14603,7 +14603,7 @@
             const cards3 = deckSimSel();
             deckSimBusy = true; deckSimRes = { busy: true }; renderDeckSim();
             try {
-                const P = await raidSimLoad(); await raidSimLoadDeckList();
+                const P = raidPlayerP(await raidSimLoad(), deckSimPlayer); await raidSimLoadDeckList();
                 const env = await raidSimEnv();
                 const v = raidClanData.byCode.get(deckSimPlayer);
                 const me = raidSimPlayerNow(v, env);
@@ -14905,7 +14905,7 @@
                 async function raidSimPlayerPick(name, info, data, playable, hitParts, progress, vOverride, fast) {
             const v = vOverride || raidAccountInfo(name);
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
-            let P; try { P = await raidSimLoad(); } catch (e) { return null; }
+            let P; try { P = raidPlayerP(await raidSimLoad(), name); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
             const deckKShow = {}; P = { ...P, lowPri: !!fast, fg: true };   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
@@ -15184,7 +15184,7 @@
             const rows = raidLogRecoRows.get(name);
             const v = raidAccountInfo(name);
             if (!rows || !rows.length || !v || !raidState || !raidState.parts) return;
-            let P; try { P = await raidSimLoad(); } catch (e) { return; }
+            let P; try { P = raidPlayerP(await raidSimLoad(), name); } catch (e) { return; }
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
             const sig = JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.season, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);
@@ -15544,16 +15544,45 @@
             // 第 4 層：整組（扣掉前三層之後剩下的）
             const g = {}; atks.forEach(a => { const adj = adjOf(a) * supF0(a.cards) * pairF(a.cards); if (!(adj > 0)) return; (g[raidDeckKeyOf(a.cards)] || (g[raidDeckKeyOf(a.cards)] = [])).push({ r: a.totalDamage / adj, w: wOf(a), who: a.playerCode || a.player }); });
             const deck = {}; Object.entries(g).forEach(([k, x]) => { const f = shrink(x); if (f !== 1) deck[k] = f; });
-            return { card, deck, tap, sup, pair };
+            /* 第 5 層：每個人（點擊、每張卡）。全公會的校正扣掉之後，同一個人常常所有卡都偏高或偏低（裝備、研究等模擬器沒算到的個人數值），
+               或某張卡特別偏（relax 的重拳 133%、防空 101%）。一樣收縮估計（刀數少修得少），τ＝6%，最多 ±25% */
+            const shrinkP = (rs, ws) => { if (!rs.length) return 1; let sw = 0, sl = 0; rs.forEach((r, i) => { sw += ws[i]; sl += ws[i] * Math.log(r); }); const m = sl / sw;
+                const lg = rs.map(r => Math.log(r)), mu = lg.reduce((t, v) => t + v, 0) / lg.length; const s2 = lg.length >= 3 ? Math.max(0.03 * 0.03, lg.reduce((t, v) => t + (v - mu) * (v - mu), 0) / (lg.length - 1)) : 0.08 * 0.08;
+                const k2 = sw * 0.0036 / (sw * 0.0036 + s2), f = Math.exp(k2 * m); return f < 1.01 ? 1 : Math.round(Math.min(1.25, f) * 1000) / 1000; };   /* 只往上修：偏低多半是自己沒點滿、沒打好，應打維持標準（打法 % 才看得出來） */
+            const ptR = {}, pcR = {}; atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; const who = a.playerCode || a.player; if (!who) return; const w = wOf(a);
+                const at = Number(a.tapDamage); if (eb.t > 0 && at > 0) { const o = ptR[who] || (ptR[who] = { r: [], w: [] }); o.r.push(at / (eb.t * tap)); o.w.push(w); }
+                Object.entries(eb.b || {}).forEach(([c, sim]) => { const act = (a.cardDamage || {})[c] || 0; if (sim > 0 && act > 0) { const P0 = pcR[who] || (pcR[who] = {}); const o = P0[c] || (P0[c] = { r: [], w: [] }); o.r.push(act / (sim * (card[c] || 1))); o.w.push(w); } }); });
+            const player = { tap: {}, card: {} };
+            Object.entries(ptR).forEach(([who, o]) => { const f = shrinkP(o.r, o.w); if (f !== 1) player.tap[who] = f; });
+            Object.entries(pcR).forEach(([who, cs]) => { Object.entries(cs).forEach(([c, o]) => { const f = shrinkP(o.r, o.w); if (f !== 1) (player.card[who] || (player.card[who] = {}))[c] = f; }); });
+            /* 每組牌平均各卡、點擊佔多少（推薦沒有逐卡的模擬，用這個把個人係數換算成整組） */
+            const shareAcc = {}; atks.forEach(a => { const eb = ebMap.get(raidSimExpKey(a)); if (!eb) return; const tot = (eb.t || 0) * tap + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (card[c] || 1), 0); if (!(tot > 0)) return;
+                const k = raidDeckKeyOf(a.cards), o = shareAcc[k] || (shareAcc[k] = { n: 0, t: 0, c: {} }); o.n++; o.t += (eb.t || 0) * tap / tot; Object.entries(eb.b || {}).forEach(([c, x]) => { o.c[c] = (o.c[c] || 0) + x * (card[c] || 1) / tot; }); });
+            const share = {}; Object.entries(shareAcc).forEach(([k, o]) => { const c = {}; Object.entries(o.c).forEach(([cc, v]) => { c[cc] = Math.round(v / o.n * 1000) / 1000; }); share[k] = { t: Math.round(o.t / o.n * 1000) / 1000, c }; });
+            player.share = share;
+            /* 名字也對到同一個人（推薦用名字找） */
+            atks.forEach(a => { if (a.playerCode && a.player && a.player !== a.playerCode) { if (player.tap[a.playerCode] && !player.tap[a.player]) player.tap[a.player] = player.tap[a.playerCode]; if (player.card[a.playerCode] && !player.card[a.player]) player.card[a.player] = player.card[a.playerCode]; } });
+            return { card, deck, tap, sup, pair, player };
         }
         // 攻擊紀錄某一刀顯示的應打：原始公式的分卡模擬，乘上每張卡的校正，再乘剩下的整組偏差
         function raidExpAdjusted(a, w) {
             const eb = raidCsExpBy.get(raidSimExpKey(a));
-            const base = eb ? (eb.t || 0) * raidTapCal + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (raidCardCal[c] || 1), 0) : w;
+            const who = a && (a.playerCode || a.player), pt = (who && raidPlayerCal.tap[who]) || 1, pc = (who && raidPlayerCal.card[who]) || {};
+            const base = eb ? (eb.t || 0) * raidTapCal * pt + Object.entries(eb.b || {}).reduce((t, [c, x]) => t + x * (raidCardCal[c] || 1) * (pc[c] || 1), 0) : w * raidPlayerDeckF(who, a.cards);
             return base * raidDeckFactorOf(a.cards);
         }
         // 推薦快取要跟著校正換（舊的校正算的推薦不能再用）：卡片校正＋剩下的整組偏差，取到小數兩位
-        function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase) + '/t' + raidTapCal + '/s' + r(raidSupCal) + '/p' + r(raidPairCal); }
+        function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase) + '/t' + raidTapCal + '/s' + r(raidSupCal) + '/p' + r(raidPairCal) + '/u' + r(raidPlayerCal.tap) + Object.keys(raidPlayerCal.card).length; }
+        let raidPlayerCal = { tap: {}, card: {}, share: {} };   // 第 5 層：每個人的點擊、每張卡（加上每組牌各卡佔比）
+        /* 這個人打這組牌的個人係數（照這組牌各卡、點擊平均佔比加權）：推薦、牌組頁、攻擊紀錄沒有逐卡模擬時用 */
+        function raidPlayerDeckF(who, cards) { if (!who) return 1; const pt = raidPlayerCal.tap[who] || 1, pc = raidPlayerCal.card[who]; if (pt === 1 && !pc) return 1;
+            const cs = (cards || []).map(c => c && c.name || c), sh = raidPlayerCal.share[raidDeckKeyOf(cs)];
+            if (sh) { let tot = sh.t, f = sh.t * pt; Object.entries(sh.c).forEach(([c, v]) => { tot += v; f += v * ((pc && pc[c]) || 1); }); return tot > 0 ? f / tot : 1; }
+            const xs = cs.map(c => (pc && pc[c]) || 1).filter(x => x !== 1); return xs.length ? xs.reduce((t, x) => t + x, 0) / cs.length + (cs.length - xs.length) / cs.length : pt; }
+        /* 這個人的模擬參數：每張卡、點擊乘上他的個人係數（只往上修）。名字或代碼都找得到 */
+        function raidPlayerP(P, who) { if (!P || !who) return P; let pt = raidPlayerCal.tap[who], pc = raidPlayerCal.card[who];
+            if (!pt && !pc && raidClanData) { const v = raidClanData.byCode.get(who) || [...raidClanData.byCode.values()].find(x => x && x.raw && x.raw.name === who); const code = v && v.raw && v.raw.player_code, nm = v && v.raw && v.raw.name; pt = raidPlayerCal.tap[code] || raidPlayerCal.tap[nm]; pc = raidPlayerCal.card[code] || raidPlayerCal.card[nm]; }
+            if (!pt && !pc) return P; const k = { ...(P.k || {}) }; Object.entries(pc || {}).forEach(([c, f]) => { k[c] = (k[c] || 1) * f; }); return { ...P, k, tapK: (P.tapK || 1) * (pt || 1), who }; }
         let raidSupCal = {};   // 輔助卡（自己沒傷害）的整組偏差：有這張卡的牌組都乘
         let raidPairCal = {};   // 兩張卡一起用的偏差（一組牌只用偏差最大的那一對）
         function raidSupFactorOf(cards) { const cs = (cards || []).map(c => c && c.name || c).sort(); let f = 1; for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) { const v = raidPairCal[cs[i] + '+' + cs[j]]; if (v && Math.abs(Math.log(v)) > Math.abs(Math.log(f))) f = v; }
@@ -15562,7 +15591,7 @@
         function raidDeckCalApply(P) {
             if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };
             if (!raidCardKBase) raidCardKBase = { ...(P.k || {}) };
-            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidTapCal = c.tap || 1; raidSupCal = c.sup || {}; raidPairCal = c.pair || {}; raidDeckCalAt = Date.now(); } }
+            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidTapCal = c.tap || 1; raidSupCal = c.sup || {}; raidPairCal = c.pair || {}; raidPlayerCal = c.player || { tap: {}, card: {}, share: {} }; raidDeckCalAt = Date.now(); } }
             const k = { ...raidCardKBase }; Object.entries(raidCardCal).forEach(([c, f]) => { k[c] = (k[c] || 1) * f; }); P.k = k; P.tapK = raidTapCal;
             P.deckK = { ...(raidDeckCal || raidDeckCalBase) };
             if (Object.keys(raidSupCal).length || Object.keys(raidPairCal).length) { try { raidDeckUsesMap().forEach((n, key) => { const cs = key.split('+'), f = raidSupFactorOf(cs); if (f !== 1) P.deckK[key] = (P.deckK[key] || 1) * f; }); } catch (e) {} }   /* 推薦用的模擬器只認整組的修正：輔助卡的偏差展開到每一組公會打過的牌組 */
@@ -16220,7 +16249,7 @@
             if (!raidState || !raidState.parts) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">還沒有目前王的部位狀態（突襲頁連上即時資料後再算）。</div>'; return; }
             box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">載入模擬器…</div>';
             let P;
-            try { P = await raidSimLoad(); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">模擬器載入失敗，請重新整理再試。</div>'; return; }
+            try { P = raidPlayerP(await raidSimLoad(), name); } catch (e) { box.innerHTML = '<div style="font-size:12px; color:#c0392b;">模擬器載入失敗，請重新整理再試。</div>'; return; }
             const env = await raidSimEnv();
             const { board, curse, buff, extraSec, morale, season, plans } = env;
             const me = raidSimPlayer(v, morale, season);

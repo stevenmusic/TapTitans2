@@ -60,10 +60,12 @@ const srv = http.createServer((req, res) => {
       const half = all[Math.floor(all.length / 2)].ts, test = all.filter(a => a.ts >= half), tk = new Set(test.map(raidSimExpKey));
       const keep = serverAttackLogCache; serverAttackLogCache = keep.filter(a => !(a && tk.has(raidSimExpKey(a)))); const c = raidDeckCalCompute(); serverAttackLogCache = keep;
       if (c) { const saveS = raidSupCal, saveP = raidPairCal, saveD = raidDeckCal, saveC = raidCardCal, saveT = raidTapCal; raidSupCal = c.sup || {}; raidPairCal = c.pair || {}; raidDeckCal = c.deck; raidCardCal = c.card; raidTapCal = c.tap;
-        const rs = test.map(a => { const sx = raidSimExpMap.get(raidSimExpKey(a)); if (!sx || !sx.by) return null; const base = (sx.t || 0) * c.tap + Object.entries(sx.by).reduce((t, [k, x]) => t + x * (c.card[k] || 1), 0); return a.totalDamage / (base * raidDeckFactorOf(a.cards)); }).filter(Boolean).sort((x, y) => x - y);
+        const ev = (usePl) => test.map(a => { const sx = raidSimExpMap.get(raidSimExpKey(a)); if (!sx || !sx.by) return null; const who = a.playerCode || a.player, pl = usePl && c.player ? c.player : { tap: {}, card: {} }, pt = pl.tap[who] || 1, pc = pl.card[who] || {}; const base = (sx.t || 0) * c.tap * pt + Object.entries(sx.by).reduce((t, [k, x]) => t + x * (c.card[k] || 1) * (pc[k] || 1), 0); return a.totalDamage / (base * raidDeckFactorOf(a.cards)); }).filter(Boolean).sort((x, y) => x - y);
+        const rs = ev(true), rs0 = ev(false);
         raidSupCal = saveS; raidPairCal = saveP; raidDeckCal = saveD; raidCardCal = saveC; raidTapCal = saveT;
         const med = (x) => x[x.length >> 1], err = rs.map(v => Math.abs(v - 1)).sort((x, y) => x - y);
-        out.notes.push(`應打（後半 ${rs.length} 刀沒拿來校正）：實際÷應打中位 ${(med(rs) * 100).toFixed(1)}%，誤差中位 ${(med(err) * 100).toFixed(1)}%，誤差超過 10% 的 ${Math.round(err.filter(v => v > 0.1).length / err.length * 100)}%`); }
+        const err0 = rs0.map(v => Math.abs(v - 1)).sort((x, y) => x - y);
+        out.notes.push(`應打（後半 ${rs.length} 刀沒拿來校正）：實際÷應打中位 ${(med(rs) * 100).toFixed(1)}%，誤差中位 ${(med(err) * 100).toFixed(1)}%，誤差超過 10% 的 ${Math.round(err.filter(v => v > 0.1).length / err.length * 100)}%（沒有個人係數：誤差中位 ${(med(err0) * 100).toFixed(1)}%、超過 10% 的 ${Math.round(err0.filter(v => v > 0.1).length / err0.length * 100)}%）`); }
     } else out.notes.push(`應打：這場只有 ${all.length} 刀，不到 100 刀先不檢查`);
     return out;
   }, LIMIT);

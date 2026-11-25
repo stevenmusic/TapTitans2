@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 82;
+        const RAID_RECO_VER = 83;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15035,30 +15035,27 @@
                 poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 /* 每種瘋狂組搭配同時算（以前一種一種排隊，4 個核心只用到 1 個），再照原本順序取合計最高 */
-                const vres = await Promise.all(vpool.map(async (V) => { const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
-                    const others = n > 1 ? await raidSimPickPool(P, env, me, rest, n - 1, true) : []; return { sm: V.avg + others.reduce((t, o) => t + (o.avg || 0), 0), V, others }; }));
-                /* 粗比的前 3 名都補跑 100 次再比（只補跑第 1 名會挑到補跑後變低的，少約 1%） */
-                const vtop = vres.slice();   /* 每種都補跑再比（只補前幾名會挑錯，合計差約 1%） */
-                const vfin = await Promise.all(vtop.map(async (x) => { if (n <= 1) return x; const rest = all.filter(o => !o.cards.some(c => x.V.cards.includes(c))); const others = await raidSimPickPool(P, env, me, rest, n - 1); return { sm: x.V.avg + others.reduce((t, o) => t + (o.avg || 0), 0), V: x.V, others }; }));
+                const um = raidDeckUsesMap(), wv = (o) => (o.avg || 0) * raidUseW(o.cards, um);   // 比合計時常打的牌組略加分（顯示的應打不變）
+                const vfin = await Promise.all(vpool.map(async (V) => { const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
+                    const others = n > 1 ? await raidSimPickPool(P, env, me, rest, n - 1) : []; return { sm: wv(V) + others.reduce((t, o) => t + wv(o), 0), V, others }; }));
                 vfin.forEach(x => { if (!best || x.sm > best.sm) best = x; });
+                const normalW = normal.reduce((t, o) => t + wv(o) * showF(o.cards), 0);
                 if (window.RAID_VOID_LOG) console.log('VOIDCMP', name, 'void', best ? Math.round(best.sm / 1e6) + ' ' + best.V.cards.join('+') + ' ' + Math.round(best.V.avg / 1e6) : '-', 'normal', Math.round(normalSum / 1e6), 'n', n);
-                if (best && best.sm >= normalSum) { pick0 = best.others; voidO = best.V; } else pick0 = normal;   // 以傷害為主：留瘋狂無效那組合計比較高才留，不強制
+                if (best && best.sm >= normalW) { pick0 = best.others; voidO = best.V; } else pick0 = normal;   // 以傷害為主：留瘋狂無效那組合計比較高才留，不強制
             } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? raidDecayAdj(mergeFlak(got.pool)).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
             if (info.poolOut) info.poolOut.pool = poolAll;
             // 帶刺的晨星等時機（info.msCand：晨星組在時機盤面的傷害）：保留晨星＋其他 n−1 組的合計比較高才留（跟瘋狂無效一樣以傷害為主，用已經算好的候選，不整套重算）
             if (info.msCand && Array.isArray(pick0) && pick0.length >= 1) {
-                const sumA = (l) => l.reduce((t, o) => t + (o.avg || 0), 0), base0 = sumA(pick0); let bestM = null;
+                const umM = raidDeckUsesMap(), wvM = (o) => (o.avg || 0) * raidUseW(o.cards, umM), sumA = (l) => l.reduce((t, o) => t + wvM(o), 0), base0 = sumA(pick0); let bestM = null;   // 常打的略加分
                 /* 晨星組不只試最強的一組：最強那組的卡常跟別組撞（例：晨星＋爆擊增強＋爆擊次數 vs 爆擊增強＋爆擊次數＋虛弱），前 8 名都試，取合計最高（跟瘋狂無效一樣） */
                 /* 晨星組各種搭配同時算，再照原本順序取合計最高 */
                 const mres = await Promise.all((info.msCand.alts && info.msCand.alts.length ? info.msCand.alts : [info.msCand]).map(async (Mc) => {
                     if (reservedO().some(o => o.cards.some(c => Mc.cards.includes(c))) || Mc.cards.some(c => used.has(c))) return null;   // 晨星組的卡這次不能用（例如凱旋行軍那組已經拿走）
                     const resC = new Set(reservedO().flatMap(o => o.cards)), rest = (poolAll || []).filter(o => o && !o.cards.some(c => Mc.cards.includes(c) || resC.has(c)));   /* 也要避開已經保留的組（瘋狂無效）的卡：不然挑出來跟瘋狂組撞卡，最後總檢查會把一組整個拿掉，少一組 */
-                    const others = pick0.length > 1 ? await raidSimPickPool(P, env, me, rest, pick0.length - 1, true) : [];
+                    const others = pick0.length > 1 ? await raidSimPickPool(P, env, me, rest, pick0.length - 1) : [];
                     if (others.length !== pick0.length - 1) return null;
-                    return { sm: Mc.avg + sumA(others), Mc, others, rest }; }));
-                /* 粗比的前 3 名都補跑 100 次再比，補跑後比不過原本的就不換 */
-                const mtop = mres.filter(Boolean);
-                const mfin = await Promise.all(mtop.map(async (x) => { if (pick0.length <= 1) return x; const o2 = await raidSimPickPool(P, env, me, x.rest, pick0.length - 1); return o2.length === pick0.length - 1 ? { sm: x.Mc.avg + sumA(o2), Mc: x.Mc, others: o2 } : null; }));
+                    return { sm: wvM(Mc) + sumA(others), Mc, others }; }));
+                const mfin = mres;
                 mfin.forEach(x => { if (x && x.sm >= base0 && (!bestM || x.sm > bestM.sm)) bestM = x; });
                 if (bestM) { pick0 = bestM.others; msO = bestM.Mc; }
             }
@@ -15636,11 +15633,14 @@
         // 沒驗證過的牌組（公會累計打過不到 RAID_SIM_VERIFY_USES 刀）挑選時打折：明顯比較強才選，差不多時優先用驗證過的（顯示的應打不變）
         const RAID_SIM_VERIFY_USES = 10;
         let RAID_SIM_UNVERIFIED_W = 0.96;   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
+        /* 公會常打的牌組挑選時略加分：10 次以下不加，100 次以上 +1.5%（中間照對數比例）。合計差不多時優先挑常打的（攻擊紀錄多、應打比較準，推薦也比較不會換來換去）；顯示的應打不變 */
+        const RAID_SIM_POPULAR_W = 0.015;
+        function raidUseW(cards, m) { const u = (m || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0; return u <= RAID_SIM_VERIFY_USES ? 1 : 1 + RAID_SIM_POPULAR_W * Math.min(1, Math.log10(u / RAID_SIM_VERIFY_USES)); }
         function raidVerifyWeights(pool) {
             if (!(RAID_SIM_UNVERIFIED_W < 1)) return pool;
             const m = raidDeckUsesMap();
             // 打過越少次折越多：3 次 ×0.96，之後每多 1 次少折一點，10 次以上不折（要明顯比較強才會選；顯示的應打不變）
-            return pool.map(o => { const u = m.get(o.cards.slice().sort().join('+')) || 0; if (u >= RAID_SIM_VERIFY_USES) return o;
+            return pool.map(o => { const u = m.get(o.cards.slice().sort().join('+')) || 0; if (u >= RAID_SIM_VERIFY_USES) { const w2 = raidUseW(o.cards, m); return w2 > 1 ? { ...o, selW: (o.selW || 1) * w2 } : o; }
                 const w = RAID_SIM_UNVERIFIED_W + (1 - RAID_SIM_UNVERIFIED_W) * Math.max(0, u - RAID_SIM_MIN_USES) / Math.max(1, RAID_SIM_VERIFY_USES - RAID_SIM_MIN_USES);
                 return { ...o, selW: (o.selW || 1) * w }; });
         }
@@ -16081,6 +16081,7 @@
         // 第二段：從傷害表挑 n 組卡片不重複、加總最高的（pool 會被補精算，傳進來的陣列會被改，要保留請先複製）
         const RAID_MIRROR_CARD = 'MirrorForce';
         let RAID_SIM_DFS_TOP = 250, RAID_SIM_DFS_STEPS = 3e5;   // 挑 6 組只在價值前 250 名、最多 30 萬步（6 人回測：35 秒→12 秒，合計只差 0.3%，4/6 人 6 組完全一樣；前 100 名會少 1 成）
+        const raidFinCache = new WeakMap();   // env → me → 精算結果（同一次推薦重複用；env、me 換新就自動丟掉）
         async function raidSimPickPool(P, env, me, pool, n, noFin) {   // noFin：只拿來比合計（瘋狂、晨星各種搭配），不補跑 100 次
             // 挑牌組時就照部位份額算價值：只打得到小部位的牌組，價值只算到那些部位分到的份額（份額＝這幾刀的傷害照能打部位剩下血量的比例，多 3 成彈性），
             // 這樣會優先挑打得到血多部位（例如頭）的牌組，之後 raidSimDeplete 再照份額分配部位
@@ -16146,10 +16147,17 @@
                 const rough = noFin ? [] : best.filter(o => !o.final);
                 if (!rough.length) break;
                 // 補精算：丟給 Web Worker 平行算（不佔畫面）；不支援才在主畫面算
-                const fr = await raidSimParallel(P, rough.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o })));
+                /* 同一個盤面（env）、同一個人（me）、同一組牌、同樣打法和剩血上限：精算結果一定一樣（種子固定），算過就直接用。
+                   瘋狂、晨星各種搭配都會把其他組重新精算，同一組常被重複算十幾次 */
+                let fcE = raidFinCache.get(env); if (!fcE) { fcE = new WeakMap(); raidFinCache.set(env, fcE); } let fc = fcE.get(me); if (!fc) { fc = new Map(); fcE.set(me, fc); }
+                const fkey = (o) => o.cards.slice().sort().join('+') + '|' + (o.tg || []).join(',') + '|' + (o.cap > 0 ? Math.round(o.cap) : '') + '|' + JSON.stringify(o.leftAt || null);
+                const FIN_KEYS = ['raw', 'avg', 'q25', 'q75', 'lo', 'hi', 'final'];
+                const needF = rough.filter(o => !fc.has(fkey(o)));
+                const fr = needF.length ? await raidSimParallel(P, needF.map(o => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o }))) : [];
+                for (let i = 0; i < needF.length; i++) { const r0 = fr ? fr[i] : (await raidMainTick(), raidSimFinal(P, env, me, needF[i])); fc.set(fkey(needF[i]), r0); }
                 for (let i = 0; i < rough.length; i++) {
-                    const k = pool.indexOf(rough[i]);
-                    if (fr) pool[k] = fr[i]; else { await raidMainTick(); pool[k] = raidSimFinal(P, env, me, rough[i]); }
+                    const k = pool.indexOf(rough[i]), r0 = fc.get(fkey(rough[i])); const res = { ...rough[i] }; FIN_KEYS.forEach(x => { if (r0[x] !== undefined) res[x] = r0[x]; });
+                    pool[k] = res;
                 }
             }
             // 顯示的應打不打折（跟攻擊紀錄的應打同一個算法，兩邊數字一致）；少見牌組只在排順序時打折

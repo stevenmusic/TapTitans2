@@ -7432,7 +7432,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 91;
+        const RAID_RECO_VER = 92;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13387,6 +13387,7 @@
         async function raidLogRenderPlayerRecoRun(r) {
             let box = raidLogRecoBox(r.player);
             if (!box) return;
+            try { await raidSimLoadDeckList(); } catch (e) {}   /* 全公會牌組次數一定要先載好：沒載好只剩這場的次數，大部分牌組被當成冷門（打折、常用排序全錯） */
             // 帳號資料（卡片等級、有沒有瘋狂無效）還沒載好就先等它：不然會當成沒有這張卡，推薦少了瘋狂無效等
             if (!raidClanData) { const bx0 = raidLogRecoBox(r.player); if (bx0) { bx0.style.display = 'block'; bx0.innerHTML = raidRecoWrap(r, '<div style="font-size:12px; color:#5a4a3a;">載入帳號資料中…</div>'); }
                 await raidLoadClanData().catch(() => null); for (let i = 0; i < 60 && !raidClanData && raidClanDataLoading; i++) await new Promise(res => setTimeout(res, 300)); /* 等不到（網路問題）就照原本方式算，不要卡在載入中 */ const r2 = (raidLogLastRanked || []).find(x => x && x.player === r.player); if (r2) r = r2; }
@@ -16134,8 +16135,11 @@
            全部位牌組多了，全公會一起打，肉體很快就被打成骨架（瘋狂無效等不到 6 肉體、後面的組沒部位打）。其他組改用單體（1～2 個部位，防空也算單體） */
         const RAID_SIM_ALLPART_MAX = 1;
         /* 算「全部位」：打 3 個部位以上、而且其中 2 個以上已經是肉體（拆盔甲、詛咒甲時打全部位不會把肉體打爆，不限制） */
-        const raidSimMulti = (o, env) => { const tg = (o && o.tg) || []; if (tg.length < 3) return false; const B = env && env.board; if (B) return tg.filter(k => B[k] && B[k].layer === 'body').length >= 2;   /* 照算的那個盤面（下一隻王是自己的盤面） */
-            const P0 = (raidState && raidState.parts) || {}; return tg.filter(k => { const x = P0[k]; return x && !((Number(x.armor) || 0) > 0) && (Number(x.body) || 0) > 0; }).length >= 2; };
+        /* 算「全部位」：打到 3 個以上「不是詛咒甲」的部位（盔甲、肉體都算：一般盔甲一起拆光，肉體也會一起被打爆）。
+           只打詛咒甲的組（例如 4 個詛咒部位一起打）不算：詛咒甲本來就要全公會一起拆。照算的那個盤面（下一隻王是自己的盤面） */
+        const raidSimMulti = (o, env) => { const tg = (o && o.tg) || []; if (tg.length < 3) return false; const B = env && env.board;
+            if (B) return tg.filter(k => B[k] && !(B[k].layer === 'armor' && B[k].cursed)).length >= 3;
+            const P0 = (raidState && raidState.parts) || {}; return tg.filter(k => { const x = P0[k]; return x && !((Number(x.armor) || 0) > 0 && x.cursed); }).length >= 3; };
         async function raidSimPickPool(P, env, me, pool, n, noFin, noPop, allMax) {
             if (allMax == null) allMax = RAID_SIM_ALLPART_MAX;
             const multi = (o) => raidSimMulti(o, env);

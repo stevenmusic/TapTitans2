@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 81;
+        const RAID_RECO_VER = 82;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15038,7 +15038,7 @@
                 const vres = await Promise.all(vpool.map(async (V) => { const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
                     const others = n > 1 ? await raidSimPickPool(P, env, me, rest, n - 1, true) : []; return { sm: V.avg + others.reduce((t, o) => t + (o.avg || 0), 0), V, others }; }));
                 /* 粗比的前 3 名都補跑 100 次再比（只補跑第 1 名會挑到補跑後變低的，少約 1%） */
-                const vtop = vres.slice().sort((a, b) => b.sm - a.sm).slice(0, n > 1 ? 3 : vres.length);
+                const vtop = vres.slice();   /* 每種都補跑再比（只補前幾名會挑錯，合計差約 1%） */
                 const vfin = await Promise.all(vtop.map(async (x) => { if (n <= 1) return x; const rest = all.filter(o => !o.cards.some(c => x.V.cards.includes(c))); const others = await raidSimPickPool(P, env, me, rest, n - 1); return { sm: x.V.avg + others.reduce((t, o) => t + (o.avg || 0), 0), V: x.V, others }; }));
                 vfin.forEach(x => { if (!best || x.sm > best.sm) best = x; });
                 if (window.RAID_VOID_LOG) console.log('VOIDCMP', name, 'void', best ? Math.round(best.sm / 1e6) + ' ' + best.V.cards.join('+') + ' ' + Math.round(best.V.avg / 1e6) : '-', 'normal', Math.round(normalSum / 1e6), 'n', n);
@@ -15057,7 +15057,7 @@
                     if (others.length !== pick0.length - 1) return null;
                     return { sm: Mc.avg + sumA(others), Mc, others, rest }; }));
                 /* 粗比的前 3 名都補跑 100 次再比，補跑後比不過原本的就不換 */
-                const mtop = mres.filter(Boolean).sort((a, b) => b.sm - a.sm).slice(0, 3);
+                const mtop = mres.filter(Boolean);
                 const mfin = await Promise.all(mtop.map(async (x) => { if (pick0.length <= 1) return x; const o2 = await raidSimPickPool(P, env, me, x.rest, pick0.length - 1); return o2.length === pick0.length - 1 ? { sm: x.Mc.avg + sumA(o2), Mc: x.Mc, others: o2 } : null; }));
                 mfin.forEach(x => { if (x && x.sm >= base0 && (!bestM || x.sm > bestM.sm)) bestM = x; });
                 if (bestM) { pick0 = bestM.others; msO = bestM.Mc; }
@@ -16041,8 +16041,8 @@
             return raidSimPickPool(P, env, me, pool, n);
         }
         // 第一段：所有候選牌組快速篩一次、前段的精算 200 次，回傳每組的傷害表（同一人同一個部位狀態可以重複用）
-        const RAID_SIM_MID_RUNS = 30;   // 排名用：前幾十組先各跑 30 次排名，挑中的組再補跑 100 次（顯示的應打一樣是 100 次、種子 1000 起）
-        async function raidSimEvalPool(P, env, me, all, n, progress, topN, lite, mid) {   // lite：配卡用的輕量版（模擬次數約減半，只是打分數不用那麼精準）
+        const RAID_SIM_MID_ON = false, RAID_SIM_MID_RUNS = 30;   /* 關：30 次排名會讓挑出的組合跟 100 次不同（合計差約 1%） */   // 排名用：前幾十組先各跑 30 次排名，挑中的組再補跑 100 次（顯示的應打一樣是 100 次、種子 1000 起）
+        async function raidSimEvalPool(P, env, me, all, n, progress, topN, lite, mid) { mid = mid && RAID_SIM_MID_ON;   // lite：配卡用的輕量版（模擬次數約減半，只是打分數不用那麼精準）
             // 多核心平行算（Web Worker）；不支援或出錯就照原本一組一組在主畫面算，結果一樣
             /* 收斂打法（無損）：模擬器只看部位類型（頭／肚／手臂含手／腳）、層別、詛咒，同一組種子。兩種打法的部位逐一同類（順序也一樣），
                就是盤面上互換兩個一模一樣的部位，模擬結果相同，只算一次；剩血少（hpSim，照實際破甲）的部位照名字單獨算。

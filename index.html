@@ -13346,7 +13346,7 @@
             raidLogRecoOpen.forEach(name => {
                 const r = raidLogLastRanked.find(x => x.player === name);
                 if (!r || !raidLogIsLatestSession(r)) { raidLogRecoOpen.delete(name); return; }
-                if (!raidRecoBoxVisible(name) && raidLogRecoHtml.get(name)) { const bx = raidLogRecoBox(name); if (bx && !bx.innerHTML.trim()) { bx.innerHTML = raidLogRecoHtml.get(name); } raidRecoDirty.add(name); return; }   // 看不到：先放上次的結果，捲回來再算
+                { const bx = raidLogRecoBox(name); if (bx && raidLogRecoHtml.get(name)) { bx.style.display = 'block'; if (!bx.innerHTML.trim()) { bx.innerHTML = raidLogRecoHtml.get(name); raidSimFillRecoDamage(name, bx); } if (!raidRecoBoxVisible(name)) { raidRecoDirty.add(name); return; } } }   // 展開著的一律保持展開；捲到畫面外的先放上次的結果，捲回來再算
                 // 打開推薦是使用者主動的：有人出刀、換王也保持打開，照新的狀態更新（只有血量變時沿用上次的計算，幾乎不花時間）
                 raidLogRenderPlayerReco(r);
             });

@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 78;
+        const RAID_RECO_VER = 79;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -12965,6 +12965,7 @@
         const raidSplitPlan = (() => { const m = new Map(); try { Object.entries(JSON.parse(localStorage.getItem(RAID_SPLIT_PLAN_KEY) || '{}')).forEach(([k, v]) => { if (v && Date.now() - (v.at || 0) < 12 * 3600 * 1000) m.set(k, v); }); } catch (e) {}
             const save = () => { try { localStorage.setItem(RAID_SPLIT_PLAN_KEY, JSON.stringify(Object.fromEntries(m))); } catch (e) {} };
             return { get: (k) => m.get(k), set: (k, v) => { m.set(k, { ...v, at: Date.now() }); save(); }, delete: (k) => { m.delete(k); save(); }, clear: () => { m.clear(); save(); } }; })();   /* 存在手機：重新整理後也照原本的分配扣，不會重新估、又多排一組給這隻王 */   // 玩家 → { boss, n, m }：換王那輪排好的「這隻王打 m 組」（之後出刀照這個扣，不重新估）   // 玩家 → 上次留幾組給這隻王（緩衝：差不多就維持，不要每刀都跳）
+        const RAID_SPLIT_ETA_MIN = 60;   // 預計幾分鐘內換王才保留組給下一隻王
         async function raidNextBossSplit(n, who) {
             if (!raidState || !raidState.parts || n < 1) return null;
             /* 下一場還沒開打（預估）：一樣照第一輪全公會打得到多少，算第一隻王會不會在第一輪就死、要留幾組給第二隻王
@@ -12982,6 +12983,12 @@
             const plan = who ? raidSplitPlan.get(who) : null, planOn = !!(plan && plan.boss === raidState.bossName && n < plan.n);
             // 這輪會不會打死：估計（假設大家這輪都打完）要比王的血多 15% 以上才算（有人打不完，差一點的其實打不死，例如 Takedar 剩 90.5B、估 93.8B）；已經切了的多不到 5% 才取消，不要切來切去
             if (!(roundDmg > left * (lastM || planOn ? 1.05 : 1.15))) { if (who) { raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); raidSplitPlan.delete(who); } return null; }
+            /* 多久會換王：照最近 1 小時全公會的出刀速度估。1 小時內才保留組給下一隻王（已經保留的超過 75 分才取消，不要切來切去）；
+               還久的話全部打這隻王，等王的血掉下來推薦自動重算，越接近換王才越多人拿到下一隻王的組，保留的那刀不用等太久。預估的下一場（還沒開打）不看 */
+            let eta = null;
+            if (!pending) { const now = Date.now(), hr = (Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => a && !a.placeholder && a.raidStartedAt === sa && a.totalDamage > 0 && now - a.ts < 3600e3).reduce((t, a) => t + a.totalDamage, 0);
+                eta = hr > 0 ? left / hr * 60 : Infinity;
+                if (!planOn && !(eta <= (lastM ? 75 : RAID_SPLIT_ETA_MIN))) { if (who) { raidNextSplitLast.set(who, { boss: raidState.bossName, n, m: 0 }); raidSplitPlan.delete(who); } return null; } }
             const raw = n * left / roundDmg;
             let m, fixed = false;
             if (planOn) { m = Math.max(0, plan.m - (plan.n - n)); fixed = true; }   // 0：這隻王分配的都打完了，剩下全部留給下一隻王（等這隻王死）
@@ -13008,7 +13015,7 @@
             open.forEach(k => add([k])); add(open.filter(k => k === 'Head' || k === 'ChestUpper')); add(open.filter(k => k !== 'Head' && k !== 'ChestUpper')); add(open);
             const c0 = t.c && t.c[0], curse = c0 ? { type: /^Burst/.test(c0[0]) ? 'Burst' : /^Afflict/.test(c0[0]) ? 'Afflicted' : 'Body', per: Math.abs(Number(c0[1]) || 0) } : null;
             const envN = { ...env, board, open, plans, curse, hp, hpA, hpSim: undefined, strategy: undefined };
-            return { m, name, envN, fixed, E: raw, after: Math.max(0, roundDmg - left) };   // after：這隻王打死後，這輪公會還能打下一隻王多少（等不等得到晨星、瘋狂無效的時機）   // E：照全公會進度估，他這輪在這隻王死前大約還能打幾刀（小數）
+            return { m, name, envN, fixed, E: raw, after: Math.max(0, roundDmg - left), eta: eta != null && isFinite(eta) ? Math.max(1, Math.round(eta)) : null };   // after：這隻王打死後，這輪公會還能打下一隻王多少（等不等得到晨星、瘋狂無效的時機）   // E：照全公會進度估，他這輪在這隻王死前大約還能打幾刀（小數）
         }
         /* 下一隻王的 k 組也照「一組一組扣部位剩的血」算（跟這隻王一樣用 raidSimDeplete）：前面的組把某個部位（例如詛咒甲）打光了，
            後面打同一個部位的組改打別的部位、或照打光後的盤面重新模擬。原本每組都假設部位滿血，兩組都去打同一塊詛咒甲，其實詛咒甲不夠吃 */
@@ -13045,7 +13052,7 @@
             // 同一次推薦（同一個人、同一隻下一隻王）的候選只算一次：兩種排法共用，挑的時候再扣掉另一邊用掉的卡
             if (split.pool && split.poolUsed) { const ex = [...used].filter(c => !split.poolUsed.has(c)); const P0 = split.poolP, E0 = split.envN, me0 = split.poolMe;
                 const pick0 = await raidSimNextDeplete(P0, E0, me0, await raidSimPickPool(P0, E0, me0, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), k), split.items, split.pool.filter(o => o.avg > 0 && !o.cards.some(c => ex.includes(c))), used);
-                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' })); }
+                return pick0.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E0.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E0.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbEta: split.eta, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' })); }
             let P = await raidSimLoad(); P = { ...P, fg: true };
             const E = split.envN, me = raidSimPlayerNow(v, E);
             const scene = {}; Object.keys(E.board).forEach(x => { const b = E.board[x]; scene[x] = b.layer === 'armor' ? (b.cursed ? 'cursed' : 'armor') : b.layer; });
@@ -13083,7 +13090,7 @@
             split.pool = pool; split.poolUsed = used; split.poolP = P; split.poolMe = me;
             split.items = items;
             const pick = await raidSimNextDeplete(P, E, me, await raidSimPickPool(P, E, me, pool.filter(o => o.avg > 0), k), items, pool.filter(o => o.avg > 0), used);   // 從全部候選挑（只用精算過的前幾名會共用同幾張強卡，湊不滿 k 組）
-            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' }));
+            return pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: (o.tg || []).map(x => ({ part: x, layer: (o.msLater && o.msMode === 'body') || o.voidLater ? 'body' : E.board[x].layer === 'armor' ? 'armor' : 'body', cursed: !((o.msLater && o.msMode === 'body') || o.voidLater) && !!E.board[x].cursed })), allParts: false, simDmg: o, nextBoss: split.name, nbEta: split.eta, nbWait: o.voidLater ? `瘋狂無效・${o.voidN || 6} 肉體再打` : o.flakLater ? '1 個肉體再打' : o.msLater ? (o.msMode === 'body' ? raidPartLabel((o.tg || [])[0] || '') + '破甲再打' : '5 肉體再打盔甲') : '' }));
         }
         // 同一個人、同樣的盤面（各部位層別）、同樣用過的卡和等級：晨星組、全部組合算過就直接用（盤面小變化、別人出刀不重算）
         const raidSimMemo = new Map();
@@ -13385,7 +13392,7 @@
                 ${rows.map((x, i) => {
                     // 超過一輪刀數（6 刀）的組：打到那時王的狀態已經不一樣了，只列牌組、標「之後」，不標部位
                     const later = i >= Math.max(RAID_ATTACKS_PER_CYCLE, Math.min(info.remaining || 0, RAID_ATTACKS_MAX)) && !x.voidLater && !x.finLater && !x.flakLater && !x.msLater && !x.msNow && !x.nextBoss;
-                    return `<div style="padding:2px; border-radius:7px; background:${x.nextBoss ? '#e6eaf2' : x.msLater || x.msNow ? '#fbe3e0' : x.finLater ? '#f6ecd2' : x.flakLater ? '#e3eef9' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.nextBoss ? ' box-shadow:inset 0 0 0 1.5px #4a5f86;' : x.msLater || x.msNow ? ' box-shadow:inset 0 0 0 1.5px #b0453a;' : x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.flakLater ? ' box-shadow:inset 0 0 0 1.5px #1565c0;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.nextBoss ? '#34496e' : x.msLater || x.msNow ? '#a0352b' : x.finLater ? '#8a6414' : x.flakLater ? '#1565c0' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.nextBoss ? `下一隻 ${escapeHtml(x.nextBoss)}丨換王再打${x.nbWait ? '・' + x.nbWait : ''}` : x.msNow ? '帶刺的晨星丨現在打' : x.msLater ? (x.msMode === 'armor' ? '帶刺的晨星丨5肉體再打盔甲' : `帶刺的晨星丨${escapeHtml(raidPartLabel(((x.targets || [])[0] || {}).part || ''))}破甲再打`) : x.finLater ? '凱旋行軍丨6 骨架再打' : x.flakLater ? '防空高砲丨1肉體再打' : x.voidTag ? '瘋狂無效丨現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效丨現在打' : '瘋狂無效丨6 肉體再打') : `第 ${i + 1} 組${later ? '丨之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
+                    return `<div style="padding:2px; border-radius:7px; background:${x.nextBoss ? '#e6eaf2' : x.msLater || x.msNow ? '#fbe3e0' : x.finLater ? '#f6ecd2' : x.flakLater ? '#e3eef9' : x.voidLater || x.voidTag ? '#ede3f7' : later ? '#f4efe6' : '#fbf2e2'};${later ? ' opacity:0.75;' : ''}${x.nextBoss ? ' box-shadow:inset 0 0 0 1.5px #4a5f86;' : x.msLater || x.msNow ? ' box-shadow:inset 0 0 0 1.5px #b0453a;' : x.finLater ? ' box-shadow:inset 0 0 0 1.5px #b08a2e;' : x.flakLater ? ' box-shadow:inset 0 0 0 1.5px #1565c0;' : x.voidLater || x.voidTag ? ' box-shadow:inset 0 0 0 1.5px #8e5cc0;' : ''}"><div style="font-size:12px; font-weight:800; color:${x.nextBoss ? '#34496e' : x.msLater || x.msNow ? '#a0352b' : x.finLater ? '#8a6414' : x.flakLater ? '#1565c0' : x.voidLater || x.voidTag ? '#5e35b1' : '#8a7a6a'}; margin:0 0 1px 3px;">${x.nextBoss ? `下一隻 ${escapeHtml(x.nextBoss)}丨${x.nbEta ? `約 ${x.nbEta >= 10 ? Math.round(x.nbEta / 5) * 5 : x.nbEta} 分後換王` : '換王再打'}${x.nbWait ? '・' + x.nbWait : ''}` : x.msNow ? '帶刺的晨星丨現在打' : x.msLater ? (x.msMode === 'armor' ? '帶刺的晨星丨5肉體再打盔甲' : `帶刺的晨星丨${escapeHtml(raidPartLabel(((x.targets || [])[0] || {}).part || ''))}破甲再打`) : x.finLater ? '凱旋行軍丨6 骨架再打' : x.flakLater ? '防空高砲丨1肉體再打' : x.voidTag ? '瘋狂無效丨現在打' : x.voidLater ? (x.voidNow ? '瘋狂無效丨現在打' : '瘋狂無效丨6 肉體再打') : `第 ${i + 1} 組${later ? '丨之後' : ''}`}</div>${renderByPartRow(x)}${later ? '' : `<div style="text-align:center; margin-top:3px; font-size:12px; font-weight:800; color:#4a3728;">${byPartRecoTagHtml(x)}</div>`}<div class="rl-reco-dmg" data-i="${i}" style="text-align:center; font-size:12px; font-weight:800; color:#2e5d32; line-height:1.2;"></div></div>`;
                 }).join('')}
             </div>`;
             let html;
@@ -15603,6 +15610,7 @@
             return pool.map(o0 => {
                 const o = { ...o0 }, base = o.raw || o.avg || 0; if (!(base > 0)) return o;
                 if ((o.tg || []).length && o.tg.every(k => ph.ok(k))) { o.selW = 1; return o; }
+                if (ph.phase === 5 && (o.cards || []).includes('CrushingVoid')) { o.selW = 1; return o; }   // 集中打大部位時，瘋狂無效照原本時機、不打折
                 const pref = (o.alts || []).filter(a => a.tg.length && a.tg.every(k => ph.ok(k))).reduce((m, a) => Math.max(m, a.raw || 0), 0);
                 o.selW = pref >= base * (1 - ph.tol) ? Math.min(1, pref / base) : 1 - ph.tol;
                 return o;
@@ -15670,6 +15678,12 @@
                 return { phase: 2, order, ok: (k) => order.includes(k), tol: 0.05, big, reserve, g, line: `拆盔甲：先打${order.map(lbl).join('→')}（厚的先拆）${big && !order.includes(big) ? `，${lbl(big)}留給凱旋行軍` : ''}` };
             }
             const small = open.filter(k => k !== big), smallBody = small.filter(k => B[k].layer === 'body').reduce((t, k) => t + bodyOf(k), 0);
+            /* 某個部位剩血特別多（超過其他部位平均 2 倍）：集中用單體牌組打它（防空算單體），全部位牌組打 9 折（瘋狂無效不折），
+               免得小部位先死光、最後只剩它，全部位牌組打不動。凱旋行軍等得到時，大部位只打掉超過凱旋要的量 */
+            if (open.length >= 2) { const hb = open.slice().sort((a, b) => hpOf(b) - hpOf(a))[0], rest = open.filter(k => k !== hb), avgR = rest.reduce((t, k) => t + hpOf(k), 0) / rest.length;
+                const extra = hb === big ? hpOf(hb) - reserve * 1.2 : hpOf(hb);
+                if (avgR > 0 && hpOf(hb) > 2 * avgR && extra > avgR) {
+                    return { phase: 5, order: [hb], ok: (k) => k === hb, tol: 0.10, big, reserve, g, line: `${lbl(hb)}剩血最多（${M(hpOf(hb))}，其他部位平均 ${M(avgR)}）：集中用單體牌組打${lbl(hb)}${hb === big ? `，打到剩 ${M(reserve)} 留給凱旋行軍` : ''}` }; } }
             if (body.length >= 6 && g.voidLeft > 0 && smallBody > g.voidLeft * g.voidDmg) {
                 const bigOk = big && hpOf(big) > reserve * 1.2;
                 const order = open.filter(k => k !== big || bigOk).sort((a, b) => hpQ(b) - hpQ(a));

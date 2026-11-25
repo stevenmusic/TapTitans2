@@ -7432,7 +7432,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 90;
+        const RAID_RECO_VER = 91;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13067,7 +13067,7 @@
             const cands = (await raidSimCandidateDecks(data, false)).filter(d => (usesM.get(d.cards.slice().sort().join('+')) || 0) >= RAID_SIM_MIN_USES && !raidSimDeckBanned(d.cards) && d.cards.every(c => me.lv[c] > 0 && !used.has(c) && !RAID_SIM_EXCLUDE.has(c)) && playable(d.cards));
             const items = cands.map(d => { const hp = hitParts(d.cards); const pl = raidSimPlansFor(d.cards, E.board, E.plans.map(p => ({ tg: p.tg.filter(x => hp.includes(x)), label: '' })).filter(p => p.tg.length)); return pl.length ? { cards: d.cards, plans: pl } : null; }).filter(Boolean);
             if (!items.length) return [];
-            let pool = (await raidSimEvalPool(P, E, me, items, k, progress || null, Math.max(24, k * 8), false, true)).map(o => { const f = raidPlagueFactor(o.cards); if (f >= 1) return o; const q = { ...o, avg: o.avg * f, decayF: f }; ['lo', 'hi', 'raw'].forEach(x => { if (q[x] != null) q[x] *= f; }); return q; });   /* 下一隻王也套瘟疫暫時打折 */
+            let pool = raidVerifyWeights(await raidSimEvalPool(P, E, me, items, k, progress || null, Math.max(24, k * 8), false, true)).map(o => { const f = raidPlagueFactor(o.cards); if (f >= 1) return o; const q = { ...o, avg: o.avg * f, decayF: f }; ['lo', 'hi', 'raw'].forEach(x => { if (q[x] != null) q[x] *= f; }); return q; });   /* 下一隻王也套瘟疫暫時打折 */
             /* 下一隻王剛出來是全盔甲：防空高砲、帶刺的晨星這時打很虧，跟這隻王一樣照「等時機再打」的盤面算（以傷害為主，合計高才會被挑）
                - 防空高砲：等第一塊盔甲拆掉、有 1 個肉體（彈射才打得到）；第一塊用最薄的盔甲
                - 帶刺的晨星：照 raidMorningPlan（禁打多打肉體、禁打少等 5 肉體打最厚的盔甲） */
@@ -13533,26 +13533,26 @@
                           /* 兩隻王一起窮舉：這隻王的候選表（現在盤面）挑 m 組＋下一隻王的候選表挑 n−m 組，卡片全部不重複，找傷害加總最高的組合（兩邊全部候選，含晨星、防空等時機的版本；只取前幾十名會因為都用同幾張強卡而湊不出 6 組）。
                              找到後照那個組合實際排一次（這隻王的打法、部位分配照原本的流程），跟上面兩種排法一起比 */
                           try {
-                              const sig = (c) => c.slice().sort().join('+'), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0).sort((x, y) => y.avg - x.avg).filter(o => !seen.has(sig(o.cards)) && seen.add(sig(o.cards))); };   // 同一組有好幾種打法（現在打／等時機）：留傷害高的
+                              const sig = (c) => c.slice().sort().join('+'), wj = (o) => (o.avg || 0) * raidVerifyW(o.cards), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0).sort((x, y) => wj(y) - wj(x)).filter(o => !seen.has(sig(o.cards)) && seen.add(sig(o.cards))); };   // 同一組有好幾種打法（現在打／等時機）：留傷害高的
                               const CL = top([...(out.pool || []), ...(out.vpool || []), ...(infoP.msCand ? (infoP.msCand.alts && infoP.msCand.alts.length ? infoP.msCand.alts : [infoP.msCand]) : []), ...(finSp ? (finSp.alts && finSp.alts.length ? finSp.alts : [finSp]).map(o => ({ ...o, finRes: true })) : [])]),   /* 這隻王的候選也放等時機的瘋狂、晨星、凱旋組 */ NL = top(split.pool && split.pool.filter(o => !o.cards.some(c => (infoP.used || new Set()).has && infoP.used.has(c))));
                               /* 這隻王打幾組（m）是照「全公會這輪打多少、王剩多少血」估的，不一定準：估計值 ±1 組的每一種搭配都窮舉，取加總最高
                                  （不完全放開：只看加總會把大部分組排給這隻王，但王很快就會被打死，那些組實際打不到） */
                               let steps = 0; const usedC = new Set(), sel = [];
                               const solve = (kC, kN) => { let bestS = -1, bestSel = null;
                                   const dfs = (L, i, k, acc, next) => { if (++steps > 3e6) return; if (k === 0) return next(acc); for (let j = i; j < L.length; j++) { const o = L[j]; if (o.cards.some(c => usedC.has(c))) continue;
-                                      if (acc + o.avg * k + (next.bound || 0) <= bestS) break;   // 剩下的都比這組小：上限也贏不了就停
-                                      o.cards.forEach(c => usedC.add(c)); sel.push(o); dfs(L, j + 1, k - 1, acc + o.avg, next); sel.pop(); o.cards.forEach(c => usedC.delete(c)); } };
+                                      if (acc + wj(o) * k + (next.bound || 0) <= bestS) break;   // 剩下的都比這組小：上限也贏不了就停
+                                      o.cards.forEach(c => usedC.add(c)); sel.push(o); dfs(L, j + 1, k - 1, acc + wj(o), next); sel.pop(); o.cards.forEach(c => usedC.delete(c)); } };
                                   const finN = (acc) => { if (acc > bestS) { bestS = acc; bestSel = sel.slice(); } };
-                                  const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + o.avg, 0);
+                                  const goN = (acc) => dfs(NL, 0, kN, acc, finN); goN.bound = NL.slice(0, kN).reduce((t, o) => t + wj(o), 0);
                                   if (CL.length >= kC && NL.length >= kN) dfs(CL, 0, kC, 0, goN);
                                   return { kC, kN, s: bestS, sel: bestSel }; };
                               /* 期望傷害決定組數：E＝估計他在這隻王死前還能打幾刀（例 1.4）。第 1 組一定打得到；第 2 組只有 0.4 的機會打得到，
                                  打不到就只能拿去打下一隻王。所以 m＝floor(E) 和 ceil(E) 兩種都窮舉，最後那組照機率算期望值（打得到算這隻王的傷害、打不到算那組打下一隻王的傷害），取期望值高的 */
                               const E = Math.max(1, Number(split.E) || split.m), mLo = split.fixed ? split.m : Math.max(1, Math.min(n0 - 1, Math.floor(E))), mHi = split.fixed ? split.m : Math.max(1, Math.min(n0 - 1, Math.ceil(E)));
-                              const nvOf = new Map(NL.map(o => [sig(o.cards), o.avg]));
+                              const nvOf = new Map(NL.map(o => [sig(o.cards), wj(o)]));   /* 冷門牌組一樣打折（兩隻王一起挑時也不會挑進冷門組合） */
                               const allM = []; for (let m2 = mLo; m2 <= mHi; m2++) { const x = solve(m2, n0 - m2);
                                   if (x.sel) { const p = split.fixed ? 1 : Math.max(0, Math.min(1, E - (m2 - 1))); const cur = x.sel.slice(0, m2).sort((a2, b2) => b2.avg - a2.avg), last = cur[cur.length - 1];
-                                      x.ev = x.s - (1 - p) * Math.max(0, last.avg - (nvOf.get(sig(last.cards)) || 0)); }   // 最後一組打不到的話，少掉的是「這隻王的傷害 − 拿去打下一隻的傷害」
+                                      x.ev = x.s - (1 - p) * Math.max(0, wj(last) - (nvOf.get(sig(last.cards)) || 0)); }   // 最後一組打不到的話，少掉的是「這隻王的傷害 − 拿去打下一隻的傷害」
                                   allM.push(x); }
                               const pickM = allM.filter(x => x.sel).reduce((b2, x) => !b2 || x.ev > b2.ev ? x : b2, null);
                               if (window.RAID_SPLIT_LOG) console.log('SPLIT-J', r.player, 'E=' + (split.E || 0).toFixed(2), allM.map(x => x.kC + '+' + x.kN + ' 加總' + Math.round(x.s / 1e6) + ' 期望' + Math.round((x.ev || 0) / 1e6)).join(' | '), '→ 用 ' + (pickM ? pickM.kC + '+' + pickM.kN : '-'), 'steps', steps);
@@ -13580,10 +13580,10 @@
                         if (simPick && !split && finPref !== false && nP >= 2 && (skel && skel.ok)   /* 「最佳」只是允許保留：一樣要這輪等得到 6 骨架（預估的下一場：第一輪） */) {
                             const F = await raidSimFinisherBest(r, infoP, data).catch(() => null);
                             if (F) {   /* 凱旋組前 3 名都試（跟晨星、瘋狂一樣：最強那組撞卡時，換一組合計可能更高），取合計最高 */
-                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? x.simDmg.avg || 0 : 0), 0); let bestF = null;
+                                const sum = (rows) => (rows || []).reduce((t, x) => t + (x.simDmg ? (x.simDmg.avg || 0) * raidVerifyW(x.rawCards || x.cards || []) : 0), 0); let bestF = null;   // 冷門牌組一樣打折
                                 for (const Fx of (F.alts && F.alts.length ? F.alts : [F])) {
                                     const others = await raidSimPlayerPick(r.player, { ...infoP, used: new Set([...(infoP.used || []), ...Fx.cards]), remaining: nP - 1, voidMode: voidLaterGo && !Fx.cards.includes('CrushingVoid') }, data, simFns.playable, simFns.hitParts, () => {}).catch(() => null);
-                                    if (!others) continue; const sm = sum(others) + Fx.avg;
+                                    if (!others) continue; const sm = sum(others) + Fx.avg * raidVerifyW(Fx.cards);
                                     if (sm >= sum(simPick) && (!bestF || sm > bestF.sm)) bestF = { sm, Fx, others }; }
                                 if (bestF) { const Fx = bestF.Fx; simPick = bestF.others.concat([{ cards: byPartOrderCards(Fx.cards), rawCards: Fx.cards, targets: [{ part: Fx.big, layer: 'body', cursed: false }], allParts: false, simDmg: Fx, finLater: true }]); }
                             }

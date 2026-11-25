@@ -7427,7 +7427,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 77;
+        const RAID_RECO_VER = 78;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13473,7 +13473,7 @@
                         const vNow = hasVoid && sixNow && n0 >= 1 ? raidSimVoidTopNow(r, info, 4).catch(() => null) : null;   // 已經 6 肉體：瘋狂無效所有搭配最強的 4 組進候選
                         const [M, top] = await Promise.all([
                             raidSpecialPref !== false && raidMorningOkNow() && (info.used ? !(info.used.has ? info.used.has('BarbedMorningstar') : info.used.includes('BarbedMorningstar')) : true) ? raidSimMorningBest(r, info, data).catch(() => null) : null,
-                            n0 <= 2 ? raidSimBruteTop(r, info, 12).catch(() => null) : null]);
+                            null /* 剩 1～2 刀不再把所有 3 張組合都算一遍（慢 1～2 秒，8 人只有 1 人高 2%）：一樣從公會打過的組合挑 */]);
                         if (M && M.ms.now) extra.push(M.cards);
                         const msCap = M && !M.ms.now ? raidRoundCap(nextRound && !predicted) : null, msReach = !M || M.ms.now || !msCap || !(M.ms.need > 0) || msCap.dmg >= M.ms.need;   /* 這輪（預估的下一場：第一輪）等不等得到晨星時機：公會還打得到的傷害 ≥ 要拆的盔甲 */
                         if (M && !M.ms.now && n0 >= 2 && msReach) infoP = { ...infoP, msCand: M };   // 晨星時機還沒到：跟瘋狂無效一樣，保留的合計比較高才留
@@ -13497,23 +13497,16 @@
                           const seg = (a, b2) => (t) => { const m2 = /(\d+)%/.exec(String(t || '')); raidRecoProgSet(r.player, `計算中 ${Math.round(a + (m2 ? Number(m2[1]) : 0) * (b2 - a) / 100)}%`); };   // 四段各佔一部分，不會停在 92%／100% 不動
                           raidRecoProgSet(r.player, '計算中 2%');
                           if (split.m === 0) return await raidSimNextBossPick(r, infoP, data, split, n0, seg(2, 99));   // 這隻王分配的組打完了：全部留給下一隻王
-                          const NA = await raidSimNextBossPick(r, infoP, data, split, n0 - split.m, seg(2, 20)); raidRecoProgSet(r.player, '計算中 20%');
-                          const CA = NA ? await pk({ ...infoP, used: usedPlus(NA), remaining: split.m }, seg(20, 55)) : null;
-                          const CB = await pk({ ...infoP, remaining: split.m }, seg(55, 85)); raidRecoProgSet(r.player, '計算中 88%');
-                          const NB = CB ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(CB) }, data, split, n0 - split.m) : null; raidRecoProgSet(r.player, '計算中 99%');
-                          /* 兩隻王一起挑：先排一邊再排另一邊只是起點，接著輪流「固定一邊、重排另一邊」，加總不再變高為止（每一步都不會變低）。
-                             只比 A、B 兩種排法時，兩個加總差不多（例如 4222 對 4120），盤面小變就換來換去；輪流重排會收斂到同一個更高的解 */
-                          const best = [];
-                          const climb = async (C, N) => { for (let it = 0; it < 3 && C && N; it++) { const s0 = sumOf(C) + sumOf(N);
-                              const N2 = await raidSimNextBossPick(r, { ...infoP, used: usedPlus(C) }, data, split, n0 - split.m); const s1 = N2 ? sumOf(C) + sumOf(N2) : -1; if (s1 > s0 + 1e6) N = N2;
-                              const C2 = await pk({ ...infoP, used: usedPlus(N), remaining: split.m }, null); const s2 = C2 ? sumOf(C2) + sumOf(N) : -1;
-                              if (s2 > sumOf(C) + sumOf(N) + 1e6) C = C2; else if (!(s1 > s0 + 1e6)) break; }
-                              if (C && N) best.push(C.concat(N)); };
-                          await climb(CA, NA); await climb(CB, NB);
+                          /* 換王時：這隻王挑一次、下一隻王的候選算一次，再一起窮舉（卡片不重複、加總最高）。
+                             不再做「先排哪邊、輪流重排」好幾輪：推薦是建議，打法交給玩家臨場判斷，算太久反而沒用 */
+                          const best = [], out = {};
+                          await raidSimNextBossPick(r, infoP, data, split, n0 - split.m, seg(2, 30)); raidRecoProgSet(r.player, '計算中 30%');   // 下一隻王的候選表（全部卡）
+                          const C0 = await pk({ ...infoP, remaining: split.m, poolOut: out }, seg(30, 85)); raidRecoProgSet(r.player, '計算中 88%');
+                          const N0 = C0 ? await raidSimNextBossPick(r, { ...infoP, used: usedPlus(C0) }, data, split, n0 - split.m) : null;
+                          if (C0 && N0) best.push(C0.concat(N0));
                           /* 兩隻王一起窮舉：這隻王的候選表（現在盤面）挑 m 組＋下一隻王的候選表挑 n−m 組，卡片全部不重複，找傷害加總最高的組合（兩邊全部候選，含晨星、防空等時機的版本；只取前幾十名會因為都用同幾張強卡而湊不出 6 組）。
                              找到後照那個組合實際排一次（這隻王的打法、部位分配照原本的流程），跟上面兩種排法一起比 */
                           try {
-                              const out = {}; await pk({ ...infoP, remaining: split.m, poolOut: out }, null);
                               const sig = (c) => c.slice().sort().join('+'), top = (L) => { const seen = new Set(); return (L || []).filter(o => o && o.avg > 0).sort((x, y) => y.avg - x.avg).filter(o => !seen.has(sig(o.cards)) && seen.add(sig(o.cards))); };   // 同一組有好幾種打法（現在打／等時機）：留傷害高的
                               const CL = top([...(out.pool || []), ...(out.vpool || []), ...(infoP.msCand ? (infoP.msCand.alts && infoP.msCand.alts.length ? infoP.msCand.alts : [infoP.msCand]) : []), ...(finSp ? (finSp.alts && finSp.alts.length ? finSp.alts : [finSp]).map(o => ({ ...o, finRes: true })) : [])]),   /* 這隻王的候選也放等時機的瘋狂、晨星、凱旋組 */ NL = top(split.pool && split.pool.filter(o => !o.cards.some(c => (infoP.used || new Set()).has && infoP.used.has(c))));
                               /* 這隻王打幾組（m）是照「全公會這輪打多少、王剩多少血」估的，不一定準：估計值 ±1 組的每一種搭配都窮舉，取加總最高

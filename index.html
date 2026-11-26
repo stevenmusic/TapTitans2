@@ -13788,7 +13788,7 @@
             cur.forEach((n, k) => { if (n > (m.get(k) || 0)) m.set(k, n); });
             return m;
         }
-        let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false;   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
+        let RAID_SIM_SWAP_ON = true, RAID_SIM_SWAP_FEW = false, RAID_SIM_SWAP_ANY = false;   /* 換卡換成沒人打過的組合：12 人回測合計 −0.14%、慢 2.6 倍，先關 */   // 換卡：8 人回測平均 +1.9%、9 秒（全部組合都算 +2.2%、43 秒）   // 換卡找沒人打過的組合：關（太久）。候選改成收攻擊紀錄裡打過的牌組
         let RAID_SIM_SWAP_MODE = 'pick', RAID_SIM_SWAP_ROUNDS = 3;   // 照挑出來的 6 組換卡（回測 8 人都 ≥ 舊法，多 1.5～3%）
         let RAID_SIM_SWAP_K = 10, RAID_SIM_SWAP_TOP = 24, RAID_SIM_SWAP_LITE = false;   // 換卡：前幾組、精算幾組、初篩用輕量
         const raidSimPoolMemo = new Map();
@@ -15070,7 +15070,7 @@
                 const seeds = (RAID_SIM_SWAP_MODE === 'both' && !keep ? (await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n)).concat(round ? [] : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)) : RAID_SIM_SWAP_MODE === 'pick' && !keep ? await raidSimPickPool(P, E, me, pool.map(o => ({ ...o })), n) : pool.slice().sort((a, b) => b.avg - a.avg).slice(0, K)).filter(o => !done.has(sig(o.cards)));   // 換過的組不再換
                 seeds.forEach(o => done.add(sig(o.cards)));
                 seeds.forEach(o => o.cards.forEach((c0, pos) => { if (keep && c0 === keep) return;
-                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards) || !usedEnough(cards)) return; const it = build(cards, E, hitF); if (!it) return;
+                    swapIn.forEach(c => { if (o.cards.includes(c)) return; const cards = o.cards.slice(); cards[pos] = c; const k = sig(cards); if (seen.has(k)) return; seen.add(k); if (!ok(cards) || (!RAID_SIM_SWAP_ANY && !usedEnough(cards))) return; const it = build(cards, E, hitF);   /* 換卡可以換成沒人打過的組合（候選起點照門檻） */ if (!it) return;
                         // 只試原本那組的打法＋打最多部位的打法（換一張卡，最好的打法通常差不多；全部打法都試太慢）
                         if (RAID_SIM_SWAP_FEW) { const keepPl = it.plans.filter(pl => pl.tg.join() === (o.tg || []).join()); const wide = it.plans.slice().sort((a, b) => b.tg.length - a.tg.length)[0]; const pl = keepPl.concat(wide && !keepPl.includes(wide) ? [wide] : []); if (pl.length) it.plans = pl; }
                         add.push(it); }); }));

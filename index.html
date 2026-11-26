@@ -7432,7 +7432,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 92;
+        const RAID_RECO_VER = 94;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15041,19 +15041,19 @@
                 })(); raidSimMemo.set(vKey, vpoolP); vpoolP.catch(() => raidSimMemo.delete(vKey)); if (raidSimMemo.size > 300) raidSimMemo.delete(raidSimMemo.keys().next().value); }
                 const gotP = raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra), n, seg(P0, P1), null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP));   /* 跟瘋狂組的候選同時算（互不影響，核心不會閒著） */ gotP.catch(() => {});
                 const vpool = raidDecayAdj((await vpoolP).map(o => ({ ...o }))).sort((a, b) => b.avg - a.avg); if (info.poolOut) info.poolOut.vpool = vpool;   /* 瘟疫暫時打折也套在瘋狂候選 */
-                const got = await gotP; got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK));
+                const got = await gotP; got.add.forEach(it => extra.push(it)); const all = raidVerifyWeights(raidAvoidAdj(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK), phaseK, env));
                 poolAll = all; const normal = await raidSimPickPool(P, env, me, all.slice(), n); normalSum = normal.reduce((t, o) => t + (o.avg || 0) * showF(o.cards), 0);
                 let best = null;
                 /* 每種瘋狂組搭配同時算（以前一種一種排隊，4 個核心只用到 1 個），再照原本順序取合計最高 */
                 const um = raidDeckUsesMap(), wv = (o) => (o.avg || 0) * raidVerifyW(o.cards, um);   // 比合計時冷門牌組照樣打折（顯示的應打不變）   // 比合計時常打的牌組略加分（顯示的應打不變）
                 const vfin = await Promise.all(vpool.map(async (V) => { const rest = all.filter(o => !o.cards.some(c => V.cards.includes(c)));
-                    const others = n > 1 ? await raidSimPickPool(P, env, me, rest, n - 1, false, true, 0) : []; return { sm: wv(V) + others.reduce((t, o) => t + wv(o), 0), V, others, decks: [V].concat(others) }; }));
+                    const others = n > 1 ? await raidSimPickPool(P, env, me, rest, n - 1, false, true) : []; return { sm: wv(V) + others.reduce((t, o) => t + wv(o), 0), V, others, decks: [V].concat(others) }; }));
                 const normalW = normal.reduce((t, o) => t + wv(o) * showF(o.cards), 0);
                 /* 留瘋狂組的各種搭配＋不留，合計差不到 1% 的挑常打的 */
                 const chV = raidPopChoose(vfin.concat([{ sm: normalW, decks: normal, normal: true }])); best = chV && !chV.normal ? chV : null;
                 if (window.RAID_VOID_LOG) console.log('VOIDCMP', name, 'void', best ? Math.round(best.sm / 1e6) + ' ' + best.V.cards.join('+') + ' ' + Math.round(best.V.avg / 1e6) : '-', 'normal', Math.round(normalSum / 1e6), 'n', n);
                 if (best) { pick0 = best.others; voidO = best.V; } else pick0 = normal;   // 以傷害為主：留瘋狂無效那組合計比較高才留，不強制
-            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? raidDecayAdj(mergeFlak(got.pool)).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
+            } else { raidSimRankBusy++; try { const got = await raidSimPoolGetOrEval(poolKey, P, env, me, list.concat(extra || []), n, seg(P0, P1), fast ? 12 : null, fast || !RAID_SIM_SWAP_ON ? null : (pool) => expand(pool, env, playable, hitParts, null, RAID_SIM_SWAP_K, RAID_SIM_SWAP_TOP)); got.add.forEach(it => extra.push(it)); poolAll = n === 1 ? raidDecayAdj(mergeFlak(got.pool)).map(o => ({ ...o, selW: 1 })) : raidVerifyWeights(raidAvoidAdj(raidPhaseWeights(raidDecayAdj(mergeFlak(got.pool)), phaseK), phaseK, env)); pick0 = await raidSimPickPool(P, env, me, poolAll, n); /* 剩最後 1 刀：直接挑傷害最高的（不看打王階段、驗證打折） */ } finally { raidSimRankBusy--; } }
             if (info.poolOut) info.poolOut.pool = poolAll;
             // 帶刺的晨星等時機（info.msCand：晨星組在時機盤面的傷害）：保留晨星＋其他 n−1 組的合計比較高才留（跟瘋狂無效一樣以傷害為主，用已經算好的候選，不整套重算）
             if (info.msCand && Array.isArray(pick0) && pick0.length >= 1) {
@@ -15660,6 +15660,16 @@
             return { burstShare: L.length > 30 ? (cat.Burst || 0) / allDmg : 0.75, affShare: L.length > 30 ? (cat.Affliction || 0) / allDmg : 0.2, voidLeft, finLeft, voidDmg: avgWith('CrushingVoid'), finDmg: avgWith('FinisherAttack') };
         }
         // 挑牌組時就照打王階段：打優先部位（掉不到容忍值）的組照打優先部位的傷害比；打不到或會掉太多的組價值 ×(1−容忍值)。顯示的應打不變
+        function raidAvoidAdj(pool, ph, env) {
+            if (!ph || !ph.avoid || !ph.avoid.length) return pool;
+            const hit = (tg) => (tg || []).some(k => ph.avoid.includes(k)), out = [];
+            pool.forEach(o => { if (!o || !hit(o.tg)) { out.push(o); return; }
+                out.push({ ...o, selW: (o.selW || 1) * RAID_SIM_AVOID_W });
+                const curA = (o.alts || []).find(a => a.tg.join() === (o.tg || []).join()), sc = curA && curA.raw > 0 ? (o.raw || o.avg) / curA.raw : 1;
+                const a = (o.alts || []).filter(x => x.tg.length && !hit(x.tg)).sort((p, q) => q.raw - p.raw)[0];
+                if (a && a.raw > 0) { const cap = env && env.hp ? a.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : 0; out.push({ ...o, tg: a.tg, plan: a.plan, raw: a.raw * sc, avg: cap > 0 ? Math.min(a.raw * sc, cap) : a.raw * sc, cap: cap > 0 ? cap : undefined, final: false, lo: undefined, hi: undefined, q25: undefined, q75: undefined, selW: o.selW || 1, _avoidVar: true }); } });
+            return out;
+        }
         function raidPhaseWeights(pool, ph) {
             if (!ph || !(ph.tol > 0) || !ph.order || !ph.order.length) return pool;
             return pool.map(o0 => {
@@ -15714,7 +15724,24 @@
            用在「部位排順序、推薦能不能沿用」：只有跨段才算狀態改變，不會每少 1M 就重排、重算 */
         const RAID_HP_STEPS = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1];
         function raidHpBucket(x, max) { x = Math.max(0, Number(x) || 0); if (!(x > 0)) return 0; if (!(max > 0)) return x; const f = x / max; const u = RAID_HP_STEPS.find(t => f <= t) || 1; return u * max; }
+        /* 保護薄的部位（給瘋狂無效留 6 肉體）：這輪還有人沒用瘋狂無效、還沒到 6 肉體、能打的部位剛好夠 6 個以上，
+           肉體血量不到其他部位中位數一半的部位（例：Priker 兩腳 2.81B，其他 8～10B）全公會一起打很快就變骨架，少了它就湊不到 6 肉體。
+           這種部位：打到它的打法挑選時打 85 折，同一組牌另外放一個避開它的打法一起比；拆盔甲順序也先跳過它 */
+        const RAID_SIM_AVOID_W = 0.85;
         function raidPhaseInfo(env) {
+            const ph = raidPhaseInfo0(env); if (!ph || !env || !env.board || !raidState || !raidState.parts) return ph;
+            const B = env.board, open = Object.keys(B).filter(k => B[k].layer === 'armor' || B[k].layer === 'body'), nBody = open.filter(k => B[k].layer === 'body').length;
+            let avoid = [];
+            if (ph.g && ph.g.voidLeft > 0 && nBody < 6 && open.length >= 6) {
+                const bodyOf = (k) => Math.max(0, Number((raidState.parts[k] || {}).body) || 0), bs = open.map(bodyOf).sort((a, b) => a - b), med = bs[bs.length >> 1];
+                const thin = open.filter(k => bodyOf(k) < med * 0.5);
+                if (thin.length && open.length - thin.length < 6) avoid = thin;
+            }
+            if (!avoid.length) return { ...ph, avoid: [] };
+            const order = (ph.order || []).filter(k => !avoid.includes(k)), ok0 = ph.ok;
+            return { ...ph, avoid, order: order.length ? order : ph.order, ok: (k) => !avoid.includes(k) && ok0(k), line: (ph.line ? ph.line + '；' : '') + `${avoid.map(raidPartLabel).join('、')}肉體薄，瘋狂無效之前別打（留 6 肉體）` };
+        }
+        function raidPhaseInfo0(env) {
             if (!env || !env.board || !raidState || !raidState.parts) return null;
             const parts = raidState.parts, B = env.board, LOCS = Object.keys(B);
             const armorOf = (k) => Math.max(0, Number((parts[k] || {}).armor) || 0), bodyOf = (k) => Math.max(0, Number((parts[k] || {}).body) || 0), hpOf = (k) => armorOf(k) + bodyOf(k);
@@ -15932,6 +15959,9 @@
             addPlan(open.filter(k => k !== 'Head' && k !== 'ChestUpper'), '四肢');
             addPlan(open, '輪流打');
             addPlan(open.filter(k => board[k].layer === 'armor' && board[k].cursed), '詛咒甲輪流打');
+            { /* 避開肉體薄的部位（保護瘋狂無效的 6 肉體用，見 raidPhaseInfo 的 avoid） */
+              const bOf = (k) => Math.max(0, Number((raidState.parts[k] || {}).body) || 0), bs = open.map(bOf).sort((a, b) => a - b), med = bs[bs.length >> 1] || 0;
+              const thin = open.filter(k => bOf(k) < med * 0.5); if (open.length >= 6 && thin.length) addPlan(open.filter(k => !thin.includes(k)), '避開薄的部位'); }
             // 鏡子力的 +35% 只有第 2 輪起才有：照這場目前進行到第幾輪
             const latest = serverSessionsSummary && serverSessionsSummary[0] && serverSessionsSummary[0].startedAt;
             const cyc = Math.max(raidLiveRoundNow(latest) || 0, ...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []).filter(a => !latest || a.raidStartedAt === latest).map(a => Number(a.cycle) || 0));
@@ -16133,7 +16163,7 @@
         const raidFinCache = new WeakMap();   // env → me → 精算結果（同一次推薦重複用；env、me 換新就自動丟掉）
         /* 打 3 個部位以上的牌組（全部位）每人最多幾組（不含留著的瘋狂無效那組；有瘋狂組時其他組 0 組）：
            全部位牌組多了，全公會一起打，肉體很快就被打成骨架（瘋狂無效等不到 6 肉體、後面的組沒部位打）。其他組改用單體（1～2 個部位，防空也算單體） */
-        const RAID_SIM_ALLPART_MAX = 1;
+        const RAID_SIM_ALLPART_MAX = 6;   /* 不限全部位組數（改成保護薄的部位，見 raidPhaseInfo 的 avoid）；6＝不限 */
         /* 算「全部位」：打 3 個部位以上、而且其中 2 個以上已經是肉體（拆盔甲、詛咒甲時打全部位不會把肉體打爆，不限制） */
         /* 算「全部位」：打到 3 個以上「不是詛咒甲」的部位（盔甲、肉體都算：一般盔甲一起拆光，肉體也會一起被打爆）。
            只打詛咒甲的組（例如 4 個詛咒部位一起打）不算：詛咒甲本來就要全公會一起拆。照算的那個盤面（下一隻王是自己的盤面） */

@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 103;
+        const RAID_RECO_VER = 104;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15810,9 +15810,10 @@
         /* 保護薄的部位（給瘋狂無效留 6 肉體）：這輪還有人沒用瘋狂無效、還沒到 6 肉體、能打的部位剛好夠 6 個以上，
            肉體血量不到其他部位中位數一半的部位（例：Priker 兩腳 2.81B，其他 8～10B）全公會一起打很快就變骨架，少了它就湊不到 6 肉體。
            這種部位：打到它的打法挑選時打 85 折，同一組牌另外放一個避開它的打法一起比；拆盔甲順序也先跳過它 */
-        const RAID_SIM_AVOID_W = 0.85;
+        let RAID_SIM_AVOID_W = 0.85, RAID_SIM_AVOID_ON = false;   /* 2026-11 關掉：跟著網頁打的不到 10 人，其他人照打，薄的部位一樣會被打爆；12 人回測關掉合計 +1.35% */
         function raidPhaseInfo(env) {
             const ph = raidPhaseInfo0(env); if (!ph || !env || !env.board || !raidState || !raidState.parts) return ph;
+            if (!RAID_SIM_AVOID_ON) return { ...ph, avoid: [] };
             const B = env.board, open = Object.keys(B).filter(k => B[k].layer === 'armor' || B[k].layer === 'body'), nBody = open.filter(k => B[k].layer === 'body').length;
             let avoid = [];
             if (ph.g && ph.g.voidLeft > 0 && nBody < 6 && open.length >= 6) {

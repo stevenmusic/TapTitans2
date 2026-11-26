@@ -20570,70 +20570,31 @@
             return html;
         }
 
-        /* ══ 技能配點（資料：TT2_CSV 的 SkillTreeInfo2.0、BuildGuideInfo，用 tools/build-skilltree.py 轉成 data/skilltree.json） ══
-           選流派（傷害來源）＋金幣來源＋技能點數 → 自動配點：
-           - 重要程度：流派、金幣的核心技能 1；效果跟核心技能同系列的（例如寵物流派的 Ember Arts）0.6；其他 0（只在解鎖需要時點）
-           - 每一步挑「增加的倍率（取對數）× 重要程度 ÷ 花的點數」最高的；上鎖的技能把「前置技能＋分支要先花的點數＋這一級」當一整步一起比
-           - 前置技能、分支要先花幾點、每級需要的關卡（有填最高關卡才檢查）都照遊戲資料 */
-        const SP_BUILDS = [['ClanShip', '飛船'], ['Pet', '寵物'], ['HeavenlyStrike', '天堂'], ['ShadowClone', '影分身'], ['Dagger', '匕首'], ['GoldGun', '金槍']];   // 跟遊戲裡的流派選單同順序
-        const SP_GOLDS = [['FairyGold', '妖精金'], ['HeartOfGold', '黃金之心'], ['ChestersonGold', '寶箱金']];
-        let spData = null, spTimer = null;
+        /* ══ 技能配點：計算核心移植自 rawrzcookie 的 Skill Tree Builder（MIT，spopti/engine.js、data/spopti.json），
+           只留流派、金幣、技能點數三個輸入，其他參數用原版預設值；結果跟原版一致（金槍＋妖精金 21000 點逐格比對過） ══ */
+        const SP_BUILDS = [['Clan Ship', '飛船'], ['Pet', '寵物'], ['Heavenly Strike', '天堂'], ['Shadow Clone', '影分身'], ['Dagger', '匕首'], ['Gold Gun', '金槍']];   // 跟遊戲裡的流派選單同順序
+        const SP_GOLDS = [['Fairy', '妖精金'], ['HoG', '黃金之心'], ['Chesterson', '寶箱金']];
+        const SP_CLS_KEY = { Knight: 'knight', Pet: 'summoner', Warlord: 'warlord', Sorcerer: 'sorcerer', Rogue: 'rogue', Alchemist: 'alchemist' };
+        let spData = null, spTimer = null, spEngineP = null;
         function spRenderSoon() { clearTimeout(spTimer); spTimer = setTimeout(spRender, 350); }
-        function spFam(t) { return (String(t).match(/[A-Z][a-z0-9]*/g) || []).slice(0, 2).join(''); }
-        const SP_GOLD_W = 0.5;   // 金幣跟傷害比的重要程度（推關主要靠傷害）
-        function spPlan(data, guideIds, sp, stageMax) {
-            const T = new Map(data.talents.map(t => [t.id, t])), w = {}, keys = new Set();
-            guideIds.forEach((gid, gi) => { const base = gi === 0 ? 1 : SP_GOLD_W;   // 第 1 個是流派，第 2 個是金幣
-                const ks = ((data.builds.find(b => b.id === gid) || {}).talents) || []; ks.forEach(k => keys.add(k));
-                const fams = new Set(ks.map(k => T.get(k)).filter(Boolean).map(t => spFam(t.eff[0] && t.eff[0].type)));
-                data.talents.forEach(t => { const v = ks.includes(t.id) ? base : t.eff.some(e => fams.has(spFam(e.type))) ? base * 0.6 : 0; if (v > (w[t.id] || 0)) w[t.id] = v; }); });
-            data.talents.forEach(t => { if (w[t.id] == null) w[t.id] = 0; });
-            const g = (t, l) => { const v = t.eff[0] ? t.eff[0].v[l] : 0; return Math.log10(1 + Math.max(0, v || 0)); };
-            const lv = {}, spent = {}; let left = sp, order = [];
-            const L = (id) => lv[id] || 0;
-            const can = (t, st) => { const l = st.lv[t.id] || 0; if (l >= t.max) return false; if (stageMax > 0 && t.stage[l] > stageMax) return false; if (t.req && !(st.lv[t.req] > 0)) return false; return (st.spent[t.cls] || 0) >= t.spReq; };
-            const gainOf = (t, l) => w[t.id] * (g(t, l + 1) - g(t, l));
-            // 一整步：把 target 解鎖（前置技能都點到 1 級、分支點數不夠就先點同分支最划算的）再點 1 級；回傳 { steps, cost, gain } 或 null
-            const unlockPlan = (target) => {
-                const st = { lv: { ...lv }, spent: { ...spent } }, steps = []; let cost = 0, gain = 0;
-                const chain = []; for (let t = target; t; t = t.req ? T.get(t.req) : null) { if ((st.lv[t.id] || 0) === 0 || t === target) chain.unshift(t); if (!t.req) break; }
-                const buy = (t) => { const l = st.lv[t.id] || 0, c = t.cost[l]; st.lv[t.id] = l + 1; st.spent[t.cls] = (st.spent[t.cls] || 0) + c; cost += c; gain += gainOf(t, l); steps.push(t.id); };
-                for (const t of chain) {
-                    if ((st.lv[t.id] || 0) > 0 && t !== target) continue;
-                    let guard = 0;
-                    while ((st.spent[t.cls] || 0) < t.spReq && guard++ < 500) {   // 分支點數不夠：點同分支已解鎖、最划算（沒加成就最便宜）的
-                        const opts = data.talents.filter(x => x.cls === t.cls && can(x, st)); if (!opts.length) return null;
-                        opts.sort((a, b) => (gainOf(b, st.lv[b.id] || 0) / b.cost[st.lv[b.id] || 0]) - (gainOf(a, st.lv[a.id] || 0) / a.cost[st.lv[a.id] || 0]) || a.cost[st.lv[a.id] || 0] - b.cost[st.lv[b.id] || 0]);
-                        buy(opts[0]); if (cost > left) return null; }
-                    if (!can(t, st)) return null; buy(t); if (cost > left) return null;
-                }
-                return { steps, cost, gain };
-            };
-            for (let it = 0; it < 20000 && left > 0; it++) {
-                let best = null;
-                data.talents.forEach(t => { if (!(w[t.id] > 0)) return;
-                    const l = L(t.id); if (l >= t.max) return;
-                    if (can(t, { lv, spent })) { const c = t.cost[l]; if (c > left) return; const gn = gainOf(t, l); if (gn > 0 && (!best || gn / c > best.r)) best = { r: gn / c, steps: [t.id], cost: c }; }
-                    else if (l === 0) { const u = unlockPlan(t); if (u && u.gain > 0 && (!best || u.gain / u.cost > best.r)) best = { r: u.gain / u.cost, steps: u.steps, cost: u.cost }; } });
-                if (!best) break;
-                best.steps.forEach(id => { const t = T.get(id), l = L(id), c = t.cost[l]; lv[id] = l + 1; spent[t.cls] = (spent[t.cls] || 0) + c; left -= c; order.push(id); });
-            }
-            return { lv, spent, left, keys, w, order };
-        }
+        function spLoadEngine() { if (!spEngineP) spEngineP = new Promise((ok, ng) => { if (window.SpOpti) return ok(); const sc = document.createElement('script'); sc.src = 'spopti/engine.js?v=1'; sc.onload = () => ok(); sc.onerror = () => { spEngineP = null; ng(new Error('engine')); }; document.head.appendChild(sc); }); return spEngineP; }
         async function spRender() {
             const bSel = document.getElementById('sp-build'), gSel = document.getElementById('sp-gold'); if (!bSel) return;
             if (!bSel.options.length) { bSel.innerHTML = SP_BUILDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join(''); gSel.innerHTML = SP_GOLDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
-                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g && SP_GOLDS.some(x => x[0] === sv.g)) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; } catch (e) {} }
+                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b && SP_BUILDS.some(x => x[0] === sv.b)) bSel.value = sv.b; if (sv.g && SP_GOLDS.some(x => x[0] === sv.g)) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; } catch (e) {} }
             const sum = document.getElementById('sp-summary'), trees = document.getElementById('sp-trees'), list = document.getElementById('sp-list');
-            if (!spData) { sum.textContent = '載入技能資料中…'; try { spData = await (await fetch('data/skilltree.json?v=1')).json(); } catch (e) { sum.textContent = '技能資料載入失敗，請重新整理。'; return; } }
-            const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0)), stage = 0;   // 不看關卡
+            if (!spData) { sum.textContent = '載入技能資料中…'; try { await spLoadEngine(); spData = await (await fetch('data/spopti.json?v=1')).json(); } catch (e) { sum.textContent = '技能資料載入失敗，請重新整理。'; return; } }
+            const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0));
             try { localStorage.setItem('tt2_sp_plan', JSON.stringify({ b: bSel.value, g: gSel.value, p: sp || '' })); } catch (e) {}
-            const res = spPlan(spData, [bSel.value, gSel.value].filter(Boolean), sp, stage), T = new Map(spData.talents.map(t => [t.id, t]));
-            const used = sp - res.left;
-            sum.innerHTML = sp > 0 ? `共 <b>${sp}</b> 點：配了 <b>${used}</b> 點${res.left > 0 ? `，剩 ${res.left} 點（再點也加不到這個流派）` : ''}` : '填上技能點數就會自動配點。';
-            const nodeOf = (cat, pos) => { const t = spData.talents.find(x => x.cls === cat && spSlotPos(x.slot) === pos); const v = t ? (res.lv[t.id] || 0) : 0, color = SKILL_CAT_COLORS[cat];
+            const eng = window.SpOpti.create(spData, { typeDamage: bSel.value, typeGold: gSel.value }), lvArr = sp > 0 ? eng.optimize(sp) : eng.skills.map(() => 0);
+            const res = { lv: {}, spent: {}, keys: new Set() }; let used = 0;
+            eng.skills.forEach((sk, i) => { if (lvArr[i] > 0) res.lv[sk.id] = lvArr[i]; const c = eng.cum[i][lvArr[i]] || 0, ck = SP_CLS_KEY[sk.cls]; res.spent[ck] = (res.spent[ck] || 0) + c; used += c; });
+            res.left = sp - used; const T = new Map(eng.skills.map(sk => [sk.id, { ...sk, cls: SP_CLS_KEY[sk.cls], note: '', cost: sk.Co.map(Number) }]));
+            const talents = [...T.values()];
+            sum.innerHTML = sp > 0 ? `共 <b>${sp}</b> 點：配了 <b>${used}</b> 點${res.left > 0 ? `，剩 ${res.left} 點` : ''}` : '填上技能點數就會自動配點。';
+            const nodeOf = (cat, pos) => { const t = talents.find(x => x.cls === cat && spSlotPos(x.slot) === pos); const v = t ? (res.lv[t.id] || 0) : 0, color = SKILL_CAT_COLORS[cat];
                 const key = t && res.keys.has(t.id);
-                return `<div class="skill-node${v > 0 ? ' lit' : ''}" title="${t ? escapeHtml(t.name + '：' + t.note + `（${v}/${t.max}）`) : ''}" style="--cat-color:${color}"><div class="skill-icon-wrap${v > 0 ? ' lit' : ''}"${key ? ' style="box-shadow:0 0 0 2px #e0a800;"' : ''}><img class="skill-icon-img" src="images/abyss/skill-icons/${cat}_${pos}${v > 0 ? '_lit' : ''}.jpg" alt=""><span class="skill-value-badge">${v}</span></div></div>`; };
+                return `<div class="skill-node${v > 0 ? ' lit' : ''}" title="${t ? escapeHtml(t.name + `（${v}/${t.max}）`) : ''}" style="--cat-color:${color}"><div class="skill-icon-wrap${v > 0 ? ' lit' : ''}"${key ? ' style="box-shadow:0 0 0 2px #e0a800;"' : ''}><img class="skill-icon-img" src="images/abyss/skill-icons/${cat}_${pos}${v > 0 ? '_lit' : ''}.jpg" alt=""><span class="skill-value-badge">${v}</span></div></div>`; };
             let html = '<div class="tree-grid">';
             SKILL_PAIRS.forEach(row => { html += '<div class="tree-pair">' + row.groups.map(cat => { const layout = SKILL_NODE_LAYOUT[cat.key], color = SKILL_CAT_COLORS[cat.key];
                 let h = `<div class="skill-tree" data-cat="${cat.key}"><div class="tree-cat-label" style="color:${color}">${cat.label} <span>${res.spent[cat.key] || 0}</span></div>`;
@@ -20645,7 +20606,7 @@
             const rows = Object.keys(res.lv).map(id => T.get(id)).sort((a, b) => SP_CLS_ORDER.indexOf(a.cls) - SP_CLS_ORDER.indexOf(b.cls) || a.slot - b.slot);
             const catLabel = (k) => (SKILL_PAIRS.flatMap(p => p.groups).find(g => g.key === k) || {}).label || k;
             list.innerHTML = rows.length ? `<details style="font-size:13px; color:#5a4a3a;"><summary style="cursor:pointer; padding:4px 0;">技能明細（${rows.length} 個）</summary><table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3a2a;"><tr style="color:#8a7a6a;"><th style="text-align:left; padding:3px;">技能</th><th>等級</th><th>花費</th></tr>` + rows.map(t => { const l = res.lv[t.id], c = t.cost.slice(0, l).reduce((x, y) => x + y, 0);
-                return `<tr style="border-top:1px solid #eee2d0;"><td style="padding:4px 3px;"><span style="color:${SKILL_CAT_COLORS[t.cls]}; font-weight:800;">${catLabel(t.cls)}</span> ${escapeHtml(t.name)}${res.keys.has(t.id) ? ' <span style="color:#c08a00; font-size:11px;">核心</span>' : ''}<div style="font-size:11px; color:#9a8a7a;">${escapeHtml(t.note)}</div></td><td style="text-align:center;">${l}/${t.max}</td><td style="text-align:center;">${c}</td></tr>`; }).join('') + '</table></details>' : '';
+                return `<tr style="border-top:1px solid #eee2d0;"><td style="padding:4px 3px;"><span style="color:${SKILL_CAT_COLORS[t.cls]}; font-weight:800;">${catLabel(t.cls)}</span> ${escapeHtml(t.name)}</td><td style="text-align:center;">${l}/${t.max}</td><td style="text-align:center;">${c}</td></tr>`; }).join('') + '</table></details>' : '';
         }
         const SP_CLS_ORDER = ['knight', 'summoner', 'warlord', 'sorcerer', 'rogue', 'alchemist'];
         function spSlotPos(slot) { return slot === 0 ? 'root' : `r${Math.floor((slot - 1) / 3) + 2}c${(slot - 1) % 3}`; }

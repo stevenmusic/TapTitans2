@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 94;
+        const RAID_RECO_VER = 95;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15178,6 +15178,10 @@
                 for (const o of poolAll.filter(o => o.avg > 0 && alive(o)).sort((a, b) => b.avg * (b.selW || 1) - a.avg * (a.selW || 1))) { if (pick.length >= want) break; if (o.cards.some(c => usedC.has(c) || used.has(c))) continue; if (raidSimMulti(o, env) && pick.concat(reservedO()).filter(x => raidSimMulti(x, env)).length >= RAID_SIM_ALLPART_MAX) continue; const cap = capOf(o); if (!(cap > 0)) continue;
                     const q = { ...o }; if (q.avg > cap) { const f = cap / q.avg; q.avg = cap; if (q.lo != null) q.lo *= f; if (q.hi != null) q.hi = Math.min(q.hi, cap * 1.08); } pick.push(q); o.cards.forEach(c => usedC.add(c)); (q.tg || []).forEach(k => { took[k] = (took[k] || 0) + q.avg / Math.max(1, q.tg.length); }); } } }
             pick.forEach((o, i) => { if ((o.cards.includes('DecayingAttack') || raidPlagueFactor(o.cards) < 1) && !o.decayF) pick[i] = raidDecayAdj([o])[0]; });   // 中途重算過的組：腐敗突擊照樣打折
+            /* 保險：顯示前還有沒精算過的組（只有粗算值、沒有上下限），先補跑 100 次（種子 1000 起，跟攻擊紀錄的應打同一套） */
+            { const nf = pick.map((o, i) => [o, i]).filter(([o]) => o && !o.final);
+              if (nf.length) { const fr = await raidSimParallel(P, nf.map(([o]) => ({ kind: 'f', base: raidSimBase(env, me, o.cards), o: { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap != null ? o.cap : env.hp ? o.tg.reduce((t, k) => t + (env.hp[k] || 0), 0) : undefined } })));
+                nf.forEach(([o, i], j) => { const f = fr && fr[j] ? fr[j] : raidSimFinal(P, env, me, { cards: o.cards, tg: o.tg, plan: o.plan, cap: o.cap }); pick[i] = { ...o, ...f, cards: o.cards, tg: o.tg }; }); } }
             const rows = pick.map(o => ({ cards: byPartOrderCards(o.cards), rawCards: o.cards, targets: o.tg.map(k => ({ part: k, layer: env.board[k].layer === 'body' ? 'body' : 'armor', cursed: !!env.board[k].cursed })), allParts: o.tg.length >= 2 && o.tg.length >= env.open.length, simDmg: o, flakLater: !!o.flakLater }));
             // 顯示的應打乘上牌組校正（挑選時沒用）
             const scaleShow = (o) => { const f = showF(o.cards); if (f === 1) return; const cp = (x) => o.leftAt ? raidSimCapParts(x * f, o.leftAt) : x * f; o.avg = cp(o.avg); if (o.lo != null) o.lo = cp(o.lo); if (o.hi != null) o.hi = cp(o.hi); };
@@ -16254,7 +16258,7 @@
                 }
             };
             // 挑中的組如果只快速篩過（8 次，可能剛好偏高）：補跑 200 次再重新搜尋，直到挑中的都是精算過的
-            for (let round = 0; round < 6; round++) {
+            for (let round = 0; round < 30; round++) {   // 粗算偏高的組補跑後常掉名次、換下一組上來：輪數要夠，不然會留下沒精算的組（M-51 mfchen 顯示 1.01B、實際 720M）
                 best = []; bestSum = -1; steps = 0;
                 pool.sort((a, b) => val(b) - val(a));
                 // 只在價值前 RAID_SIM_DFS_TOP 名裡搜尋（加上帶鏡子力的前 5 組）：候選很多時（換卡後 600～950 組）全部搜尋一次要好幾秒，又在主畫面跑
@@ -16294,6 +16298,9 @@
                 }
                 const rough = noFin ? [] : best.filter(o => !o.final);
                 if (!rough.length) break;
+                { /* 順便補跑「粗算值比選中最低那組還高、還沒精算」的組（最多 24 組）：它們補跑後才知道會不會擠進來，一次收斂，不用一輪一輪換 */
+                  const minV = Math.min(...best.map(val)), inB = new Set(best);
+                  pool.filter(o => o && !o.final && !inB.has(o) && val(o) > minV).sort((a, b) => val(b) - val(a)).slice(0, 24).forEach(o => rough.push(o)); }
                 // 補精算：丟給 Web Worker 平行算（不佔畫面）；不支援才在主畫面算
                 /* 同一個盤面（env）、同一個人（me）、同一組牌、同樣打法和剩血上限：精算結果一定一樣（種子固定），算過就直接用。
                    瘋狂、晨星各種搭配都會把其他組重新精算，同一組常被重複算十幾次 */

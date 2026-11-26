@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 98;
+        const RAID_RECO_VER = 99;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15521,6 +15521,9 @@
                 if (!window.RaidSim) await new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = 'raid-sim/raidsim.js?v=31'; sc.onload = ok; sc.onerror = ng; document.head.appendChild(sc); });
                 const [sk, cal] = await Promise.all([fetch('raid-sim/skills.json?v=1').then(r => r.json()), fetch('raid-sim/calibration.json?v=23').then(r => r.json())]);
                 RaidSim.init(sk);
+                { /* 校正要用的場次（上一場、最近一場同樣場次加成的）先載好，不然第一次算推薦時校正資料不夠 */
+                  const SS = serverSessionsSummary || [], cur0 = SS[0], same = cur0 && SS.slice(1).find(x => x && x.buffType && x.buffType === cur0.buffType && (x.attackCount || 0) >= 300);
+                  await Promise.all([same, SS[1]].filter(Boolean).map(x => ensureSessionAttacksLoaded(x.startedAt).catch(() => null))); raidDeckCalAt = 0; }
                 return { ...RaidSim.P0, ...cal, k: { ...(cal.k || {}) }, deckK: { ...(cal.deckK || {}) } };
             })();
             raidSimReady.catch(() => { raidSimReady = null; });
@@ -15541,7 +15544,10 @@
             /* 校正資料：這一場＋上一場（新的優先）。只用這一場的話，剛開打時刀數不夠（不到 50 刀就不校正）、每組牌組也湊不到 6 刀，
                推薦、牌組頁、攻擊紀錄的應打會在開打前後跳一次；兩場合起來刀數夠，牌組偏差也看得出來（例：瘟疫＋變質氣體各變體單場都不到 6 刀）。
                只用伺服器最新版模擬器算的刀（v 最大的；舊版的應打跟現在的模擬器不一樣，不能拿來校正） */
-            const ss = (serverSessionsSummary || []).slice(0, 2).map(x => x && x.startedAt).filter(Boolean); if (!ss.length) return null;
+            /* 上一場用「最近一場同樣場次加成」的（例：M-51 苦痛機率 → 用 M-47，不用 M-50 輔助效果）：各卡偏差跟場次加成有關
+               （毀了雨原始模擬 M-47 苦痛機率 102%、M-50 輔助效果 108%；拿 M-50 校正 M-51 會把毀了雨多調 8%，應打偏高） */
+            const SS = serverSessionsSummary || [], cur0 = SS[0], same = cur0 && SS.slice(1).find(x => x && x.buffType && x.buffType === cur0.buffType && (x.attackCount || 0) >= 300);
+            const ss = [cur0, same || SS[1]].map(x => x && x.startedAt).filter(Boolean); if (!ss.length) return null;
             const seenK = new Set(), atks = [...(Array.isArray(serverAttackLogCache) ? serverAttackLogCache : []), ...ss.flatMap(sa => sessionAttacksCache.get(sa) || [])]
                 .filter(a => { if (!a || a.placeholder || !ss.includes(a.raidStartedAt) || !a.cards || a.cards.length !== 3 || a.imported) return false; const k = raidSimExpKey(a); if (seenK.has(k)) return false; seenK.add(k); return true; })
                 .sort((x, y) => (y.attackDatetime || '').localeCompare(x.attackDatetime || ''));

@@ -13345,6 +13345,7 @@
         const raidRecoDoneAt = new Map();
         function raidRecoProgDone(name) { const g = raidRecoProg.get(name); if (g && g.timer) clearInterval(g.timer); raidRecoProg.delete(name); const bx = raidLogRecoBox(name); const pct = bx && bx.querySelector('[data-prog]'); if (pct) raidRecoProgText(pct, 100); }   // 算完：先顯示 100%，結果接著蓋上
         function raidLogRecoBox(name) {
+            if (raidRecoIdleBox && raidRecoIdleBox.name === name) return raidRecoIdleBox.el;   // 閒置輪巡：用看不見的暫時框（不動排行榜上的框）
             return [...document.querySelectorAll('[data-reco-player]')].find(e => e.dataset.recoPlayer === name) || null;
         }
         // 標題列的「推薦牌組」按鈕：只開／關推薦牌組，攻擊紀錄收起來（兩個一次只開一個）
@@ -13357,7 +13358,7 @@
         function showRaidLogPlayerReco(rIdx) {
             const r = raidLogLastRanked[rIdx];
             if (!r) return;
-            raidRecoClicked.add(r.player); raidRecoUrgent.add(r.player); raidRecoDirty.delete(r.player);
+            raidRecoClicked.add(r.player); raidRecoUrgent.add(r.player); raidRecoDirty.delete(r.player); if (raidRecoIdleBox && raidRecoIdleBox.name === r.player) raidRecoIdleBox = null;   // 正在背景幫他算：改寫回畫面上的框
             const box = raidLogRecoBox(r.player);
             if (raidLogRecoOpen.has(r.player) && box && box.style.display !== 'none') {   // 開著：再按一次收起來
                 raidLogRecoOpen.delete(r.player);
@@ -13420,6 +13421,27 @@
             }
         }
         const RAID_RECO_QUICK_ON = false;   /* 兩段式關掉：快速版（候選少、不換卡、不算特殊牌組）挑出的牌組跟正式版差太多 */
+        /* 閒置輪巡：電腦（有滑鼠或 8 核以上）開著網頁、在前景、20 秒沒操作、自己沒在算推薦時，照排行榜一個一個幫大家算推薦，
+           算完存到伺服器（raidRecoRunKey），大家打開就直接用。伺服器上已經有同狀態結果的人很快就跳過（只讀一次）。
+           手機不跑（耗電、發燙）；一有人操作就等下次閒置；畫面上打開的推薦照原本更新，不重複算 */
+        const RAID_RECO_IDLE_ON = true, RAID_RECO_IDLE_MS = 20000;
+        let raidRecoIdleLastAct = Date.now(), raidRecoIdleIdx = 0, raidRecoIdleBusy = false, raidRecoIdleBox = null;
+        ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { raidRecoIdleLastAct = Date.now(); }, { passive: true, capture: true }));
+        function raidRecoIdleCapable() { try { return (window.matchMedia && window.matchMedia('(pointer: fine)').matches) || (navigator.hardwareConcurrency || 0) >= 8; } catch (e) { return false; } }
+        setInterval(async () => {
+            if (!RAID_RECO_IDLE_ON || raidRecoIdleBusy || document.hidden || !raidRecoIdleCapable()) return;
+            if (Date.now() - raidRecoIdleLastAct < RAID_RECO_IDLE_MS) return;
+            if (raidRecoQ.busy > 0 || raidRecoQ.q.length || raidRecoBusy.size) return;   // 自己有在算推薦：讓路
+            if (typeof raidLogDemoActive !== 'undefined' && raidLogDemoActive) return; if (raidSimActive) return;
+            if (!raidState || !raidState.parts || !Array.isArray(raidLogLastRanked) || !raidLogLastRanked.length || !raidClanData) return;
+            const list = raidLogLastRanked.filter(x => x && raidLogIsLatestSession(x)); if (!list.length) return;
+            const r = list[raidRecoIdleIdx++ % list.length]; if (raidLogRecoOpen.has(r.player)) return;
+            const ci = raidPlayerCycleInfo(r.player, r.attacks); if (!(ci.remaining > 0) && !raidNextRaidPending()) return;   // 這輪打完了：不用算
+            raidRecoIdleBusy = true;
+            let host = document.getElementById('reco-idle-host'); if (!host) { host = document.createElement('div'); host.id = 'reco-idle-host'; host.style.display = 'none'; document.body.appendChild(host); }
+            const bx = document.createElement('div'); host.appendChild(bx); raidRecoIdleBox = { name: r.player, el: bx };
+            try { await raidLogRenderPlayerReco(r); } catch (e) {} finally { raidRecoIdleBox = null; bx.remove(); raidRecoIdleBusy = false; }
+        }, 5000);
         /* 整份推薦存在伺服器的鑰匙：每個人一份（新的蓋舊的），內容帶狀態簽章，狀態一樣才用 */
         function raidRecoRunKey(r) { const v = raidAccountInfo(r.player), code = v && v.raw && v.raw.player_code; return code && /^[A-Za-z0-9_.:-]+$/.test(code) && !raidCrystalOvActive(code) ? `recorun_v${RAID_RECO_VER}_${code}${raidRecoModeKey().replace(/[^A-Za-z0-9_]/g, '')}` : null; }
         async function raidLogRenderPlayerRecoRun(r, quick) {

@@ -18,7 +18,7 @@ const srv = http.createServer((req, res) => {
 (async () => {
   await new Promise(r => srv.listen(PORT, r));
   const b = await chromium.launch(), p = await b.newPage(); p.setDefaultTimeout(0);
-  await p.addInitScript(() => { window.RAID_SIM_WORKERS = 4; });
+  await p.addInitScript(() => { window.RAID_SIM_WORKERS = 4; window.RAID_RECO_IDLE_OFF = true; });   // 檢查時關掉閒置輪巡（會跟檢查搶同一個人的推薦）
   await p.route('**/*', r => { if (/cdn|googleapis|gstatic/.test(r.request().url())) return r.fulfill({ body: '' }); if (r.request().method() !== 'GET') return r.abort(); r.continue(); });   // 只讀，不寫伺服器
   await p.goto(`http://localhost:${PORT}/index.html?z=${Date.now()}`); await p.waitForTimeout(25000);
   const res = await p.evaluate(async (LIMIT) => {

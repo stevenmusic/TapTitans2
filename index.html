@@ -3208,13 +3208,12 @@
                     <label style="flex:1 1 140px;">流派<br><select id="sp-build" onchange="spRender()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0;"></select></label>
                     <label style="flex:1 1 140px;">金幣<br><select id="sp-gold" onchange="spRender()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0;"></select></label>
                     <label style="flex:1 1 110px;">技能點數<br><input id="sp-points" type="number" min="0" step="1" inputmode="numeric" placeholder="例如 3000" oninput="spRenderSoon()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0; box-sizing:border-box;"></label>
-                    <label style="flex:1 1 110px;">最高關卡（選填）<br><input id="sp-stage" type="number" min="0" step="1" inputmode="numeric" placeholder="不填＝不限" oninput="spRenderSoon()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0; box-sizing:border-box;"></label>
+                    
                 </div>
                 <div id="sp-summary" style="margin:8px 0; font-size:13px; color:#5a4a3a;"></div>
             </div>
             <div id="sp-trees" style="width:100%;"></div>
             <div id="sp-list" style="width:100%; max-width:520px; margin:8px auto 20px;"></div>
-            <div style="width:100%; max-width:520px; margin:0 auto 24px; font-size:11px; color:#9a8a7a;">資料來源：TT2_CSV（github.com/rawrzcookie/TT2_CSV）的技能樹與流派。配點方式：流派、金幣的核心技能和同系列技能，每多花 1 點能增加多少倍率（取對數）排先後，前置技能、分支點數、關卡限制照遊戲資料。</div>
         </div>
     </div>
 
@@ -20624,11 +20623,11 @@
         async function spRender() {
             const bSel = document.getElementById('sp-build'), gSel = document.getElementById('sp-gold'); if (!bSel) return;
             if (!bSel.options.length) { bSel.innerHTML = SP_BUILDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join(''); gSel.innerHTML = SP_GOLDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
-                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g && SP_GOLDS.some(x => x[0] === sv.g)) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; if (sv.s) document.getElementById('sp-stage').value = sv.s; } catch (e) {} }
+                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g && SP_GOLDS.some(x => x[0] === sv.g)) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; } catch (e) {} }
             const sum = document.getElementById('sp-summary'), trees = document.getElementById('sp-trees'), list = document.getElementById('sp-list');
             if (!spData) { sum.textContent = '載入技能資料中…'; try { spData = await (await fetch('data/skilltree.json?v=1')).json(); } catch (e) { sum.textContent = '技能資料載入失敗，請重新整理。'; return; } }
-            const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0)), stage = Math.max(0, Math.floor(Number(document.getElementById('sp-stage').value) || 0));
-            try { localStorage.setItem('tt2_sp_plan', JSON.stringify({ b: bSel.value, g: gSel.value, p: sp || '', s: stage || '' })); } catch (e) {}
+            const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0)), stage = 0;   // 不看關卡
+            try { localStorage.setItem('tt2_sp_plan', JSON.stringify({ b: bSel.value, g: gSel.value, p: sp || '' })); } catch (e) {}
             const res = spPlan(spData, [bSel.value, gSel.value].filter(Boolean), sp, stage), T = new Map(spData.talents.map(t => [t.id, t]));
             const used = sp - res.left;
             sum.innerHTML = sp > 0 ? `共 <b>${sp}</b> 點：配了 <b>${used}</b> 點${res.left > 0 ? `，剩 ${res.left} 點（再點也加不到這個流派）` : ''}` : '填上技能點數就會自動配點。';
@@ -20645,8 +20644,8 @@
             trees.innerHTML = sp > 0 ? html + '</div>' : '';
             const rows = Object.keys(res.lv).map(id => T.get(id)).sort((a, b) => SP_CLS_ORDER.indexOf(a.cls) - SP_CLS_ORDER.indexOf(b.cls) || a.slot - b.slot);
             const catLabel = (k) => (SKILL_PAIRS.flatMap(p => p.groups).find(g => g.key === k) || {}).label || k;
-            list.innerHTML = rows.length ? `<table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3a2a;"><tr style="color:#8a7a6a;"><th style="text-align:left; padding:3px;">技能</th><th>等級</th><th>花費</th></tr>` + rows.map(t => { const l = res.lv[t.id], c = t.cost.slice(0, l).reduce((x, y) => x + y, 0);
-                return `<tr style="border-top:1px solid #eee2d0;"><td style="padding:4px 3px;"><span style="color:${SKILL_CAT_COLORS[t.cls]}; font-weight:800;">${catLabel(t.cls)}</span> ${escapeHtml(t.name)}${res.keys.has(t.id) ? ' <span style="color:#c08a00; font-size:11px;">核心</span>' : ''}<div style="font-size:11px; color:#9a8a7a;">${escapeHtml(t.note)}</div></td><td style="text-align:center;">${l}/${t.max}</td><td style="text-align:center;">${c}</td></tr>`; }).join('') + '</table>' : '';
+            list.innerHTML = rows.length ? `<details style="font-size:13px; color:#5a4a3a;"><summary style="cursor:pointer; padding:4px 0;">技能明細（${rows.length} 個）</summary><table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3a2a;"><tr style="color:#8a7a6a;"><th style="text-align:left; padding:3px;">技能</th><th>等級</th><th>花費</th></tr>` + rows.map(t => { const l = res.lv[t.id], c = t.cost.slice(0, l).reduce((x, y) => x + y, 0);
+                return `<tr style="border-top:1px solid #eee2d0;"><td style="padding:4px 3px;"><span style="color:${SKILL_CAT_COLORS[t.cls]}; font-weight:800;">${catLabel(t.cls)}</span> ${escapeHtml(t.name)}${res.keys.has(t.id) ? ' <span style="color:#c08a00; font-size:11px;">核心</span>' : ''}<div style="font-size:11px; color:#9a8a7a;">${escapeHtml(t.note)}</div></td><td style="text-align:center;">${l}/${t.max}</td><td style="text-align:center;">${c}</td></tr>`; }).join('') + '</table></details>' : '';
         }
         const SP_CLS_ORDER = ['knight', 'summoner', 'warlord', 'sorcerer', 'rogue', 'alchemist'];
         function spSlotPos(slot) { return slot === 0 ? 'root' : `r${Math.floor((slot - 1) / 3) + 2}c${(slot - 1) % 3}`; }

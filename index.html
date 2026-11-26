@@ -3194,6 +3194,30 @@
             <div id="decksim-box" style="width:100%; max-width:500px; margin:4px auto 8px;"></div>
         </div>
     </div>
+    <div class="view" id="view-skillplan" style="display:none;">
+        <div class="nav-header" id="nav-header-skillplan">
+            <div class="nav-title-row">
+                <button class="back-btn" onclick="showView('home')" title="返回首頁">←</button>
+                <div class="nav-title">技能配點</div>
+                <span class="lang-toggle-btn" style="visibility:hidden;" aria-hidden="true">EN</span>
+            </div>
+        </div>
+        <div class="standalone-page" id="page-skillplan">
+            <div style="width:100%; max-width:520px; margin:6px auto;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; font-size:13px; color:#5a4a3a;">
+                    <label style="flex:1 1 140px;">流派<br><select id="sp-build" onchange="spRender()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0;"></select></label>
+                    <label style="flex:1 1 140px;">金幣<br><select id="sp-gold" onchange="spRender()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0;"></select></label>
+                    <label style="flex:1 1 110px;">技能點數<br><input id="sp-points" type="number" min="0" step="1" inputmode="numeric" placeholder="例如 3000" oninput="spRenderSoon()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0; box-sizing:border-box;"></label>
+                    <label style="flex:1 1 110px;">最高關卡（選填）<br><input id="sp-stage" type="number" min="0" step="1" inputmode="numeric" placeholder="不填＝不限" oninput="spRenderSoon()" style="width:100%; font:inherit; padding:6px; border-radius:8px; border:1.5px solid #d8c8b0; box-sizing:border-box;"></label>
+                </div>
+                <div id="sp-summary" style="margin:8px 0; font-size:13px; color:#5a4a3a;"></div>
+            </div>
+            <div id="sp-trees" style="width:100%;"></div>
+            <div id="sp-list" style="width:100%; max-width:520px; margin:8px auto 20px;"></div>
+            <div style="width:100%; max-width:520px; margin:0 auto 24px; font-size:11px; color:#9a8a7a;">資料來源：TT2_CSV（github.com/rawrzcookie/TT2_CSV）的技能樹與流派。配點方式：流派、金幣的核心技能和同系列技能，每多花 1 點能增加多少倍率（取對數）排先後，前置技能、分支點數、關卡限制照遊戲資料。</div>
+        </div>
+    </div>
+
     <div class="view" id="view-raidcrystal" style="display:none;">
         <div class="nav-header" id="nav-header-raidcrystal">
             <div class="nav-title-row">
@@ -3660,6 +3684,7 @@
 
     <div class="app-nav-menu" id="app-nav-menu">
         <button onclick="closeAppNavMenu(); showView('abyssList');"><svg class="nav-mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>深淵</button>
+        <button onclick="closeAppNavMenu(); showView('skillPlan');"><svg class="nav-mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.2"/><circle cx="6" cy="17" r="2.2"/><circle cx="18" cy="17" r="2.2"/><path d="M12 7.2v4.3M12 11.5l-4.8 3.8M12 11.5l4.8 3.8"/></svg>技能配點</button>
         <button onclick="closeAppNavMenu(); showView('players');"><svg class="nav-mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.7.2 4.5 2.2 4.5 5.4"/></svg><span data-nav-label="players"></span></button>
         <button onclick="closeAppNavMenu(); showView('raidStatus'); toggleRaidSettingsSheet(true);"><svg class="nav-mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-nav-label="settings"></span></button>
         <button style="display:none !important;" onclick="closeAppNavMenu(); openSimImport();"><svg class="nav-mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>匯入模擬器圖片</button>
@@ -4507,7 +4532,7 @@
             if (reportModal) reportModal.remove(); // 切換頁面時順便關掉戰報彈窗，不要蓋在別的頁面上
             const resultModal = document.getElementById('result-modal');
             if (resultModal && resultModal.style.display === 'flex') closeModal(); // 圖片視窗也一起關掉
-            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal', deckSim: 'view-decksim' };
+            const viewIdMap = { home: 'view-home', deck: 'view-deck', analysis: 'view-analysis', abyssList: 'view-abyss-list', abyssDetail: 'view-abyss-detail', players: 'view-players', raidStatus: 'view-raidstatus', raidCrystal: 'view-raidcrystal', deckSim: 'view-decksim', skillPlan: 'view-skillplan' };
             Object.entries(viewIdMap).forEach(([key, id]) => {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -4531,6 +4556,7 @@
                 syncCardPoolCardSize();
             }
             if (view === 'analysis') updateAnalysisEmptyUI();
+            if (view === 'skillPlan') setTimeout(spRender, 0);
             if (view === 'raidStatus') switchRaidTab();
 
             renderAppNav();
@@ -20545,6 +20571,85 @@
             return html;
         }
 
+        /* ══ 技能配點（資料：TT2_CSV 的 SkillTreeInfo2.0、BuildGuideInfo，用 tools/build-skilltree.py 轉成 data/skilltree.json） ══
+           選流派（傷害來源）＋金幣來源＋技能點數 → 自動配點：
+           - 重要程度：流派、金幣的核心技能 1；效果跟核心技能同系列的（例如寵物流派的 Ember Arts）0.6；其他 0（只在解鎖需要時點）
+           - 每一步挑「增加的倍率（取對數）× 重要程度 ÷ 花的點數」最高的；上鎖的技能把「前置技能＋分支要先花的點數＋這一級」當一整步一起比
+           - 前置技能、分支要先花幾點、每級需要的關卡（有填最高關卡才檢查）都照遊戲資料 */
+        const SP_BUILDS = [['HeavenlyStrike', '天堂聖擊'], ['Pet', '寵物'], ['ClanShip', '公會船'], ['ShadowClone', '影分身'], ['Dagger', '匕首'], ['GoldGun', '金槍']];
+        const SP_GOLDS = [['', '不考慮'], ['ChestersonGold', '寶箱怪金幣'], ['HeartOfGold', '黃金之心'], ['FairyGold', '精靈金幣']];
+        let spData = null, spTimer = null;
+        function spRenderSoon() { clearTimeout(spTimer); spTimer = setTimeout(spRender, 350); }
+        function spFam(t) { return (String(t).match(/[A-Z][a-z0-9]*/g) || []).slice(0, 2).join(''); }
+        const SP_GOLD_W = 0.5;   // 金幣跟傷害比的重要程度（推關主要靠傷害）
+        function spPlan(data, guideIds, sp, stageMax) {
+            const T = new Map(data.talents.map(t => [t.id, t])), w = {}, keys = new Set();
+            guideIds.forEach((gid, gi) => { const base = gi === 0 ? 1 : SP_GOLD_W;   // 第 1 個是流派，第 2 個是金幣
+                const ks = ((data.builds.find(b => b.id === gid) || {}).talents) || []; ks.forEach(k => keys.add(k));
+                const fams = new Set(ks.map(k => T.get(k)).filter(Boolean).map(t => spFam(t.eff[0] && t.eff[0].type)));
+                data.talents.forEach(t => { const v = ks.includes(t.id) ? base : t.eff.some(e => fams.has(spFam(e.type))) ? base * 0.6 : 0; if (v > (w[t.id] || 0)) w[t.id] = v; }); });
+            data.talents.forEach(t => { if (w[t.id] == null) w[t.id] = 0; });
+            const g = (t, l) => { const v = t.eff[0] ? t.eff[0].v[l] : 0; return Math.log10(1 + Math.max(0, v || 0)); };
+            const lv = {}, spent = {}; let left = sp, order = [];
+            const L = (id) => lv[id] || 0;
+            const can = (t, st) => { const l = st.lv[t.id] || 0; if (l >= t.max) return false; if (stageMax > 0 && t.stage[l] > stageMax) return false; if (t.req && !(st.lv[t.req] > 0)) return false; return (st.spent[t.cls] || 0) >= t.spReq; };
+            const gainOf = (t, l) => w[t.id] * (g(t, l + 1) - g(t, l));
+            // 一整步：把 target 解鎖（前置技能都點到 1 級、分支點數不夠就先點同分支最划算的）再點 1 級；回傳 { steps, cost, gain } 或 null
+            const unlockPlan = (target) => {
+                const st = { lv: { ...lv }, spent: { ...spent } }, steps = []; let cost = 0, gain = 0;
+                const chain = []; for (let t = target; t; t = t.req ? T.get(t.req) : null) { if ((st.lv[t.id] || 0) === 0 || t === target) chain.unshift(t); if (!t.req) break; }
+                const buy = (t) => { const l = st.lv[t.id] || 0, c = t.cost[l]; st.lv[t.id] = l + 1; st.spent[t.cls] = (st.spent[t.cls] || 0) + c; cost += c; gain += gainOf(t, l); steps.push(t.id); };
+                for (const t of chain) {
+                    if ((st.lv[t.id] || 0) > 0 && t !== target) continue;
+                    let guard = 0;
+                    while ((st.spent[t.cls] || 0) < t.spReq && guard++ < 500) {   // 分支點數不夠：點同分支已解鎖、最划算（沒加成就最便宜）的
+                        const opts = data.talents.filter(x => x.cls === t.cls && can(x, st)); if (!opts.length) return null;
+                        opts.sort((a, b) => (gainOf(b, st.lv[b.id] || 0) / b.cost[st.lv[b.id] || 0]) - (gainOf(a, st.lv[a.id] || 0) / a.cost[st.lv[a.id] || 0]) || a.cost[st.lv[a.id] || 0] - b.cost[st.lv[b.id] || 0]);
+                        buy(opts[0]); if (cost > left) return null; }
+                    if (!can(t, st)) return null; buy(t); if (cost > left) return null;
+                }
+                return { steps, cost, gain };
+            };
+            for (let it = 0; it < 20000 && left > 0; it++) {
+                let best = null;
+                data.talents.forEach(t => { if (!(w[t.id] > 0)) return;
+                    const l = L(t.id); if (l >= t.max) return;
+                    if (can(t, { lv, spent })) { const c = t.cost[l]; if (c > left) return; const gn = gainOf(t, l); if (gn > 0 && (!best || gn / c > best.r)) best = { r: gn / c, steps: [t.id], cost: c }; }
+                    else if (l === 0) { const u = unlockPlan(t); if (u && u.gain > 0 && (!best || u.gain / u.cost > best.r)) best = { r: u.gain / u.cost, steps: u.steps, cost: u.cost }; } });
+                if (!best) break;
+                best.steps.forEach(id => { const t = T.get(id), l = L(id), c = t.cost[l]; lv[id] = l + 1; spent[t.cls] = (spent[t.cls] || 0) + c; left -= c; order.push(id); });
+            }
+            return { lv, spent, left, keys, w, order };
+        }
+        async function spRender() {
+            const bSel = document.getElementById('sp-build'), gSel = document.getElementById('sp-gold'); if (!bSel) return;
+            if (!bSel.options.length) { bSel.innerHTML = SP_BUILDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join(''); gSel.innerHTML = SP_GOLDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g != null) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; if (sv.s) document.getElementById('sp-stage').value = sv.s; } catch (e) {} }
+            const sum = document.getElementById('sp-summary'), trees = document.getElementById('sp-trees'), list = document.getElementById('sp-list');
+            if (!spData) { sum.textContent = '載入技能資料中…'; try { spData = await (await fetch('data/skilltree.json?v=1')).json(); } catch (e) { sum.textContent = '技能資料載入失敗，請重新整理。'; return; } }
+            const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0)), stage = Math.max(0, Math.floor(Number(document.getElementById('sp-stage').value) || 0));
+            try { localStorage.setItem('tt2_sp_plan', JSON.stringify({ b: bSel.value, g: gSel.value, p: sp || '', s: stage || '' })); } catch (e) {}
+            const res = spPlan(spData, [bSel.value, gSel.value].filter(Boolean), sp, stage), T = new Map(spData.talents.map(t => [t.id, t]));
+            const used = sp - res.left;
+            sum.innerHTML = sp > 0 ? `共 <b>${sp}</b> 點：配了 <b>${used}</b> 點${res.left > 0 ? `，剩 ${res.left} 點（再點也加不到這個流派）` : ''}` : '填上技能點數就會自動配點。';
+            const nodeOf = (cat, pos) => { const t = spData.talents.find(x => x.cls === cat && spSlotPos(x.slot) === pos); const v = t ? (res.lv[t.id] || 0) : 0, color = SKILL_CAT_COLORS[cat];
+                const key = t && res.keys.has(t.id);
+                return `<div class="skill-node${v > 0 ? ' lit' : ''}" title="${t ? escapeHtml(t.name + '：' + t.note + `（${v}/${t.max}）`) : ''}" style="--cat-color:${color}"><div class="skill-icon-wrap${v > 0 ? ' lit' : ''}"${key ? ' style="box-shadow:0 0 0 2px #e0a800;"' : ''}><img class="skill-icon-img" src="images/abyss/skill-icons/${cat}_${pos}${v > 0 ? '_lit' : ''}.jpg" alt=""><span class="skill-value-badge">${v}</span></div></div>`; };
+            let html = '<div class="tree-grid">';
+            SKILL_PAIRS.forEach(row => { html += '<div class="tree-pair">' + row.groups.map(cat => { const layout = SKILL_NODE_LAYOUT[cat.key], color = SKILL_CAT_COLORS[cat.key];
+                let h = `<div class="skill-tree" data-cat="${cat.key}"><div class="tree-cat-label" style="color:${color}">${cat.label} <span>${res.spent[cat.key] || 0}</span></div>`;
+                h += `<div class="tree-row root-row"><div class="skill-node empty"></div>${nodeOf(cat.key, 'root')}<div class="skill-node empty"></div></div>` + renderConnectorRow('fork', color, [0, 1, 2]);
+                ['r2', 'r3', 'r4'].forEach((r, i) => { h += '<div class="tree-row">' + [0, 1, 2].map(c => nodeOf(cat.key, `${r}c${c}`)).join('') + '</div>' + renderConnectorRow('straight', color, i < 2 ? [0, 1, 2] : layout.r5); });
+                h += '<div class="tree-row">' + [0, 1, 2].map(c => layout.r5.includes(c) ? nodeOf(cat.key, `r5c${c}`) : '<div class="skill-node empty"></div>').join('') + '</div></div>';
+                return h; }).join('') + '</div>'; });
+            trees.innerHTML = sp > 0 ? html + '</div>' : '';
+            const rows = Object.keys(res.lv).map(id => T.get(id)).sort((a, b) => SP_CLS_ORDER.indexOf(a.cls) - SP_CLS_ORDER.indexOf(b.cls) || a.slot - b.slot);
+            const catLabel = (k) => (SKILL_PAIRS.flatMap(p => p.groups).find(g => g.key === k) || {}).label || k;
+            list.innerHTML = rows.length ? `<table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3a2a;"><tr style="color:#8a7a6a;"><th style="text-align:left; padding:3px;">技能</th><th>等級</th><th>花費</th></tr>` + rows.map(t => { const l = res.lv[t.id], c = t.cost.slice(0, l).reduce((x, y) => x + y, 0);
+                return `<tr style="border-top:1px solid #eee2d0;"><td style="padding:4px 3px;"><span style="color:${SKILL_CAT_COLORS[t.cls]}; font-weight:800;">${catLabel(t.cls)}</span> ${escapeHtml(t.name)}${res.keys.has(t.id) ? ' <span style="color:#c08a00; font-size:11px;">核心</span>' : ''}<div style="font-size:11px; color:#9a8a7a;">${escapeHtml(t.note)}</div></td><td style="text-align:center;">${l}/${t.max}</td><td style="text-align:center;">${c}</td></tr>`; }).join('') + '</table>' : '';
+        }
+        const SP_CLS_ORDER = ['knight', 'summoner', 'warlord', 'sorcerer', 'rogue', 'alchemist'];
+        function spSlotPos(slot) { return slot === 0 ? 'root' : `r${Math.floor((slot - 1) / 3) + 2}c${(slot - 1) % 3}`; }
         function initAbyssSkillTrees() {
             const wrap = document.getElementById('abyss-skill-trees');
             if (!wrap) return;

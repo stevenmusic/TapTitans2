@@ -17830,7 +17830,7 @@
             if (!total) { box.innerHTML = '<div style="font-size:12px; color:#8a7a6a;">這一場沒有攻擊紀錄。</div>'; return; }
             const cycles = [...byCycle.keys()].sort((x, y) => x - y);
             const used = cycles.length ? cycles[cycles.length - 1] : 0;
-            const n = bossHpRounds || Math.min(6, Math.max(2, used));
+            const n = bossHpRounds || Math.min(7, Math.max(2, used));
             // 每輪目標：第 2 輪起鏡子力 +35%，照這場第 1 輪鏡子力佔傷害的比例加權（同即時的打王進度）
             let mD = 0, r1D = 0;
             attacks.forEach(a => { if (a.cycle === 1) { r1D += Number(a.totalDamage) || 0; mD += Number((a.cardDamage || {}).MirrorForce) || 0; } });
@@ -17853,7 +17853,7 @@
                 </div>
                 ${cleared ? '' : `<div style="font-size:12px; color:#a0522d; margin-bottom:6px;">這場只打到第 ${maxOrd}／${bossTotal || '?'} 隻王，整場總傷害比全部打完少。</div>`}
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">如果要幾輪打完（每輪目標＝整場總傷害 ÷ 輪數）</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
+                <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6, 7].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <colgroup><col style="width:22%"><col style="width:20%"><col style="width:21%"><col style="width:14%"><col style="width:23%"></colgroup>
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">次數</td><td style="${th}">結果</td></tr>
@@ -17906,7 +17906,7 @@
             const predOf = (c) => capEff * (1 + TICKET_BASE_BONUS) * (total / eff) * w(c) / mw;   // 預估這一輪打出的實際傷害
             let finR = 1, sumP = predOf(1);
             while (sumP < total * 1.005 && finR < 20) sumP += predOf(++finR);   // 不用門票第幾輪打完
-            const n = bossHpRounds || Math.min(6, Math.max(2, finR));
+            const n = bossHpRounds || Math.min(7, Math.max(2, finR));
             let tw = 0; for (let i = 1; i <= n; i++) tw += w(i);
             const ticketsFor = (k) => { const bonus = need / k / capEff - 1; return bonus <= TICKET_BASE_BONUS ? 0 : Math.ceil((bonus - TICKET_BASE_BONUS) / TICKET_PER / 100) * 100; };
             let acc = 0;
@@ -17922,7 +17922,7 @@
                     ${finR - 1 >= 2 && ticketsFor(finR - 1) <= TICKET_MAX ? `<div>${finR - 1} 輪打完要 ${ticketsFor(finR - 1).toLocaleString()} 張門票（增傷 ${((need / (finR - 1) / capEff - 1) * 100).toFixed(1)}%）</div>` : ''}
                 </div>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">每輪目標</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
+                <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6, 7].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#6a3d9a' : '#ddd0bb'}; background:${k === n ? '#6a3d9a' : '#fbf6ee'}; color:${k === n ? '#fff' : '#6b4a2a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">預估</td><td style="${th}">預估差異</td></tr>
                     ${Array.from({ length: n }, (_, i) => { const p = Math.max(0, Math.min(predOf(i + 1), total - acc)); acc += p; const tg = total * w(i + 1) / tw, df = p - tg;   // 預估：最後一輪只剩沒打完的；差異＝預估 − 目標
@@ -18008,8 +18008,8 @@
             const raidOver = !!(raidLiveInfo && raidLiveInfo.ended);
             const doneCycle = (c) => raidOver || c < lastCycle;
             const progressAt = (k) => { let p = 0; byCycle.forEach((got, c) => { if (c <= k && doneCycle(c)) p += got - targetOf(c, k); }); return p; };
-            let autoN = 6;
-            if ([...byCycle.keys()].some(doneCycle)) for (let k = 5; k >= 2; k--) { if (progressAt(k) >= 0) autoN = k; else break; }
+            let autoN = 7;
+            if ([...byCycle.keys()].some(doneCycle)) for (let k = 6; k >= 2; k--) { if (progressAt(k) >= 0) autoN = k; else break; }
             const n = bossHpRounds || autoN;
             const per = sumFull / n;   // 平均（其他地方顯示用）
             const roundCount = Math.max(n, cycles.length ? cycles[cycles.length - 1] : 0);
@@ -18032,7 +18032,7 @@
                     <div style="flex:1; background:#f3ebfa; border-radius:8px; padding:8px; text-align:center;"><div style="font-size:12px; color:#6a3d9a; font-weight:700;">剩餘要打總血量</div><div style="font-size:16px; font-weight:800; color:#4a3728;">${formatNum(sumLeft)}</div></div>
                 </div>
                 <div style="font-size:12px; font-weight:800; color:#5a3a2a; margin:4px 0 4px;">預計幾輪打完</div>
-                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
+                <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; margin-bottom:8px;">${[2, 3, 4, 5, 6, 7].map(k => `<button onclick="setBossHpRounds(${k})" style="font-family:inherit; font-size:13px; font-weight:800; padding:7px 0; border-radius:8px; border:1px solid ${k === n ? '#8b263e' : '#eadfcb'}; background:${k === n ? '#8b263e' : '#fbf2e2'}; color:${k === n ? '#fff' : '#8a7a6a'};">${k} 輪</button>`).join('')}</div>
                 <table style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:12px; color:#4a3728; margin-bottom:12px;">
                     <colgroup><col style="width:22%"><col style="width:20%"><col style="width:21%"><col style="width:14%"><col style="width:23%"></colgroup>
                     <tr style="font-weight:800; color:#8a7a6a;"><td style="padding:4px 3px;">輪</td><td style="${th}">目標</td><td style="${th}">實際傷害</td><td style="${th}">次數</td><td style="${th}">結果</td></tr>

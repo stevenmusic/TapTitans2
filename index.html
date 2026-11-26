@@ -20576,8 +20576,8 @@
            - 重要程度：流派、金幣的核心技能 1；效果跟核心技能同系列的（例如寵物流派的 Ember Arts）0.6；其他 0（只在解鎖需要時點）
            - 每一步挑「增加的倍率（取對數）× 重要程度 ÷ 花的點數」最高的；上鎖的技能把「前置技能＋分支要先花的點數＋這一級」當一整步一起比
            - 前置技能、分支要先花幾點、每級需要的關卡（有填最高關卡才檢查）都照遊戲資料 */
-        const SP_BUILDS = [['HeavenlyStrike', '天堂聖擊'], ['Pet', '寵物'], ['ClanShip', '公會船'], ['ShadowClone', '影分身'], ['Dagger', '匕首'], ['GoldGun', '金槍']];
-        const SP_GOLDS = [['', '不考慮'], ['ChestersonGold', '寶箱怪金幣'], ['HeartOfGold', '黃金之心'], ['FairyGold', '精靈金幣']];
+        const SP_BUILDS = [['ClanShip', '飛船'], ['Pet', '寵物'], ['HeavenlyStrike', '天堂'], ['ShadowClone', '影分身'], ['Dagger', '匕首'], ['GoldGun', '金槍']];   // 跟遊戲裡的流派選單同順序
+        const SP_GOLDS = [['FairyGold', '妖精金'], ['HeartOfGold', '黃金之心'], ['ChestersonGold', '寶箱金']];
         let spData = null, spTimer = null;
         function spRenderSoon() { clearTimeout(spTimer); spTimer = setTimeout(spRender, 350); }
         function spFam(t) { return (String(t).match(/[A-Z][a-z0-9]*/g) || []).slice(0, 2).join(''); }
@@ -20624,7 +20624,7 @@
         async function spRender() {
             const bSel = document.getElementById('sp-build'), gSel = document.getElementById('sp-gold'); if (!bSel) return;
             if (!bSel.options.length) { bSel.innerHTML = SP_BUILDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join(''); gSel.innerHTML = SP_GOLDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
-                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g != null) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; if (sv.s) document.getElementById('sp-stage').value = sv.s; } catch (e) {} }
+                try { const sv = JSON.parse(localStorage.getItem('tt2_sp_plan') || '{}'); if (sv.b) bSel.value = sv.b; if (sv.g && SP_GOLDS.some(x => x[0] === sv.g)) gSel.value = sv.g; if (sv.p) document.getElementById('sp-points').value = sv.p; if (sv.s) document.getElementById('sp-stage').value = sv.s; } catch (e) {} }
             const sum = document.getElementById('sp-summary'), trees = document.getElementById('sp-trees'), list = document.getElementById('sp-list');
             if (!spData) { sum.textContent = '載入技能資料中…'; try { spData = await (await fetch('data/skilltree.json?v=1')).json(); } catch (e) { sum.textContent = '技能資料載入失敗，請重新整理。'; return; } }
             const sp = Math.max(0, Math.floor(Number(document.getElementById('sp-points').value) || 0)), stage = Math.max(0, Math.floor(Number(document.getElementById('sp-stage').value) || 0));

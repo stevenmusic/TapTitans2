@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 96;
+        const RAID_RECO_VER = 97;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13604,7 +13604,7 @@
                           } catch (e) { console.error('split joint', e); }
                           if (window.RAID_SPLIT_LOG) console.log('SPLIT', r.player, best.map(x => Math.round(sumOf(x) / 1e6)).join(' / '));
                           return best.reduce((b2, x) => !b2 || sumOf(x) > sumOf(b2) ? x : b2, null);
-                      })() : await raidSimPlayerPick(r.player, { ...infoP, voidMode: !quick && voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t), null, !!quick));   // quick：快速模式（候選少、不換卡、精算前 12 組）
+                      })() : await raidSimPlayerPick(r.player, { ...infoP, voidMode: !quick && voidLaterGo && !(msRow && msRow.rawCards.includes('CrushingVoid')), force, quick: !!quick }, data, simFns.playable, simFns.hitParts, (t) => raidRecoProgSet(r.player, t), null, !!quick));   // quick：快速模式（候選少、不換卡、精算前 12 組）
                       if (!reuse) {
                         // 瘋狂無效現在打：已經 6 肉體、一般推薦沒排到就排一組（按鈕 OFF＝照傷害計算，不特地排）
                         if (hasVoid && vPref !== false && sixNow && simPick) {
@@ -13728,7 +13728,7 @@
             // 算的期間清單可能重畫過（有人出刀）：重新找一次這個玩家的區塊，使用者已經收起來就不寫
             if (!raidLogRecoOpen.has(r.player)) return;
             if (raidRecoVoidOn(r) !== wantVoid || raidRecoGen.get(r.player) !== gen) return;
-            if (quick) html = `<div style="font-size:12px; font-weight:800; color:#8a6414; background:#fbf2e2; border-radius:8px; padding:4px 8px; margin:0 0 6px;">⏳ 快速估算・完整計算中，算完會自動更新</div>` + html;
+            if (quick) html = `<div style="font-size:12px; font-weight:800; color:#8a6414; background:#fbf2e2; border-radius:8px; padding:4px 8px; margin:0 0 6px;">⏳ 快速估算（50 次）・正式推薦（100 次）計算中，算完自動更新</div>` + html;
             html = `<!--${sig0}-->` + raidRecoWrap(r, html);
             raidLogRecoHtml.set(r.player, html); raidLogRecoStale.delete(r.player); raidRecoWritten.set(r.player, gen);
             raidLogUiSave();
@@ -14949,7 +14949,7 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = raidPlayerP(await raidSimLoad(), name); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
-            const deckKShow = {}; P = { ...P, lowPri: !!fast, fg: true };   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
+            const deckKShow = {}; P = { ...P, lowPri: !!fast && !info.quick, fg: true, quickRuns: info.quick ? RAID_RECO_QUICK_RUNS : 0 };   // quick：快速估算，精算只跑 50 次（正式推薦 100 次）   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
@@ -14958,7 +14958,7 @@
             const phaseK = fast ? null : raidPhaseInfo(env), phaseSig = phaseK ? '|ph' + phaseK.phase + ':' + phaseK.order.join(',') : '';   // 階段變了（例如瘋狂無效都用完）推薦要重算
             const dataSig = 'd' + (data && Array.isArray(data.decks) ? data.decks.length : 0) + 'u' + ((() => { try { const m = raidDeckUsesMap(); return m ? m.size : 0; } catch (e) { return 0; } })());   // 候選牌組資料不同（沒載完、比較舊）算出的推薦不能共用
             const lvSig = 'L' + Object.keys(me.lv || {}).sort().map(c => c + (Math.round((me.lv[c] || 0) * 10) / 10)).join(',');   // 卡片等級（換突襲水晶、升級）變了：暫存的推薦不能用
-            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.extraDecks || []).map(c => c.slice().sort().join('+')).join(',') + '|' + (info.msCand ? 'ms' + (info.msCand.alts || [info.msCand]).map(o => o.cards.slice().sort().join('+')).join(',') : '') + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + JSON.stringify(env.miss || {}) + '|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]);   // 卡片等級也算進去（換了水晶就重算）
+            const key = phaseSig + '|' + dataSig + '|' + lvSig + '|' + (info.extraDecks || []).map(c => c.slice().sort().join('+')).join(',') + '|' + (info.msCand ? 'ms' + (info.msCand.alts || [info.msCand]).map(o => o.cards.slice().sort().join('+')).join(',') : '') + '|' + (info.voidMode ? (info.voidNow ? 'voidnow|' : 'void|') : '') + 'r55|' + JSON.stringify(env.miss || {}) + '|' + raidCalSig() + '|' + name + '|' + [...used].sort().join() + '|' + n + '|' + (fast ? 'fast|' : '') + JSON.stringify([env.board, env.morale, raidState.bossName, env.mirror, env.strategy, env.curse, env.season, env.buff, env.extraSec, raidHpBuckets(env), Object.entries(me.lv).filter(([, l]) => l > 0).map(([c, l]) => c + l).sort().join()]) + (info.quick ? '|quick' : '');   // 卡片等級也算進去（換了水晶就重算）
             if (!info.force && !info.poolOut && raidSimPickCache.has(key)) return raidSimPickCache.get(key);   // poolOut：要拿候選表（兩隻王一起窮舉），不能直接回傳暫存的結果
             const poolKey = key.slice(phaseSig.length + 1).replace(/^void(now)?\|/, '').replace(JSON.stringify(raidHpBuckets(env)), '"hp"') + '|' + raidDeckCalAt + '|' + JSON.stringify(env.hpSim || {}) + '|' + JSON.stringify(env.miss || {});   // 剩不多的部位血量（取整）變了：模擬結果會變，要重算   // 傷害表跟模式、血量無關（血量只影響上限，取出時重算）；卡片校正每小時更新後重算
             // 同一個人、同一個狀態正在算：接上那一份（只換成新的進度顯示），不要再從 0% 開一份——兩份同時寫進度會看起來在倒退，也互搶運算
@@ -16120,7 +16120,9 @@
         // 背景作業的時段：每分鐘只有前 30 秒能算（30 秒後休息到下一分鐘）
         let raidBgMode = 0; const raidBgEpoch = Date.now();
         function raidBgWindowOpen() { return (Date.now() - raidBgEpoch) % 60000 < 30000; }   // 個人推薦正在用 Worker：首頁推薦每一批先等它
+        const RAID_RECO_QUICK_RUNS = 50;
         async function raidSimParallel(P, jobs, onProgress) {
+            if (P && P.quickRuns > 0) jobs = jobs.map(j => j.kind === 'f' && !j.runs ? { ...j, runs: P.quickRuns } : j);   // 快速估算：精算 50 次
             const pool = raidSimPoolGet();
             if (!pool || !jobs.length) return pool ? [] : null;
             const bg = !!(P && (P.bg || (raidBgMode > 0 && !P.fg)));   // 背景作業（伺服器沒有的刀、全公會配卡）

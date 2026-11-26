@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 102;
+        const RAID_RECO_VER = 103;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15764,24 +15764,26 @@
         }
         // 沒驗證過的牌組（公會累計打過不到 RAID_SIM_VERIFY_USES 刀）挑選時打折：明顯比較強才選，差不多時優先用驗證過的（顯示的應打不變）
         const RAID_SIM_VERIFY_USES = 20;   // 公會打過幾次以上才算「驗證過」（冷門牌組估計不可靠，常被高估才選上）
-        let RAID_SIM_UNVERIFIED_W = 0.93;   /* 3 次 93 折，越常打折越少，20 次以上不折 */   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
+        let RAID_SIM_UNVERIFIED_W = 0.75;   /* 2026-11 改：打過 3 次 75 折、照對數越常打折越少，200 次以上不折。12 人回測：冷門（<30 次）的組 10/48 → 1/48，合計 −0.3% */ //   /* 3 次 93 折，越常打折越少，20 次以上不折 */   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
         /* 公會常打的牌組挑選時略加分：10 次以下不加，100 次以上 +0.5%（中間照對數比例；1.5% 時 6 組累積會換掉合計高 1.6% 的組合，太多）。合計差不多時優先挑常打的（攻擊紀錄多、應打比較準，推薦也比較不會換來換去）；顯示的應打不變 */
         const RAID_SIM_POPULAR_W = 0;   /* 不再用小加分（加小沒作用、加大會換掉明顯比較高的組合）；改成 raidSimPickPool 裡「合計差不到 1% 的組合中挑常打的」 */
-        const RAID_SIM_POP_TOL = 0.03, RAID_SIM_POP_STR = [0.05, 0.02];   // 容許少多少、常打牌組的偏好強度（先試強的，超過容許就試弱的）
+        let RAID_SIM_POP_TOL = 0.03, RAID_SIM_POP_STR = [0.05, 0.02];   // 容許少多少、常打牌組的偏好強度（先試強的，超過容許就試弱的）
         function raidUseW(cards, m, str) { const w = str == null ? RAID_SIM_POPULAR_W : str; if (!(w > 0)) return 1; const u = (m || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0; return u <= RAID_SIM_VERIFY_USES ? 1 : 1 + w * Math.min(1, Math.log10(u / RAID_SIM_VERIFY_USES)); }
         /* 常打程度分數：每組 0（10 次以下）～1（100 次以上），照對數；挑「合計差不到 1% 的組合裡最常打的」用 */
         function raidPopScore(list, m) { m = m || raidDeckUsesMap(); return (list || []).reduce((t, o) => { const u = m.get(o.cards.slice().sort().join('+')) || 0; return t + (u <= RAID_SIM_VERIFY_USES ? 0 : Math.min(1, Math.log10(u / RAID_SIM_VERIFY_USES))); }, 0); }
         function raidPopChoose(opts) {   // opts：[{ sm, decks }]，合計最高的 1% 以內挑常打分數最高的（同分挑合計高的）
             const ok = opts.filter(Boolean); if (!ok.length) return null; const mx = Math.max(...ok.map(x => x.sm)), m = raidDeckUsesMap();
             return ok.filter(x => x.sm >= mx * (1 - RAID_SIM_POP_TOL)).map(x => ({ x, p: raidPopScore(x.decks, m) })).sort((a, b) => b.p - a.p || b.x.sm - a.x.sm)[0].x; }
-        function raidVerifyW(cards, m) { if (!(RAID_SIM_UNVERIFIED_W < 1)) return 1; const u = (m || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0; if (u >= RAID_SIM_VERIFY_USES) return 1;
-            return RAID_SIM_UNVERIFIED_W + (1 - RAID_SIM_UNVERIFIED_W) * Math.max(0, u - RAID_SIM_MIN_USES) / Math.max(1, RAID_SIM_VERIFY_USES - RAID_SIM_MIN_USES); }
+        let RAID_SIM_COMMON_USES = 200, RAID_SIM_RARE_LOG = true;   // 打過幾次以上才不打折、打折照對數（false＝照次數線性）
+        function raidRareW(u) { if (!(RAID_SIM_UNVERIFIED_W < 1) || u >= RAID_SIM_COMMON_USES) return 1; const a = RAID_SIM_MIN_USES, f = RAID_SIM_RARE_LOG ? Math.log(Math.max(u, a) / a) / Math.log(RAID_SIM_COMMON_USES / a) : Math.max(0, u - a) / Math.max(1, RAID_SIM_COMMON_USES - a);
+            return RAID_SIM_UNVERIFIED_W + (1 - RAID_SIM_UNVERIFIED_W) * Math.min(1, Math.max(0, f)); }
+        function raidVerifyW(cards, m) { return raidRareW((m || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0); }
         function raidVerifyWeights(pool) {
             if (!(RAID_SIM_UNVERIFIED_W < 1)) return pool;
             const m = raidDeckUsesMap();
             // 打過越少次折越多：3 次 ×0.96，之後每多 1 次少折一點，10 次以上不折（要明顯比較強才會選；顯示的應打不變）
-            return pool.map(o => { const u = m.get(o.cards.slice().sort().join('+')) || 0; if (u >= RAID_SIM_VERIFY_USES) { const w2 = raidUseW(o.cards, m); return w2 > 1 ? { ...o, selW: (o.selW || 1) * w2 } : o; }
-                const w = RAID_SIM_UNVERIFIED_W + (1 - RAID_SIM_UNVERIFIED_W) * Math.max(0, u - RAID_SIM_MIN_USES) / Math.max(1, RAID_SIM_VERIFY_USES - RAID_SIM_MIN_USES);
+            return pool.map(o => { const u = m.get(o.cards.slice().sort().join('+')) || 0; if (u >= RAID_SIM_COMMON_USES) { const w2 = raidUseW(o.cards, m); return w2 > 1 ? { ...o, selW: (o.selW || 1) * w2 } : o; }
+                const w = raidRareW(u);
                 return { ...o, selW: (o.selW || 1) * w }; });
         }
         function raidPhaseLineHtml(env) { const ph = raidPhaseInfo(env); return ph && ph.line ? `<div style="font-size:12px; font-weight:800; color:#6b5a4a; margin:0 0 4px;">${ph.line}</div>` : ''; }

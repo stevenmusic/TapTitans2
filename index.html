@@ -13315,7 +13315,8 @@
         const raidLogRecoStale = new Map(), raidRecoWritten = new Map();   // raidRecoWritten：玩家 → 最後寫上畫面的是第幾次計算   // 玩家 → 上一次算好的內容（狀態變了、正在重算）
         function raidRecoStaleKeep(name) { const h = raidLogRecoHtml.get(name); if (h) raidLogRecoStale.set(name, h); }
         function raidRecoStaleHtml(name, pct) {
-            const h = raidLogRecoStale.get(name); if (!h) return null;
+            let h = raidLogRecoStale.get(name); if (!h) return null;
+            { const d = document.createElement('div'); d.innerHTML = h; let inner = d.querySelector('[data-stale]'); while (inner && inner.nextElementSibling) { h = inner.nextElementSibling.innerHTML; d.innerHTML = h; inner = d.querySelector('[data-stale]'); } }   // 裡面已經有舊推薦外框：拆掉，只留一層
             return `<div data-prog data-stale="1" style="font-size:12px; font-weight:800; color:#b9770e; margin-bottom:4px;">舊的推薦・重新計算中 ${Math.max(1, pct || 1)}%</div><div style="border-left:3px solid #e0a040; padding-left:6px;">${h.replace(/^<!--[^>]*-->/, '')}</div>`;
         }
         // 好幾個人的推薦同時要算：一次只算一個（大家共用同一批運算），其他的顯示「排隊中」，不會一直停在 1% 看起來像壞了
@@ -15286,7 +15287,7 @@
             }
             // 補好應打後再存一次畫面：之前存的是還沒補應打的版本，重畫或重開網頁時應打就不見了
             box = raidLogRecoBox(name) || box;
-            if (box.querySelector('.rl-reco-dmg') && ![...box.querySelectorAll('.rl-reco-dmg')].some(e => /計算中/.test(e.textContent))) { raidLogRecoHtml.set(name, box.innerHTML); try { raidLogUiSave(); } catch (e) {} }
+            if (box.querySelector('.rl-reco-dmg') && !box.querySelector('[data-stale]') && ![...box.querySelectorAll('.rl-reco-dmg')].some(e => /計算中/.test(e.textContent))) { raidLogRecoHtml.set(name, box.innerHTML);   /* 畫面是「舊的推薦」時不存回去（不然外框也被存進去，下次再包一層變兩層） */ try { raidLogUiSave(); } catch (e) {} }
         }
 
         // 點排行榜上的玩家列，展開/收合他這場所有的配卡紀錄

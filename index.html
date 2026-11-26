@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 100;
+        const RAID_RECO_VER = 101;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13420,6 +13420,8 @@
             }
         }
         const RAID_RECO_QUICK_ON = false;   /* 兩段式關掉：快速版（候選少、不換卡、不算特殊牌組）挑出的牌組跟正式版差太多 */
+        /* 整份推薦存在伺服器的鑰匙：每個人一份（新的蓋舊的），內容帶狀態簽章，狀態一樣才用 */
+        function raidRecoRunKey(r) { const v = raidAccountInfo(r.player), code = v && v.raw && v.raw.player_code; return code && /^[A-Za-z0-9_.:-]+$/.test(code) && !raidCrystalOvActive(code) ? `recorun_v${RAID_RECO_VER}_${code}${raidRecoModeKey().replace(/[^A-Za-z0-9_]/g, '')}` : null; }
         async function raidLogRenderPlayerRecoRun(r, quick) {
             let box = raidLogRecoBox(r.player);
             if (!box) return;
@@ -13512,7 +13514,14 @@
                     const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidBossId(), (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).slice(0, 1).join(',') : '')(raidPhaseInfo(await raidSimEnv())) /* 打王順序只看第一個（現在該先打的部位）：後面幾個部位互換順序，推薦的組幾乎不變，不用整套重算 */, nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
-                    const reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    let reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                    /* 本機沒有（無痕、換裝置、剛打開）：先看伺服器上有沒有別人在同一個狀態算好的整份推薦，有就直接用，不重算 */
+                    const runKey = raidRecoRunKey(r);
+                    if (!reuse && !force && runKey) { try { const rem = await kvGet(runKey);
+                        if (rem && rem.sig === reuseSig && rem.n === n0 && Array.isArray(rem.rows) && rem.rows.length) {
+                            raidRecoLast.set(r.player + raidRecoModeKey(), { ...rem, used: new Set(rem.used || []) });
+                            reuse = raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);
+                            if (reuse) raidRecoLogAdd({ p: r.player, ev: '沿用', why: '伺服器上同狀態算好的推薦' }); } } catch (e) {} }
                     /* 重算頻率限制：他自己的狀態沒變（沒出刀、沒換開關），只是別人出刀讓盤面變了，上次算完不到 20 秒就先不算，
                        畫面維持上次的推薦（不標「舊的推薦」），20 秒到了再一次算（期間多少人出刀都只算一次）。他自己出刀、手動按推薦一律馬上算 */
                     if (!reuse && !force && raidLogRecoHtml.get(r.player) && raidRecoOwnSig.get(r.player) === sig0) {
@@ -13628,7 +13637,7 @@
                         if (simPick && msRow) simPick = simPick.concat([msRow]);
                         if (split && simPick && simPick.length) raidSplitPlan.set(r.player, { boss: raidBossId(), n: n0, m: simPick.filter(x => !x.nextBoss).length });   // 記住這次排的「這隻王打幾組」，之後出刀照這個扣
                       }
-                      if (simPick && simPick.length && !quick) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])), hpAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0) + Math.max(0, Number(x.body) || 0)])) }); raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
+                      if (simPick && simPick.length && !quick) { raidRecoLast.set(r.player + raidRecoModeKey(), { at: Date.now(), sig: reuseSig, used: new Set(info.used || []), n: n0, rows: simPick, lv: { ...lvNow }, armorAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0)])), hpAt: Object.fromEntries(Object.entries(raidState.parts || {}).map(([k, x]) => [k, Math.max(0, Number(x.armor) || 0) + Math.max(0, Number(x.body) || 0)])) }); { const ent = raidRecoLast.get(r.player + raidRecoModeKey()); if (runKey && ent) kvSet(runKey, { ...ent, used: [...(ent.used || [])], rows: (ent.rows || []).map(x => ({ ...x, simDmg: x.simDmg ? Object.fromEntries(Object.entries(x.simDmg).filter(([k2]) => !/^(alts|plansFull|by)$/.test(k2))) : x.simDmg })) }); }   /* 存到伺服器，別的裝置、無痕打開同狀態直接用 */ raidRecoLastSave(); }   // armorAt：算的時候每個部位剩的盔甲
                     } finally { if (!reuse && !quick) { raidRecoLogAdd({ p: r.player, ev: '算完', ms: Date.now() - recoT0 }); raidRecoLastDone.set(r.player, Date.now()); raidRecoOwnSig.set(r.player, sig0); } if (held) { held = false; raidRecoRelease(); } if (raidRecoProg.has(r.player)) raidRecoDoneAt.set(r.player, Date.now()); raidRecoProgDone(r.player); const w = (raidRecoDoneAt.get(r.player) || 0) + 250 - Date.now(); if (w > 0) await new Promise(res => setTimeout(res, w)); }
                     if (raidRecoGen.get(r.player) !== gen) return;   // 算的期間又重畫了：舊的結果不要蓋掉新的
                     if (simPick) { const seen = new Set(); simPick = simPick.filter(x => { const cs = x.rawCards || x.cards; if (cs.some(c => seen.has(c))) { raidRecoLogAdd({ p: r.player, ev: '少一組', why: '卡片重複被拿掉：' + cs.join('+') }); return false; } cs.forEach(c => seen.add(c)); return true; }); }   /* 被拿掉就記在 #recolog（這是前面挑牌有漏洞，要追） */   // 總檢查：卡片不能重複（外面加的凱旋行軍、下一隻王也算）

@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 97;
+        const RAID_RECO_VER = 98;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -15619,6 +15619,7 @@
         }
         // 推薦快取要跟著校正換（舊的校正算的推薦不能再用）：卡片校正＋剩下的整組偏差，取到小數兩位
         function raidCalSig() { const r = (o) => Object.entries(o || {}).map(([k, v]) => k + (Math.round(v * 100) / 100)).sort().join(','); return r(raidCardCal) + '/' + r(raidDeckCal || raidDeckCalBase) + '/t' + raidTapCal + '/s' + r(raidSupCal) + '/p' + r(raidPairCal) + '/u' + r(raidPlayerCal.tap) + Object.keys(raidPlayerCal.card).length; }
+        const RAID_PLAYER_CAL_ON = false;   /* 個人係數（第 5 層）關掉：M-51 比對 16 刀，有個人係數誤差中位 3.9%、沒有 2.3%；只往上修、用上一場的資料，換了場次加成容易偏高（mfchen 應打 1.05B、實測約 950M） */
         let raidPlayerCal = { tap: {}, card: {}, share: {} };   // 第 5 層：每個人的點擊、每張卡（加上每組牌各卡佔比）
         /* 這個人打這組牌的個人係數（照這組牌各卡、點擊平均佔比加權）：推薦、牌組頁、攻擊紀錄沒有逐卡模擬時用 */
         function raidPlayerDeckF(who, cards) { if (!who) return 1; const pt = raidPlayerCal.tap[who] || 1, pc = raidPlayerCal.card[who]; if (pt === 1 && !pc) return 1;
@@ -15637,7 +15638,7 @@
         function raidDeckCalApply(P) {
             if (!raidDeckCalBase) raidDeckCalBase = { ...(P.deckK || {}) };
             if (!raidCardKBase) raidCardKBase = { ...(P.k || {}) };
-            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidTapCal = c.tap || 1; raidSupCal = c.sup || {}; raidPairCal = c.pair || {}; raidPlayerCal = c.player || { tap: {}, card: {}, share: {} }; raidDeckCalAt = Date.now(); } }
+            if (Date.now() - raidDeckCalAt > RAID_DECK_CAL_HOURS * 3600 * 1000) { const c = raidDeckCalCompute(); if (c) { raidCardCal = c.card; raidDeckCal = c.deck; raidTapCal = c.tap || 1; raidSupCal = c.sup || {}; raidPairCal = c.pair || {}; raidPlayerCal = RAID_PLAYER_CAL_ON && c.player ? c.player : { tap: {}, card: {}, share: {} }; raidDeckCalAt = Date.now(); } }
             const k = { ...raidCardKBase }; Object.entries(raidCardCal).forEach(([c, f]) => { k[c] = (k[c] || 1) * f; }); P.k = k; P.tapK = raidTapCal;
             P.deckK = { ...(raidDeckCal || raidDeckCalBase) };
             if (Object.keys(raidSupCal).length || Object.keys(raidPairCal).length) { try { raidDeckUsesMap().forEach((n, key) => { const cs = key.split('+'), f = raidSupFactorOf(cs); if (f !== 1) P.deckK[key] = (P.deckK[key] || 1) * f; }); } catch (e) {} }   /* 推薦用的模擬器只認整組的修正：輔助卡的偏差展開到每一組公會打過的牌組 */

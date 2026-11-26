@@ -1640,8 +1640,8 @@
             transition: color 0.2s ease;
         }
         .skill-node.lit .skill-value-badge { color: var(--cat-color, #6a3fb5); }
-        /* 技能配點頁：整頁垂直置中；等級數字（技能配點、深淵頁共用）放大、有點的用職業顏色底白字，0 級淡一點 */
-        #page-skillplan { min-height: calc(100vh - var(--header-h, 64px)); min-height: calc(100dvh - var(--header-h, 64px)); justify-content: center; padding-bottom: 16px; }
+        /* 技能配點頁：選項固定在最上方；等級數字（技能配點、深淵頁共用）放大、有點的用職業顏色底白字，0 級淡一點 */
+        #page-skillplan { padding-top: 10px; padding-bottom: 16px; }
         #sp-trees .skill-value-badge, #abyss-skill-trees .skill-value-badge { font-size: 13px; font-weight: 900; padding: 1px 3px; border-radius: 6px 0 4px 0; background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.75); }
         #sp-trees .skill-node.lit .skill-value-badge, #abyss-skill-trees .skill-node.lit .skill-value-badge { background: var(--cat-color, #6a3fb5); color: #fff; font-size: 15px; padding: 1px 3px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); box-shadow: 0 0 0 1.5px #fff; }
         #sp-trees .skill-node:not(.lit) .skill-value-badge, #abyss-skill-trees .skill-node:not(.lit) .skill-value-badge { opacity: 0.55; }
@@ -20608,7 +20608,7 @@
                 ['r2', 'r3', 'r4'].forEach((r, i) => { h += '<div class="tree-row">' + [0, 1, 2].map(c => nodeOf(cat.key, `${r}c${c}`)).join('') + '</div>' + renderConnectorRow('straight', color, i < 2 ? [0, 1, 2] : layout.r5); });
                 h += '<div class="tree-row">' + [0, 1, 2].map(c => layout.r5.includes(c) ? nodeOf(cat.key, `r5c${c}`) : '<div class="skill-node empty"></div>').join('') + '</div></div>';
                 return h; }).join('') + '</div>'; });
-            trees.innerHTML = sp > 0 ? html + '</div>' : '';
+            trees.innerHTML = html + '</div>';   // 沒填點數也先顯示（全部 0 級），填了版面不會跳
             const rows = Object.keys(res.lv).map(id => T.get(id)).sort((a, b) => SP_CLS_ORDER.indexOf(a.cls) - SP_CLS_ORDER.indexOf(b.cls) || a.slot - b.slot);
             const catLabel = (k) => (SKILL_PAIRS.flatMap(p => p.groups).find(g => g.key === k) || {}).label || k;
             list.innerHTML = rows.length ? `<details style="font-size:13px; color:#5a4a3a;"><summary style="cursor:pointer; padding:4px 0;">技能明細（${rows.length} 個）</summary><table style="width:100%; border-collapse:collapse; font-size:12px; color:#4a3a2a;"><tr style="color:#8a7a6a;"><th style="text-align:left; padding:3px;">技能</th><th>等級</th><th>花費</th></tr>` + rows.map(t => { const l = res.lv[t.id], c = t.cost.slice(0, l).reduce((x, y) => x + y, 0);

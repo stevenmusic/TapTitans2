@@ -16128,13 +16128,14 @@
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
                 const n = window.RAID_SIM_WORKERS || Math.max(1, Math.min(15, (navigator.hardwareConcurrency || 2) - 1));   // RAID_SIM_WORKERS：後台批次用滿全部核心   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
-                const pool = { ws: [], wait: new Map(), seq: 0 };
-                for (let i = 0; i < n; i++) {
+                const pool = { ws: [], wait: new Map(), seq: 0, n };   /* 用到才開：載入時只開 1 個（背景只用 1 個），按推薦才補到 n 個——一次開十幾個 Worker 記憶體會瞬間衝高 */
+                pool.add = () => {
                     const w = new Worker('raid-sim/simworker.js?v=37');
                     w.onmessage = (e) => { const cb = pool.wait.get(e.data.id); if (!cb) return; pool.wait.delete(e.data.id); if (e.data.error) cb.ng(new Error(e.data.error)); else cb.ok(e.data.out); };
                     w.onerror = (e) => { e.preventDefault && e.preventDefault(); console.error('simworker', e && e.message); if (raidSimPool === pool) raidSimPool = null; try { pool.ws.forEach(x => x.terminate()); } catch (e2) {} pool.wait.forEach(cb => cb.ng(new Error('worker'))); pool.wait.clear(); };
                     pool.ws.push(w);
-                }
+                };
+                pool.add();
                 raidSimPool = pool;
             } catch (e) { raidSimPool = false; }
             return raidSimPool;
@@ -16181,7 +16182,8 @@
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
-                await Promise.all(pool.ws.slice(0, bg ? 1 : P && P.fg ? pool.ws.length : (raidSimWorkerLimit || pool.ws.length)).map(async (w) => {   /* 推薦（fg）一律用全部核心：不被背景配卡、水晶背景、輪巡的核心限制拖成單核 */   // 背景只用 1 個 Worker
+                const want = Math.min(pool.n, bg ? 1 : P && P.fg ? pool.n : (raidSimWorkerLimit || pool.n), Math.max(1, chunks.length)); while (pool.ws.length < want) pool.add();
+                await Promise.all(pool.ws.slice(0, want).map(async (w) => {   /* 推薦（fg）一律用全部核心：不被背景配卡、水晶背景、輪巡的核心限制拖成單核 */   // 背景只用 1 個 Worker
                     while (next < chunks.length && !stopped) {
                         while ((lo && raidSimHiBusy > 0) || document.hidden || (bg && !raidBgWindowOpen())) await new Promise(r => setTimeout(r, 500));   // 網頁在背景（切走、縮小）就暫停；背景作業只在每分鐘前 30 秒算、前景在算就讓
                         if (next >= chunks.length || stopped) break;

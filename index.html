@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 101;
+        const RAID_RECO_VER = 102;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13534,7 +13534,7 @@
                     //   血量不看分段（每刀本來就上下差 50～100M，少一點就重算沒意義）：剩下的組打的部位吃不下才重算（raidRecoReuse）
                     //   （原本 n 組是卡片不重複、加總最高；拿掉打掉的那組，剩下 n−1 組在剩下的卡裡一定也是最高，否則加回那組會比原本更高）
                     const split0 = raidNextOn() && (!nextRound || predicted) ? await raidNextBossSplit(Math.min(info.remaining || 0, RAID_ATTACKS_MAX), r.player).catch(() => null) : null;   // 要留幾組給下一隻王（王的血一直在掉，組數變了要重算）
-                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidBossId(), (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).slice(0, 1).join(',') : '')(raidPhaseInfo(await raidSimEnv())) /* 打王順序只看第一個（現在該先打的部位）：後面幾個部位互換順序，推薦的組幾乎不變，不用整套重算 */, nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })()]);   // 凱旋行軍／瘋狂無效等不等得到變了也要重算
+                    const reuseSig = JSON.stringify([raidNextOn() ? 'next' + (split0 ? split0.m : 0) : '', raidBossId(), (raidBannedParts || []).slice().sort(), Object.entries(raidState.parts).map(([k, x]) => k + ((Number(x.armor) || 0) > 0 ? (x.cursed ? 'a' : 'A') : (Number(x.body) || 0) > 0 ? 'B' : 'S')).sort(), (ph => ph ? ph.phase + ':' + (ph.order || []).slice(0, 1).join(',') : '')(raidPhaseInfo(await raidSimEnv())) /* 打王順序只看第一個（現在該先打的部位）：後面幾個部位互換順序，推薦的組幾乎不變，不用整套重算 */, nextRound, voidLaterGo, sixNow, raidRecoFinPref.get(r.player), raidRecoVoidPref.get(r.player), !!(skel && skel.ok), !!(vReach && vReach.ok), await (async () => { const e = await raidSimEnv(); return JSON.stringify([e.buff, e.extraSec, e.curse, e.morale]); })(), raidCalSig()]);   /* 凱旋行軍／瘋狂無效等不等得到變了也要重算；校正換了也重算（不然沿用舊校正算的推薦、伺服器共用的別台裝置舊結果，跟牌組頁、攻擊紀錄的應打對不上） */
                     const lvNow = (() => { const v = raidAccountInfo(r.player); return v ? raidSimPlayerNow(v, { morale: 0, season: {} }).lv : {}; })();   // 卡片等級（換水晶、攻擊紀錄等級更新）：沿用的組用到的卡等級變了就重算
                     const force = raidRecoForce.delete(r.player);   // 手動按的：這次不沿用（用完就清掉）
                     let reuse = force ? null : raidRecoReuse(r.player, reuseSig, info.used, n0, lvNow);

@@ -7464,7 +7464,7 @@
         let raidLogExpandedPlayers = new Set();
         // 攻擊紀錄的畫面狀態（展開的玩家、展開的單刀、打開的推薦）存在手機上：離開再回來、網頁自動更新重新整理後都照原樣還原
         // 推薦計算邏輯的版本：改了推薦的算法就加 1 → 伺服器暫存（reco_vN_）、手機上存的推薦和畫面全部作廢，打開網頁自動重算
-        const RAID_RECO_VER = 104;
+        const RAID_RECO_VER = 105;
         const RAID_LOG_UI_KEY = 'tt2_raidlog_ui';
         const raidLogOpenDetails = new Set();   // 展開的單刀（攻擊的 key）
         const raidLogUidKey = new Map();        // 畫面上的 id → 攻擊的 key
@@ -13774,7 +13774,7 @@
         // 同一人同一個部位狀態的候選牌組傷害表：一般推薦、留瘋狂無效共用（不用整批重算）。取出來用複本，避免後面扣血、校正改到存的
         let RAID_SIM_SWAP_CARDS = null;   // 換卡時只換前幾強的卡（null＝全部）
         // 推薦只用打過幾次以上的牌組（公會歷史＋這場），沒驗證過的組合不推（0＝不限制）
-        let RAID_SIM_MIN_USES = 3;   // 公會打過 3 次以上的牌組才推（原本 10 次會漏掉很少人打、但其實更強的組合，例如皎月光束＋靈魂鎖鏈＋圖騰之力）；3～9 次的挑選時打折（raidVerifyWeights）
+        let RAID_SIM_MIN_USES = 10;   /* 公會打過 10 次以上才列入候選（回測 3／5／10 次合計差不多，10 次最高也最快） */ //   // 公會打過 3 次以上的牌組才推（原本 10 次會漏掉很少人打、但其實更強的組合，例如皎月光束＋靈魂鎖鏈＋圖騰之力）；3～9 次的挑選時打折（raidVerifyWeights）
         // 推薦只用驗證過的牌組：公會累計（伺服器紀錄＋這場）打過 RAID_SIM_MIN_USES 刀以上
         /* 只推有實際攻擊紀錄的牌組（公會打過 RAID_SIM_MIN_USES 次以上）：沒人打過的組合模擬再高也沒辦法驗證，實際常常差很多（例：頭骨碎擊＋閃電鞭＋瘋狂無效）。
            瘋狂無效、凱旋行軍、帶刺的晨星、剩 1～2 刀全部組合、自己組牌組都照這條 */
@@ -15764,10 +15764,10 @@
         }
         // 沒驗證過的牌組（公會累計打過不到 RAID_SIM_VERIFY_USES 刀）挑選時打折：明顯比較強才選，差不多時優先用驗證過的（顯示的應打不變）
         const RAID_SIM_VERIFY_USES = 20;   // 公會打過幾次以上才算「驗證過」（冷門牌組估計不可靠，常被高估才選上）
-        let RAID_SIM_UNVERIFIED_W = 0.75;   /* 2026-11 改：打過 3 次 75 折、照對數越常打折越少，200 次以上不折。12 人回測：冷門（<30 次）的組 10/48 → 1/48，合計 −0.3% */ //   /* 3 次 93 折，越常打折越少，20 次以上不折 */   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
+        let RAID_SIM_UNVERIFIED_W = 1;   /* 冷門打折拿掉（1＝不打折）：12 人回測打折讓合計少 2～2.7%；改成只用 RAID_SIM_MIN_USES 門檻 */ //   /* 2026-11 改：打過 3 次 75 折、照對數越常打折越少，200 次以上不折。12 人回測：冷門（<30 次）的組 10/48 → 1/48，合計 −0.3% */ //   /* 3 次 93 折，越常打折越少，20 次以上不折 */   // 8 人回測：95 折比不限制只少 0.04%，沒驗證過的組 5/48 → 2/48；硬擋（只用 ≥10 次）少 0.71%
         /* 公會常打的牌組挑選時略加分：10 次以下不加，100 次以上 +0.5%（中間照對數比例；1.5% 時 6 組累積會換掉合計高 1.6% 的組合，太多）。合計差不多時優先挑常打的（攻擊紀錄多、應打比較準，推薦也比較不會換來換去）；顯示的應打不變 */
         const RAID_SIM_POPULAR_W = 0;   /* 不再用小加分（加小沒作用、加大會換掉明顯比較高的組合）；改成 raidSimPickPool 裡「合計差不到 1% 的組合中挑常打的」 */
-        let RAID_SIM_POP_TOL = 0.03, RAID_SIM_POP_STR = [0.05, 0.02];   // 容許少多少、常打牌組的偏好強度（先試強的，超過容許就試弱的）
+        let RAID_SIM_POP_TOL = 0.01,   /* 合計差 1% 以內才挑常打的（原本 3%） */ RAID_SIM_POP_STR = [0.05, 0.02];   // 容許少多少、常打牌組的偏好強度（先試強的，超過容許就試弱的）
         function raidUseW(cards, m, str) { const w = str == null ? RAID_SIM_POPULAR_W : str; if (!(w > 0)) return 1; const u = (m || raidDeckUsesMap()).get(cards.slice().sort().join('+')) || 0; return u <= RAID_SIM_VERIFY_USES ? 1 : 1 + w * Math.min(1, Math.log10(u / RAID_SIM_VERIFY_USES)); }
         /* 常打程度分數：每組 0（10 次以下）～1（100 次以上），照對數；挑「合計差不到 1% 的組合裡最常打的」用 */
         function raidPopScore(list, m) { m = m || raidDeckUsesMap(); return (list || []).reduce((t, o) => { const u = m.get(o.cards.slice().sort().join('+')) || 0; return t + (u <= RAID_SIM_VERIFY_USES ? 0 : Math.min(1, Math.log10(u / RAID_SIM_VERIFY_USES))); }, 0); }

@@ -13426,8 +13426,8 @@
            算完存到伺服器（raidRecoRunKey），大家打開就直接用。伺服器上已經有同狀態結果的人很快就跳過（只讀一次）。
            手機不跑（耗電、發燙）；一有人操作就等下次閒置；畫面上打開的推薦照原本更新，不重複算 */
         const RAID_RECO_IDLE_ON = true, RAID_RECO_IDLE_MS = 20000, RAID_RECO_IDLE_WORKERS = 2;
-        let raidRecoIdleLastAct = Date.now(), raidRecoIdleIdx = 0, raidRecoIdleBusy = false, raidRecoIdleBox = null;
-        ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { raidRecoIdleLastAct = Date.now(); }, { passive: true, capture: true }));
+        let raidRecoIdleLastAct = Date.now(), raidRecoIdleIdx = 0, raidRecoIdleBusy = false, raidRecoIdleBox = null, raidRecoIdleAbort = false;
+        ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { raidRecoIdleLastAct = Date.now(); if (raidRecoIdleBusy) raidRecoIdleAbort = true; }, { passive: true, capture: true }));   /* 一有人操作：正在背景輪巡的那一份馬上停（讓出推薦的排隊位置和核心），不用等它算完 */
         function raidRecoIdleCapable() { try { return (window.matchMedia && window.matchMedia('(pointer: fine)').matches) || (navigator.hardwareConcurrency || 0) >= 8; } catch (e) { return false; } }
         setInterval(async () => {
             if (!RAID_RECO_IDLE_ON || window.RAID_RECO_IDLE_OFF || raidRecoIdleBusy || document.hidden || !raidRecoIdleCapable()) return;
@@ -13438,7 +13438,7 @@
             const list = raidLogLastRanked.filter(x => x && raidLogIsLatestSession(x)); if (!list.length) return;
             const r = list[raidRecoIdleIdx++ % list.length]; if (raidLogRecoOpen.has(r.player)) return;
             const ci = raidPlayerCycleInfo(r.player, r.attacks); if (!(ci.remaining > 0) && !raidNextRaidPending()) return;   // 這輪打完了：不用算
-            raidRecoIdleBusy = true;
+            raidRecoIdleBusy = true; raidRecoIdleAbort = false;
             let host = document.getElementById('reco-idle-host'); if (!host) { host = document.createElement('div'); host.id = 'reco-idle-host'; host.style.display = 'none'; document.body.appendChild(host); }
             const bx = document.createElement('div'); host.appendChild(bx); raidRecoIdleBox = { name: r.player, el: bx };
             const lim0 = raidSimWorkerLimit; raidSimWorkerLimit = RAID_RECO_IDLE_WORKERS;   // 輪巡：推薦（fg）現在一律用全部核心，這個限制只剩非推薦的工作用得到
@@ -14982,7 +14982,7 @@
             if (!v || !data || !Array.isArray(data.decks) || !raidState || !raidState.parts) return null;
             let P; try { P = raidPlayerP(await raidSimLoad(), name); } catch (e) { return null; }
             // 挑牌組只用公式（照每個人自己的卡片等級），牌組校正（全公會平均）只乘在最後顯示的應打上
-            const deckKShow = {}; P = { ...P, lowPri: !!fast && !info.quick, fg: true, quickRuns: info.quick ? RAID_RECO_QUICK_RUNS : 0 };   // quick：快速估算，精算只跑 50 次（正式推薦 100 次）   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
+            const deckKShow = {}; P = { ...P, lowPri: !!fast && !info.quick, fg: true, idle: !!(raidRecoIdleBox && raidRecoIdleBox.name === name), quickRuns: info.quick ? RAID_RECO_QUICK_RUNS : 0 };   // quick：快速估算，精算只跑 50 次（正式推薦 100 次）   // 卡片校正後剩下的整組偏差（牌組本身的特性）挑牌組時就用，不再只乘顯示；首頁推薦（fast）讓個人推薦先算
             const showF = (cards) => deckKShow[(cards || []).slice().sort().join('+')] || 1;
             const env = await raidSimEnv();
             const me = raidSimPlayerNow(v, env);
@@ -16183,11 +16183,13 @@
             for (let i = 0; i < jobs.length; i += CH) chunks.push([i, jobs.slice(i, i + CH)]);
             const out = new Array(jobs.length); let next = 0, done = 0, stopped = false;
             try {
-                const want = Math.min(pool.n, bg ? 1 : P && P.fg ? pool.n : (raidSimWorkerLimit || pool.n), Math.max(1, chunks.length)); while (pool.ws.length < want) pool.add();
+                const idleRun = () => P && P.idle && raidRecoIdleBox;   // 背景輪巡（自己按了同一個人就不算輪巡）
+                const want = Math.min(pool.n, bg ? 1 : idleRun() ? RAID_RECO_IDLE_WORKERS : P && P.fg ? pool.n : (raidSimWorkerLimit || pool.n), Math.max(1, chunks.length));   /* 輪巡只用 2 核 */ while (pool.ws.length < want) pool.add();
                 await Promise.all(pool.ws.slice(0, want).map(async (w) => {   /* 推薦（fg）一律用全部核心：不被背景配卡、水晶背景、輪巡的核心限制拖成單核 */   // 背景只用 1 個 Worker
                     while (next < chunks.length && !stopped) {
                         while ((lo && raidSimHiBusy > 0) || document.hidden || (bg && !raidBgWindowOpen())) await new Promise(r => setTimeout(r, 500));   // 網頁在背景（切走、縮小）就暫停；背景作業只在每分鐘前 30 秒算、前景在算就讓
                         if (next >= chunks.length || stopped) break;
+                        if (idleRun() && raidRecoIdleAbort) { stopped = true; throw new Error('cancelled'); }   // 有人操作：輪巡停下來讓位
                         const [start, part] = chunks[next++];
                         const id = ++pool.seq;
                         const res = await new Promise((ok, ng) => { pool.wait.set(id, { ok, ng }); w.postMessage({ id, P, jobs: part, busy: bg ? 35 : 1e9, rest: bg ? 35 : 1 });   // 前景全速；背景算 35 休 35

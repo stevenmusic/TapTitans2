@@ -8482,8 +8482,13 @@
                 let pickInfo = raidSimPickByPlayer.get(identity) || null;
                 {
                     let pa = 0, pb = 0, pn = 0, old = 0;
-                    attacks.forEach(a => { if (!a.simB) return; const st = raidSimPickStore[raidSimExpKey(a)]; if (st && st.v > 0 && st.ver === RAID_SIM_PICK_VER) { pa += a.totalDamage; pb += st.v; pn++; } });   // 只用目前版本算的，不跟舊算法混
-                    if (pn > 0) pickInfo = { ratio: pa / pb, old: old * 2 > pn };   // 大多還是舊算法的結果：標紅用舊門檻，免得還沒重算完就一堆人變紅
+                    /* 只算「整輪都算好」的輪：分母是每刀當下照推薦 6 組的平均，一輪 6 刀有強有弱（瘋狂無效、毀了雨那刀 130～140%，弱的 70～90%），
+                       整輪加起來才接近 100%。只算了幾刀（剛好是強的那幾刀）會出現 110～130% 的假高 */
+                    const stOf = (a) => { const st = raidSimPickStore[raidSimExpKey(a)]; return st && st.v > 0 && st.ver === RAID_SIM_PICK_VER ? st : null; };
+                    const byC = new Map(); attacks.forEach(a => { if (!a.simB || a.placeholder) return; const c = a.cycle || 0; if (!byC.has(c)) byC.set(c, []); byC.get(c).push(a); });
+                    const lastC = Math.max(0, ...byC.keys());
+                    byC.forEach((L, c) => { if (!L.every(stOf) || (c === lastC && L.length < RAID_ATTACKS_PER_CYCLE)) return;   /* 還在打的這一輪（不到 6 刀）先不算 */ L.forEach(a => { pa += a.totalDamage; pb += stOf(a).v; pn++; }); });   // 只用目前版本算的，不跟舊算法混
+                    if (pn > 0) pickInfo = { ratio: pa / pb, old: old * 2 > pn }; else if (pickInfo && pickInfo.ratio != null) pickInfo = null;   // 還沒有整輪算好的：先不顯示   // 大多還是舊算法的結果：標紅用舊門檻，免得還沒重算完就一堆人變紅
                 }
                 // 標紅這個人：低傷的刀（低於自己均傷 70%）佔他出刀次數 10% 以上，而且至少 2 刀（剛開打只出幾刀時，1 刀低不算）；
                 // 9 場回測每場約 4～10 人

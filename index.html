@@ -13425,7 +13425,8 @@
         /* 閒置輪巡：電腦（有滑鼠或 8 核以上）開著網頁、在前景、20 秒沒操作、自己沒在算推薦時，照排行榜一個一個幫大家算推薦，
            算完存到伺服器（raidRecoRunKey），大家打開就直接用。伺服器上已經有同狀態結果的人很快就跳過（只讀一次）。
            手機不跑（耗電、發燙）；一有人操作就等下次閒置；畫面上打開的推薦照原本更新，不重複算 */
-        const RAID_RECO_IDLE_ON = true, RAID_RECO_IDLE_MS = 20000, RAID_RECO_IDLE_WORKERS = 2;
+        const RAID_RECO_IDLE_ON = false;   /* 背景輪巡拿掉（使用者要求：佔 CPU） */
+        const RAID_RECO_IDLE_MS = 20000, RAID_RECO_IDLE_WORKERS = 2;
         let raidRecoIdleLastAct = Date.now(), raidRecoIdleIdx = 0, raidRecoIdleBusy = false, raidRecoIdleBox = null, raidRecoIdleAbort = false;
         ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { raidRecoIdleLastAct = Date.now(); if (raidRecoIdleBusy) raidRecoIdleAbort = true; }, { passive: true, capture: true }));   /* 一有人操作：正在背景輪巡的那一份馬上停（讓出推薦的排隊位置和核心），不用等它算完 */
         function raidRecoIdleCapable() { try { return (window.matchMedia && window.matchMedia('(pointer: fine)').matches) || (navigator.hardwareConcurrency || 0) >= 8; } catch (e) { return false; } }
@@ -16128,7 +16129,7 @@
             if (raidSimPool !== null) return raidSimPool;
             try {
                 if (typeof Worker === 'undefined') throw new Error('no worker');
-                const n = window.RAID_SIM_WORKERS || Math.max(1, Math.min(15, (navigator.hardwareConcurrency || 2) - 1));   // RAID_SIM_WORKERS：後台批次用滿全部核心   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
+                const n = window.RAID_SIM_WORKERS || Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 2))   /* 留 2 個核心給畫面和其他程式，最多 8 個（4 核→2、6 核→4、8 核→6） */;   // RAID_SIM_WORKERS：後台批次用滿全部核心   // 前景（按推薦）用多個 Worker 全速算、留一個核心給畫面；背景只用其中 1 個並節流
                 const pool = { ws: [], wait: new Map(), seq: 0, n };   /* 用到才開：載入時只開 1 個（背景只用 1 個），按推薦才補到 n 個——一次開十幾個 Worker 記憶體會瞬間衝高 */
                 pool.add = () => {
                     const w = new Worker('raid-sim/simworker.js?v=37');
